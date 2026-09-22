@@ -1,0 +1,52 @@
+{
+  "project": "NovelForge V2",
+  "status": "architecture-baseline",
+  "primary_llm_gateway": "OmniRoute",
+  "frontend": [
+    "Nuxt",
+    "Vue",
+    "TypeScript",
+    "Tailwind CSS"
+  ],
+  "backend": [
+    "Node.js",
+    "TypeScript",
+    "Fastify"
+  ],
+  "data": [
+    "PostgreSQL",
+    "pgvector"
+  ],
+  "queue_cache": [
+    "Redis",
+    "BullMQ"
+  ],
+  "deployment": [
+    "Docker",
+    "Docker Compose",
+    "Windows via Docker Desktop/WSL2",
+    "Ubuntu via Docker Engine"
+  ],
+  "architecture_style": "modular-monolith-plus-workers",
+  "core_domains": [
+    "story-core",
+    "story-intelligence",
+    "character-intelligence",
+    "relationship-intelligence",
+    "story-simulation",
+    "narrative-rhythm",
+    "endgame-intelligence",
+    "story-versioning",
+    "ai-platform"
+  ],
+  "invariants": [
+    "canon-is-source-of-truth",
+    "llm-memory-is-not-canon",
+    "outline-outranks-synopsis-for-near-term-planning",
+    "no-destructive-rollback",
+    "high-impact-mutations-require-impact-analysis-and-checkpoint",
+    "derived-state-is-rebuildable",
+    "ai-canon-changes-are-proposals-unless-explicit-policy-allows",
+    "no-full-manuscript-context-by-default"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "novelforge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.5.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "echo \"lint: placeholder (NF-0005)\" && exit 0",
+    "typecheck": "echo \"typecheck: placeholder (NF-0005)\" && exit 0",
+    "test": "echo \"test: placeholder (NF-0005)\" && exit 0"
+  }
+}

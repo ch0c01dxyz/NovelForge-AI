@@ -1,0 +1,45 @@
+# NovelForge local development infrastructure.
+# Canonical path per docs/11-deployment/DEPLOYMENT.md: works on
+# Windows (Docker Desktop/WSL2) and Ubuntu (Docker Engine + Compose plugin).
+#
+# All credentials below are LOCAL-DEV DEFAULTS only, never for production.
+# Override via .env (see .env.example).
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-novelforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-novelforge}
+      POSTGRES_DB: ${POSTGRES_DB:-novelforge}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # appendonly keeps BullMQ queues/caches across restarts.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

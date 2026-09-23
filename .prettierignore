@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+coverage
+.nuxt
+.output
+pnpm-lock.yaml
+receipts
+review-receipts
+docs
+*.md

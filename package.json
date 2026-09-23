@@ -8,8 +8,19 @@
     "node": ">=22"
   },
   "scripts": {
-    "lint": "echo \"lint: placeholder (NF-0005)\" && exit 0",
-    "typecheck": "echo \"typecheck: placeholder (NF-0005)\" && exit 0",
-    "test": "echo \"test: placeholder (NF-0005)\" && exit 0"
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
   }
 }

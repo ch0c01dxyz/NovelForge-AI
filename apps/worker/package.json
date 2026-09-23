@@ -2,5 +2,21 @@
   "name": "@novelforge/worker",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "start": "node src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@novelforge/config": "workspace:*",
+    "bullmq": "^5.0.0",
+    "ioredis": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.0.0"
+  }
 }

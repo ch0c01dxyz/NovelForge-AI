@@ -11,3 +11,6 @@ generated/
 !.env.example
 .DS_Store
 Thumbs.db
+receipts/
+review-receipts/
+.serena/

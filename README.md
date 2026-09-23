@@ -60,7 +60,7 @@ scripts\verify-clone.ps1
 scripts/verify-clone.sh
 ```
 
-Status verifikasi terakhir: **Windows PASSED (2026-09-23)**; Ubuntu belum diverifikasi (lihat `docs/implementation/test-matrix.md`).
+Status verifikasi terakhir: **Windows PASSED (2026-09-23)**; **Ubuntu 24.04 PASSED (2026-09-23, via container)** — lihat `docs/implementation/test-matrix.md`.
 
 ---
 

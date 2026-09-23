@@ -33,18 +33,19 @@ Source: `docs/12-roadmap/IMPLEMENTATION-ROADMAP.md` and
 - [x] NF-0009 Bootstrap worker health and BullMQ connection —
   committed (`6178ed2`); unit tests + real-Redis integration and
   clean SIGTERM shutdown verified on Windows.
-- [ ] NF-0010 Cross-platform clean-clone verification — Windows
+- [x] NF-0010 Cross-platform clean-clone verification — Windows
   **PASSED** (2026-09-23, `scripts/verify-clone.ps1`: fresh clone →
   frozen-lockfile install → lint → typecheck → test → build all apps
-  → `docker compose config`, exit 0). Ubuntu **UNVERIFIED** — no
-  Ubuntu distro available on the verification machine (WSL2 has only
-  `docker-desktop`); run `scripts/verify-clone.sh` on Ubuntu with
-  Node >=22, pnpm 12, Docker Engine + Compose plugin (see README
-  quickstart).
+  → `docker compose config`, exit 0). Ubuntu 24.04 **PASSED**
+  (2026-09-23, `scripts/verify-clone.sh` inside an Ubuntu 24.04
+  Docker container with Node v22.23.2, pnpm 12.5.1, git 2.43,
+  Docker CLI 29.1.3 + Compose 2.40.3: full pipeline exit 0,
+  `CLEAN-CLONE VERIFICATION PASSED (Linux)`).
 
 Phase 0 exit criteria (roadmap): clean clone boots on Windows
-Docker/WSL2 and Ubuntu Docker. **Windows: met. Ubuntu: pending a run
-on an Ubuntu host** (script ready, instructions in README).
+Docker/WSL2 and Ubuntu Docker. **Windows: met. Ubuntu: met**
+(container run; a bare-metal Ubuntu host run remains optional
+confirmation). Phase 0 is complete.
 
 ## Phase 1+
 

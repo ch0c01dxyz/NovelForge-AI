@@ -42,15 +42,17 @@ Per-area notes:
   `WORKER_IT_REDIS_URL` is set.
 - **Compose baseline**: postgres+pgvector (0.8.6) + redis boot reached
   `healthy` locally on Windows Docker Desktop (2026-09-23).
-  Clean-clone e2e: **Windows passing**; **Ubuntu unverified** (no
-  Ubuntu host available — run `scripts/verify-clone.sh` there).
+  Clean-clone e2e: **Windows passing**; **Ubuntu 24.04 passing**
+  (2026-09-23, `scripts/verify-clone.sh` in an Ubuntu 24.04 container,
+  Node v22.23.2 / pnpm 12.5.1 / Compose 2.40.3, exit 0).
 - **CI skeleton** (`.github/workflows/ci.yml`): lint/typecheck/test
   wiring committed; first pipeline run on the forge is pending (counts
   as CI-verified once green remotely).
 
 Phase 0 exit test: clean clone boots on Windows Docker/WSL2 and Ubuntu
-Docker (NF-0010) — Windows passing (2026-09-23); Ubuntu pending a run
-on an Ubuntu host with `scripts/verify-clone.sh`.
+Docker (NF-0010) — Windows passing (2026-09-23); Ubuntu 24.04 passing
+(2026-09-23, container run of `scripts/verify-clone.sh`). **Phase 0
+exit criteria met.**
 
 ## Phase 1+
 

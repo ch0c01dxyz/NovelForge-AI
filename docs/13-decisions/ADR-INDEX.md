@@ -18,6 +18,9 @@ Initial accepted decisions:
 -   ADR-011: Detailed planning decreases with narrative distance.
 -   ADR-012: Evidence-backed findings replace arbitrary LLM health
     scores.
+-   [ADR-0001](../adr/ADR-0001-module-boundaries.md): Module boundary
+    conventions; `@novelforge/contracts` holds the typed boundary map
+    and domain event names, tested against SYSTEM-ARCHITECTURE.md.
 
 Any reversal requires a new ADR that supersedes the old decision and
 explains migration impact.

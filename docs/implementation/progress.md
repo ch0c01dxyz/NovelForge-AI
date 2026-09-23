@@ -6,7 +6,7 @@
 > [decisions.md](./decisions.md), test coverage in
 > [test-matrix.md](./test-matrix.md).
 
-Last updated: 2026-09-23 (task NF-0010).
+Last updated: 2026-09-24 (task NF-1005).
 
 ## Phase 0 — Repository & Architecture Foundation
 
@@ -47,7 +47,45 @@ Docker/WSL2 and Ubuntu Docker. **Windows: met. Ubuntu: met**
 (container run; a bare-metal Ubuntu host run remains optional
 confirmation). Phase 0 is complete.
 
-## Phase 1+
+## Phase 1 — Identity, Tenancy & Persistence Core
 
-NOT STARTED. Do not implement advanced story engines before Phase 0
-conventions are stable (`docs/14-progress/CURRENT.md`).
+Implemented directly in-session (2026-09-24) after gateway instability
+blocked Orca workers; task IDs follow the roadmap.
+
+- [x] NF-1001 Prisma platform schema + initial migration with pgvector
+  — committed (`f9db7e2`); ADR-0003. Users/sessions/workspaces/
+  memberships/novels/novel_settings/audit_logs, UUID keys, pgvector
+  extension enabled from migration 1. Integration suite against live
+  compose PostgreSQL passing.
+- [x] NF-1002 Session auth primitives (`@novelforge/auth`) — committed
+  (`cc5c243`); ADR-0002. argon2id hashing, opaque SHA-256-hashed
+  session tokens, 30-day sliding sessions, timing-equalized login.
+  12 unit + 2 integration tests passing.
+- [x] NF-1003 API auth routes (register/login/logout/session) —
+  committed (`cac08bc`). Zod validation, HttpOnly SameSite=Lax cookie,
+  @fastify/rate-limit (register 10/min, login 20/min). Integration
+  tests via fastify.inject against live PostgreSQL passing.
+- [x] NF-1004 RBAC platform services + routes + audit foundation —
+  committed (`0b12534`); ADR-0004. Capability map in
+  `@novelforge/auth/authorization`, workspace/novel services with
+  membership-as-tenant-gate (404 for non-members), append-only audit.
+  7 authorization unit + 8 platform integration tests passing.
+- [x] NF-1005 Tenant isolation exit gate — committed (this change).
+  Route-level suite `apps/api/src/tenant-isolation.test.ts`
+  (dedicated `novelforge_test_isolation` db): 401 gate, revoked-session
+  access loss, non-member 404 across read/write/member-add shapes,
+  session-scoped novel listing, removed-member access loss, VIEWER
+  read-only enforcement, audit scoping. 7 tests passing.
+
+Phase 1 exit criteria: full repo gate green on Windows against live
+compose PostgreSQL/Redis (2026-09-24): lint 0 errors; typecheck all
+workspaces Done; tests 11 files / 70 passed / 1 skipped; apps build
+(incl. Nuxt production). **Met.**
+
+Known CI gap: GitHub Actions has no postgres/redis service containers
+yet, so DB-backed integration suites cannot run remotely; they are
+executed locally against compose until `ci.yml` gains services.
+
+## Phase 2+
+
+NOT STARTED.

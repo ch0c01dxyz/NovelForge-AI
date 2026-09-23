@@ -12,33 +12,45 @@
 
 | Area | Unit | Integration | Contract | E2E | Migration |
 | ---- | ---- | ----------- | -------- | --- | --------- |
-| Env validation | exists | — | — | — | — |
-| Module boundaries | — | — | exists | — | — |
-| API health | exists | pending | pending | — | — |
-| Worker/BullMQ | exists | pending | — | — | — |
-| Compose baseline | — | pending | — | pending | pending |
-| CI skeleton | pending | pending | pending | pending | pending |
+| Env validation | passing | — | — | — | — |
+| Module boundaries | — | — | passing | — | — |
+| API health | passing | pending | pending | — | — |
+| Worker/BullMQ | passing | passing (local) | — | — | — |
+| Compose baseline | — | passing (local) | — | passing (Windows) | pending |
+| CI skeleton | passing | pending | pending | pending | pending |
 
-All cells above are `pending` CI verification until NF-0005 lands; none
-have been executed green yet.
+Executed results (2026-09-23, Windows, clean clone via
+`scripts/verify-clone.ps1`): full `pnpm test` run — 24 tests passed, 1
+skipped (worker real-Redis integration, gated on `WORKER_IT_REDIS_URL`),
+exit 0. Lint, typecheck (19 workspaces), app builds (incl. Nuxt
+production), and `docker compose config` all green.
 
 Per-area notes:
 
-- **Env validation** (`packages/config`): unit `env.test.ts` committed.
+- **Env validation** (`packages/config`): unit `env.test.ts` passing.
 - **Module boundaries** (`@novelforge/contracts`): contract test checks
   the boundary map and domain event names against
-  SYSTEM-ARCHITECTURE.md (ADR-0001).
-- **API health** (`apps/api`): unit `app.test.ts` committed; readiness
+  SYSTEM-ARCHITECTURE.md (ADR-0001); passing.
+- **API health** (`apps/api`): unit `app.test.ts` passing; readiness
   datastore probes (integration) and health response schemas
   (contract) pending.
-- **Worker/BullMQ** (`apps/worker`): unit `worker.test.ts` committed;
-  queue connection and health (integration) pending.
-- **Compose baseline**: postgres+redis boot (integration) and
-  clean-clone boot e2e (NF-0010) pending.
-- **CI skeleton** (NF-0005): lint/typecheck/test wiring pending.
+- **Worker/BullMQ** (`apps/worker`): unit `worker.test.ts` passing
+  (7 hermetic tests via injectable fakes). Integration against real
+  Redis passed locally on Windows (compose redis on host port 16379,
+  2026-09-23): heartbeat job completed, connectivity proven, clean
+  shutdown. In CI the integration test skips unless
+  `WORKER_IT_REDIS_URL` is set.
+- **Compose baseline**: postgres+pgvector (0.8.6) + redis boot reached
+  `healthy` locally on Windows Docker Desktop (2026-09-23).
+  Clean-clone e2e: **Windows passing**; **Ubuntu unverified** (no
+  Ubuntu host available — run `scripts/verify-clone.sh` there).
+- **CI skeleton** (`.github/workflows/ci.yml`): lint/typecheck/test
+  wiring committed; first pipeline run on the forge is pending (counts
+  as CI-verified once green remotely).
 
 Phase 0 exit test: clean clone boots on Windows Docker/WSL2 and Ubuntu
-Docker (NF-0010) — pending.
+Docker (NF-0010) — Windows passing (2026-09-23); Ubuntu pending a run
+on an Ubuntu host with `scripts/verify-clone.sh`.
 
 ## Phase 1+
 

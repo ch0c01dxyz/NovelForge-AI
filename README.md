@@ -20,6 +20,50 @@ Project ini masih dalam tahap pengembangan dan belum ditujukan untuk penggunaan 
 
 ---
 
+## Quickstart (Development)
+
+Prasyarat: **Node.js >= 22**, **pnpm 12** (`corepack enable`), dan **Docker** (Docker Desktop/WSL2 di Windows, Docker Engine + Compose plugin di Ubuntu).
+
+```bash
+# 1. Install dependencies (semua workspace)
+pnpm install --frozen-lockfile
+
+# 2. Salin konfigurasi environment
+cp .env.example .env   # sesuaikan bila perlu; default aman untuk dev lokal
+
+# 3. Jalankan infrastruktur (PostgreSQL+pgvector, Redis)
+docker compose up -d
+# Catatan: jika port 5432 di host sudah terpakai, set POSTGRES_PORT di .env
+
+# 4. Quality gates
+pnpm lint
+pnpm typecheck
+pnpm test
+
+# 5. Jalankan aplikasi
+pnpm --filter @novelforge/web dev      # Nuxt web shell
+pnpm --filter @novelforge/api start    # Fastify API (/health, /ready)
+pnpm --filter @novelforge/worker start # BullMQ heartbeat worker
+```
+
+### Verifikasi clean-clone
+
+Skrip verifikasi end-to-end (fresh clone → install → lint → typecheck → test → build semua apps → `docker compose config`):
+
+```powershell
+# Windows (PowerShell 7+)
+scripts\verify-clone.ps1
+```
+
+```bash
+# Ubuntu/Linux
+scripts/verify-clone.sh
+```
+
+Status verifikasi terakhir: **Windows PASSED (2026-09-23)**; Ubuntu belum diverifikasi (lihat `docs/implementation/test-matrix.md`).
+
+---
+
 # Why NovelForge?
 
 Model AI dapat menghasilkan prose yang bagus, tetapi webnovel panjang mempunyai masalah yang jauh lebih kompleks.

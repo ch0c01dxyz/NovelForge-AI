@@ -21,6 +21,11 @@ Initial accepted decisions:
 -   [ADR-0001](../adr/ADR-0001-module-boundaries.md): Module boundary
     conventions; `@novelforge/contracts` holds the typed boundary map
     and domain event names, tested against SYSTEM-ARCHITECTURE.md.
+-   [ADR-0003](../adr/ADR-0003-database-architecture.md): Database
+    architecture — PostgreSQL via Prisma 7 (pg driver adapter),
+    migrations as the only schema path, pgvector enabled from the
+    initial migration, UUID keys, append-only `audit_logs`, and a
+    dedicated `novelforge_test` database for integration tests.
 
 New ADRs start from [ADR-TEMPLATE.md](../adr/ADR-TEMPLATE.md), use the
 next sequential `ADR-NNNN` number, are filed under `docs/adr/`, and are

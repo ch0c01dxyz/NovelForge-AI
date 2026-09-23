@@ -1,0 +1,138 @@
+// NovelForge platform schema (Phase 1).
+// Scope: platform entities only (users, sessions, workspaces, memberships,
+// novels, novel_settings, audit_logs) per docs/04-data/DATA-MODEL-BLUEPRINT.md.
+// Story/manuscript/AI entities arrive with their phases.
+
+generator client {
+  provider   = "prisma-client"
+  output     = "../generated/prisma"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  AUTHOR
+  EDITOR
+  VIEWER
+}
+
+enum NovelStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model User {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String       @unique
+  passwordHash String       @map("password_hash")
+  displayName  String       @map("display_name")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  sessions     Session[]
+  memberships  Membership[]
+  ownedWorkspaces Workspace[] @relation("WorkspaceOwner")
+  createdNovels   Novel[]     @relation("NovelCreator")
+  auditEntries    AuditLog[]  @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Session {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // Opaque session tokens are stored hashed only (ADR-0002); plaintext
+  // never touches the database.
+  tokenHash String    @unique @map("token_hash")
+  userId    String    @map("user_id") @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Workspace {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  slug        String       @unique
+  ownerId     String       @map("owner_id") @db.Uuid
+  owner       User         @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  memberships Membership[]
+  novels      Novel[]
+  auditEntries AuditLog[]
+
+  @@map("workspaces")
+}
+
+model Membership {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String         @map("user_id") @db.Uuid
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        MembershipRole
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Novel {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId   String         @map("workspace_id") @db.Uuid
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title         String
+  slug          String
+  status        NovelStatus    @default(DRAFT)
+  createdById   String         @map("created_by_id") @db.Uuid
+  createdBy     User           @relation("NovelCreator", fields: [createdById], references: [id])
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  settings      NovelSettings?
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId])
+  @@map("novels")
+}
+
+// Intentional JSONB: per-novel knobs are open-ended by design and always
+// read/written as a unit (blueprint: "JSONB only where flexibility is
+// intentional"). Structured story truth gets its own tables in later phases.
+model NovelSettings {
+  novelId   String   @id @map("novel_id") @db.Uuid
+  novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  settings  Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("novel_settings")
+}
+
+// Immutable audit fact. No update/delete path is exposed by the repository
+// layer (CLAUDE.md §33: admin actions auditable; ADR-0003).
+model AuditLog {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorUserId String?    @map("actor_user_id") @db.Uuid
+  actor       User?      @relation("AuditActor", fields: [actorUserId], references: [id])
+  workspaceId String?    @map("workspace_id") @db.Uuid
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id])
+  action      String
+  entityType  String     @map("entity_type")
+  entityId    String?    @map("entity_id") @db.Uuid
+  payload     Json       @default("{}")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}

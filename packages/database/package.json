@@ -4,10 +4,29 @@
   "private": true,
   "type": "module",
   "main": "index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "prisma generate && tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:test:prepare": "node --experimental-strip-types scripts/prepare-test-db.ts"
   },
   "devDependencies": {
-    "typescript": "^5.5.0"
+    "@types/node": "^22.20.4",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "@novelforge/config": "workspace:*",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "pg": "^8.13.0",
+    "prisma": "7.10.0"
   }
 }

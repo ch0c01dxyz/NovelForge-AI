@@ -1,0 +1,209 @@
+/**
+ * Platform services integration tests (NF-1004) against the live compose
+ * PostgreSQL (dedicated novelforge_test_platform db — parallel-safe per
+ * ADR-0003). Covers RBAC capability enforcement, tenant isolation at the
+ * service layer, ownership invariants, and audit records.
+ */
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createDb, type NovelForgeDb } from "@novelforge/database";
+import pg from "pg";
+import { createAuditService } from "./audit.ts";
+import {
+  ConflictError,
+  createPlatformServices,
+  ForbiddenError,
+  NotFoundError,
+  type PlatformServices,
+} from "./platform.ts";
+
+const TEST_DB = "novelforge_test_platform";
+const HERE = fileURLToPath(new URL(".", import.meta.url));
+const DB_PACKAGE_ROOT = path.join(HERE, "..", "..", "..", "..", "packages", "database");
+const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js");
+
+if (!process.env.DATABASE_URL) {
+  try {
+    process.loadEnvFile(path.join(HERE, "..", "..", "..", "..", ".env"));
+  } catch {
+    throw new Error("DATABASE_URL not set and repo-root .env not found — see ADR-0003");
+  }
+}
+const BASE_URL = process.env.DATABASE_URL!;
+
+function withDb(url: string, db: string): string {
+  const u = new URL(url);
+  u.pathname = `/${db}`;
+  return u.toString();
+}
+const TEST_URL = withDb(BASE_URL, TEST_DB);
+
+let db: NovelForgeDb;
+let services: PlatformServices;
+
+beforeAll(async () => {
+  const admin = new pg.Client({ connectionString: withDb(BASE_URL, "postgres") });
+  await admin.connect();
+  await admin.query(
+    `SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+     WHERE datname = $1 AND pid <> pg_backend_pid()`,
+    [TEST_DB],
+  );
+  await admin.query(`DROP DATABASE IF EXISTS ${TEST_DB}`);
+  await admin.query(`CREATE DATABASE ${TEST_DB}`);
+  await admin.end();
+  execFileSync(process.execPath, [PRISMA_CLI, "migrate", "deploy"], {
+    stdio: "pipe",
+    cwd: DB_PACKAGE_ROOT,
+    env: { ...process.env, DATABASE_URL: TEST_URL },
+  });
+  db = createDb(TEST_URL);
+  services = createPlatformServices({ db, audit: createAuditService(db) });
+}, 120_000);
+
+afterAll(async () => {
+  await db?.$disconnect();
+});
+
+beforeEach(async () => {
+  await db.$executeRawUnsafe(
+    `TRUNCATE audit_logs, novel_settings, novels, memberships, sessions, workspaces, users RESTART IDENTITY CASCADE`,
+  );
+});
+
+let emailN = 0;
+async function makeUser(displayName = "U"): Promise<string> {
+  const u = await db.user.create({
+    data: {
+      email: `p${++emailN}-${Date.now()}@example.com`,
+      passwordHash: "x",
+      displayName,
+    },
+  });
+  return u.id;
+}
+
+describe("workspaces", () => {
+  it("createWorkspace makes the actor OWNER and audits it", async () => {
+    const actor = await makeUser();
+    const { id } = await services.createWorkspace({ actorUserId: actor, name: "W", slug: `w-${Date.now()}` });
+    const ws = await services.getWorkspace(actor, id);
+    expect(ws.role).toBe("OWNER");
+    const audit = await db.auditLog.findFirst({ where: { action: "workspace.created" } });
+    expect(audit?.entityId).toBe(id);
+    expect(audit?.actorUserId).toBe(actor);
+  }, 30_000);
+
+  it("duplicate slug conflicts", async () => {
+    const actor = await makeUser();
+    await services.createWorkspace({ actorUserId: actor, name: "W", slug: "dup-ws" });
+    await expect(
+      services.createWorkspace({ actorUserId: actor, name: "W2", slug: "dup-ws" }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  }, 30_000);
+
+  it("non-members get NotFound (404 semantics, no existence leak)", async () => {
+    const owner = await makeUser();
+    const outsider = await makeUser();
+    const { id } = await services.createWorkspace({ actorUserId: owner, name: "W", slug: `w-${Date.now()}` });
+    await expect(services.getWorkspace(outsider, id)).rejects.toBeInstanceOf(NotFoundError);
+  }, 30_000);
+});
+
+describe("membership RBAC", () => {
+  it("OWNER can add members; VIEWER cannot (ForbiddenError)", async () => {
+    const owner = await makeUser();
+    const { id: wsId } = await services.createWorkspace({ actorUserId: owner, name: "W", slug: `w-${Date.now()}` });
+    const viewer = await makeUser();
+    const guest = await makeUser();
+    await services.addMember({ actorUserId: owner, workspaceId: wsId, userId: viewer, role: "VIEWER" });
+    await expect(
+      services.addMember({ actorUserId: viewer, workspaceId: wsId, userId: guest, role: "EDITOR" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    // Owner can.
+    await services.addMember({ actorUserId: owner, workspaceId: wsId, userId: guest, role: "EDITOR" });
+    const members = await services.listMembers(owner, wsId);
+    expect(members).toHaveLength(3);
+    const added = await db.auditLog.findFirst({ where: { action: "member.added" } });
+    expect(added).not.toBeNull();
+  }, 30_000);
+
+  it("non-OWNER cannot grant OWNER; ADMIN cannot demote OWNER", async () => {
+    const owner = await makeUser();
+    const { id: wsId } = await services.createWorkspace({ actorUserId: owner, name: "W", slug: `w-${Date.now()}` });
+    const admin = await makeUser();
+    await services.addMember({ actorUserId: owner, workspaceId: wsId, userId: admin, role: "ADMIN" });
+    const other = await makeUser();
+
+    // ADMIN cannot grant OWNER.
+    await expect(
+      services.addMember({ actorUserId: admin, workspaceId: wsId, userId: other, role: "OWNER" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+
+    // ADMIN cannot demote the OWNER.
+    await expect(
+      services.changeMemberRole({ actorUserId: admin, workspaceId: wsId, userId: owner, role: "VIEWER" }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+
+    // OWNER cannot demote themselves when they are the last owner.
+    await expect(
+      services.changeMemberRole({ actorUserId: owner, workspaceId: wsId, userId: owner, role: "ADMIN" }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  }, 30_000);
+
+  it("removed member loses access immediately", async () => {
+    const owner = await makeUser();
+    const { id: wsId } = await services.createWorkspace({ actorUserId: owner, name: "W", slug: `w-${Date.now()}` });
+    const editor = await makeUser();
+    await services.addMember({ actorUserId: owner, workspaceId: wsId, userId: editor, role: "EDITOR" });
+    await services.listNovels(editor, wsId); // works while a member
+    await services.removeMember({ actorUserId: owner, workspaceId: wsId, userId: editor });
+    await expect(services.listNovels(editor, wsId)).rejects.toBeInstanceOf(NotFoundError);
+    const audit = await db.auditLog.findFirst({ where: { action: "member.removed" } });
+    expect(audit).not.toBeNull();
+  }, 30_000);
+});
+
+describe("novels", () => {
+  it("AUTHOR can create; VIEWER cannot; audits novel.created", async () => {
+    const owner = await makeUser();
+    const { id: wsId } = await services.createWorkspace({ actorUserId: owner, name: "W", slug: `w-${Date.now()}` });
+    const author = await makeUser();
+    const viewer = await makeUser();
+    await services.addMember({ actorUserId: owner, workspaceId: wsId, userId: author, role: "AUTHOR" });
+    await services.addMember({ actorUserId: owner, workspaceId: wsId, userId: viewer, role: "VIEWER" });
+
+    const { id: novelId } = await services.createNovel({
+      actorUserId: author, workspaceId: wsId, title: "N", slug: `n-${Date.now()}`,
+    });
+    await expect(
+      services.createNovel({ actorUserId: viewer, workspaceId: wsId, title: "N2", slug: `n2-${Date.now()}` }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+
+    // VIEWER can read (novel:read is universal among members).
+    const novel = await services.getNovel(viewer, wsId, novelId);
+    expect(novel.id).toBe(novelId);
+    const audit = await db.auditLog.findFirst({ where: { action: "novel.created" } });
+    expect(audit?.entityId).toBe(novelId);
+  }, 30_000);
+
+  it("cross-workspace novel access is denied even for a member of another workspace", async () => {
+    const ownerA = await makeUser();
+    const ownerB = await makeUser();
+    const { id: wsA } = await services.createWorkspace({ actorUserId: ownerA, name: "A", slug: `a-${Date.now()}` });
+    const { id: wsB } = await services.createWorkspace({ actorUserId: ownerB, name: "B", slug: `b-${Date.now()}` });
+    const { id: novelA } = await services.createNovel({
+      actorUserId: ownerA, workspaceId: wsA, title: "NA", slug: `na-${Date.now()}`,
+    });
+    // ownerB is a valid member of wsB but not wsA: reading novelA via wsB is NotFound.
+    await expect(services.getNovel(ownerB, wsB, novelA)).rejects.toBeInstanceOf(NotFoundError);
+    // And via wsA they are not a member at all: NotFound.
+    await expect(services.getNovel(ownerB, wsA, novelA)).rejects.toBeInstanceOf(NotFoundError);
+    // listNovelsForUser only returns own-workspace novels.
+    expect(await services.listNovelsForUser(ownerB)).toEqual([]);
+    const listA = await services.listNovelsForUser(ownerA);
+    expect(listA.map((n) => n.id)).toEqual([novelA]);
+  }, 30_000);
+});

@@ -19,3 +19,4 @@ export function createDb(databaseUrl: string): NovelForgeDb {
 
 export { PrismaClient } from "./generated/prisma/client.ts";
 export * from "./generated/prisma/enums.ts";
+export type { InputJsonValue } from "./generated/prisma/internal/prismaNamespace.ts";

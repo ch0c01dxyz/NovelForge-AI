@@ -16,6 +16,9 @@ import type { NovelForgeDb } from "@novelforge/database";
 import { createAuthService } from "@novelforge/auth";
 import { prismaSessionStore, prismaUserStore } from "./auth-stores.ts";
 import { registerAuthRoutes } from "./auth-routes.ts";
+import { registerPlatformRoutes } from "./platform-routes.ts";
+import { createAuditService } from "./services/audit.ts";
+import { createPlatformServices } from "./services/platform.ts";
 
 export type CheckState = "up" | "down";
 
@@ -93,6 +96,13 @@ export async function buildApp(
     await registerAuthRoutes(app, {
       auth,
       secureCookies: env.NODE_ENV === "production",
+    });
+    await registerPlatformRoutes(app, {
+      auth,
+      services: createPlatformServices({
+        db: options.db,
+        audit: createAuditService(options.db),
+      }),
     });
   }
 

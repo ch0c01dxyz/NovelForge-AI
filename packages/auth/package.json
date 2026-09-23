@@ -5,7 +5,8 @@
   "type": "module",
   "main": "index.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./authorization": "./authorization.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

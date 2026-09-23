@@ -25,6 +25,10 @@ Initial accepted decisions:
     Session-cookie authentication — opaque tokens stored hashed
     (SHA-256), argon2id password hashing, 30-day sliding sessions with
     immediate revocation; JWTs rejected.
+-   [ADR-0004](../adr/ADR-0004-authorization-rbac.md): Capability-based
+    RBAC — granular capabilities instead of inline role checks,
+    membership as the tenant gate (404 for non-members), owner
+    invariants, append-only audit trail for sensitive mutations.
 -   [ADR-0003](../adr/ADR-0003-database-architecture.md): Database
     architecture — PostgreSQL via Prisma 7 (pg driver adapter),
     migrations as the only schema path, pgvector enabled from the

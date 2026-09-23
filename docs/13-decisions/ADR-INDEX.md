@@ -21,6 +21,10 @@ Initial accepted decisions:
 -   [ADR-0001](../adr/ADR-0001-module-boundaries.md): Module boundary
     conventions; `@novelforge/contracts` holds the typed boundary map
     and domain event names, tested against SYSTEM-ARCHITECTURE.md.
+-   [ADR-0002](../adr/ADR-0002-authentication-architecture.md):
+    Session-cookie authentication — opaque tokens stored hashed
+    (SHA-256), argon2id password hashing, 30-day sliding sessions with
+    immediate revocation; JWTs rejected.
 -   [ADR-0003](../adr/ADR-0003-database-architecture.md): Database
     architecture — PostgreSQL via Prisma 7 (pg driver adapter),
     migrations as the only schema path, pgvector enabled from the

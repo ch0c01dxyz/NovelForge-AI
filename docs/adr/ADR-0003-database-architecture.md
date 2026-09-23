@@ -43,12 +43,15 @@ services. Phase 5 will need pgvector in the same database.
    repository interfaces here so domain logic never sees Prisma types.
    Per ADR-0001, `@novelforge/database` may be imported by application
    services (apps/api, apps/worker) but not by domain packages.
-8. **Integration tests use a dedicated `novelforge_test` database** on
-   the same server as `DATABASE_URL`. `scripts/prepare-test-db.ts` (and
-   the test suite itself) drops, recreates, and migrates it via
-   `prisma migrate deploy`, proving the from-empty migration path on
-   every run. Tests load repo-root `.env` only when `DATABASE_URL` is
-   not set (CI passes it explicitly). The Prisma CLI is invoked as
+8. **Integration tests use a dedicated database per package** on the
+   same server as `DATABASE_URL` (`novelforge_test` for
+   `packages/database`, `novelforge_test_auth` for `packages/auth`, …)
+   because the workspace suites run in parallel and each recreates its
+   database. `scripts/prepare-test-db.ts` (and each suite itself) drops,
+   recreates, and migrates via `prisma migrate deploy`, proving the
+   from-empty migration path on every run. Tests load repo-root `.env`
+   only when `DATABASE_URL` is not set (CI passes it explicitly). The
+   Prisma CLI is invoked as
    `node node_modules/prisma/build/index.js` because spawning `pnpm`
    fails on Windows (ENOENT on `.cmd` shims).
 
@@ -68,8 +71,9 @@ services. Phase 5 will need pgvector in the same database.
 ## Consequences
 
 - Schema changes require a migration file in review; no manual edits.
-- `novelforge_test` is destroyed and rebuilt on every test run — never
-  point `DATABASE_URL` at data you care about when running tests.
+- `novelforge_test*` databases are destroyed and rebuilt on every test
+  run — never point `DATABASE_URL` at data you care about when running
+  tests.
 - pgvector is available from day one; vector columns/indexes arrive
   with Phase 5 migrations.
 - The generated Prisma client lives in `packages/database/generated/`

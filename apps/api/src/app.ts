@@ -9,7 +9,13 @@
 import { randomUUID } from "node:crypto";
 import net from "node:net";
 import Fastify, { type FastifyInstance } from "fastify";
+import cookie from "@fastify/cookie";
+import rateLimit from "@fastify/rate-limit";
 import type { Env } from "@novelforge/config";
+import type { NovelForgeDb } from "@novelforge/database";
+import { createAuthService } from "@novelforge/auth";
+import { prismaSessionStore, prismaUserStore } from "./auth-stores.ts";
+import { registerAuthRoutes } from "./auth-routes.ts";
 
 export type CheckState = "up" | "down";
 
@@ -52,7 +58,18 @@ function probe(rawUrl: string, timeoutMs = 2000): Promise<boolean> {
   });
 }
 
-export async function buildApp(env: Env): Promise<FastifyInstance> {
+export interface BuildAppOptions {
+  /**
+   * When provided, /api/auth routes are registered against this database.
+   * Tests without a DB get the bare health/ready app.
+   */
+  db?: NovelForgeDb;
+}
+
+export async function buildApp(
+  env: Env,
+  options: BuildAppOptions = {},
+): Promise<FastifyInstance> {
   const app = Fastify({
     // Structured JSON logs (pino) with a request ID on every line; honor an
     // inbound x-request-id so traces correlate across services.
@@ -60,6 +77,24 @@ export async function buildApp(env: Env): Promise<FastifyInstance> {
     genReqId: (req) =>
       (req.headers["x-request-id"] as string | undefined) ?? randomUUID(),
   });
+
+  await app.register(cookie);
+  await app.register(rateLimit, {
+    // Global fallback; per-route overrides live in route config.
+    max: 300,
+    timeWindow: "1 minute",
+  });
+
+  if (options.db) {
+    const auth = createAuthService({
+      users: prismaUserStore(options.db),
+      sessions: prismaSessionStore(options.db),
+    });
+    await registerAuthRoutes(app, {
+      auth,
+      secureCookies: env.NODE_ENV === "production",
+    });
+  }
 
   app.get("/health", async () => ({ status: "ok" }));
 

@@ -10,11 +10,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/rate-limit": "^11.2.0",
+    "@novelforge/auth": "workspace:*",
     "@novelforge/config": "workspace:*",
-    "fastify": "^5.0.0"
+    "@novelforge/database": "workspace:*",
+    "fastify": "^5.0.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0",
     "typescript": "^5.5.0",
     "vitest": "^3.0.0"
   }

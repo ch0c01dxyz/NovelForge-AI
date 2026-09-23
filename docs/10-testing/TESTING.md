@@ -28,3 +28,9 @@
 -   repeated drama pattern produces evidence-backed warning;
 -   endgame closure does not auto-create new major conflict;
 -   tenant cannot access another tenant's novel.
+
+## Coverage tracking
+
+Per-phase coverage status (which layers exist, which are pending) is
+tracked in [docs/implementation/test-matrix.md](../implementation/test-matrix.md).
+Update the matrix whenever a phase adds or runs tests.

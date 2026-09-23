@@ -22,5 +22,9 @@ Initial accepted decisions:
     conventions; `@novelforge/contracts` holds the typed boundary map
     and domain event names, tested against SYSTEM-ARCHITECTURE.md.
 
+New ADRs start from [ADR-TEMPLATE.md](../adr/ADR-TEMPLATE.md), use the
+next sequential `ADR-NNNN` number, are filed under `docs/adr/`, and are
+listed here.
+
 Any reversal requires a new ADR that supersedes the old decision and
 explains migration impact.

@@ -70,7 +70,7 @@ blocked Orca workers; task IDs follow the roadmap.
   `@novelforge/auth/authorization`, workspace/novel services with
   membership-as-tenant-gate (404 for non-members), append-only audit.
   7 authorization unit + 8 platform integration tests passing.
-- [x] NF-1005 Tenant isolation exit gate — committed (this change).
+- [x] NF-1005 Tenant isolation exit gate — committed (`7231df5`).
   Route-level suite `apps/api/src/tenant-isolation.test.ts`
   (dedicated `novelforge_test_isolation` db): 401 gate, revoked-session
   access loss, non-member 404 across read/write/member-add shapes,

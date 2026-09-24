@@ -19,12 +19,8 @@ test workflow can run multiple agents deterministically.
 
 ## Known gaps carried into Phase 4
 
-- Streaming: `GatewayManager.generateStream` is built and tested, but no
-  API route exposes it yet; `GenerationStatus.INCOMPLETE` is reserved for
-  that route.
-- Routing strategy and weight are wired through the schema and router,
-  but the generation service always uses PRIORITY until an operator
-  setting exists.
+- Routing strategy is deployment-wide (`AI_ROUTING_STRATEGY`); there is no
+  per-workspace override and no operator UI to change it at runtime.
 - Scene CRUD is schema-only; no API until the editor needs scene editing.
 - Chapter creation uses `prompt()`; replace with inline UI in a later
   editor chrome pass.

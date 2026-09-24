@@ -41,6 +41,12 @@ export const envSchema = z.object({
   OMNIROUTE_BASE_URL: url,
   OMNIROUTE_API_KEY: z.string().min(1),
 
+  // How the gateway router orders candidate gateways for a request.
+  // Deployment-level, not per-request: an operator picks one policy.
+  AI_ROUTING_STRATEGY: z
+    .enum(["PRIORITY", "WEIGHTED", "ROUND_ROBIN", "LEAST_LATENCY", "FAILOVER"])
+    .default("PRIORITY"),
+
   // App-level encryption secret (gateway credentials at rest, CLAUDE.md §14)
   APP_ENCRYPTION_KEY: z.string().min(1),
 });

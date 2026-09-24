@@ -60,16 +60,13 @@ export function decryptCredential(stored: string, secret: string): string {
     throw new CredentialError("malformed credential payload");
   }
   const [, ivB64, tagB64, dataB64] = parts as [string, string, string, string];
-  let iv: Buffer;
-  let tag: Buffer;
-  let data: Buffer;
-  try {
-    iv = Buffer.from(ivB64, "base64url");
-    tag = Buffer.from(tagB64, "base64url");
-    data = Buffer.from(dataB64, "base64url");
-  } catch {
-    throw new CredentialError("malformed credential payload");
-  }
+  // Buffer.from(..., "base64url") does not throw on invalid input — it
+  // silently skips characters — so there is nothing to catch here. The
+  // length checks below plus GCM's auth tag are what actually reject a
+  // malformed or tampered payload.
+  const iv = Buffer.from(ivB64, "base64url");
+  const tag = Buffer.from(tagB64, "base64url");
+  const data = Buffer.from(dataB64, "base64url");
   if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
     throw new CredentialError("malformed credential payload");
   }

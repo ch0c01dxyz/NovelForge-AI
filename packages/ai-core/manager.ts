@@ -68,7 +68,11 @@ export interface AttemptRecord {
  * Prisma; faked in tests.
  */
 export interface GatewayRegistry {
-  /** Enabled gateways with credentials decrypted, newest config. */
+  /**
+   * Every configured gateway with its credential decrypted. Disabled
+   * gateways are included so admin views and health probes can see them;
+   * routing filters on `enabled` itself (`planAttempts`).
+   */
   listGateways(): Promise<GatewayRecord[]>;
   /**
    * Concrete models mapped to a profile, best-first, each tied to an
@@ -134,6 +138,13 @@ export class NoRouteError extends Error {
 }
 
 export class GatewayManager {
+  /**
+   * Round-robin position, advanced by the manager itself so ROUND_ROBIN
+   * actually rotates across requests. Callers may still inject their own
+   * cursor source (e.g. a shared counter) via GenerateOptions.
+   */
+  private roundRobinCursor = 0;
+
   constructor(
     private readonly registry: GatewayRegistry,
     private readonly deps: {
@@ -143,8 +154,20 @@ export class GatewayManager {
         fetchImpl?: FetchLike,
       ) => AIGateway;
       fetchImpl?: FetchLike;
+      /**
+       * Deployment routing policy. Applied when a request does not name
+       * one, so configuring WEIGHTED/LEAST_LATENCY has an effect.
+       */
+      defaultStrategy?: RoutingStrategy;
     } = {},
   ) {}
+
+  /** Next round-robin position, advancing the manager's own counter. */
+  private nextCursor(): number {
+    const cursor = this.roundRobinCursor;
+    this.roundRobinCursor = (this.roundRobinCursor + 1) % 1_000_000;
+    return cursor;
+  }
 
   private build(rec: GatewayRecord): AIGateway {
     if (this.deps.createGateway) return this.deps.createGateway(rec);
@@ -204,9 +227,9 @@ export class GatewayManager {
    */
   async generate(opts: GenerateOptions): Promise<GenerateResult> {
     const { candidates, gateways } = await this.candidates(opts.profile);
-    const plan = planAttempts(candidates, opts.strategy ?? "PRIORITY", {
+    const plan = planAttempts(candidates, opts.strategy ?? this.deps.defaultStrategy ?? "PRIORITY", {
       random: opts.random,
-      roundRobinCursor: opts.roundRobinCursor?.(),
+      roundRobinCursor: (opts.roundRobinCursor ?? (() => this.nextCursor()))(),
       maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
     });
     if (plan.length === 0) throw new NoRouteError(opts.profile);
@@ -289,9 +312,9 @@ export class GatewayManager {
     opts: GenerateOptions,
   ): AsyncGenerator<StreamChunk, void, unknown> {
     const { candidates, gateways } = await this.candidates(opts.profile);
-    const plan = planAttempts(candidates, opts.strategy ?? "PRIORITY", {
+    const plan = planAttempts(candidates, opts.strategy ?? this.deps.defaultStrategy ?? "PRIORITY", {
       random: opts.random,
-      roundRobinCursor: opts.roundRobinCursor?.(),
+      roundRobinCursor: (opts.roundRobinCursor ?? (() => this.nextCursor()))(),
       maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
     });
     if (plan.length === 0) throw new NoRouteError(opts.profile);

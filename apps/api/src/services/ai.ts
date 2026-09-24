@@ -21,6 +21,7 @@ import {
   type GatewayRecord,
   type GatewayRegistry,
   type ModelProfile,
+  type RoutingStrategy,
 } from "@novelforge/ai-core";
 import {
   requireCapability,
@@ -157,6 +158,27 @@ export interface AiServices {
     temperature?: number;
     maxTokens?: number;
   }): Promise<{ generationId: string; content: string; model: string }>;
+  /**
+   * Streamed generation. Yields text deltas; the returned promise resolves
+   * with the final status once the stream ends. A stream that fails after
+   * emitting content is INCOMPLETE — never SUCCEEDED — so a partial
+   * generation can never be mistaken for a complete one (CLAUDE.md §6).
+   */
+  generateStream(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId?: string;
+    task: string;
+    profile: ModelProfile;
+    messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+    temperature?: number;
+    maxTokens?: number;
+    signal?: AbortSignal;
+  }): Promise<{
+    generationId: string;
+    stream: AsyncGenerator<string>;
+    status: () => Promise<"SUCCEEDED" | "INCOMPLETE" | "FAILED">;
+  }>;
   listGenerations(input: {
     actorUserId: string;
     workspaceId: string;
@@ -181,10 +203,17 @@ export function createAiServices(deps: {
    * stays real (CLAUDE.md §25).
    */
   createGateway?: (rec: GatewayRecord) => AIGateway;
+  /**
+   * Deployment routing policy (AI_ROUTING_STRATEGY). Without it every
+   * request would use PRIORITY and the other strategies would be dead
+   * configuration.
+   */
+  routingStrategy?: RoutingStrategy;
 }): AiServices {
   const { db, registry, encryptionKey, audit } = deps;
   const manager = new GatewayManager(registry, {
     ...(deps.createGateway ? { createGateway: deps.createGateway } : {}),
+    ...(deps.routingStrategy ? { defaultStrategy: deps.routingStrategy } : {}),
   });
 
   /** Membership gate — 404 for non-members (ADR-0004), like manuscripts. */
@@ -624,6 +653,133 @@ export function createAiServices(deps: {
         }
         throw err;
       }
+    },
+
+    async generateStream(input) {
+      await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
+      if (input.novelId) {
+        const novel = await db.novel.findFirst({
+          where: { id: input.novelId, workspaceId: input.workspaceId },
+          select: { id: true },
+        });
+        if (!novel) throw new NotFoundError("novel");
+      }
+
+      const generation = await db.generation.create({
+        data: {
+          workspaceId: input.workspaceId,
+          novelId: input.novelId ?? null,
+          userId: input.actorUserId,
+          task: input.task,
+          modelProfile: input.profile,
+          status: "IN_PROGRESS",
+        },
+        select: { id: true },
+      });
+
+      const started = Date.now();
+      let emitted = false;
+      // Null until the generator reaches a terminal state. It stays null
+      // when the consumer abandons the stream early, which status()
+      // resolves to INCOMPLETE (content was sent) or FAILED (nothing was).
+      let final: "SUCCEEDED" | "INCOMPLETE" | "FAILED" | null = null;
+
+      const stream = (async function* () {
+        try {
+          for await (const chunk of manager.generateStream({
+            profile: input.profile,
+            messages: input.messages,
+            temperature: input.temperature,
+            maxTokens: input.maxTokens,
+            generationId: generation.id,
+            ...(input.signal ? { signal: input.signal } : {}),
+          })) {
+            emitted = true;
+            yield chunk.delta;
+          }
+          final = "SUCCEEDED";
+        } catch (err) {
+          // Content already sent cannot be unsent: the generation is
+          // INCOMPLETE, not FAILED, and the client must be told the
+          // stream ended early rather than treating it as complete.
+          final = emitted ? "INCOMPLETE" : "FAILED";
+          const category = err instanceof GatewayError ? err.category : "INTERNAL";
+          const message =
+            err instanceof GatewayError ? err.message : "generation failed";
+          await db.generation.update({
+            where: { id: generation.id },
+            data: {
+              status: final,
+              latencyMs: Date.now() - started,
+              errorCategory: category,
+              errorMessage: message,
+              completedAt: new Date(),
+            },
+          });
+          await audit.record({
+            actorUserId: input.actorUserId,
+            workspaceId: input.workspaceId,
+            action: "generation.failed",
+            entityType: "Generation",
+            entityId: generation.id,
+            payload: { task: input.task, profile: input.profile, category, partial: emitted },
+          });
+          throw err;
+        }
+      })();
+
+      return {
+        generationId: generation.id,
+        stream,
+        status: async () => {
+          // The generator already persisted any failure. Here we only
+          // settle the outcome the generator did not reach: a clean
+          // completion, or an abandoned stream (client disconnect) that
+          // left no terminal state.
+          if (final === "SUCCEEDED") {
+            await db.generation.update({
+              where: { id: generation.id },
+              data: {
+                status: "SUCCEEDED",
+                latencyMs: Date.now() - started,
+                completedAt: new Date(),
+              },
+            });
+            await audit.record({
+              actorUserId: input.actorUserId,
+              workspaceId: input.workspaceId,
+              action: "generation.completed",
+              entityType: "Generation",
+              entityId: generation.id,
+              payload: { task: input.task, profile: input.profile, streamed: true },
+            });
+            return "SUCCEEDED";
+          }
+          if (final !== null) return final;
+          // Abandoned: content was streamed but the generator never
+          // finished, so this is INCOMPLETE rather than a clean success.
+          const abandoned = emitted ? "INCOMPLETE" : "FAILED";
+          await db.generation.update({
+            where: { id: generation.id },
+            data: {
+              status: abandoned,
+              latencyMs: Date.now() - started,
+              errorCategory: emitted ? "NONE" : "DETERMINISTIC",
+              errorMessage: emitted ? "stream abandoned by client" : "stream cancelled",
+              completedAt: new Date(),
+            },
+          });
+          await audit.record({
+            actorUserId: input.actorUserId,
+            workspaceId: input.workspaceId,
+            action: "generation.failed",
+            entityType: "Generation",
+            entityId: generation.id,
+            payload: { task: input.task, profile: input.profile, partial: emitted },
+          });
+          return abandoned;
+        },
+      };
     },
 
     async listGenerations(input) {

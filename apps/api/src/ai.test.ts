@@ -68,6 +68,7 @@ const env: Env = {
   OMNIROUTE_BASE_URL: "http://localhost:20128",
   OMNIROUTE_API_KEY: "test",
   APP_ENCRYPTION_KEY: ENCRYPTION_KEY,
+  AI_ROUTING_STRATEGY: "PRIORITY",
 };
 
 /**
@@ -119,10 +120,12 @@ function fakeGateway(rec: GatewayRecord): AIGateway {
     },
     async *generateStream() {
       if (!b.ok) {
+        // Emit before failing so the manager/adapter see a partial stream.
         if (b.partial) yield { delta: "partial " };
         fail();
       }
-      yield { delta: "streamed" };
+      yield { delta: "streamed " };
+      yield { delta: "text" };
     },
     async embed() {
       return { vectors: [[0.1, 0.2]], model: rec.name, inputTokens: 3 };
@@ -717,5 +720,127 @@ describe("generation history", () => {
       headers: { cookie: owner.cookie },
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("streamed generation (SSE)", () => {
+  it("streams deltas and finishes SUCCEEDED", async () => {
+    const admin = await seedUser("admin30@t.io", "SUPER_ADMIN");
+    const owner = await seedUser("owner30@t.io", null);
+    const ids = await seedWorkspace(owner.userId, "stream-ws");
+    const gwId = await createGateway(admin.cookie, "streamer");
+    await mapProfile(admin.cookie, gwId, "CREATIVE_WRITER");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/generations/stream`,
+      headers: { cookie: owner.cookie },
+      payload: {
+        task: "write",
+        profile: "CREATIVE_WRITER",
+        messages: [{ role: "user", content: "hi" }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("text/event-stream");
+    const body = res.body;
+    // The generation id is announced before any content.
+    expect(body).toContain("event: generation");
+    expect(body).toContain("streamed ");
+    expect(body).toContain("text");
+    expect(body).toContain("event: done");
+    expect(body).toContain('"status":"SUCCEEDED"');
+
+    const gen = await db.generation.findFirstOrThrow({
+      where: { workspaceId: ids.workspaceId },
+    });
+    expect(gen.status).toBe("SUCCEEDED");
+    expect(gen.completedAt).not.toBeNull();
+  });
+
+  it("records INCOMPLETE, not SUCCEEDED, when the stream breaks mid-output", async () => {
+    const admin = await seedUser("admin31@t.io", "SUPER_ADMIN");
+    const owner = await seedUser("owner31@t.io", null);
+    const ids = await seedWorkspace(owner.userId, "partial-ws");
+    const gwId = await createGateway(admin.cookie, "flaky");
+    await mapProfile(admin.cookie, gwId, "CREATIVE_WRITER");
+    // Emits one chunk, then the transport fails.
+    behaviour = { flaky: { ok: false, category: "TRANSIENT", partial: true } };
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/generations/stream`,
+      headers: { cookie: owner.cookie },
+      payload: {
+        task: "write",
+        profile: "CREATIVE_WRITER",
+        messages: [{ role: "user", content: "hi" }],
+      },
+    });
+    // The 200 was already sent, so the failure arrives as an event.
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("partial ");
+    expect(res.body).toContain("event: error");
+
+    const gen = await db.generation.findFirstOrThrow({
+      where: { workspaceId: ids.workspaceId },
+    });
+    // Critically: partial output must never be recorded as success.
+    expect(gen.status).toBe("INCOMPLETE");
+    expect(gen.errorCategory).toBe("TRANSIENT");
+  });
+
+  it("records FAILED when the stream fails before emitting anything", async () => {
+    const admin = await seedUser("admin32@t.io", "SUPER_ADMIN");
+    const owner = await seedUser("owner32@t.io", null);
+    const ids = await seedWorkspace(owner.userId, "early-fail-ws");
+    const gwId = await createGateway(admin.cookie, "earlyfail");
+    await mapProfile(admin.cookie, gwId, "CREATIVE_WRITER");
+    behaviour = { earlyfail: { ok: false, category: "TRANSIENT", partial: false } };
+
+    await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/generations/stream`,
+      headers: { cookie: owner.cookie },
+      payload: {
+        task: "write",
+        profile: "CREATIVE_WRITER",
+        messages: [{ role: "user", content: "hi" }],
+      },
+    });
+    const gen = await db.generation.findFirstOrThrow({
+      where: { workspaceId: ids.workspaceId },
+    });
+    expect(gen.status).toBe("FAILED");
+  });
+
+  it("enforces membership on the stream route", async () => {
+    const owner = await seedUser("owner33@t.io", null);
+    const stranger = await seedUser("stranger33@t.io", null);
+    const ids = await seedWorkspace(owner.userId, "stream-iso");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/generations/stream`,
+      headers: { cookie: stranger.cookie },
+      payload: {
+        task: "write",
+        profile: "CREATIVE_WRITER",
+        messages: [{ role: "user", content: "hi" }],
+      },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("validates the stream body before opening an SSE response", async () => {
+    const owner = await seedUser("owner34@t.io", null);
+    const ids = await seedWorkspace(owner.userId, "stream-val");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/generations/stream`,
+      headers: { cookie: owner.cookie },
+      payload: { task: "", profile: "NOPE", messages: [] },
+    });
+    // A validation failure is a normal 400, not a 200 SSE stream.
+    expect(res.statusCode).toBe(400);
   });
 });

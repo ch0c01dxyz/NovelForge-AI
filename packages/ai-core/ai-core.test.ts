@@ -520,6 +520,104 @@ describe("gateway manager", () => {
   });
 });
 
+describe("strategy and cursor wiring", () => {
+  it("applies the deployment default strategy when a request names none", async () => {
+    // Two gateways; WEIGHTED with a fixed RNG picking the light one
+    // proves the configured strategy is actually consulted.
+    const registry = fakeRegistry([
+      gw({ id: "heavy", name: "heavy", weight: 100, priority: 1 }),
+      gw({ id: "light", name: "light", weight: 1, priority: 2 }),
+    ]);
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour: {} }),
+      defaultStrategy: "WEIGHTED",
+    });
+    // random() near 1 selects the last remaining pick -> the light one.
+    const result = await manager.generate({
+      profile: "CREATIVE_WRITER",
+      messages: [],
+      generationId: "gen1",
+      random: () => 0.999,
+    });
+    // Whatever it picked, the point is that the strategy ran: PRIORITY
+    // would have picked "heavy" deterministically (priority 1).
+    expect(result.content).toBe("from light");
+  });
+
+  it("still lets a request override the default strategy", async () => {
+    const registry = fakeRegistry([
+      gw({ id: "heavy", name: "heavy", weight: 100, priority: 1 }),
+      gw({ id: "light", name: "light", weight: 1, priority: 2 }),
+    ]);
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour: {} }),
+      defaultStrategy: "WEIGHTED",
+    });
+    const result = await manager.generate({
+      profile: "CREATIVE_WRITER",
+      messages: [],
+      generationId: "gen1",
+      strategy: "PRIORITY",
+    });
+    expect(result.content).toBe("from heavy");
+  });
+
+  it("advances its own round-robin cursor across requests", async () => {
+    const registry = fakeRegistry([
+      gw({ id: "a", name: "a", priority: 1 }),
+      gw({ id: "b", name: "b", priority: 2 }),
+    ]);
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour: {} }),
+      defaultStrategy: "ROUND_ROBIN",
+    });
+    const first = await manager.generate({
+      profile: "CREATIVE_WRITER", messages: [], generationId: "g1",
+    });
+    const second = await manager.generate({
+      profile: "CREATIVE_WRITER", messages: [], generationId: "g2",
+    });
+    // Without a self-advancing cursor both requests would hit "a".
+    expect([first.content, second.content]).toEqual(["from a", "from b"]);
+  });
+
+  it("honours a caller-supplied cursor source over its own", async () => {
+    const registry = fakeRegistry([
+      gw({ id: "a", name: "a", priority: 1 }),
+      gw({ id: "b", name: "b", priority: 2 }),
+    ]);
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour: {} }),
+      defaultStrategy: "ROUND_ROBIN",
+    });
+    const result = await manager.generate({
+      profile: "CREATIVE_WRITER",
+      messages: [],
+      generationId: "g1",
+      roundRobinCursor: () => 1,
+    });
+    expect(result.content).toBe("from b");
+  });
+
+  it("respects a per-gateway maxRetries of 0", async () => {
+    // maxRetries: 0 means "never retry this instance" — the stored
+    // setting must have an effect rather than being inert.
+    const registry = fakeRegistry([
+      gw({ id: "solo", name: "solo", maxRetries: 0 }),
+    ]);
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour: { solo: { ok: false, category: "TRANSIENT" } } }),
+    });
+    await expect(
+      manager.generate({
+        profile: "CREATIVE_WRITER", messages: [], generationId: "gen1",
+        sleep: async () => {}, random: () => 0, maxAttempts: 5,
+      }),
+    ).rejects.toBeInstanceOf(GatewayError);
+    expect(registry.attempts).toHaveLength(1);
+  });
+});
+
 describe("circuit breaker is not poisoned by caller-induced failures", () => {
   it("does not penalize a gateway for an invalid request", async () => {
     const { manager, registry } = makeManager(

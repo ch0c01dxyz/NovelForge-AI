@@ -302,8 +302,9 @@ Implemented in-session (2026-09-25).
   non-members).
 
 Phase 3 exit criteria: provider-independent generation path with audited
-failures (roadmap). Full repo gate 2026-09-25: lint 0, typecheck Done
-(incl. web), 14 files / 163 passed / 1 skipped, apps build green.
+failures (roadmap). Full repo gate after the audit follow-up
+(2026-09-25): lint 0, typecheck Done (incl. web), 15 files / 191 passed /
+1 skipped, apps build green.
 
 ### Phase 3 deep audit (2026-09-25)
 
@@ -348,10 +349,30 @@ plus live end-to-end verification against a real server. Findings fixed:
 - Dead code removed (`OWNER_MANAGEMENT_CAPS`, no-op ternary, unreachable
   early-return, misleading comments).
 
-Deferred: streaming route + SSE endpoint (the manager's streaming path is
-built and tested but no API route exposes it yet; `GenerationStatus.INCOMPLETE`
-is reserved for it). `weight`/`strategy` are wired but the service always
-uses PRIORITY until an operator-facing strategy setting exists.
+### Phase 3 audit follow-up (all seven findings closed)
+
+- **No streaming route** — `POST /api/workspaces/:workspaceId/generations/stream`
+  now exposes `GatewayManager.generateStream` over SSE (`event: generation`,
+  `delta`, `done`/`error`). `GenerationStatus.INCOMPLETE` is written when
+  content was emitted and the stream died; `FAILED` when it died before any
+  output. The route writes headers before the first byte, so a mid-stream
+  failure is an `error` event, never a status code.
+- **Routing strategy inert** — `AI_ROUTING_STRATEGY` (validated env enum)
+  is passed to `createAiServices` and becomes the manager's
+  `defaultStrategy`; a per-call `strategy` still overrides it.
+- **Streaming was untested at the transport layer** — `omniroute.test.ts`
+  (18 tests): trailing-slash normalization, Bearer-only credential, no
+  credential in failure messages, status classification, SSE ordering,
+  **final frame without a trailing blank line**, **multibyte char split
+  across chunks**, `[DONE]`, malformed frames, **reader release on early
+  abandon**, partial marking, timeout → TRANSIENT, caller abort →
+  DETERMINISTIC, health classification, model discovery, and that the
+  adapter's credential is not an enumerable/serializable property.
+- Credential encryption error paths were asserted only by inspection;
+  `crypto.ts` now has tamper / wrong-key / malformed-input rejection tests
+  and the dead `try/catch` around GCM decipher was removed.
+
+Streaming and strategy are no longer deferred.
 
 ## Phase 4+
 

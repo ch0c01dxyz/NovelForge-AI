@@ -266,6 +266,62 @@ export function registerAiRoutes(
     },
   );
 
+  app.post(
+    "/api/workspaces/:workspaceId/generations/stream",
+    { bodyLimit: GENERATE_BODY_LIMIT },
+    async (request, reply) => {
+      const actor = await requireActor(request, reply);
+      if (!actor) return;
+      const params = workspaceParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = generateBody.safeParse(request.body);
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+
+      const { generationId, stream, status } = await services.generateStream({
+        actorUserId: actor.userId,
+        workspaceId: params.data.workspaceId,
+        ...body.data,
+      });
+
+      // SSE. Headers are set before the first write; a failure after this
+      // point can only be reported as an event, not a status code.
+      reply.raw.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache, no-transform",
+        connection: "keep-alive",
+        // Proxies must not buffer a stream.
+        "x-accel-buffering": "no",
+      });
+      const send = (event: string, data: unknown) => {
+        reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+      send("generation", { generationId });
+
+      try {
+        for await (const delta of stream) {
+          send("delta", { delta });
+        }
+        const outcome = await status();
+        send("done", { generationId, status: outcome });
+      } catch (err) {
+        // The stream already sent a 200, so the failure is reported as an
+        // event. `status()` has persisted the real outcome (INCOMPLETE
+        // when content was emitted, FAILED otherwise).
+        const outcome = await status();
+        send("error", {
+          generationId,
+          status: outcome,
+          error: err instanceof Error ? err.name : "ERROR",
+        });
+      } finally {
+        reply.raw.end();
+      }
+      // The response is written directly to the socket; tell Fastify not
+      // to also try to serialize a payload.
+      return reply;
+    },
+  );
+
   app.get("/api/workspaces/:workspaceId/generations", async (request, reply) => {
     const actor = await requireActor(request, reply);
     if (!actor) return;

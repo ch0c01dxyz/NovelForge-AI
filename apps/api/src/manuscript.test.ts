@@ -59,6 +59,7 @@ const env: Env = {
   OMNIROUTE_BASE_URL: "http://localhost:20128",
   OMNIROUTE_API_KEY: "test",
   APP_ENCRYPTION_KEY: "test",
+  AI_ROUTING_STRATEGY: "PRIORITY",
 };
 
 let db: NovelForgeDb;

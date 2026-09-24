@@ -28,8 +28,6 @@ export interface GenerateRequest {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
-  /** Ask the gateway to stream. Streaming callers use generateStream. */
-  stream?: boolean;
   /** Abort signal owned by the caller (NovelForge timeout policy). */
   signal?: AbortSignal;
 }

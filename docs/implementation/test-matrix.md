@@ -172,28 +172,38 @@ executed, not as CI coverage.
 | Area | Unit | Integration | Contract | E2E | Migration |
 | ---- | ---- | ----------- | -------- | --- | --------- |
 | AI schema (`packages/database`) | — | passing | — | — | passing (drift-free) |
-| `ai-core` transport + policy | passing (43) | — | — | — | — |
+| `ai-core` transport + policy | passing (48) | — | — | — | — |
+| `ai-core` OmniRoute transport/SSE | passing (18) | — | — | — | — |
 | Gateway/model admin API | — | passing | — | — | — |
-| Generation path + history | — | passing | — | manual | — |
+| Generation path + history | — | passing (non-stream) | — | manual | — |
+| Generation streaming (SSE) | — | manual | — | manual | — |
 | Platform-admin authorization | passing | passing | — | — | — |
 
 Executed results (2026-09-25, Windows, live compose PostgreSQL):
-`ai-core.test.ts` (43) — error classification incl. network-code vs
+`ai-core.test.ts` (48) — error classification incl. network-code vs
 programmer-error, credential encrypt/decrypt + tamper/wrong-key/malformed
 rejection, routing order for all five strategies, circuit breaker
 open/close, per-gateway retry budget, manager retry/fallback, attempt
 recording, stream success, stream-not-restarted-after-partial, stream
 consumer-throw-not-attributed-to-gateway, health probes, and that
 caller-induced failures (INVALID_REQUEST/DETERMINISTIC) leave the breaker
-untouched. `ai.test.ts` (23, `novelforge_test_ai`) — gateway CRUD with the
-credential absent from every response, encrypted-at-rest assertion,
-workspace OWNER denied (403) on gateway read/create, unauthenticated 401,
-duplicate-name 409, credential rotation, model sync + profile mapping,
-platform-role requirement, unreachable-gateway 502 with breaker recorded,
-unreadable-credential 409 with breaker NOT tripped, health recovery,
-generation success with one attempt, failover with both attempts recorded,
-FAILED with classified category and no provider detail, no-route 409,
-membership 404, body validation, history list/detail, cross-tenant 404.
+untouched. `omniroute.test.ts` (18) — transport/SSE behaviour listed under
+the audit follow-up in `progress.md`. `ai.test.ts` (28,
+`novelforge_test_ai`) — gateway CRUD with the credential absent from every
+response, encrypted-at-rest assertion, workspace OWNER denied (403) on
+gateway read/create, unauthenticated 401, duplicate-name 409, credential
+rotation, model sync + profile mapping, platform-role requirement,
+unreachable-gateway 502 with breaker recorded, unreadable-credential 409
+with breaker NOT tripped, health recovery, generation success with one
+attempt, failover with both attempts recorded, FAILED with classified
+category and no provider detail, no-route 409, membership 404, body
+validation, history list/detail, cross-tenant 404.
+
+Streaming is verified live, not in CI: a fake OpenAI-compatible SSE
+upstream streamed seven ordered `delta` frames through
+`POST /api/workspaces/:workspaceId/generations/stream` over a real
+Postgres, terminated by `done {status: SUCCEEDED}`. It is a manual row
+until a test-harness fake upstream lands.
 
 Verified live against a running API + Postgres (not CI): platform gate
 returns 403 for a workspace owner and 401 unauthenticated; the credential

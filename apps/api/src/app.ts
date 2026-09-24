@@ -136,6 +136,7 @@ export async function buildApp(
         registry: createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY),
         encryptionKey: env.APP_ENCRYPTION_KEY,
         audit: createAuditService(options.db),
+        routingStrategy: env.AI_ROUTING_STRATEGY,
         // Tests inject a fake adapter here so no test reaches a real
         // provider; persistence stays real (CLAUDE.md §25).
         ...(options.createGateway ? { createGateway: options.createGateway } : {}),

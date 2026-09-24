@@ -73,6 +73,16 @@ export async function registerPlatformRoutes(
     if (error instanceof ConflictError) {
       return reply.code(409).send({ error: "CONFLICT" });
     }
+    // Fastify's own client errors (413 body too large, 415 unsupported
+    // media, 400 parse failure) carry a 4xx statusCode; pass it through
+    // instead of masking a client mistake as a 500.
+    const status =
+      typeof error === "object" && error !== null && "statusCode" in error
+        ? Number((error as { statusCode?: unknown }).statusCode)
+        : 500;
+    if (Number.isInteger(status) && status >= 400 && status < 500) {
+      return reply.code(status).send({ error: "BAD_REQUEST" });
+    }
     // Never leak internals (CLAUDE.md §15); log with request id.
     request.log.error(error);
     return reply.code(500).send({ error: "INTERNAL" });

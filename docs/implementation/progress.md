@@ -145,22 +145,27 @@ Implemented in-session (2026-09-24).
   app-wide); import atomic single-tx + locked numbering; export
   filename sanitized.
 - [x] NF-2003 Editor shell (`apps/web`) — writer-workspace layout on
-  nf-* tokens (header/nav/editor/footer per DESIGN-TOKENS.md), autosave
-  state machine (dirty→saving→saved, 1.5s debounce), no AI chrome.
-  ponytail: demo data until API auth cookie flow lands (follow-up).
+  nf-* tokens (header/nav/editor/footer per DESIGN-TOKENS.md), wired to
+  the manuscript API: fetch chapters, load/select a chapter, autosave
+  (dirty→saving→saved, 1.5s debounce) PUT with `expectedVersion`, 409
+  refetch instead of clobber, publish PATCH, loading/empty/error states,
+  unmount timer cleanup. No AI chrome.
 - [x] NF-2004 Import/export baseline — Md import (ATX `#`/`##` split,
   chapters land DRAFT — imports are NOT canon per CLAUDE.md §32), TXT
-  separator heuristic, whole-novel Markdown export with safe filename.
-- [x] NF-2005 Exit gate — `apps/api/src/manuscript.test.ts` (13 tests,
+  setext `===` title underline, whole-novel Markdown export with safe
+  filename. Save/import routes carry an explicit bodyLimit above the
+  schema cap (Fastify default is 1 MB).
+- [x] NF-2005 Exit gate — `apps/api/src/manuscript.test.ts` (21 tests,
   dedicated `novelforge_test_manuscript` db): CRUD+numbering, version
   immutability, stale-version 409, publish/immutability, empty-publish
   409, tenant 404 across all route shapes, VIEWER/EDITOR capability
-  enforcement, 401 gate, import parser, export ordering, import tenant
-  isolation.
+  enforcement, 401 gate, import parsers (md/txt/large-body), export
+  ordering, version history + non-destructive restore, published
+  delete/restore guards, audit trail.
 
 Phase 2 exit criteria: author can write/version a manuscript without
 AI (roadmap). Full repo gate 2026-09-24: lint 0, typecheck Done,
-12 files / 86 passed / 1 skipped, apps build green. **Met.**
+12 files / 94 passed / 1 skipped, apps build green. **Met.**
 
 ### Phase 2 audit pass (2026-09-24)
 
@@ -175,9 +180,36 @@ Inline audit (subagents down — model rate limit). Findings fixed:
   setErrorHandler — a duplicate Fastify handler was mapping platform
   errors to 500).
 
+### Phase 2 second audit pass (2026-09-24)
+
+Deeper pass on the same phase; findings fixed:
+- **No audit trail for manuscript mutations** — chapters were created/
+  saved/deleted/published/imported with nothing in `audit_logs`, unlike
+  platform services. `createManuscriptServices` now takes an optional
+  `AuditService`; all seven mutation paths record (workspaceId +
+  actorUserId + action + payload). Wired in `app.ts`.
+- **Published chapters could be deleted** — `deleteChapter` lacked the
+  PUBLISHED guard `saveChapter` enforces. Now 409 "unpublish first".
+- **Version history/restore declared but unimplemented** — the service
+  interface and docs promised recovery; there was no write path.
+  Implemented `listVersions` (newest-first) and `restoreVersion`
+  (non-destructive: appends the old content as a NEW version under a
+  chapter-row lock; PUBLISHED-guarded) plus their routes.
+- **TXT parser only split once** — the `===` underline required the
+  title to be the block's *first* line, so a second chapter never split.
+  Rewrote the parser to setext semantics (title = the line above `===`,
+  everything before it belongs to the previous chapter); `---` stays
+  prose.
+- **Body-limit mismatch** — save accepts 1 MB and import 5 MB but
+  Fastify's default `bodyLimit` is 1 MB, so valid payloads 413'd before
+  Zod ran. Per-route `bodyLimit` set with headroom.
+- **Fastify 4xx masked as 500** — 413/415/parse errors fell through the
+  error handler to `500 INTERNAL`. Now 4xx statusCodes pass through as
+  `400 BAD_REQUEST`.
+
 Deferred: scene CRUD/API (schema only; vertical slice when editor needs
-scene editing, not speculative). Web↔API chapter wiring (editor shell
-uses demo data; auth cookie flow follow-up).
+scene editing, not speculative). Web auth cookie flow is wired
+(same-origin credentials); sign-in UI itself is a follow-up.
 
 ## Phase 3+
 

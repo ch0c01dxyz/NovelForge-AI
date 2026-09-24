@@ -33,6 +33,12 @@ const setStatusBody = z.object({
   status: z.enum(["IN_REVIEW", "PUBLISHED"]),
 });
 
+// Fastify's default bodyLimit is 1 MB; the save and import routes accept
+// more, so without a per-route limit a valid payload 413s before Zod ever
+// runs. Headroom over each schema cap covers JSON string escaping.
+const SAVE_BODY_LIMIT = 2_000_000;
+const IMPORT_BODY_LIMIT = 8_000_000;
+
 export interface ManuscriptRoutesOptions {
   auth: AuthService;
   services: ManuscriptServices;
@@ -95,6 +101,7 @@ export function registerManuscriptRoutes(
 
   app.put(
     "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId",
+    { bodyLimit: SAVE_BODY_LIMIT },
     async (request, reply) => {
       const actorUserId = await requireActor(request, reply);
       if (!actorUserId) return;
@@ -142,20 +149,54 @@ export function registerManuscriptRoutes(
     format: z.enum(["md", "txt"]),
   });
 
-  app.post("/api/workspaces/:workspaceId/novels/:novelId/chapters/import", async (request, reply) => {
-    const actorUserId = await requireActor(request, reply);
-    if (!actorUserId) return;
-    const params = novelScopeParams.safeParse(request.params);
-    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-    const body = importBody.safeParse(request.body);
-    if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-    const result = await services.importChapters({
-      actorUserId,
-      ...params.data,
-      ...body.data,
-    });
-    return reply.code(201).send(result);
-  });
+  app.get(
+    "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/versions",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = chapterParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      return services.listVersions({ actorUserId, ...params.data });
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/versions/:versionNumber/restore",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = chapterParams
+        .extend({ versionNumber: z.coerce.number().int().min(1) })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const { versionNumber, ...scope } = params.data;
+      const result = await services.restoreVersion({
+        actorUserId,
+        ...scope,
+        versionNumber,
+      });
+      return result;
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/chapters/import",
+    { bodyLimit: IMPORT_BODY_LIMIT },
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelScopeParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = importBody.safeParse(request.body);
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const result = await services.importChapters({
+        actorUserId,
+        ...params.data,
+        ...body.data,
+      });
+      return reply.code(201).send(result);
+    },
+  );
 
   app.get("/api/workspaces/:workspaceId/novels/:novelId/export", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);

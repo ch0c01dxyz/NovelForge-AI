@@ -1,5 +1,9 @@
 /**
- * @novelforge/api — manuscript services (Phase 2: chapters/scenes).
+ * @novelforge/api — manuscript services (Phase 2: chapters).
+ *
+ * Scene CRUD is schema-only in Phase 2 (no API yet); the editor scrolls
+ * chapters as free text until the AI/scene features of Phases 3-8 demand
+ * a scene write path — YAGNI until then.
  *
  * Chapter content is versioned immutably: every save appends a
  * chapter_versions row and moves the chapter's current pointer; content
@@ -13,6 +17,7 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 // throws the auth-package ForbiddenError, which the platform routes'
 // setErrorHandler (registered once for the whole app) maps to 403.
 import { NotFoundError, ConflictError } from "./platform.ts";
+import type { AuditService } from "./audit.ts";
 
 export interface ManuscriptServices {
   createChapter(input: {
@@ -92,13 +97,33 @@ export interface ManuscriptServices {
     workspaceId: string;
     novelId: string;
   }): Promise<{ filename: string; content: string }>;
+  /** Version history, newest first (manuscript safety / recovery). */
+  listVersions(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapterId: string;
+  }): Promise<
+    Array<{ number: number; wordCount: number; note: string | null; createdAt: Date }>
+  >;
+  /** Restore an old version by appending it as a NEW version (non-destructive). */
+  restoreVersion(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapterId: string;
+    versionNumber: number;
+  }): Promise<{ version: number }>;
 }
 
 function countWords(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
-export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
+export function createManuscriptServices(
+  db: PrismaClient,
+  audit?: AuditService,
+): ManuscriptServices {
   /** Membership gate — 404 for non-members (ADR-0004), role for caps. */
   async function gate(
     workspaceId: string,
@@ -135,14 +160,14 @@ export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
 
       // Novel-row lock serializes numbering against importChapters (same
       // lock) and concurrent creates; max+1 cannot collide under it.
-      return db.$transaction(async (tx) => {
+      const chapter = await db.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM novels WHERE id = ${novelId} FOR UPDATE`;
         const max = await tx.chapter.findFirst({
           where: { novelId },
           orderBy: { number: "desc" },
           select: { number: true },
         });
-        const chapter = await tx.chapter.create({
+        return tx.chapter.create({
           data: {
             novelId,
             number: (max?.number ?? 0) + 1,
@@ -150,8 +175,16 @@ export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
             createdById: actorUserId,
           },
         });
-        return { id: chapter.id, number: chapter.number };
       });
+      await audit?.record({
+        actorUserId,
+        workspaceId,
+        action: "chapter.created",
+        entityType: "Chapter",
+        entityId: chapter.id,
+        payload: { novelId, number: chapter.number, title },
+      });
+      return { id: chapter.id, number: chapter.number };
     },
 
     async listChapters({ actorUserId, workspaceId, novelId }) {
@@ -230,6 +263,9 @@ export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
           },
         });
         if (!fresh) throw new NotFoundError("chapter"); // deleted mid-save
+        if (fresh.status === "PUBLISHED") {
+          throw new ConflictError("published chapters are immutable; unpublish first");
+        }
         const nowCurrent = fresh?.currentVersion?.number ?? null;
         if (expectedVersion !== nowCurrent) {
           throw new ConflictError(
@@ -257,13 +293,34 @@ export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
         });
         return created.number;
       });
+      await audit?.record({
+        actorUserId,
+        workspaceId,
+        action: "chapter.saved",
+        entityType: "ChapterVersion",
+        entityId: chapterId,
+        payload: { chapterId, version, wordCount, note: note ?? null },
+      });
       return { version, wordCount };
     },
 
     async deleteChapter({ actorUserId, workspaceId, novelId, chapterId }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:delete");
-      await getChapterOr404(chapterId, novelId);
+      const chapter = await getChapterOr404(chapterId, novelId);
+      // Published manuscripts are not silently destroyable — same
+      // immutability rule saveChapter enforces (CLAUDE.md §9).
+      if (chapter.status === "PUBLISHED") {
+        throw new ConflictError("published chapters cannot be deleted; unpublish first");
+      }
       await db.chapter.delete({ where: { id: chapterId } });
+      await audit?.record({
+        actorUserId,
+        workspaceId,
+        action: "chapter.deleted",
+        entityType: "Chapter",
+        entityId: chapterId,
+        payload: { novelId, number: chapter.number, title: chapter.title },
+      });
     },
 
     async setStatus({ actorUserId, workspaceId, novelId, chapterId, status }) {
@@ -278,6 +335,14 @@ export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
         throw new ConflictError("cannot publish a chapter with no content");
       }
       await db.chapter.update({ where: { id: chapterId }, data: { status } });
+      await audit?.record({
+        actorUserId,
+        workspaceId,
+        action: status === "PUBLISHED" ? "chapter.published" : "chapter.unpublished",
+        entityType: "Chapter",
+        entityId: chapterId,
+        payload: { from: chapter.status, to: status },
+      });
     },
 
     /**
@@ -294,28 +359,46 @@ export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
       format: "md" | "txt";
     }): Promise<{ created: number }> {
       await gate(input.workspaceId, input.novelId, input.actorUserId, "chapter:create");
-      const parts: Array<{ title: string; content: string }> = [];
       const lines = input.text.split(/\r?\n/);
 
-      let current: { title: string; content: string[] } | null = null;
+      // Parse into raw blocks, then flush each to a part. `cur` holds the
+      // current block; `push()` emits it only when it has a body, so a
+      // trailing heading with no prose does not become an empty chapter.
+      interface Block {
+        title: string;
+        body: string[];
+      }
+      const parts: Array<{ title: string; content: string }> = [];
+      const push = (b: Block): void => {
+        if (b.body.some((l) => l.trim())) {
+          parts.push({ title: b.title, content: b.body.join("\n") });
+        }
+      };
+      let cur: Block = { title: "Imported", body: [] };
+
       for (const line of lines) {
         const md = input.format === "md" ? /^(#{1,2})\s+(.+)$/.exec(line) : null;
         if (md) {
-          if (current) parts.push({ title: current.title, content: current.content.join("\n") });
-          current = { title: md[2]!.trim(), content: [] };
-        } else if (input.format === "txt" && /^(={3,}|-{3,})$/.test(line.trim())) {
-          // TXT: separator under a title line — title is the previous line.
-          const prev = current?.content.at(-1);
-          if (current && prev && current.content.length === 1) {
-            current.title = prev;
-            current.content = [];
+          push(cur);
+          cur = { title: md[2]!.trim(), body: [] };
+          continue;
+        }
+        // TXT: a setext-style underline — the line ABOVE '===' is a
+        // title, and whatever precedes it belongs to the previous
+        // chapter. Only '=' counts; '---' is ambiguous with a horizontal
+        // rule / em-dash run and must stay content.
+        if (input.format === "txt" && /^={3,}$/.test(line.trim())) {
+          const last = cur.body[cur.body.length - 1];
+          if (last !== undefined && last.trim()) {
+            cur.body.pop();
+            push(cur);
+            cur = { title: last.trim(), body: [] };
             continue;
           }
-        } else {
-          (current ??= { title: "Imported", content: [] }).content.push(line);
         }
+        cur.body.push(line);
       }
-      if (current) parts.push({ title: current.title, content: current.content.join("\n") });
+      push(cur);
 
       const importable = parts.filter((p) => p.content.trim());
       if (importable.length === 0) return { created: 0 };
@@ -360,6 +443,14 @@ export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
           created++;
         }
       });
+      await audit?.record({
+        actorUserId: input.actorUserId,
+        workspaceId: input.workspaceId,
+        action: "chapters.imported",
+        entityType: "Novel",
+        entityId: input.novelId,
+        payload: { format: input.format, created },
+      });
       return { created };
     },
 
@@ -389,6 +480,77 @@ export function createManuscriptServices(db: PrismaClient): ManuscriptServices {
       // validation regression cannot smuggle quotes/CRLF into the header.
       const safe = (novel?.slug ?? "novel").replace(/[^a-z0-9-]/gi, "");
       return { filename: `${safe || "novel"}.md`, content: body };
+    },
+
+    async listVersions({ actorUserId, workspaceId, novelId, chapterId }) {
+      await gate(workspaceId, novelId, actorUserId, "chapter:read");
+      await getChapterOr404(chapterId, novelId);
+      const versions = await db.chapterVersion.findMany({
+        where: { chapterId },
+        orderBy: { number: "desc" },
+        select: { number: true, wordCount: true, note: true, createdAt: true },
+      });
+      return versions;
+    },
+
+    async restoreVersion({
+      actorUserId,
+      workspaceId,
+      novelId,
+      chapterId,
+      versionNumber,
+    }) {
+      await gate(workspaceId, novelId, actorUserId, "chapter:update");
+      await getChapterOr404(chapterId, novelId);
+      const source = await db.chapterVersion.findFirst({
+        where: { chapterId, number: versionNumber },
+        select: { content: true },
+      });
+      if (!source) throw new NotFoundError("version");
+
+      // Non-destructive (CLAUDE.md §9): restoring appends the old content
+      // as a NEW version — history is never rewritten.
+      const version = await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
+        const fresh = await tx.chapter.findUnique({
+          where: { id: chapterId },
+          select: { status: true },
+        });
+        if (!fresh) throw new NotFoundError("chapter");
+        if (fresh.status === "PUBLISHED") {
+          throw new ConflictError("published chapters are immutable; unpublish first");
+        }
+        const last = await tx.chapterVersion.findFirst({
+          where: { chapterId },
+          orderBy: { number: "desc" },
+          select: { number: true },
+        });
+        const wordCount = countWords(source.content);
+        const created = await tx.chapterVersion.create({
+          data: {
+            chapterId,
+            number: (last?.number ?? 0) + 1,
+            content: source.content,
+            wordCount,
+            note: `restore v${versionNumber}`,
+            authorId: actorUserId,
+          },
+        });
+        await tx.chapter.update({
+          where: { id: chapterId },
+          data: { currentVersionId: created.id, wordCount },
+        });
+        return created.number;
+      });
+      await audit?.record({
+        actorUserId,
+        workspaceId,
+        action: "chapter.version-restored",
+        entityType: "ChapterVersion",
+        entityId: chapterId,
+        payload: { chapterId, from: versionNumber, as: version },
+      });
+      return { version };
     },
   };
 }

@@ -124,17 +124,24 @@ execute remotely on push/PR.
 | Editor shell (`apps/web`) | — | — | — | manual | — |
 
 Executed results (2026-09-24, Windows, against live compose PostgreSQL
-per ADR-0003 §8): `manuscript.test.ts` (13, `novelforge_test_manuscript`)
+per ADR-0003 §8): `manuscript.test.ts` (21, `novelforge_test_manuscript`)
 — chapter CRUD + auto-numbering, delete cascades versions, version
 immutability across saves, stale expectedVersion → 409, published-save
-guard, empty-publish guard, tenant 404 across all 6 route shapes, 401
+guard, empty-publish guard, tenant 404 across all route shapes, 401
 gate, VIEWER read-only, EDITOR save-but-not-publish/delete,
-md-import parser + DRAFT landing, export ordering + filename,
-import tenant isolation. Totals: 12 files, 86 passed, 1 skipped.
+md-import parser + DRAFT landing, TXT setext `===` parser (`---` stays
+prose), import above the 1 MB default body limit, export ordering +
+filename, import tenant isolation, version history newest-first,
+non-destructive restore (appends, history preserved), unknown-version
+404, restore capability/tenant gates, published delete/restore guards,
+audit rows scoped to workspace + actor. Totals: 12 files, 94 passed,
+1 skipped.
 
 Phase 2 exit test (NF-2005): manuscript suite green + full repo gate
 green (lint 0, typecheck Done, apps build incl. Nuxt production).
-**Phase 2 exit criteria met.**
+**Phase 2 exit criteria met.** Second audit pass (same date) added the
+version-history/restore, published-immutability, audit-trail, and
+large-body coverage above.
 
 ## Phase 3+
 

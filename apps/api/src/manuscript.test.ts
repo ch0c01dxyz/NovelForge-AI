@@ -436,4 +436,187 @@ describe("import/export", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it("TXT: '===' underlines a title; '---' stays content (no false split)", async () => {
+    const owner = await seedUser("owner13@t.io");
+    const ids = await seedNovel(owner.userId, "txt-ws");
+    const text = [
+      "Chapter One",
+      "=====",
+      "Body of one.",
+      "---",
+      "Still one.",
+      "Chapter Two",
+      "=====",
+      "Body of two.",
+    ].join("\n");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/import`,
+      headers: { cookie: owner.cookie },
+      payload: { text, format: "txt" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().created).toBe(2);
+    const chapters = await db.chapter.findMany({
+      where: { novelId: ids.novelId },
+      orderBy: { number: "asc" },
+      include: { currentVersion: true },
+    });
+    expect(chapters.map((c) => c.title)).toEqual(["Chapter One", "Chapter Two"]);
+    // The '---' run must survive as prose, not split or vanish.
+    expect(chapters[0]!.currentVersion!.content).toContain("---");
+    expect(chapters[0]!.currentVersion!.content).toContain("Still one.");
+  });
+
+  it("accepts an import larger than the 1 MB default body limit", async () => {
+    const owner = await seedUser("owner20@t.io");
+    const ids = await seedNovel(owner.userId, "big-ws");
+    const text = `# Big\n${"word ".repeat(400_000)}`; // ~2 MB, under the 5 MB cap
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/import`,
+      headers: { cookie: owner.cookie },
+      payload: { text, format: "md" },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().created).toBe(1);
+  });
+});
+
+describe("version history + restore", () => {
+  it("lists versions newest-first and restores non-destructively", async () => {
+    const owner = await seedUser("owner14@t.io");
+    const ids = await seedNovel(owner.userId, "hist-ws");
+    const c = await makeChapter(owner.cookie, ids, "History");
+    await save(owner.cookie, ids, c.id, "first draft", null, "initial");
+    await save(owner.cookie, ids, c.id, "second draft", 1, "revision");
+
+    const list = await app.inject({
+      method: "GET",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/versions`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(list.statusCode).toBe(200);
+    const versions = list.json() as Array<{ number: number; note: string | null }>;
+    expect(versions.map((v) => v.number)).toEqual([2, 1]);
+    expect(versions[1]!.note).toBe("initial");
+
+    // Restore v1 → appends v3, keeps v2 in history.
+    const restore = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/versions/1/restore`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(restore.statusCode).toBe(200);
+    expect(restore.json().version).toBe(3);
+
+    const after = await db.chapterVersion.findMany({
+      where: { chapterId: c.id },
+      orderBy: { number: "asc" },
+    });
+    expect(after.map((v) => v.number)).toEqual([1, 2, 3]); // nothing destroyed
+    expect(after[0]!.content).toBe("first draft");
+    expect(after[2]!.content).toBe("first draft"); // restored copy
+    expect(after[2]!.note).toBe("restore v1");
+  });
+
+  it("restoring an unknown version is 404", async () => {
+    const owner = await seedUser("owner15@t.io");
+    const ids = await seedNovel(owner.userId, "hist2-ws");
+    const c = await makeChapter(owner.cookie, ids, "X");
+    await save(owner.cookie, ids, c.id, "only", null);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/versions/99/restore`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("VIEWER cannot restore (403); non-member 404", async () => {
+    const owner = await seedUser("owner16@t.io");
+    const viewer = await seedUser("viewer16@t.io");
+    const stranger = await seedUser("stranger16@t.io");
+    const ids = await seedNovel(owner.userId, "hist3-ws");
+    await db.membership.create({
+      data: { workspaceId: ids.workspaceId, userId: viewer.userId, role: "VIEWER" },
+    });
+    const c = await makeChapter(owner.cookie, ids, "Y");
+    await save(owner.cookie, ids, c.id, "text", null);
+
+    const url = `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/versions/1/restore`;
+    expect(
+      (await app.inject({ method: "POST", url, headers: { cookie: viewer.cookie } }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (await app.inject({ method: "POST", url, headers: { cookie: stranger.cookie } }))
+        .statusCode,
+    ).toBe(404);
+  });
+});
+
+describe("published immutability across mutations", () => {
+  it("a published chapter cannot be deleted", async () => {
+    const owner = await seedUser("owner17@t.io");
+    const ids = await seedNovel(owner.userId, "pubdel-ws");
+    const c = await makeChapter(owner.cookie, ids, "Locked");
+    await save(owner.cookie, ids, c.id, "final", null);
+    await app.inject({
+      method: "PATCH",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/status`,
+      headers: { cookie: owner.cookie },
+      payload: { status: "PUBLISHED" },
+    });
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(del.statusCode).toBe(409);
+    expect(await db.chapter.count({ where: { id: c.id } })).toBe(1);
+  });
+
+  it("a published chapter cannot be restored-over", async () => {
+    const owner = await seedUser("owner18@t.io");
+    const ids = await seedNovel(owner.userId, "pubres-ws");
+    const c = await makeChapter(owner.cookie, ids, "Locked2");
+    await save(owner.cookie, ids, c.id, "v1", null);
+    await save(owner.cookie, ids, c.id, "v2", 1);
+    await app.inject({
+      method: "PATCH",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/status`,
+      headers: { cookie: owner.cookie },
+      payload: { status: "PUBLISHED" },
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/versions/1/restore`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(await db.chapterVersion.count({ where: { chapterId: c.id } })).toBe(2);
+  });
+});
+
+describe("audit trail", () => {
+  it("chapter mutations write audit rows scoped to workspace + actor", async () => {
+    const owner = await seedUser("owner19@t.io");
+    const ids = await seedNovel(owner.userId, "audit-ws2");
+    const c = await makeChapter(owner.cookie, ids, "Audited");
+    await save(owner.cookie, ids, c.id, "content", null);
+    await app.inject({
+      method: "DELETE",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}`,
+      headers: { cookie: owner.cookie },
+    });
+
+    const logs = await db.auditLog.findMany({ where: { workspaceId: ids.workspaceId } });
+    const actions = logs.map((l) => l.action).sort();
+    expect(actions).toEqual(["chapter.created", "chapter.deleted", "chapter.saved"]);
+    for (const l of logs) expect(l.actorUserId).toBe(owner.userId);
+  });
 });

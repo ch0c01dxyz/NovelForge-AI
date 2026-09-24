@@ -116,7 +116,7 @@ export async function buildApp(
     });
     registerManuscriptRoutes(app, {
       auth,
-      services: createManuscriptServices(options.db),
+      services: createManuscriptServices(options.db, createAuditService(options.db)),
     });
   }
 

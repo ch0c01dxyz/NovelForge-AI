@@ -139,6 +139,30 @@ describe("startWorkerApp — redis available", () => {
     );
     await app.stop();
   });
+
+  it("degrades (no crash) when redis dies between probe and job add", async () => {
+    const { logger } = testLogger();
+    const fakes = makeFakes({ redisAvailable: true });
+    fakes.queue.add.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    const app = await startWorkerApp(env, logger, fakes.deps);
+
+    expect(fakes.queue.add).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("heartbeat job registration failed"),
+      expect.any(Object),
+    );
+    await app.stop();
+  });
+
+  it("stop() completes even when quit() never resolves (redis down)", async () => {
+    const { logger } = testLogger();
+    const fakes = makeFakes({ redisAvailable: true });
+    fakes.connection.quit.mockImplementation(() => new Promise<"OK">(() => {}));
+    const app = await startWorkerApp(env, logger, fakes.deps);
+
+    await app.stop();
+    expect(fakes.connection.disconnect).toHaveBeenCalled();
+  });
 });
 
 describe("startWorkerApp — redis unavailable", () => {

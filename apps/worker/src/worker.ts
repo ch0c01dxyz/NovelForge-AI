@@ -142,13 +142,21 @@ export async function startWorkerApp(
 
   const available = await probe(queueConnection, d.probeTimeoutMs);
   if (available) {
-    await queue.add("heartbeat", { pid: process.pid, at: new Date().toISOString() });
-    d.logger.info("heartbeat job registered", { queue: HEARTBEAT_QUEUE });
-    setTimeout(() => {
-      if (!proven && !stopped) {
-        d.logger.warn("first heartbeat not completed yet; worker keeps retrying");
-      }
-    }, FIRST_HEARTBEAT_TIMEOUT_MS).unref?.();
+    // Redis can die between probe and add — treat like any transient
+    // unavailability (log + degrade) instead of crashing the process.
+    try {
+      await queue.add("heartbeat", { pid: process.pid, at: new Date().toISOString() });
+      d.logger.info("heartbeat job registered", { queue: HEARTBEAT_QUEUE });
+      setTimeout(() => {
+        if (!proven && !stopped) {
+          d.logger.warn("first heartbeat not completed yet; worker keeps retrying");
+        }
+      }, FIRST_HEARTBEAT_TIMEOUT_MS).unref?.();
+    } catch (err) {
+      d.logger.warn("heartbeat job registration failed; worker will retry in background", {
+        message: String((err as Error)?.message ?? err),
+      });
+    }
   } else {
     d.logger.warn(
       "redis unavailable at startup; heartbeat proof skipped, worker will retry in background",
@@ -169,9 +177,18 @@ export async function startWorkerApp(
       // Order: stop consuming, stop producing, then release connections.
       await worker.close();
       await queue.close();
+      // quit() waits for in-flight commands; with a retryStrategy looping
+      // against a dead Redis it never resolves — race a hard disconnect().
+      const QUIT_TIMEOUT_MS = 2_000;
+      const withTimeout = <T>(p: Promise<T>): Promise<T | undefined> =>
+        Promise.race([
+          p,
+          new Promise<undefined>((r) => setTimeout(() => r(undefined), QUIT_TIMEOUT_MS).unref?.()),
+        ]);
       const conns = new Set([workerConnection, queueConnection]);
       for (const conn of conns) {
-        if (conn.status !== "end") await conn.quit();
+        if (conn.status !== "end") await withTimeout(conn.quit());
+        conn.disconnect();
       }
       d.logger.info("worker stopped cleanly");
     },

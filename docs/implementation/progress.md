@@ -125,6 +125,60 @@ Known CI gap: **closed** — `ci.yml` now runs postgres (pgvector/pg16)
 and redis service containers with `DATABASE_URL`/`WORKER_IT_REDIS_URL`,
 so all DB-backed suites and the worker real-redis suite run remotely.
 
-## Phase 2+
+## Phase 2 — Writing Core
+
+Implemented in-session (2026-09-24).
+
+- [x] NF-2001 Manuscript schema + migration — `chapters`,
+  `chapter_versions` (immutable, one per save), `scenes`;
+  ChapterStatus enum (DRAFT/IN_REVIEW/PUBLISHED); (novelId, number) and
+  (chapterId, number) uniques; current-version 1:1 pointer; migration
+  `20260924_phase2_manuscript` verified drift-free via `migrate diff`.
+- [x] NF-2002 Manuscript services + routes —
+  `apps/api/src/services/manuscript.ts` + `manuscript-routes.ts`.
+  Chapter CRUD with novel-row-lock numbering (no retry loop); version
+  append on every save (FOR UPDATE + in-tx expectedVersion recheck
+  closes the optimistic-concurrency window; deleted-mid-save → 404);
+  published chapters immutable until unpublish; chapter:* capabilities
+  (OWNER/ADMIN full, AUTHOR create/read/update, EDITOR read/update,
+  VIEWER read); shared platform error handler (single setErrorHandler
+  app-wide); import atomic single-tx + locked numbering; export
+  filename sanitized.
+- [x] NF-2003 Editor shell (`apps/web`) — writer-workspace layout on
+  nf-* tokens (header/nav/editor/footer per DESIGN-TOKENS.md), autosave
+  state machine (dirty→saving→saved, 1.5s debounce), no AI chrome.
+  ponytail: demo data until API auth cookie flow lands (follow-up).
+- [x] NF-2004 Import/export baseline — Md import (ATX `#`/`##` split,
+  chapters land DRAFT — imports are NOT canon per CLAUDE.md §32), TXT
+  separator heuristic, whole-novel Markdown export with safe filename.
+- [x] NF-2005 Exit gate — `apps/api/src/manuscript.test.ts` (13 tests,
+  dedicated `novelforge_test_manuscript` db): CRUD+numbering, version
+  immutability, stale-version 409, publish/immutability, empty-publish
+  409, tenant 404 across all route shapes, VIEWER/EDITOR capability
+  enforcement, 401 gate, import parser, export ordering, import tenant
+  isolation.
+
+Phase 2 exit criteria: author can write/version a manuscript without
+AI (roadmap). Full repo gate 2026-09-24: lint 0, typecheck Done,
+12 files / 86 passed / 1 skipped, apps build green. **Met.**
+
+### Phase 2 audit pass (2026-09-24)
+
+Inline audit (subagents down — model rate limit). Findings fixed:
+- importChapters partial-commit + numbering race → single tx with
+  novel-row lock, atomic import, numbering serialized with createChapter
+  (which trades its retry loop for the same lock).
+- saveChapter deleted-mid-save race → 404 via in-tx existence recheck.
+- export filename sanitized (defense-in-depth around header).
+- web autosave timer cleared on unmount.
+- manuscript error classes unified with platform's (one app-wide
+  setErrorHandler — a duplicate Fastify handler was mapping platform
+  errors to 500).
+
+Deferred: scene CRUD/API (schema only; vertical slice when editor needs
+scene editing, not speculative). Web↔API chapter wiring (editor shell
+uses demo data; auth cookie flow follow-up).
+
+## Phase 3+
 
 NOT STARTED.

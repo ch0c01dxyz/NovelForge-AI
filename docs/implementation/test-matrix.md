@@ -114,7 +114,29 @@ CI-services gap closed: `ci.yml` runs postgres (pgvector) + redis
 service containers; all integration suites + worker real-redis suite
 execute remotely on push/PR.
 
-## Phase 2+
+## Phase 2 — Writing Core
+
+| Area | Unit | Integration | Contract | E2E | Migration |
+| ---- | ---- | ----------- | -------- | --- | --------- |
+| Manuscript schema (`packages/database`) | — | passing (local) | — | — | passing (local) |
+| Chapter capabilities (`packages/auth`) | passing | — | — | — | — |
+| Manuscript routes (`apps/api`) | — | passing (local) | — | — | — |
+| Editor shell (`apps/web`) | — | — | — | manual | — |
+
+Executed results (2026-09-24, Windows, against live compose PostgreSQL
+per ADR-0003 §8): `manuscript.test.ts` (13, `novelforge_test_manuscript`)
+— chapter CRUD + auto-numbering, delete cascades versions, version
+immutability across saves, stale expectedVersion → 409, published-save
+guard, empty-publish guard, tenant 404 across all 6 route shapes, 401
+gate, VIEWER read-only, EDITOR save-but-not-publish/delete,
+md-import parser + DRAFT landing, export ordering + filename,
+import tenant isolation. Totals: 12 files, 86 passed, 1 skipped.
+
+Phase 2 exit test (NF-2005): manuscript suite green + full repo gate
+green (lint 0, typecheck Done, apps build incl. Nuxt production).
+**Phase 2 exit criteria met.**
+
+## Phase 3+
 
 Rows added when each phase starts. Mandatory cross-cutting scenarios
 (gateway retry/failover, streaming interruption, candidate canon,

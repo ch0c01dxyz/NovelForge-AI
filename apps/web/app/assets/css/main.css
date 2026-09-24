@@ -42,3 +42,9 @@ body {
   color: var(--color-nf-text);
   font-family: var(--font-nf-ui);
 }
+
+/* Focus style per DESIGN-TOKENS.md state rules: 2px accent-hi outline. */
+@utility nf-focus {
+  outline: 2px solid var(--color-nf-accent-hi);
+  outline-offset: 2px;
+}

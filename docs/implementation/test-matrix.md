@@ -238,11 +238,15 @@ branch labels, unresolvable and unmatchable conditions, forward/unknown/
 malformed references, duplicate keys, `maxSteps`, per-step
 retry/timeout rejection, non-executable step kinds, VALIDATOR contract
 and input arity, `ref` placement, nested output schemas.
-`definitions.test.ts` (32, `novelforge_test_phase4`) — as
+`definitions.test.ts` (33, `novelforge_test_phase4`) — as
 previously, plus: a duplicate PLATFORM key is 409 with exactly one row
-stored; a workspace key may shadow a platform key; a failing step gets
-its own FAILED row carrying the sanitized summary; an
-`AWAITING_APPROVAL` run records a null `completedAt`.
+stored; a workspace key may shadow a platform key **and resolution
+prefers the tenant row** (asserted by running a workflow and checking the
+tenant's instructions reached the model); a failing step gets its own
+FAILED row carrying the sanitized summary; an `AWAITING_APPROVAL` run
+records a null `completedAt`; a provider failure returns its classified
+message rather than the generic fallback, with the same value on the
+step row.
 
 Migration verified: applies from empty on a scratch database through all
 eight migrations (`migrate deploy` on a fresh database, 2026-09-27), and

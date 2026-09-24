@@ -18,7 +18,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
 import { generateSessionToken, hashSessionToken } from "@novelforge/auth";
 import {
-
+  GatewayError,
+  classifyStatus,
+  messageFor,
   type AIGateway,
   type GatewayRecord,
   type GenerateResult,
@@ -72,6 +74,14 @@ const env: Env = {
 let seenPrompts: Array<{ model: string; messages: Array<{ role: string; content: string }> }> = [];
 
 /**
+ * When set, the fake gateway throws instead of answering. Lets a test drive
+ * the executor's failure path — in particular that a provider failure is
+ * reported to the client with its classified message rather than a generic
+ * string, and that nothing internal leaks.
+ */
+let gatewayFailure: { status: number } | null = null;
+
+/**
  * Fake gateway. Returns `content` from the behaviour map keyed by gateway
  * name; records every request so tests can assert what the executor sent.
  */
@@ -91,6 +101,19 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
       // Echo a JSON object when the instruction visibly asks for JSON, so
       // structured-output contracts can be exercised without a real model.
       const wantsJson = /respond with json/i.test(content);
+      if (gatewayFailure) {
+        // Mirrors OmniRouteGateway.fail(): the category is classified and the
+        // message comes from `messageFor`, which never echoes the response
+        // body (the real adapter drains and discards it for exactly that
+        // reason). A fake that threw the raw body would be testing a
+        // situation the transport cannot produce.
+        const category = classifyStatus(gatewayFailure.status);
+        throw new GatewayError(
+          category,
+          messageFor(category, gatewayFailure.status),
+          gatewayFailure.status,
+        );
+      }
       return {
         content: wantsJson
           ? JSON.stringify({ summary: "ok", beats: ["a", "b"] })
@@ -143,6 +166,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   seenPrompts = [];
+  gatewayFailure = null;
   await db.workflowStepRun.deleteMany();
   await db.workflowRun.deleteMany();
   await db.workflowVersion.deleteMany();
@@ -1270,6 +1294,42 @@ describe("Phase 4 — workflow execution", () => {
     // A SKILL step has no agent, so nothing is attributed to one.
     expect(run.steps[0]!.agentKey).toBeNull();
     expect(seenPrompts[0]!.messages[0]!.content).toBe("Perform extract-facts.");
+  });
+
+  it("reports a provider failure with its classified message, never the raw body", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "provider-down", {
+      steps: [{ key: "go", kind: "AGENT", ref: "writer", instruction: "Write." }],
+      edges: [],
+    });
+
+    // A rate limit, so the classifier's message is deterministic.
+    gatewayFailure = { status: 429 };
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    const run = res.json() as {
+      status: string;
+      errorMessage: string | null;
+      steps: Array<{ stepKey: string; status: string; errorMessage: string | null }>;
+    };
+
+    expect(run.status).toBe("FAILED");
+    // The regression this guards: `AiServices.generate` converts a
+    // GatewayError into a BadGatewayError, so a check that only tested
+    // `instanceof GatewayError` replaced this with "workflow step failed" —
+    // the common real failure, reported uselessly.
+    expect(run.errorMessage).toBe("gateway rate limit exceeded");
+    // The failing step carries the same classified summary.
+    expect(run.steps.find((s) => s.stepKey === "go")!.errorMessage).toBe(
+      "gateway rate limit exceeded",
+    );
   });
 
   it("persists a VALIDATOR step failure and marks the run FAILED", async () => {

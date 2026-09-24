@@ -34,7 +34,7 @@ import {
   ABSOLUTE_STEP_CEILING,
   EXECUTABLE_STEP_KINDS,
 } from "@novelforge/validation";
-import { ConflictError, NotFoundError } from "./platform.ts";
+import { BadGatewayError, ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
 
 /**
@@ -638,7 +638,20 @@ export function createWorkflowRunServices(deps: {
         // string, an upstream provider body, or a TypeError, and this value
         // is persisted and served by run()/getRun()/listRuns() — responses
         // that never pass through the API error handler (CLAUDE.md §15/§26).
-        if (err instanceof GatewayError || err instanceof ConflictError || err instanceof NotFoundError) {
+        //
+        // `GatewayError` is listed for completeness, but the error that
+        // actually arrives from a provider failure is `BadGatewayError`:
+        // `AiServices.generate` catches the GatewayError, records it on the
+        // Generation row, and rethrows a BadGatewayError carrying the
+        // classifier's already-sanitized text (`messageFor`). Omitting it
+        // replaced every real gateway failure with "workflow step failed",
+        // which is the common case and the one an operator needs to see.
+        if (
+          err instanceof GatewayError ||
+          err instanceof BadGatewayError ||
+          err instanceof ConflictError ||
+          err instanceof NotFoundError
+        ) {
           failure = err.message;
         } else {
           failure = "workflow step failed";

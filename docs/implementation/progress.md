@@ -409,7 +409,11 @@ Full repo gate 2026-09-26: lint 0, typecheck Done (incl. web),
 17 files / 267 passed / 1 skipped, apps build green.
 
 Full repo gate 2026-09-27 (after the audit fixes below): lint 0,
-typecheck 0, 17 files / 277 passed / 1 skipped.
+typecheck 0, 17 files / 279 passed / 1 skipped.
+
+Every fix below was verified by an executable assertion, not by
+inspection: where a fix had no test, one was written and confirmed to
+fail against the pre-fix code before being kept.
 
 ### Defects found and fixed during this phase
 
@@ -462,6 +466,15 @@ surfaces, plus direct probing of the installed zod. Findings fixed:
   `ConflictError` and `NotFoundError` messages are now surfaced; anything
   else becomes a fixed string, with the real error sent to an injected
   `dbg` sink.
+- **That sanitization was itself wrong on first attempt.** `AiServices.
+  generate` catches the `GatewayError`, records it on the `Generation`
+  row, and rethrows a `BadGatewayError` — which does not extend
+  `GatewayError`. Checking only `instanceof GatewayError` therefore
+  discarded the classified message for *every* real provider failure, the
+  common case, replacing it with "workflow step failed". `BadGatewayError`
+  is now included; `messageFor` guarantees its text is non-leaking. Found
+  by writing the regression test, which failed first against the code as
+  committed.
 - **`AWAITING_APPROVAL` was stamped `completedAt`**, making a halted run
   indistinguishable from a finished one. It is now left null, and the
   schema comment no longer claims these runs are resumable — they are

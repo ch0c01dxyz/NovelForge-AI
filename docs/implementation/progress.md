@@ -208,8 +208,65 @@ Deeper pass on the same phase; findings fixed:
   `400 BAD_REQUEST`.
 
 Deferred: scene CRUD/API (schema only; vertical slice when editor needs
-scene editing, not speculative). Web auth cookie flow is wired
-(same-origin credentials); sign-in UI itself is a follow-up.
+scene editing, not speculative).
+
+### Phase 2 end-to-end wiring (2026-09-24)
+
+The Phase 2 exit criterion — "author can safely write/version a
+manuscript without AI" — was not actually reachable: the API and
+services were complete and tested, but the browser could not get to
+them. Closed the three gaps:
+
+- **No page route** — `apps/web/app/` had only `app.vue`, so `useRoute()`
+  yielded no params and the app requested
+  `/api/workspaces//novels//chapters` (empty ids). Added
+  `pages/index.vue` (novel list + auth gate),
+  `pages/sign-in.vue`, and
+  `pages/workspaces/[workspaceId]/novels/[novelId]/index.vue` (the
+  writer workspace, now reading real route params); `app.vue` is the
+  `<NuxtPage/>` root.
+- **No API origin** — `fetch('/api/...')` resolved to the Nuxt origin.
+  Added `server/api/[...path].ts`, a transparent Nitro proxy to
+  `NUXT_API_BASE`, forwarding method/headers/body/status/Set-Cookie.
+  Same-origin keeps the HttpOnly SameSite=Lax session cookie working
+  (ADR-0002 §6) with no CORS. Web dev port pinned to 3001 (the API also
+  defaults to 3000).
+- **No sign-in surface** — added `pages/sign-in.vue` (login + register),
+  `composables/useApi.ts` (typed `{error}` envelope -> `ApiError`), and
+  401 handling that redirects to
+  `/sign-in?redirect=<path>` (internal paths only — no open redirect).
+
+Also fixed while verifying: `apps/api/src/server.ts` never loaded the
+repo-root `.env`, so `node src/server.ts` failed env validation on every
+run (tests loaded it themselves, which hid this); it now loads `.env`
+when present, with real env winning. Added `apps/web` typecheck
+(`vue-tsc`) — the web app was absent from `pnpm typecheck` entirely.
+
+Verified end-to-end in headless Chrome against live Postgres + API +
+built Nuxt server: register/login set the cookie through the proxy,
+home lists novels, the editor loads chapter content, autosave produced
+v2 server-side, sign-in redirect returned to the editor, and
+unauthenticated access to both `/` and the editor redirects to
+`/sign-in`. Proxy scope checked (traversal/absolute-host attempts 404;
+only `/api/**` proxied). Export headers and a 2 MB import pass through.
+
+Second-pass bugs found and fixed in the new editor code (each a real
+data-integrity risk, not cosmetic):
+- **Chapter-switch race** — `saveNow` wrote `version`/`saveState` after
+  an await, so a save in flight during a chapter switch could write the
+  old chapter's version onto the newly selected one. Now only the
+  still-active chapter may touch live editor state; stale responses are
+  dropped (monotonic `selectSeq` guards `selectChapter` too).
+- **Publish on unsaved text** — `publish()` proceeded even if the
+  pre-publish save failed or hit a conflict, freezing stale content as
+  PUBLISHED. It now aborts unless the save state is `saved`.
+- **Stale error banner** — the error message was never cleared on a
+  successful save/selection.
+
+Deferred: scene CRUD/API (schema only; vertical slice when the editor
+needs scene editing, not speculative). `prompt()` is used for chapter
+title creation — fine for now, replace with an inline field when the
+editor gets a real chrome pass.
 
 ## Phase 3+
 

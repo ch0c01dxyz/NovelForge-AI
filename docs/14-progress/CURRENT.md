@@ -1,14 +1,28 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: Phase 0 COMPLETE (2026-09-23). NF-0001..NF-0010
-committed; clean-clone verification passed on Windows and Ubuntu 24.04
-(see `docs/implementation/progress.md`).
+Implementation status: **Phase 2 COMPLETE (2026-09-24)**. Phase 0
+(NF-0001..NF-0010), Phase 1 (auth, workspaces, memberships, novels,
+permissions, audit), and Phase 2 (chapters, immutable versions,
+autosave, editor shell, import/export) are implemented, tested, and
+wired end-to-end. See `docs/implementation/progress.md` for detail and
+`docs/implementation/test-matrix.md` for executed results.
 
 ## Next milestone
 
-Phase 1 --- Platform Core (auth, workspaces, memberships, novels,
-permissions, audit foundation).
+Phase 3 --- AI Infrastructure / OmniRoute (AIGateway interface,
+OmniRoute adapter, gateway/model management, model profiles, streaming,
+logical requests/attempts, retry/fallback, generation history). Exit:
+provider-independent generation path with audited failures.
+
+## Known gaps carried into Phase 3
+
+- Scene CRUD is schema-only; no API until the editor needs scene
+  editing.
+- Chapter creation uses `prompt()`; replace with inline UI in a later
+  editor chrome pass.
+- No automated E2E runner; Phase 2 browser flows were verified manually
+  (recorded in `test-matrix.md`).
 
 ## Phase 0 task sequence (completed)
 

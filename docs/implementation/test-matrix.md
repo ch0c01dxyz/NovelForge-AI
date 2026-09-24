@@ -143,6 +143,30 @@ green (lint 0, typecheck Done, apps build incl. Nuxt production).
 version-history/restore, published-immutability, audit-trail, and
 large-body coverage above.
 
+Phase 2 end-to-end wiring (same date): the browser could not reach the
+API (no page routes, no API origin, no sign-in), so the exit criterion
+was unmet in practice despite green tests. Verified manually in headless
+Chrome against live Postgres + Fastify + built Nuxt server, driven
+through CDP:
+
+| Scenario | Result |
+| -------- | ------ |
+| Register + login through the Nitro proxy | cookie set, `nf_session` present |
+| `/` unauthenticated | redirects to `/sign-in?redirect=/` |
+| Editor unauthenticated | redirects to `/sign-in?redirect=<editor path>` |
+| Sign-in form -> redirect back | lands on the editor, chapter loads |
+| Editor renders chapter | textarea holds stored content, footer shows `v1` |
+| Autosave (type, 1.5s debounce) | new version on the server (`v2`), UI agrees |
+| Chapter switch during in-flight save | edit lands on the origin chapter, no cross-contamination |
+| Export through proxy | `content-disposition` + `text/markdown` preserved |
+| 2 MB import through proxy | 201 |
+| Proxy traversal / absolute-host attempts | all 404, only `/api/**` proxied |
+| `apps/web` typecheck (`vue-tsc`) | clean (added to `pnpm typecheck`) |
+
+These are manual browser checks, not automated: the repo has no E2E
+runner yet (TESTING.md lists E2E as a later layer). Recorded as
+executed, not as CI coverage.
+
 ## Phase 3+
 
 Rows added when each phase starts. Mandatory cross-cutting scenarios

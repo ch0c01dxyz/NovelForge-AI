@@ -643,34 +643,68 @@ describe("Phase 4 — authorization", () => {
     expect(await db.agent.count({ where: { key: "shared-dup", workspaceId: null } })).toBe(1);
   });
 
-  it("allows a workspace key that shadows a platform key", async () => {
+  it("allows a workspace key that shadows a platform key, and prefers it", async () => {
     // The unique indexes are per-scope by design: a tenant may override a
-    // shared definition with its own, and resolution prefers the tenant row.
+    // shared definition with its own. This asserts the second half too —
+    // that resolution actually prefers the tenant row, which is the whole
+    // point of allowing the shadow.
     const superAdmin = await seedUser("super@example.com", "SUPER_ADMIN");
     const owner = await seedUser("owner@example.com");
     const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
-    const base = { key: "shadowable", name: "shadowable", instructions: "x", modelProfile: "CREATIVE_WRITER" };
+    await seedRoute();
 
-    expect(
-      (
-        await app.inject({
-          method: "POST",
-          url: "/api/agents",
-          headers: { cookie: superAdmin.cookie },
-          payload: { ...base, scope: "PLATFORM" },
-        })
-      ).statusCode,
-    ).toBe(201);
-    expect(
-      (
-        await app.inject({
-          method: "POST",
-          url: "/api/agents",
-          headers: { cookie: owner.cookie },
-          payload: { ...base, scope: "WORKSPACE", workspaceId },
-        })
-      ).statusCode,
-    ).toBe(201);
+    const shared = await app.inject({
+      method: "POST",
+      url: "/api/agents",
+      headers: { cookie: superAdmin.cookie },
+      payload: {
+        scope: "PLATFORM",
+        key: "shadowable",
+        name: "shadowable",
+        instructions: "PLATFORM-INSTRUCTIONS",
+        modelProfile: "CREATIVE_WRITER",
+      },
+    });
+    expect(shared.statusCode).toBe(201);
+    await app.inject({
+      method: "POST",
+      url: `/api/agents/${(shared.json() as { id: string }).id}/publish`,
+      headers: { cookie: superAdmin.cookie },
+    });
+
+    const own = await app.inject({
+      method: "POST",
+      url: "/api/agents",
+      headers: { cookie: owner.cookie },
+      payload: {
+        scope: "WORKSPACE",
+        workspaceId,
+        key: "shadowable",
+        name: "shadowable",
+        instructions: "TENANT-INSTRUCTIONS",
+        modelProfile: "CREATIVE_WRITER",
+      },
+    });
+    expect(own.statusCode).toBe(201);
+    await app.inject({
+      method: "POST",
+      url: `/api/agents/${(own.json() as { id: string }).id}/publish`,
+      headers: { cookie: owner.cookie },
+    });
+
+    // Run a one-step workflow naming the shared key: the tenant's version
+    // must be the one sent to the model.
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "shadow-run", {
+      steps: [{ key: "go", kind: "AGENT", ref: "shadowable" }],
+      edges: [],
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(seenPrompts.at(-1)!.messages[0]!.content).toBe("TENANT-INSTRUCTIONS");
   });
 
   it("does not let a platform admin manage a workspace's definitions", async () => {

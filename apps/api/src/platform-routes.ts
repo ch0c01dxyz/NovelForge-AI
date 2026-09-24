@@ -23,11 +23,24 @@ const slug = z
   .max(80)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be lowercase kebab-case");
 
-const createWorkspaceBody = z.object({ name: z.string().min(1).max(120), slug });
-const createNovelBody = z.object({ title: z.string().min(1).max(200), slug });
+const createWorkspaceBody = z.object({
+  name: z.string().trim().min(1).max(120),
+  slug,
+});
+const createNovelBody = z.object({
+  title: z.string().trim().min(1).max(200),
+  slug,
+});
 const roleEnum = z.enum(ROLES);
 const addMemberBody = z.object({ userId: z.string().uuid(), role: roleEnum });
 const changeRoleBody = z.object({ role: roleEnum });
+
+// Path params hit @db.Uuid columns — validate before Prisma turns a
+// malformed id into a 500.
+const uuid = z.string().uuid();
+const workspaceParams = z.object({ workspaceId: uuid });
+const memberParams = z.object({ workspaceId: uuid, userId: uuid });
+const novelParams = z.object({ workspaceId: uuid, novelId: uuid });
 
 export interface PlatformRoutesOptions {
   auth: AuthService;
@@ -83,20 +96,16 @@ export async function registerPlatformRoutes(
     if (!actorUserId) return;
     const parsed = createWorkspaceBody.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-    try {
-      const { id } = await services.createWorkspace({ actorUserId, ...parsed.data });
-      return reply.code(201).send({ id });
-    } catch (e) {
-      if (e instanceof ConflictError) return reply.code(409).send({ error: "CONFLICT" });
-      throw e;
-    }
+    const { id } = await services.createWorkspace({ actorUserId, ...parsed.data });
+    return reply.code(201).send({ id });
   });
 
   app.get("/api/workspaces/:workspaceId", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;
-    const { workspaceId } = request.params as { workspaceId: string };
-    const ws = await services.getWorkspace(actorUserId, workspaceId);
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    const ws = await services.getWorkspace(actorUserId, params.data.workspaceId);
     return ws;
   });
 
@@ -104,17 +113,23 @@ export async function registerPlatformRoutes(
   app.get("/api/workspaces/:workspaceId/members", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;
-    const { workspaceId } = request.params as { workspaceId: string };
-    return services.listMembers(actorUserId, workspaceId);
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.listMembers(actorUserId, params.data.workspaceId);
   });
 
   app.post("/api/workspaces/:workspaceId/members", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;
-    const { workspaceId } = request.params as { workspaceId: string };
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
     const parsed = addMemberBody.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-    const { id } = await services.addMember({ actorUserId, workspaceId, ...parsed.data });
+    const { id } = await services.addMember({
+      actorUserId,
+      workspaceId: params.data.workspaceId,
+      ...parsed.data,
+    });
     return reply.code(201).send({ id });
   });
 
@@ -123,16 +138,13 @@ export async function registerPlatformRoutes(
     async (request, reply) => {
       const actorUserId = await requireActor(request, reply);
       if (!actorUserId) return;
-      const { workspaceId, userId } = request.params as {
-        workspaceId: string;
-        userId: string;
-      };
+      const params = memberParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       const parsed = changeRoleBody.safeParse(request.body);
       if (!parsed.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       await services.changeMemberRole({
         actorUserId,
-        workspaceId,
-        userId,
+        ...params.data,
         role: parsed.data.role as Role,
       });
       return { status: "ok" };
@@ -144,11 +156,9 @@ export async function registerPlatformRoutes(
     async (request, reply) => {
       const actorUserId = await requireActor(request, reply);
       if (!actorUserId) return;
-      const { workspaceId, userId } = request.params as {
-        workspaceId: string;
-        userId: string;
-      };
-      await services.removeMember({ actorUserId, workspaceId, userId });
+      const params = memberParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.removeMember({ actorUserId, ...params.data });
       return { status: "ok" };
     },
   );
@@ -163,27 +173,31 @@ export async function registerPlatformRoutes(
   app.post("/api/workspaces/:workspaceId/novels", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;
-    const { workspaceId } = request.params as { workspaceId: string };
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
     const parsed = createNovelBody.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-    const { id } = await services.createNovel({ actorUserId, workspaceId, ...parsed.data });
+    const { id } = await services.createNovel({
+      actorUserId,
+      workspaceId: params.data.workspaceId,
+      ...parsed.data,
+    });
     return reply.code(201).send({ id });
   });
 
   app.get("/api/workspaces/:workspaceId/novels", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;
-    const { workspaceId } = request.params as { workspaceId: string };
-    return services.listNovels(actorUserId, workspaceId);
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.listNovels(actorUserId, params.data.workspaceId);
   });
 
   app.get("/api/workspaces/:workspaceId/novels/:novelId", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;
-    const { workspaceId, novelId } = request.params as {
-      workspaceId: string;
-      novelId: string;
-    };
-    return services.getNovel(actorUserId, workspaceId, novelId);
+    const params = novelParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.getNovel(actorUserId, params.data.workspaceId, params.data.novelId);
   });
 }

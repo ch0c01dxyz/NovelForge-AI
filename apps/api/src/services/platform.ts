@@ -30,6 +30,15 @@ export class ConflictError extends Error {
   }
 }
 
+/**
+ * Unique-constraint violations (Prisma P2002) from create-race losers map to
+ * the same 409 as the pre-check — never a 500. Duck-typed on `code` so it
+ * holds regardless of how the driver adapter wraps the error.
+ */
+function isUniqueViolation(e: unknown): boolean {
+  return (e as { code?: string })?.code === "P2002";
+}
+
 export interface PlatformServices {
   createWorkspace(input: {
     actorUserId: string;
@@ -149,15 +158,21 @@ export function createPlatformServices(deps: {
       if (existing) throw new ConflictError("workspace slug already exists");
 
       // Owner row + OWNER membership atomically; audit after commit.
-      const workspace = await db.$transaction(async (tx) => {
-        const ws = await tx.workspace.create({
-          data: { name, slug, ownerId: actorUserId },
+      let workspace;
+      try {
+        workspace = await db.$transaction(async (tx) => {
+          const ws = await tx.workspace.create({
+            data: { name, slug, ownerId: actorUserId },
+          });
+          await tx.membership.create({
+            data: { workspaceId: ws.id, userId: actorUserId, role: "OWNER" },
+          });
+          return ws;
         });
-        await tx.membership.create({
-          data: { workspaceId: ws.id, userId: actorUserId, role: "OWNER" },
-        });
-        return ws;
-      });
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new ConflictError("workspace slug already exists");
+        throw e;
+      }
       await audit.record({
         actorUserId,
         workspaceId: workspace.id,
@@ -195,9 +210,15 @@ export function createPlatformServices(deps: {
       });
       if (existing) throw new ConflictError("user is already a member");
 
-      const membership = await db.membership.create({
-        data: { workspaceId, userId, role },
-      });
+      let membership;
+      try {
+        membership = await db.membership.create({
+          data: { workspaceId, userId, role },
+        });
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new ConflictError("user is already a member");
+        throw e;
+      }
       await audit.record({
         actorUserId,
         workspaceId,
@@ -226,6 +247,8 @@ export function createPlatformServices(deps: {
         throw new ForbiddenError("member:change-role");
       }
       // The last OWNER cannot be demoted (workspace would be orphaned).
+      // Count + update inside one transaction: two concurrent demotions
+      // must not be able to orphan the workspace.
       if (target.role === "OWNER" && role !== "OWNER") {
         const owners = await db.membership.count({
           where: { workspaceId, role: "OWNER" },
@@ -237,9 +260,20 @@ export function createPlatformServices(deps: {
         throw new ForbiddenError("member:change-role");
       }
 
-      await db.membership.update({
-        where: { id: target.id },
-        data: { role },
+      await db.$transaction(async (tx) => {
+        // Lock the workspace row: concurrent owner changes serialize here,
+        // so the owner recount below cannot both see a stale count.
+        await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId} FOR UPDATE`;
+        if (target.role === "OWNER" && role !== "OWNER") {
+          const owners = await tx.membership.count({
+            where: { workspaceId, role: "OWNER" },
+          });
+          if (owners <= 1) throw new ConflictError("cannot demote the last owner");
+        }
+        await tx.membership.update({
+          where: { id: target.id },
+          data: { role },
+        });
       });
       await audit.record({
         actorUserId,
@@ -268,7 +302,18 @@ export function createPlatformServices(deps: {
         if (owners <= 1) throw new ConflictError("cannot remove the last owner");
         if (actorRole !== "OWNER") throw new ForbiddenError("member:remove");
       }
-      await db.membership.delete({ where: { id: target.id } });
+      await db.$transaction(async (tx) => {
+        // Same workspace-row lock as changeMemberRole: concurrent owner
+        // removals serialize, so two removes cannot orphan the workspace.
+        await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId} FOR UPDATE`;
+        if (target.role === "OWNER") {
+          const owners = await tx.membership.count({
+            where: { workspaceId, role: "OWNER" },
+          });
+          if (owners <= 1) throw new ConflictError("cannot remove the last owner");
+        }
+        await tx.membership.delete({ where: { id: target.id } });
+      });
       await audit.record({
         actorUserId,
         workspaceId,
@@ -301,9 +346,15 @@ export function createPlatformServices(deps: {
       });
       if (existing) throw new ConflictError("novel slug already exists in workspace");
 
-      const novel = await db.novel.create({
-        data: { workspaceId, title, slug, createdById: actorUserId },
-      });
+      let novel;
+      try {
+        novel = await db.novel.create({
+          data: { workspaceId, title, slug, createdById: actorUserId },
+        });
+      } catch (e) {
+        if (isUniqueViolation(e)) throw new ConflictError("novel slug already exists in workspace");
+        throw e;
+      }
       await db.novelSettings.create({
         data: { novelId: novel.id, settings: {} },
       });

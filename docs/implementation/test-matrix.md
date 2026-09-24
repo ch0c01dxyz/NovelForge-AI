@@ -102,6 +102,18 @@ Phase 1 exit test (NF-1005): tenant isolation suite green + full repo
 gate green locally (2026-09-24). **Phase 1 exit criteria met** (with
 the CI-services gap noted above).
 
+Audit pass additions (2026-09-24, 4 new regression tests; totals now
+11 files / 73 passed / 1 skipped):
+
+- **Worker resilience**: add-failure degrade (no crash), stop() timeout
+  when quit() hangs.
+- **Auth**: concurrent duplicate register (P2002) → 409 EMAIL_TAKEN.
+- **Config**: URL password containing `@` fully redacted.
+
+CI-services gap closed: `ci.yml` runs postgres (pgvector) + redis
+service containers; all integration suites + worker real-redis suite
+execute remotely on push/PR.
+
 ## Phase 2+
 
 Rows added when each phase starts. Mandatory cross-cutting scenarios

@@ -82,9 +82,48 @@ compose PostgreSQL/Redis (2026-09-24): lint 0 errors; typecheck all
 workspaces Done; tests 11 files / 70 passed / 1 skipped; apps build
 (incl. Nuxt production). **Met.**
 
-Known CI gap: GitHub Actions has no postgres/redis service containers
-yet, so DB-backed integration suites cannot run remotely; they are
-executed locally against compose until `ci.yml` gains services.
+### Phase 0/1 audit pass (2026-09-24)
+
+Three parallel read-only audits (auth security, platform RBAC, DB
+schema/migrations/worker) over all Phase 0/1 code. Findings fixed:
+
+- worker: `queue.add` failure after a successful probe crashed the
+  process (violated the never-throw contract) — now logged + degraded;
+  `stop()` could hang forever on `quit()` against a dead Redis — now
+  raced with a 2s timeout and hard `disconnect()`. 2 new unit tests.
+- platform services: last-owner demote/remove check-then-act race —
+  now a `SELECT … FOR UPDATE` workspace-row lock + owner recount inside
+  `db.$transaction`; unique-constraint race losers (workspace slug,
+  duplicate member, novel slug) map P2002 → 409 instead of 500.
+- platform routes: path params now uuid-validated (malformed ids were
+  500s); workspace name / novel title trimmed (whitespace-only
+  rejected); removed dead ConflictError try/catch (error handler
+  already maps it).
+- auth: concurrent duplicate register maps P2002 → 409 EMAIL_TAKEN
+  (was 500); deleted unused `safeEqual`.
+- config: `maskUrlCredentials` redacts passwords containing `@`
+  (greedy match to last `@`); regression test added.
+- api: `genReqId` only honors a uuid-shaped `x-request-id`.
+
+Verified: lint 0, typecheck Done, 11 files / 73 passed / 1 skipped
+(4 new regression tests), apps build green.
+
+Deferred (documented decisions, not bugs):
+- `trustProxy` unset — no reverse proxy in the deployment shape yet;
+  set it (proxy count/address) when one exists, or rate limits key on
+  the proxy IP.
+- Audit-after-commit ordering: a failed audit write returns 500 with
+  the mutation persisted. Accepted Phase-1 trade-off; revisit with an
+  outbox if audit completeness becomes a compliance requirement.
+- `listMembers` returns member emails to any role incl. VIEWER —
+  intentional for Phase 1 collaboration UX; restrict if email privacy
+  becomes a requirement.
+- `sessions.expires_at` unindexed — add with a session-cleanup job.
+- compose binds 5432/6379 on 0.0.0.0 (local dev only).
+
+Known CI gap: **closed** — `ci.yml` now runs postgres (pgvector/pg16)
+and redis service containers with `DATABASE_URL`/`WORKER_IT_REDIS_URL`,
+so all DB-backed suites and the worker real-redis suite run remotely.
 
 ## Phase 2+
 

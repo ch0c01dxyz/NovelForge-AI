@@ -5,7 +5,6 @@ import {
   generateSessionToken,
   hashPassword,
   hashSessionToken,
-  safeEqual,
   SESSION_TTL_MS,
   verifyPassword,
   type SessionRecord,
@@ -83,10 +82,18 @@ describe("tokens", () => {
     expect(h1).not.toContain(t);
   });
 
-  it("safeEqual is length- and value-sensitive", () => {
-    expect(safeEqual("abc", "abc")).toBe(true);
-    expect(safeEqual("abc", "abd")).toBe(false);
-    expect(safeEqual("abc", "abcd")).toBe(false);
+  it("register maps unique-constraint races (P2002) to EMAIL_TAKEN", async () => {
+    const users = memoryUserStore();
+    const failing = {
+      ...users,
+      async create() {
+        throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      },
+    };
+    const auth = createAuthService({ users: failing, sessions: memorySessionStore() });
+    await expect(
+      auth.register({ email: "dup@example.com", password: "password1", displayName: "D" }),
+    ).rejects.toMatchObject({ code: "EMAIL_TAKEN" });
   });
 });
 

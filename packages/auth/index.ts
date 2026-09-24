@@ -6,7 +6,7 @@
  * use-case services over injected store interfaces — no ORM, no HTTP.
  * apps/api composes the Prisma-backed stores (ADR-0001 boundaries).
  */
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { hash as argon2Hash, verify as argon2Verify } from "@node-rs/argon2";
 
 // @node-rs/argon2's Algorithm is a const enum (inaccessible under
@@ -22,14 +22,6 @@ export function generateSessionToken(): string {
 /** SHA-256 of the token; only this is persisted. */
 export function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
-}
-
-/** Timing-safe equality for token/hash comparisons. */
-export function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
 }
 
 // --- Passwords (ADR-0002 §3) ---
@@ -129,12 +121,21 @@ export function createAuthService(deps: {
     const existing = await deps.users.findByEmail(email);
     if (existing) throw new AuthError("EMAIL_TAKEN", "email already registered");
     const passwordHash = await hashPassword(input.password);
-    const user = await deps.users.create({
-      email,
-      passwordHash,
-      displayName: input.displayName,
-    });
-    return { userId: user.id };
+    try {
+      const user = await deps.users.create({
+        email,
+        passwordHash,
+        displayName: input.displayName,
+      });
+      return { userId: user.id };
+    } catch (e) {
+      // Concurrent register of the same email loses the unique-constraint
+      // race — same 409 EMAIL_TAKEN as the pre-check, never a 500.
+      if ((e as { code?: string })?.code === "P2002") {
+        throw new AuthError("EMAIL_TAKEN", "email already registered");
+      }
+      throw e;
+    }
   }
 
   async function login(

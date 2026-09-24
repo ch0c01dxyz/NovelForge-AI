@@ -1,28 +1,35 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: **Phase 2 COMPLETE (2026-09-24)**. Phase 0
+Implementation status: **Phase 3 COMPLETE (2026-09-25)**. Phase 0
 (NF-0001..NF-0010), Phase 1 (auth, workspaces, memberships, novels,
-permissions, audit), and Phase 2 (chapters, immutable versions,
-autosave, editor shell, import/export) are implemented, tested, and
-wired end-to-end. See `docs/implementation/progress.md` for detail and
-`docs/implementation/test-matrix.md` for executed results.
+permissions, audit), Phase 2 (chapters, immutable versions, autosave,
+editor shell, import/export), and Phase 3 (AIGateway/OmniRoute adapter,
+gateway + model registry, model profiles, logical requests/attempts,
+bounded retry/fallback, error classification, generation history,
+platform-admin authorization) are implemented, tested, and verified
+end-to-end. See `docs/implementation/progress.md` and
+`docs/implementation/test-matrix.md`.
 
 ## Next milestone
 
-Phase 3 --- AI Infrastructure / OmniRoute (AIGateway interface,
-OmniRoute adapter, gateway/model management, model profiles, streaming,
-logical requests/attempts, retry/fallback, generation history). Exit:
-provider-independent generation path with audited failures.
+Phase 4 --- Agent/Skill/Workflow Platform (versioned agents, skills,
+workflows, structured output contracts, task execution). Exit: chapter
+test workflow can run multiple agents deterministically.
 
-## Known gaps carried into Phase 3
+## Known gaps carried into Phase 4
 
-- Scene CRUD is schema-only; no API until the editor needs scene
-  editing.
+- Streaming: `GatewayManager.generateStream` is built and tested, but no
+  API route exposes it yet; `GenerationStatus.INCOMPLETE` is reserved for
+  that route.
+- Routing strategy and weight are wired through the schema and router,
+  but the generation service always uses PRIORITY until an operator
+  setting exists.
+- Scene CRUD is schema-only; no API until the editor needs scene editing.
 - Chapter creation uses `prompt()`; replace with inline UI in a later
   editor chrome pass.
-- No automated E2E runner; Phase 2 browser flows were verified manually
-  (recorded in `test-matrix.md`).
+- No automated E2E runner; browser flows are verified manually and
+  recorded in `test-matrix.md`.
 
 ## Phase 0 task sequence (completed)
 

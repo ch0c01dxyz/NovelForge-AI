@@ -268,6 +268,92 @@ needs scene editing, not speculative). `prompt()` is used for chapter
 title creation — fine for now, replace with an inline field when the
 editor gets a real chrome pass.
 
-## Phase 3+
+## Phase 3 — AI Infrastructure / OmniRoute
+
+Implemented in-session (2026-09-25).
+
+- [x] NF-3001 AI schema + migrations — `ai_gateways`, `ai_models`,
+  `model_profile_mappings`, `generations`, `generation_attempts`, plus a
+  `PlatformRole` enum on `users`. Migrations
+  `20260925_phase3_ai_infrastructure`, `_platform_admin`, `_gateway_latency`,
+  each verified drift-free via `migrate diff --exit-code`.
+- [x] NF-3002 `@novelforge/ai-core` — the only provider-adjacent package
+  (ADR-0001 §3). `AIGateway` interface; `OmniRouteGateway`
+  (OpenAI-compatible chat/stream/embeddings/models, Bearer auth, per-call
+  timeout, SSE parsing with final-frame + multibyte flush and reader
+  release); `GatewayError` classification (TRANSIENT/RATE_LIMIT/AUTH/
+  INVALID_REQUEST/UNSUPPORTED/DETERMINISTIC/INTERNAL, network errors
+  detected by code); AES-256-GCM credential crypto; pure routing policy
+  (PRIORITY/WEIGHTED/ROUND_ROBIN/LEAST_LATENCY/FAILOVER, circuit breaker,
+  bounded backoff+jitter); `GatewayManager` with retry/fallback that
+  records every attempt and never restarts a stream that already emitted.
+  Depends on injected ports only — no Prisma, no HTTP framework.
+- [x] NF-3003 Gateway/model registry + admin API — `apps/api/src/ai-registry.ts`
+  (the only place ai-core meets Prisma) and `services/ai.ts` +
+  `ai-routes.ts`. Platform-wide resources are guarded by
+  `requirePlatformCapability` against `users.platform_role`, a NEW axis
+  (ADR-0005): a workspace OWNER cannot manage global gateway credentials.
+  Model discovery upserts the local catalog in one transaction with its
+  audit row.
+- [x] NF-3004 Generation path + history — logical `Generation` row created
+  before any transport attempt, one `generation_attempts` row per attempt,
+  success/failure recorded with classified category and sanitized message,
+  workspace-scoped history endpoints with membership gating (404 for
+  non-members).
+
+Phase 3 exit criteria: provider-independent generation path with audited
+failures (roadmap). Full repo gate 2026-09-25: lint 0, typecheck Done
+(incl. web), 14 files / 163 passed / 1 skipped, apps build green.
+
+### Phase 3 deep audit (2026-09-25)
+
+Two parallel read-only audits (ai-core transport/policy; API + authz),
+plus live end-to-end verification against a real server. Findings fixed:
+
+- **Breaker poisoned by caller-induced failures** — every failed attempt
+  incremented `consecutiveFailures`, so three malformed requests or user
+  cancellations could circuit-open a healthy provider. Only faults
+  attributable to the instance now count (`isGatewayFault`).
+- **Consumer throws misattributed to the gateway** — in `generateStream`
+  the `yield` sat inside the transport `try`, so a consumer-side throw (a
+  DB write failing mid-persist, a client disconnect) was recorded as a
+  gateway INTERNAL failure. Restructured to `try/finally` with only
+  `stream.next()` guarded.
+- **Programmer errors retried as transient** — `classifyThrown` labelled
+  any unknown throw TRANSIENT. Now only real network errors (by code or
+  "fetch failed") are TRANSIENT; anything else is INTERNAL.
+- **SSE final frame and multibyte tail dropped** — the loop broke on
+  `done` without flushing the decoder or parsing the trailing partial
+  line, silently truncating output; the reader was never cancelled or
+  released. Both fixed.
+- **Config faults reported as gateway faults** — an unreadable credential
+  (rotated key) or disabled row surfaced as 500 and tripped the breaker.
+  Now a 409 with an actionable message, and the breaker is untouched;
+  genuine transport failures are 502.
+- **`model:read` was a platform capability granted to every workspace
+  role** — the invariant it was supposed to enforce. Now platform-only.
+- **ADMIN could not use AI generation** while AUTHOR/EDITOR could.
+- **`setProfileMapping` clobbered tuned `priority`/`enabled`** with
+  defaults on an idempotent PUT.
+- **`maxRetries` was inert** — stored, validated, returned, never read.
+  Now bounds per-gateway attempts.
+- **Non-atomic breaker update** — two UPDATEs could leave a
+  circuit-open gateway marked DEGRADED; now one statement.
+- **Partial model sync** — upserts committed without the audit row on
+  mid-loop failure; now one transaction.
+- **Generate route had no `bodyLimit`**, so its own 200×200k schema caps
+  were unreachable behind Fastify's 1 MB default.
+- Credential hardening: adapter key moved to a `#private` field so
+  `JSON.stringify`/structured logging cannot serialize it.
+- Dead code removed (`OWNER_MANAGEMENT_CAPS`, no-op ternary, unreachable
+  early-return, misleading comments).
+
+Deferred: streaming route + SSE endpoint (the manager's streaming path is
+built and tested but no API route exposes it yet; `GenerationStatus.INCOMPLETE`
+is reserved for it). `weight`/`strategy` are wired but the service always
+uses PRIORITY until an operator-facing strategy setting exists.
+
+## Phase 4+
 
 NOT STARTED.
+

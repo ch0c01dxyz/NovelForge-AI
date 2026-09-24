@@ -34,6 +34,11 @@ Initial accepted decisions:
     migrations as the only schema path, pgvector enabled from the
     initial migration, UUID keys, append-only `audit_logs`, and a
     dedicated `novelforge_test` database for integration tests.
+-   [ADR-0005](../adr/ADR-0005-platform-administration.md): Platform
+    administration as a separate authorization axis — `users.platform_role`,
+    platform-only capabilities never conferred by a workspace role, and a
+    closed platform capability set so platform administration is not a
+    bypass for workspace authorization.
 
 New ADRs start from [ADR-TEMPLATE.md](../adr/ADR-TEMPLATE.md), use the
 next sequential `ADR-NNNN` number, are filed under `docs/adr/`, and are

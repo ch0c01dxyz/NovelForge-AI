@@ -167,9 +167,42 @@ These are manual browser checks, not automated: the repo has no E2E
 runner yet (TESTING.md lists E2E as a later layer). Recorded as
 executed, not as CI coverage.
 
-## Phase 3+
+## Phase 3 — AI Infrastructure
+
+| Area | Unit | Integration | Contract | E2E | Migration |
+| ---- | ---- | ----------- | -------- | --- | --------- |
+| AI schema (`packages/database`) | — | passing | — | — | passing (drift-free) |
+| `ai-core` transport + policy | passing (43) | — | — | — | — |
+| Gateway/model admin API | — | passing | — | — | — |
+| Generation path + history | — | passing | — | manual | — |
+| Platform-admin authorization | passing | passing | — | — | — |
+
+Executed results (2026-09-25, Windows, live compose PostgreSQL):
+`ai-core.test.ts` (43) — error classification incl. network-code vs
+programmer-error, credential encrypt/decrypt + tamper/wrong-key/malformed
+rejection, routing order for all five strategies, circuit breaker
+open/close, per-gateway retry budget, manager retry/fallback, attempt
+recording, stream success, stream-not-restarted-after-partial, stream
+consumer-throw-not-attributed-to-gateway, health probes, and that
+caller-induced failures (INVALID_REQUEST/DETERMINISTIC) leave the breaker
+untouched. `ai.test.ts` (23, `novelforge_test_ai`) — gateway CRUD with the
+credential absent from every response, encrypted-at-rest assertion,
+workspace OWNER denied (403) on gateway read/create, unauthenticated 401,
+duplicate-name 409, credential rotation, model sync + profile mapping,
+platform-role requirement, unreachable-gateway 502 with breaker recorded,
+unreadable-credential 409 with breaker NOT tripped, health recovery,
+generation success with one attempt, failover with both attempts recorded,
+FAILED with classified category and no provider detail, no-route 409,
+membership 404, body validation, history list/detail, cross-tenant 404.
+
+Verified live against a running API + Postgres (not CI): platform gate
+returns 403 for a workspace owner and 401 unauthenticated; the credential
+is stored as `v1:iv:tag:ciphertext` and never appears in a response or
+audit payload; a dead upstream yields 502 with `consecutive_failures=1`;
+an unreadable credential yields 409 with the breaker left at 0.
+
+## Phase 4+
 
 Rows added when each phase starts. Mandatory cross-cutting scenarios
-(gateway retry/failover, streaming interruption, candidate canon,
-etc.) are listed in TESTING.md and become matrix rows in the phase
-that implements them.
+(streaming interruption, candidate canon, etc.) are listed in TESTING.md
+and become matrix rows in the phase that implements them.

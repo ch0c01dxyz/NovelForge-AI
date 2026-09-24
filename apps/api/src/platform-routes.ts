@@ -9,8 +9,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
 import { ROLES, type Role } from "@novelforge/auth/authorization";
+import { PlatformForbiddenError } from "@novelforge/auth/authorization";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import {
+  BadGatewayError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -64,7 +66,10 @@ export async function registerPlatformRoutes(
 ): Promise<void> {
   // Map service-layer errors to HTTP once, for all platform routes.
   app.setErrorHandler((error, request, reply) => {
-    if (error instanceof ForbiddenError) {
+    // Two authorization axes (ADR-0005): workspace capabilities and
+    // platform administration. Both deny with 403, so both must be
+    // mapped here — an unmapped one would surface as a 500.
+    if (error instanceof ForbiddenError || error instanceof PlatformForbiddenError) {
       return reply.code(403).send({ error: "FORBIDDEN" });
     }
     if (error instanceof NotFoundError) {
@@ -72,6 +77,10 @@ export async function registerPlatformRoutes(
     }
     if (error instanceof ConflictError) {
       return reply.code(409).send({ error: "CONFLICT" });
+    }
+    // A valid request whose upstream (LLM gateway) failed: 502, not 500.
+    if (error instanceof BadGatewayError) {
+      return reply.code(502).send({ error: "BAD_GATEWAY" });
     }
     // Fastify's own client errors (413 body too large, 415 unsupported
     // media, 400 parse failure) carry a 4xx statusCode; pass it through

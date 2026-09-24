@@ -1,0 +1,447 @@
+/**
+ * Gateway manager — resolves a capability profile to concrete attempts,
+ * runs bounded retry/fallback, and records every attempt.
+ *
+ * Depends on injected ports, not on Prisma: `ai-core` may import only
+ * contracts/shared (ADR-0001 §3), so persistence is a port the API
+ * composition root implements. That also keeps the whole retry policy
+ * unit-testable with fakes.
+ */
+import {
+  GatewayError,
+  isGatewayFault,
+  isRetryable,
+  type ErrorCategory,
+} from "./errors.ts";
+import { OmniRouteGateway, type FetchLike } from "./omniroute.ts";
+import {
+  backoffDelayMs,
+  DEFAULT_GATEWAY_RETRIES,
+  planAttempts,
+  shouldTryNext,
+  type Candidate,
+  type RoutingStrategy,
+} from "./router.ts";
+import type {
+  AIGateway,
+  ChatMessage,
+  GatewayModel,
+  GenerateResult,
+  ModelProfile,
+  StreamChunk,
+} from "./types.ts";
+
+/** A gateway row plus its decrypted credential, ready to build an adapter. */
+export interface GatewayRecord {
+  id: string;
+  name: string;
+  baseUrl: string;
+  /** Decrypted in memory only; never persisted or logged. */
+  apiKey: string;
+  timeoutMs: number;
+  enabled: boolean;
+  priority: number;
+  weight: number;
+  health: "UNKNOWN" | "HEALTHY" | "DEGRADED" | "DOWN";
+  consecutiveFailures: number;
+  /** Last observed round-trip latency; null until measured. */
+  latencyMs?: number | null;
+  /**
+   * Extra transport attempts allowed against THIS gateway after its first
+   * failure. Bounded by the request's overall attempt cap.
+   */
+  maxRetries?: number;
+}
+
+export interface AttemptRecord {
+  attemptNumber: number;
+  gatewayId: string | null;
+  modelId: string | null;
+  status: "SUCCEEDED" | "FAILED" | "TIMEOUT" | "RATE_LIMITED";
+  errorCategory: ErrorCategory | "NONE";
+  errorMessage: string | null;
+  latencyMs: number | null;
+}
+
+/**
+ * Persistence port. Implemented by the API composition root against
+ * Prisma; faked in tests.
+ */
+export interface GatewayRegistry {
+  /** Enabled gateways with credentials decrypted, newest config. */
+  listGateways(): Promise<GatewayRecord[]>;
+  /**
+   * Concrete models mapped to a profile, best-first, each tied to an
+   * enabled gateway. Empty when the profile has no mapping.
+   */
+  resolveProfile(
+    profile: ModelProfile,
+  ): Promise<Array<{ gatewayId: string; modelId: string }>>;
+  /** Persist an attempt row (append-only). */
+  recordAttempt(generationId: string, attempt: AttemptRecord): Promise<void>;
+  /** Update breaker/health counters after an attempt. */
+  updateGatewayHealth(
+    gatewayId: string,
+    outcome: {
+      ok: boolean;
+      category: ErrorCategory | null;
+      latencyMs: number;
+      /**
+       * True for a scheduled liveness probe. A probe failure is not a
+       * request failure, so it updates health/latency without counting
+       * against the circuit breaker.
+       */
+      probe?: boolean;
+    },
+  ): Promise<void>;
+}
+
+export interface GenerateOptions {
+  profile: ModelProfile;
+  messages: ChatMessage[];
+  temperature?: number;
+  maxTokens?: number;
+  /** Logical generation id to attach attempts to. */
+  generationId: string;
+  signal?: AbortSignal;
+  /** Override strategy; defaults to PRIORITY. */
+  strategy?: RoutingStrategy;
+  /** Cap on transport attempts (bounded, CLAUDE.md §27). */
+  maxAttempts?: number;
+  /** Injected for tests: sleep between retries. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injected for tests: deterministic jitter. */
+  random?: () => number;
+  /** Shared round-robin cursor source. */
+  roundRobinCursor?: () => number;
+}
+
+/** How many transport attempts a single logical request may make. */
+export const DEFAULT_MAX_ATTEMPTS = 3;
+
+/**
+ * No model is mapped to the requested capability profile. This is a
+ * configuration gap the operator must fix (map a model to the profile),
+ * not a transient failure — callers surface it as 409, never as a 500
+ * retry loop.
+ */
+export class NoRouteError extends Error {
+  readonly code = "NO_ROUTE" as const;
+  constructor(readonly profile: ModelProfile) {
+    super(`no gateway model is configured for profile ${profile}`);
+    this.name = "NoRouteError";
+  }
+}
+
+export class GatewayManager {
+  constructor(
+    private readonly registry: GatewayRegistry,
+    private readonly deps: {
+      /** Build an adapter per gateway; injectable for tests. */
+      createGateway?: (
+        rec: GatewayRecord,
+        fetchImpl?: FetchLike,
+      ) => AIGateway;
+      fetchImpl?: FetchLike;
+    } = {},
+  ) {}
+
+  private build(rec: GatewayRecord): AIGateway {
+    if (this.deps.createGateway) return this.deps.createGateway(rec);
+    return new OmniRouteGateway(
+      {
+        id: rec.id,
+        name: rec.name,
+        baseUrl: rec.baseUrl,
+        apiKey: rec.apiKey,
+        timeoutMs: rec.timeoutMs,
+      },
+      this.deps.fetchImpl,
+    );
+  }
+
+  /**
+   * Assemble the ordered candidate list: profile mapping joined with live
+   * gateway state (enabled, priority, weight, breaker counters).
+   *
+   * Returns the gateway records alongside the candidates so a caller does
+   * not re-read (and re-decrypt every credential) immediately after.
+   */
+  async candidates(profile: ModelProfile): Promise<{
+    candidates: Candidate[];
+    gateways: Map<string, GatewayRecord>;
+  }> {
+    const [gateways, mapping] = await Promise.all([
+      this.registry.listGateways(),
+      this.registry.resolveProfile(profile),
+    ]);
+    const byId = new Map(gateways.map((g) => [g.id, g]));
+    const out: Candidate[] = [];
+    for (const m of mapping) {
+      const g = byId.get(m.gatewayId);
+      if (!g) continue; // gateway deleted or disabled since mapping
+      out.push({
+        gatewayId: g.id,
+        gatewayName: g.name,
+        modelId: m.modelId,
+        priority: g.priority,
+        weight: g.weight,
+        latencyMs: g.latencyMs ?? null,
+        consecutiveFailures: g.consecutiveFailures,
+        enabled: g.enabled,
+        maxRetries: g.maxRetries ?? DEFAULT_GATEWAY_RETRIES,
+      });
+    }
+    return { candidates: out, gateways: byId };
+  }
+
+  /**
+   * Run a non-streaming generation with bounded retry/fallback.
+   *
+   * Every attempt is recorded. On total failure the last classified error
+   * is thrown — callers persist the generation as FAILED with that
+   * category, never the raw provider message.
+   */
+  async generate(opts: GenerateOptions): Promise<GenerateResult> {
+    const { candidates, gateways } = await this.candidates(opts.profile);
+    const plan = planAttempts(candidates, opts.strategy ?? "PRIORITY", {
+      random: opts.random,
+      roundRobinCursor: opts.roundRobinCursor?.(),
+      maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+    });
+    if (plan.length === 0) throw new NoRouteError(opts.profile);
+
+    const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+
+    let last: GatewayError | null = null;
+    for (let i = 0; i < plan.length; i++) {
+      const target = plan[i]!;
+      const rec = gateways.get(target.gatewayId);
+      if (!rec) continue;
+      const adapter = this.build(rec);
+      const started = Date.now();
+      try {
+        const result = await adapter.generate({
+          model: target.modelId,
+          messages: opts.messages,
+          temperature: opts.temperature,
+          maxTokens: opts.maxTokens,
+          signal: opts.signal,
+        });
+        const latencyMs = Date.now() - started;
+        await this.registry.recordAttempt(opts.generationId, {
+          attemptNumber: i + 1,
+          gatewayId: target.gatewayId,
+          modelId: result.model,
+          status: "SUCCEEDED",
+          errorCategory: "NONE",
+          errorMessage: null,
+          latencyMs,
+        });
+        await this.registry.updateGatewayHealth(target.gatewayId, {
+          ok: true,
+          category: null,
+          latencyMs,
+        });
+        return result;
+      } catch (err) {
+        const gerr =
+          err instanceof GatewayError
+            ? err
+            : new GatewayError("INTERNAL", "generate: gateway error");
+        last = gerr;
+        const latencyMs = Date.now() - started;
+        await this.registry.recordAttempt(opts.generationId, {
+          attemptNumber: i + 1,
+          gatewayId: target.gatewayId,
+          modelId: target.modelId,
+          status: attemptStatus(gerr.category, gerr.partial),
+          errorCategory: gerr.category,
+          errorMessage: gerr.message,
+          latencyMs,
+        });
+        // Only failures attributable to the gateway instance may count
+        // against its breaker; a malformed request or a cancellation
+        // would fail identically everywhere.
+        if (isGatewayFault(gerr.category)) {
+          await this.registry.updateGatewayHealth(target.gatewayId, {
+            ok: false,
+            category: gerr.category,
+            latencyMs,
+          });
+        }
+        if (!shouldTryNext(gerr.category, i + 1, plan.length)) break;
+        // Back off before the next transport attempt.
+        const delay = backoffDelayMs(i + 1, 250, 8_000, opts.random);
+        if (delay > 0) await sleep(delay);
+      }
+    }
+    throw last ?? new NoRouteError(opts.profile);
+  }
+
+  /**
+   * Streamed generation. Retries only while NOTHING has been emitted — a
+   * stream that already produced text is marked partial and rethrown so
+   * the caller records INCOMPLETE instead of duplicating output
+   * (OMNIROUTE-INTEGRATION.md "Streaming").
+   */
+  async *generateStream(
+    opts: GenerateOptions,
+  ): AsyncGenerator<StreamChunk, void, unknown> {
+    const { candidates, gateways } = await this.candidates(opts.profile);
+    const plan = planAttempts(candidates, opts.strategy ?? "PRIORITY", {
+      random: opts.random,
+      roundRobinCursor: opts.roundRobinCursor?.(),
+      maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+    });
+    if (plan.length === 0) throw new NoRouteError(opts.profile);
+
+    const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+
+    let last: GatewayError | null = null;
+    for (let i = 0; i < plan.length; i++) {
+      const target = plan[i]!;
+      const rec = gateways.get(target.gatewayId);
+      if (!rec) continue;
+      const adapter = this.build(rec);
+      const started = Date.now();
+      let emitted = false;
+      const stream = adapter.generateStream({
+        model: target.modelId,
+        messages: opts.messages,
+        temperature: opts.temperature,
+        maxTokens: opts.maxTokens,
+        signal: opts.signal,
+      });
+
+      // Deliberate structure: `yield` sits inside try/FINALLY, never
+      // inside a catch. A throw from the consumer's loop body (a DB write
+      // failing mid-persist, the client disconnecting) is injected at the
+      // yield point; with a catch here it would be misread as a gateway
+      // failure and could take a healthy gateway out of rotation. Only a
+      // throw from `stream.next()` — the transport — is a gateway error.
+      let failure: GatewayError | null = null;
+      let finished = false;
+      try {
+        while (true) {
+          let next: IteratorResult<StreamChunk>;
+          try {
+            next = await stream.next();
+          } catch (err) {
+            failure =
+              err instanceof GatewayError
+                ? err
+                : new GatewayError("INTERNAL", "generateStream: gateway error");
+            break;
+          }
+          if (next.done) {
+            finished = true;
+            break;
+          }
+          emitted = true;
+          yield next.value;
+        }
+      } finally {
+        // Release the upstream body on every exit path, including a
+        // consumer abandoning the generator early.
+        await stream.return(undefined).catch(() => undefined);
+      }
+
+      const latencyMs = Date.now() - started;
+      if (finished) {
+        await this.registry.recordAttempt(opts.generationId, {
+          attemptNumber: i + 1,
+          gatewayId: target.gatewayId,
+          modelId: target.modelId,
+          status: "SUCCEEDED",
+          errorCategory: "NONE",
+          errorMessage: null,
+          latencyMs,
+        });
+        await this.registry.updateGatewayHealth(target.gatewayId, {
+          ok: true,
+          category: null,
+          latencyMs,
+        });
+        return;
+      }
+
+      const gerr = failure!;
+      last = gerr;
+      await this.registry.recordAttempt(opts.generationId, {
+        attemptNumber: i + 1,
+        gatewayId: target.gatewayId,
+        modelId: target.modelId,
+        status: attemptStatus(gerr.category, emitted),
+        errorCategory: gerr.category,
+        errorMessage: gerr.message,
+        latencyMs,
+      });
+      if (isGatewayFault(gerr.category)) {
+        await this.registry.updateGatewayHealth(target.gatewayId, {
+          ok: false,
+          category: gerr.category,
+          latencyMs,
+        });
+      }
+      // Never restart a stream that already produced content.
+      if (emitted) throw gerr;
+      if (!shouldTryNext(gerr.category, i + 1, plan.length)) break;
+      const delay = backoffDelayMs(i + 1, 250, 8_000, opts.random);
+      if (delay > 0) await sleep(delay);
+    }
+    throw last ?? new NoRouteError(opts.profile);
+  }
+
+  /** Discover a single gateway's model catalog (admin sync path). */
+  async listModelsFor(gatewayId: string): Promise<GatewayModel[]> {
+    const rec = (await this.registry.listGateways()).find((g) => g.id === gatewayId);
+    if (!rec) {
+      // The registry omits gateways whose credential cannot be decrypted,
+      // so this is a configuration fault (bad key / disabled), not a
+      // transport failure — callers map it to a diagnosable error.
+      throw new GatewayError(
+        "INVALID_REQUEST",
+        "gateway not found, disabled, or credential unreadable",
+      );
+    }
+    return this.build(rec).listModels();
+  }
+
+  /** Health probe across all enabled gateways (background job entry). */
+  async checkHealth(): Promise<
+    Array<{ gatewayId: string; healthy: boolean; latencyMs: number }>
+  > {
+    const gateways = (await this.registry.listGateways()).filter((g) => g.enabled);
+    const out: Array<{ gatewayId: string; healthy: boolean; latencyMs: number }> = [];
+    for (const rec of gateways) {
+      const adapter = this.build(rec);
+      const started = Date.now();
+      const probe = await adapter.healthCheck();
+      const latencyMs = Date.now() - started;
+      // Record the classified reason, so an auth failure is not filed as
+      // a transient outage. A failed probe is not a per-request failure,
+      // so it does not count against the breaker.
+      await this.registry.updateGatewayHealth(rec.id, {
+        ok: probe.healthy,
+        category: probe.category,
+        latencyMs,
+        probe: true,
+      });
+      out.push({ gatewayId: rec.id, healthy: probe.healthy, latencyMs });
+    }
+    return out;
+  }
+}
+
+function attemptStatus(
+  category: ErrorCategory,
+  partial: boolean,
+): AttemptRecord["status"] {
+  if (category === "RATE_LIMIT") return "RATE_LIMITED";
+  if (category === "TRANSIENT" && partial) return "TIMEOUT";
+  return "FAILED";
+}
+
+/** Re-exported for callers that classify their own errors. */
+export { isRetryable };

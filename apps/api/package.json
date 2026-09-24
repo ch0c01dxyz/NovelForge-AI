@@ -12,6 +12,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
     "@fastify/rate-limit": "^11.2.0",
+    "@novelforge/ai-core": "workspace:*",
     "@novelforge/auth": "workspace:*",
     "@novelforge/config": "workspace:*",
     "@novelforge/database": "workspace:*",

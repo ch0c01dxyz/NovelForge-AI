@@ -31,6 +31,18 @@ export class ConflictError extends Error {
 }
 
 /**
+ * An upstream dependency (an LLM gateway) was unreachable or failed.
+ * Distinct from ConflictError: the request was valid, the *upstream* is
+ * the problem, which is a 502 — not a 409 and not a 500.
+ */
+export class BadGatewayError extends Error {
+  readonly code = "BAD_GATEWAY" as const;
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
  * Unique-constraint violations (Prisma P2002) from create-race losers map to
  * the same 409 as the pre-check — never a 500. Duck-typed on `code` so it
  * holds regardless of how the driver adapter wraps the error.

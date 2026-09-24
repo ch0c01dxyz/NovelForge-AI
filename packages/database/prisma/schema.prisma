@@ -27,11 +27,21 @@ enum NovelStatus {
   ARCHIVED
 }
 
+/// Platform-level role. Deliberately separate from MembershipRole: a
+/// workspace OWNER must not be able to manage global LLM gateway
+/// credentials just by creating a workspace (ADR-0004/ADR-0005).
+enum PlatformRole {
+  SUPER_ADMIN
+}
+
 model User {
   id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email               String           @unique
   passwordHash        String           @map("password_hash")
   displayName         String           @map("display_name")
+  /// Null for ordinary users. Grants platform-wide administration
+  /// (gateway/model registry) — never implied by workspace membership.
+  platformRole        PlatformRole?    @map("platform_role")
   createdAt           DateTime         @default(now()) @map("created_at")
   updatedAt           DateTime         @updatedAt @map("updated_at")
   sessions            Session[]
@@ -217,4 +227,178 @@ model Scene {
   @@unique([chapterId, number])
   @@index([chapterId])
   @@map("scenes")
+}
+
+// ==================== AI Infrastructure (Phase 3) ====================
+// Scope: gateways, discovered model catalog, model-profile mappings, and
+// logical generation/attempt records per docs/06-ai/OMNIROUTE-INTEGRATION.md
+// and CLAUDE.md §6. Gateway credentials are stored encrypted only; the
+// ciphertext never leaves the server (CLAUDE.md §14).
+
+enum GatewayHealth {
+  UNKNOWN
+  HEALTHY
+  DEGRADED
+  DOWN
+}
+
+/** Capability abstractions application code requests (ADR-005). */
+enum ModelProfile {
+  CREATIVE_WRITER
+  DEEP_PLANNER
+  CONTINUITY_REVIEWER
+  FAST_CLASSIFIER
+  STRUCTURED_EXTRACTOR
+  LONG_CONTEXT_REVIEWER
+  EMBEDDING
+}
+
+enum GenerationStatus {
+  PENDING
+  IN_PROGRESS
+  SUCCEEDED
+  /// Stream interrupted / partial output — never treated as success.
+  INCOMPLETE
+  FAILED
+}
+
+enum AttemptStatus {
+  SUCCEEDED
+  FAILED
+  TIMEOUT
+  RATE_LIMITED
+}
+
+/** Error classification drives retry/fallback decisions (CLAUDE.md §27). */
+enum ErrorCategory {
+  NONE
+  /// Timeout, connection reset, 5xx — plausibly transient.
+  TRANSIENT
+  RATE_LIMIT
+  AUTH
+  /// Malformed request/schema — retrying cannot help.
+  INVALID_REQUEST
+  UNSUPPORTED
+  DETERMINISTIC
+  INTERNAL
+}
+
+model AIGateway {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String        @unique
+  baseUrl              String        @map("base_url")
+  /// AES-256-GCM ciphertext (iv:tag:data). Never selected into API responses.
+  credentialCiphertext String        @map("credential_ciphertext")
+  enabled              Boolean       @default(true)
+  /// Lower value = preferred when routing by priority.
+  priority             Int           @default(100)
+  weight               Int           @default(1)
+  timeoutMs            Int           @default(60000) @map("timeout_ms")
+  maxRetries           Int           @default(2) @map("max_retries")
+  health               GatewayHealth @default(UNKNOWN)
+  lastHealthCheckAt    DateTime?     @map("last_health_check_at")
+  lastErrorAt          DateTime?     @map("last_error_at")
+  lastErrorCategory    ErrorCategory? @map("last_error_category")
+  /// Circuit-breaker input: reset on success, incremented on failure.
+  consecutiveFailures  Int           @default(0) @map("consecutive_failures")
+  /// Last observed round-trip latency; drives LEAST_LATENCY routing.
+  latencyMs            Int?          @map("latency_ms")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+  models               AIModel[]
+  attempts             GenerationAttempt[]
+
+  @@index([enabled, priority])
+  @@map("ai_gateways")
+}
+
+/// Normalized local catalog of models discovered from a gateway.
+/// Model identifiers are data, never code constants (ADR-005).
+model AIModel {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gatewayId     String    @map("gateway_id") @db.Uuid
+  gateway       AIGateway @relation(fields: [gatewayId], references: [id], onDelete: Cascade)
+  /// Provider model string, e.g. "gpt-4o-mini".
+  modelId       String    @map("model_id")
+  displayName   String?   @map("display_name")
+  /// e.g. ["chat", "streaming", "embeddings", "vision"].
+  capabilities  String[]
+  contextWindow Int?      @map("context_window")
+  enabled       Boolean   @default(true)
+  discoveredAt  DateTime  @default(now()) @map("discovered_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  profileMaps   ModelProfileMapping[]
+
+  @@unique([gatewayId, modelId])
+  @@index([enabled])
+  @@map("ai_models")
+}
+
+/// Admin mapping: which concrete model serves a capability profile.
+model ModelProfileMapping {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile   ModelProfile
+  modelRef  String       @map("model_ref") @db.Uuid
+  model     AIModel      @relation(fields: [modelRef], references: [id], onDelete: Cascade)
+  /// Lower = preferred among models mapped to the same profile.
+  priority  Int          @default(100)
+  enabled   Boolean      @default(true)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  @@unique([profile, modelRef])
+  @@index([profile, enabled, priority])
+  @@map("model_profile_mappings")
+}
+
+/// One logical AI request. Owned by NovelForge regardless of how many
+/// transport attempts or upstream fallbacks OmniRoute performs.
+model Generation {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String?          @map("workspace_id") @db.Uuid
+  novelId         String?          @map("novel_id") @db.Uuid
+  userId          String?          @map("user_id") @db.Uuid
+  task            String
+  modelProfile    ModelProfile     @map("model_profile")
+  status          GenerationStatus @default(PENDING)
+  /// Prompt template version, when the request used a versioned prompt.
+  promptVersion   String?          @map("prompt_version")
+  /// Source identifiers used to build context (provenance, CLAUDE.md §7).
+  contextSnapshot Json             @default("{}") @map("context_snapshot")
+  inputTokens     Int?             @map("input_tokens")
+  outputTokens    Int?             @map("output_tokens")
+  latencyMs       Int?             @map("latency_ms")
+  errorCategory   ErrorCategory?   @map("error_category")
+  /// Sanitized message only — never credentials or raw provider bodies.
+  errorMessage    String?          @map("error_message")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  completedAt     DateTime?        @map("completed_at")
+  attempts        GenerationAttempt[]
+
+  @@index([workspaceId, createdAt])
+  @@index([novelId, createdAt])
+  @@map("generations")
+}
+
+/// One transport attempt against one gateway/model.
+model GenerationAttempt {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  generationId  String        @map("generation_id") @db.Uuid
+  generation    Generation    @relation(fields: [generationId], references: [id], onDelete: Cascade)
+  attemptNumber Int           @map("attempt_number")
+  gatewayId     String?       @map("gateway_id") @db.Uuid
+  gateway       AIGateway?    @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
+  /// Resolved provider model string for this attempt.
+  modelId       String?       @map("model_id")
+  status        AttemptStatus
+  errorCategory ErrorCategory @default(NONE) @map("error_category")
+  errorMessage  String?       @map("error_message")
+  latencyMs     Int?          @map("latency_ms")
+  startedAt     DateTime      @default(now()) @map("started_at")
+  endedAt       DateTime?     @map("ended_at")
+
+  @@unique([generationId, attemptNumber])
+  @@index([gatewayId, startedAt])
+  @@map("generation_attempts")
 }

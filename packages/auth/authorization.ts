@@ -25,6 +25,14 @@ export const CAPABILITIES = [
   "chapter:update",
   "chapter:delete",
   "chapter:publish",
+  // AI infrastructure (Phase 3) — platform-wide, not workspace-scoped.
+  // Reading a gateway/model never exposes credentials; managing them does.
+  "gateway:read",
+  "gateway:manage",
+  "model:read",
+  "model:manage",
+  "generation:create",
+  "generation:read",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -33,11 +41,30 @@ export const ROLES = ["OWNER", "ADMIN", "AUTHOR", "EDITOR", "VIEWER"] as const;
 export type Role = (typeof ROLES)[number];
 
 /**
+ * Capabilities that only a platform administrator may hold (ADR-0005).
+ *
+ * These govern platform-wide resources — LLM gateway instances and their
+ * credentials, and the model registry. A workspace role must never confer
+ * them: workspace membership is per-tenant and self-service, so mapping
+ * these to OWNER would let anyone who creates a workspace manage global
+ * provider secrets (CLAUDE.md §13/§14). Declared before ROLE_CAPABILITIES
+ * because OWNER's set is built from it.
+ */
+export const PLATFORM_ONLY_CAPABILITIES: ReadonlySet<Capability> = new Set([
+  "gateway:read",
+  "gateway:manage",
+  "model:read",
+  "model:manage",
+]);
+
+/**
  * Role -> capability mapping (ADR-0004). Ordered from most to least
  * privileged; every role includes novel:read.
  */
 export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
-  OWNER: new Set<Capability>(CAPABILITIES),
+  OWNER: new Set<Capability>(
+    CAPABILITIES.filter((c) => !PLATFORM_ONLY_CAPABILITIES.has(c)),
+  ),
   ADMIN: new Set<Capability>([
     "workspace:update",
     "member:invite",
@@ -53,6 +80,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "chapter:update",
     "chapter:delete",
     "chapter:publish",
+    // ADMIN is more privileged than AUTHOR/EDITOR, which both hold these;
+    // omitting them would make ADMIN unable to use AI generation at all.
+    "generation:create",
+    "generation:read",
   ]),
   AUTHOR: new Set<Capability>([
     "novel:create",
@@ -62,12 +93,16 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "chapter:create",
     "chapter:read",
     "chapter:update",
+    "generation:create",
+    "generation:read",
   ]),
   EDITOR: new Set<Capability>([
     "novel:read",
     "novel:update",
     "chapter:read",
     "chapter:update",
+    "generation:create",
+    "generation:read",
   ]),
   VIEWER: new Set<Capability>(["novel:read", "chapter:read"]),
 };
@@ -89,5 +124,46 @@ export function requireCapability(role: Role, capability: Capability): void {
   if (!can(role, capability)) throw new ForbiddenError(capability);
 }
 
-/** Membership changes must not create multiple owners or demote the last one. */
-export const OWNER_MANAGEMENT_CAPS = ["member:change-role", "member:remove"] as const;
+export type PlatformRole = "SUPER_ADMIN" | null;
+
+/**
+ * Capabilities a platform administrator may exercise. Deliberately a
+ * closed set: platform administration must never become a bypass for
+ * workspace authorization (a super admin is not implicitly a member of
+ * every workspace). `model:read` is included because reading the model
+ * registry is part of administration.
+ */
+export const PLATFORM_CAPABILITIES: ReadonlySet<Capability> = new Set([
+  "gateway:read",
+  "gateway:manage",
+  "model:read",
+  "model:manage",
+]);
+
+/**
+ * Platform-level authorization. Separate axis from workspace roles:
+ * `platformRole` comes from the user row, not from a membership, and it
+ * only ever confers PLATFORM_CAPABILITIES.
+ */
+export function canPlatform(
+  platformRole: PlatformRole,
+  capability: Capability,
+): boolean {
+  return platformRole === "SUPER_ADMIN" && PLATFORM_CAPABILITIES.has(capability);
+}
+
+export class PlatformForbiddenError extends Error {
+  readonly code = "FORBIDDEN" as const;
+  constructor(capability: Capability) {
+    super(`platform capability required: ${capability}`);
+  }
+}
+
+export function requirePlatformCapability(
+  platformRole: PlatformRole,
+  capability: Capability,
+): void {
+  if (!canPlatform(platformRole, capability)) {
+    throw new PlatformForbiddenError(capability);
+  }
+}

@@ -13,14 +13,18 @@ import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import type { Env } from "@novelforge/config";
 import type { NovelForgeDb } from "@novelforge/database";
+import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
 import { createAuthService } from "@novelforge/auth";
 import { prismaSessionStore, prismaUserStore } from "./auth-stores.ts";
 import { registerAuthRoutes } from "./auth-routes.ts";
 import { registerPlatformRoutes } from "./platform-routes.ts";
 import { registerManuscriptRoutes } from "./manuscript-routes.ts";
+import { registerAiRoutes } from "./ai-routes.ts";
 import { createAuditService } from "./services/audit.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
+import { createAiServices } from "./services/ai.ts";
+import { createGatewayRegistry } from "./ai-registry.ts";
 
 export type CheckState = "up" | "down";
 
@@ -71,6 +75,13 @@ export interface BuildAppOptions {
    * Tests without a DB get the bare health/ready app.
    */
   db?: NovelForgeDb;
+  /**
+   * Transport seam for the AI gateway adapter. Tests supply a fake so no
+   * test ever reaches a real provider (CLAUDE.md §25); persistence and
+   * routing stay real. Production omits this and the OmniRoute adapter
+   * is built from the gateway's stored record.
+   */
+  createGateway?: (rec: GatewayRecord) => AIGateway;
 }
 
 export async function buildApp(
@@ -117,6 +128,25 @@ export async function buildApp(
     registerManuscriptRoutes(app, {
       auth,
       services: createManuscriptServices(options.db, createAuditService(options.db)),
+    });
+    registerAiRoutes(app, {
+      auth,
+      services: createAiServices({
+        db: options.db,
+        registry: createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY),
+        encryptionKey: env.APP_ENCRYPTION_KEY,
+        audit: createAuditService(options.db),
+        // Tests inject a fake adapter here so no test reaches a real
+        // provider; persistence stays real (CLAUDE.md §25).
+        ...(options.createGateway ? { createGateway: options.createGateway } : {}),
+      }),
+      platformRoleOf: async (userId) => {
+        const user = await options.db!.user.findUnique({
+          where: { id: userId },
+          select: { platformRole: true },
+        });
+        return user?.platformRole ?? null;
+      },
     });
   }
 

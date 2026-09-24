@@ -19,6 +19,12 @@ export const CAPABILITIES = [
   "novel:update",
   "novel:delete",
   "novel:archive",
+  // Manuscript (Phase 2)
+  "chapter:create",
+  "chapter:read",
+  "chapter:update",
+  "chapter:delete",
+  "chapter:publish",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -42,15 +48,28 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "novel:update",
     "novel:delete",
     "novel:archive",
+    "chapter:create",
+    "chapter:read",
+    "chapter:update",
+    "chapter:delete",
+    "chapter:publish",
   ]),
   AUTHOR: new Set<Capability>([
     "novel:create",
     "novel:read",
     "novel:update",
     "novel:archive",
+    "chapter:create",
+    "chapter:read",
+    "chapter:update",
   ]),
-  EDITOR: new Set<Capability>(["novel:read", "novel:update"]),
-  VIEWER: new Set<Capability>(["novel:read"]),
+  EDITOR: new Set<Capability>([
+    "novel:read",
+    "novel:update",
+    "chapter:read",
+    "chapter:update",
+  ]),
+  VIEWER: new Set<Capability>(["novel:read", "chapter:read"]),
 };
 
 /** Can `role` perform `capability`? */

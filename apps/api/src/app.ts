@@ -17,8 +17,10 @@ import { createAuthService } from "@novelforge/auth";
 import { prismaSessionStore, prismaUserStore } from "./auth-stores.ts";
 import { registerAuthRoutes } from "./auth-routes.ts";
 import { registerPlatformRoutes } from "./platform-routes.ts";
+import { registerManuscriptRoutes } from "./manuscript-routes.ts";
 import { createAuditService } from "./services/audit.ts";
 import { createPlatformServices } from "./services/platform.ts";
+import { createManuscriptServices } from "./services/manuscript.ts";
 
 export type CheckState = "up" | "down";
 
@@ -111,6 +113,10 @@ export async function buildApp(
         db: options.db,
         audit: createAuditService(options.db),
       }),
+    });
+    registerManuscriptRoutes(app, {
+      auth,
+      services: createManuscriptServices(options.db),
     });
   }
 

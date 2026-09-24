@@ -13,10 +13,13 @@ describe("capability model", () => {
     for (const c of CAPABILITIES) expect(can("OWNER", c)).toBe(true);
   });
 
-  it("VIEWER can only read novels", () => {
+  it("VIEWER can only read novels and chapters", () => {
     expect(can("VIEWER", "novel:read")).toBe(true);
+    expect(can("VIEWER", "chapter:read")).toBe(true);
     for (const c of CAPABILITIES) {
-      if (c !== "novel:read") expect(can("VIEWER", c)).toBe(false);
+      if (c !== "novel:read" && c !== "chapter:read") {
+        expect(can("VIEWER", c)).toBe(false);
+      }
     }
   });
 

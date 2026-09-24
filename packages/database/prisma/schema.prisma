@@ -28,17 +28,19 @@ enum NovelStatus {
 }
 
 model User {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email        String       @unique
-  passwordHash String       @map("password_hash")
-  displayName  String       @map("display_name")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
-  sessions     Session[]
-  memberships  Membership[]
-  ownedWorkspaces Workspace[] @relation("WorkspaceOwner")
-  createdNovels   Novel[]     @relation("NovelCreator")
-  auditEntries    AuditLog[]  @relation("AuditActor")
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email               String           @unique
+  passwordHash        String           @map("password_hash")
+  displayName         String           @map("display_name")
+  createdAt           DateTime         @default(now()) @map("created_at")
+  updatedAt           DateTime         @updatedAt @map("updated_at")
+  sessions            Session[]
+  memberships         Membership[]
+  ownedWorkspaces     Workspace[]      @relation("WorkspaceOwner")
+  createdNovels       Novel[]          @relation("NovelCreator")
+  auditEntries        AuditLog[]       @relation("AuditActor")
+  createdChapters     Chapter[]        @relation("ChapterCreator")
+  authoredChapterVers ChapterVersion[] @relation("ChapterVersionAuthor")
 
   @@map("users")
 }
@@ -59,15 +61,15 @@ model Session {
 }
 
 model Workspace {
-  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name        String
-  slug        String       @unique
-  ownerId     String       @map("owner_id") @db.Uuid
-  owner       User         @relation("WorkspaceOwner", fields: [ownerId], references: [id])
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  memberships Membership[]
-  novels      Novel[]
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  slug         String       @unique
+  ownerId      String       @map("owner_id") @db.Uuid
+  owner        User         @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  memberships  Membership[]
+  novels       Novel[]
   auditEntries AuditLog[]
 
   @@map("workspaces")
@@ -89,17 +91,18 @@ model Membership {
 }
 
 model Novel {
-  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId   String         @map("workspace_id") @db.Uuid
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  title         String
-  slug          String
-  status        NovelStatus    @default(DRAFT)
-  createdById   String         @map("created_by_id") @db.Uuid
-  createdBy     User           @relation("NovelCreator", fields: [createdById], references: [id])
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
-  settings      NovelSettings?
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title       String
+  slug        String
+  status      NovelStatus    @default(DRAFT)
+  createdById String         @map("created_by_id") @db.Uuid
+  createdBy   User           @relation("NovelCreator", fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  settings    NovelSettings?
+  chapters    Chapter[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -135,4 +138,83 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ==================== Manuscript (Phase 2) ====================
+// Scope: chapters/scenes + immutable chapter versions per
+// docs/04-data/DATA-MODEL-BLUEPRINT.md §Manuscript. Branches/checkpoints
+// are Phase 11 (story versioning); scene versions deferred until editing
+// pressure demands them.
+
+enum ChapterStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+}
+
+model Chapter {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId          String           @map("novel_id") @db.Uuid
+  novel            Novel            @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  // Chapter order within the novel. Unique per novel; reorder swaps numbers
+  // inside a transaction.
+  number           Int
+  title            String
+  status           ChapterStatus    @default(DRAFT)
+  // Points at the current immutable version; null until first save.
+  // onDelete: SetNull — deleting a chapter drops its versions (Cascade on
+  // ChapterVersion.chapter), so the pointer must not block that cascade.
+  currentVersionId String?          @unique @map("current_version_id") @db.Uuid
+  currentVersion   ChapterVersion?  @relation("CurrentChapterVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  wordCount        Int              @default(0) @map("word_count")
+  createdById      String           @map("created_by_id") @db.Uuid
+  createdBy        User             @relation("ChapterCreator", fields: [createdById], references: [id])
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  versions         ChapterVersion[] @relation("ChapterVersions")
+  scenes           Scene[]
+
+  @@unique([novelId, number])
+  @@index([novelId, status])
+  @@map("chapters")
+}
+
+// Immutable manuscript snapshot (blueprint: "immutable revision/audit
+// records"). Every save creates a new row; content is never mutated in
+// place. Optimistic concurrency: save carries the version number the
+// author last saw; a mismatch is a 409.
+model ChapterVersion {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chapterId         String   @map("chapter_id") @db.Uuid
+  chapter           Chapter  @relation("ChapterVersions", fields: [chapterId], references: [id], onDelete: Cascade)
+  // Monotonic per chapter, enforced by (chapterId, number) unique.
+  number            Int
+  content           String   @db.Text
+  wordCount         Int      @map("word_count")
+  // Brief change note (autosave, manual save, import).
+  note              String?
+  authorId          String   @map("author_id") @db.Uuid
+  author            User     @relation("ChapterVersionAuthor", fields: [authorId], references: [id])
+  createdAt         DateTime @default(now()) @map("created_at")
+  // Opposite side of Chapter.currentVersion pointer.
+  currentForChapter Chapter? @relation("CurrentChapterVersion")
+
+  @@unique([chapterId, number])
+  @@index([chapterId, createdAt])
+  @@map("chapter_versions")
+}
+
+model Scene {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chapterId String   @map("chapter_id") @db.Uuid
+  chapter   Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  number    Int
+  title     String
+  summary   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([chapterId, number])
+  @@index([chapterId])
+  @@map("scenes")
 }

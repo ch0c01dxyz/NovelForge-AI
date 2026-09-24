@@ -25,5 +25,10 @@ export default defineConfig({
   },
   datasource: {
     url: DATABASE_URL,
+    // Shadow DB for migrate dev/diff; dropped/recreated by the CLI as
+    // needed (ADR-0003). Local compose default; overridable via env.
+    shadowDatabaseUrl:
+      process.env.SHADOW_DATABASE_URL ??
+      "postgresql://novelforge:novelforge@localhost:5432/novelforge_shadow",
   },
 });

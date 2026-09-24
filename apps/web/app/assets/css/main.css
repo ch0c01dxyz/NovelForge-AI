@@ -1,1 +1,44 @@
 @import "tailwindcss";
+
+/*
+ * NovelForge design tokens — source of truth:
+ * docs/design/DESIGN-TOKENS.md (OpenDesign-refined writer workspace).
+ * Semantic nf-* names, not global theme overrides, so intent survives.
+ */
+@theme {
+  /* Surfaces — stone ladder, deepest → highest */
+  --color-nf-bg-0: #0c0a09;
+  --color-nf-bg-1: #161412;
+  --color-nf-bg-2: #201d1b;
+  --color-nf-bg-3: #2a2725;
+  --color-nf-border: #33302d;
+  --color-nf-border-strong: #48443f;
+
+  /* Ink */
+  --color-nf-text: #f0eeec;
+  --color-nf-text-dim: #a8a29e;
+  --color-nf-text-faint: #79716b;
+
+  /* Accent — orange, RESTRICTED to: active state, primary CTA, AI affordances */
+  --color-nf-accent: #f97316;
+  --color-nf-accent-hi: #fb923c; /* text-safe on dark */
+  --color-nf-accent-ink: #1c1207; /* text on accent fills */
+
+  /* Semantics */
+  --color-nf-ok: #4ade80;
+  --color-nf-warn: #fbbf24;
+
+  /* Type voices */
+  --font-nf-ui: "Segoe UI", -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-nf-literary: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Times New Roman", serif;
+
+  /* Shadows */
+  --shadow-nf-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-nf-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -8px rgba(0, 0, 0, 0.45);
+}
+
+body {
+  background: var(--color-nf-bg-0);
+  color: var(--color-nf-text);
+  font-family: var(--font-nf-ui);
+}

@@ -18,6 +18,7 @@ import {
   NotFoundError,
   type PlatformServices,
 } from "./services/platform.ts";
+import { InvalidDefinitionError } from "./services/definitions.ts";
 
 const slug = z
   .string()
@@ -77,6 +78,15 @@ export async function registerPlatformRoutes(
     }
     if (error instanceof ConflictError) {
       return reply.code(409).send({ error: "CONFLICT" });
+    }
+    // A registered agent/skill/workflow contract or graph that this
+    // validator cannot enforce (Phase 4). The definition routes return the
+    // structured failures themselves; this is the backstop so an
+    // unwrapped path is a 400 rather than a 500.
+    if (error instanceof InvalidDefinitionError) {
+      return reply
+        .code(400)
+        .send({ error: "INVALID_DEFINITION", failures: error.failures });
     }
     // A valid request whose upstream (LLM gateway) failed: 502, not 500.
     if (error instanceof BadGatewayError) {

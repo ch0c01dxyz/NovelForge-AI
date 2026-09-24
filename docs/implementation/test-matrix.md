@@ -211,7 +211,64 @@ is stored as `v1:iv:tag:ciphertext` and never appears in a response or
 audit payload; a dead upstream yields 502 with `consecutive_failures=1`;
 an unreadable credential yields 409 with the breaker left at 0.
 
-## Phase 4+
+## Phase 4 — Agent / Skill / Workflow Platform
+
+| Area | Unit | Integration | Contract | E2E | Migration |
+| ---- | ---- | ----------- | -------- | --- | --------- |
+| Contract validator (`packages/validation`) | passing (55) | — | — | — | — |
+| Workflow graph validator | passing | — | — | — | — |
+| Phase 4 schema (`packages/database`) | — | passing | — | — | passing (drift-free, 8 migrations) |
+| Definition CRUD + versioning | — | passing | — | — | — |
+| Definition authorization | — | passing | — | — | — |
+| Workflow execution | — | passing | — | manual | — |
+| Structured-output enforcement | passing | passing | — | — | — |
+
+Executed results (2026-09-27, Windows, live compose PostgreSQL; supersedes
+the 2026-09-26 run):
+`validation.test.ts` (55) — fail-closed keyword screen (unknown keyword,
+`minItems`/`maxItems` alongside `type: "array"`, `not`/`if`/`definitions`,
+unsupported formats, remote `$ref`, non-JSON values, malformed pattern,
+depth bound, undeclared `required`, prototype-key `required`, a
+constraint with no discriminator, `$ref` siblings, local `$ref` cycles
+including indirect ones), enforcement against a real contract, local
+`$defs` resolution, hostile-value safety, JSON extraction from
+prose/fences, and graph validation: ordering, determinism across repeated
+calls, cycle, self-loop, CONDITION branch shape, a third outgoing edge,
+branch labels, unresolvable and unmatchable conditions, forward/unknown/
+malformed references, duplicate keys, `maxSteps`, per-step
+retry/timeout rejection, non-executable step kinds, VALIDATOR contract
+and input arity, `ref` placement, nested output schemas.
+`definitions.test.ts` (32, `novelforge_test_phase4`) — as
+previously, plus: a duplicate PLATFORM key is 409 with exactly one row
+stored; a workspace key may shadow a platform key; a failing step gets
+its own FAILED row carrying the sanitized summary; an
+`AWAITING_APPROVAL` run records a null `completedAt`.
+
+Migration verified: applies from empty on a scratch database through all
+eight migrations (`migrate deploy` on a fresh database, 2026-09-27), and
+`migrate diff --from-migrations --to-schema --exit-code` reports 0 (no
+drift) against the schema.
+`definitions.test.ts` (30, `novelforge_test_phase4`) — version append
+leaves the prior version intact; a contract the validator cannot enforce
+is rejected (400) with the offending path; cyclic graph rejected; publish
+without a version is 409; duplicate key 409; the same key in two
+workspaces is allowed; unauthenticated 401; another tenant's definition is
+404 and absent from its list; VIEWER denied; AUTHOR may read and run but
+not manage; PLATFORM scope requires `platform:define` while a workspace
+ADMIN is refused; a platform admin cannot write another tenant's
+definition; DRAFT platform definitions are invisible until published;
+three-agent pipeline runs in deterministic order with version pinning and
+one generation per step; repeated runs give identical order; CONDITION
+takes one branch and marks the other SKIPPED; HUMAN_APPROVAL stops the run
+with no model call; an unsatisfied contract fails the step; a satisfied
+one stores parsed JSON; `skillKeys` injection is present for granted
+skills and absent for ungranted; SKILL steps pin their version; a chain
+beginning with TRANSFORM runs every step; VALIDATOR failure fails the run;
+an unpublished agent reference refuses the run with no generation and no
+run row; a novel-bound workflow rejects a different novel; cross-tenant
+run is 404; run history lists; a completed run is audited.
+
+## Phase 5+
 
 Rows added when each phase starts. Mandatory cross-cutting scenarios
 (streaming interruption, candidate canon, etc.) are listed in TESTING.md

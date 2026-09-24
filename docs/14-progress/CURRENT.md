@@ -1,24 +1,40 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: **Phase 3 COMPLETE (2026-09-25)**. Phase 0
+Implementation status: **Phase 4 COMPLETE (2026-09-27)**. Phase 0
 (NF-0001..NF-0010), Phase 1 (auth, workspaces, memberships, novels,
 permissions, audit), Phase 2 (chapters, immutable versions, autosave,
-editor shell, import/export), and Phase 3 (AIGateway/OmniRoute adapter,
+editor shell, import/export), Phase 3 (AIGateway/OmniRoute adapter,
 gateway + model registry, model profiles, logical requests/attempts,
 bounded retry/fallback, error classification, generation history,
-platform-admin authorization) are implemented, tested, and verified
-end-to-end. See `docs/implementation/progress.md` and
+platform-admin authorization), and Phase 4 (versioned agents, skills and
+workflows, fail-closed structured-output contracts, validated acyclic
+workflow graphs, deterministic multi-agent execution, run history) are
+implemented, tested, and verified. Phase 4 was closed by a second-pass
+audit on 2026-09-27 that fixed eight further defects (see
+`progress.md`); full gate: lint 0, typecheck 0, 277 passed / 1 skipped.
+See `docs/implementation/progress.md` and
 `docs/implementation/test-matrix.md`.
 
 ## Next milestone
 
-Phase 4 --- Agent/Skill/Workflow Platform (versioned agents, skills,
-workflows, structured output contracts, task execution). Exit: chapter
-test workflow can run multiple agents deterministically.
+Phase 5 --- Knowledge & Retrieval (references, parsing/chunking,
+pgvector, hybrid retrieval, provenance). Exit: retrieval is
+evidence-bearing and tenant-safe.
 
-## Known gaps carried into Phase 4
+## Known gaps carried into Phase 5
 
+- Workflow `RETRIEVAL` steps validate as a graph kind but are not
+  executable; Phase 5 owns retrieval and will implement them.
+- Workflow runs execute synchronously within the request. Moving them to
+  the worker queue is a later concern (Phase 13); the run record already
+  carries status and timing for it.
+- An `AWAITING_APPROVAL` run stops but cannot yet be resumed. Its
+  `completedAt` is deliberately null so a resume path can distinguish it
+  from a finished run.
+- `WorkflowRun` -> `Workflow` is `onDelete: Cascade`, so deleting a
+  workflow would take its run history with it. Nothing deletes a workflow
+  today; move the FK to `Restrict` before a delete endpoint exists.
 - Routing strategy is deployment-wide (`AI_ROUTING_STRATEGY`); there is no
   per-workspace override and no operator UI to change it at runtime.
 - Scene CRUD is schema-only; no API until the editor needs scene editing.

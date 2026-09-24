@@ -51,6 +51,13 @@ model User {
   auditEntries        AuditLog[]       @relation("AuditActor")
   createdChapters     Chapter[]        @relation("ChapterCreator")
   authoredChapterVers ChapterVersion[] @relation("ChapterVersionAuthor")
+  createdAgents       Agent[]          @relation("AgentCreator")
+  authoredAgentVers   AgentVersion[]   @relation("AgentVersionAuthor")
+  createdSkills       Skill[]          @relation("SkillCreator")
+  authoredSkillVers   SkillVersion[]   @relation("SkillVersionAuthor")
+  createdWorkflows    Workflow[]       @relation("WorkflowCreator")
+  authoredFlowVers    WorkflowVersion[] @relation("WorkflowVersionAuthor")
+  triggeredRuns       WorkflowRun[]    @relation("WorkflowRunTrigger")
 
   @@map("users")
 }
@@ -81,6 +88,9 @@ model Workspace {
   memberships  Membership[]
   novels       Novel[]
   auditEntries AuditLog[]
+  agents       Agent[]
+  skills       Skill[]
+  workflows    Workflow[]
 
   @@map("workspaces")
 }
@@ -113,6 +123,7 @@ model Novel {
   updatedAt   DateTime       @updatedAt @map("updated_at")
   settings    NovelSettings?
   chapters    Chapter[]
+  workflows   Workflow[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -375,6 +386,7 @@ model Generation {
   updatedAt       DateTime         @updatedAt @map("updated_at")
   completedAt     DateTime?        @map("completed_at")
   attempts        GenerationAttempt[]
+  stepRuns        WorkflowStepRun[]
 
   @@index([workspaceId, createdAt])
   @@index([novelId, createdAt])
@@ -401,4 +413,313 @@ model GenerationAttempt {
   @@unique([generationId, attemptNumber])
   @@index([gatewayId, startedAt])
   @@map("generation_attempts")
+}
+
+// ==================== Agent / Skill / Workflow (Phase 4) ====================
+// Agents (WHO), skills (HOW), workflows (orchestration) per CLAUDE.md §3 and
+// docs/06-ai/AI-ORCHESTRATION.md.
+//
+// Versioning model matches Chapter/ChapterVersion (Phase 2): the definition
+// row holds identity and a pointer to the current immutable version, and
+// every edit appends a new version. A run stores the exact version numbers it
+// used, so a replayed run is explainable after the definitions move on
+// (CLAUDE.md §2.11 — every meaningful mutation is versioned and auditable).
+
+/// Visibility scope. Platform agents are shared infrastructure; workspace
+/// agents belong to one tenant and are invisible to every other tenant.
+enum DefinitionScope {
+  PLATFORM
+  WORKSPACE
+}
+
+/// Kind of workspace-owned resource a SKILL step operates on.
+enum SkillCategory {
+  RETRIEVAL
+  ANALYSIS
+  TRANSFORM
+  VALIDATION
+}
+
+enum AgentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SkillStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum WorkflowStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum WorkflowRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  /// Stopped at a HUMAN_APPROVAL step. Terminal for now: the run halts and
+  /// nothing resumes it — a resume path (approve/reject + continue from the
+  /// parked step) is not implemented yet. `completedAt` is left null on these
+  /// rows so "parked" stays distinguishable from "done".
+  AWAITING_APPROVAL
+  CANCELLED
+}
+
+enum StepRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  AWAITING_APPROVAL
+}
+
+/// An AI role: WHO performs a task (CLAUDE.md §3 "Agent").
+model Agent {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scope            DefinitionScope  @default(WORKSPACE)
+  /// Null for PLATFORM-scoped definitions; set for WORKSPACE-scoped ones.
+  workspaceId      String?          @map("workspace_id") @db.Uuid
+  workspace        Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Stable machine name, unique within its scope (lowercase kebab).
+  key              String
+  name             String
+  description      String?
+  status           AgentStatus      @default(DRAFT)
+  /// Points at the current immutable version; null until first version.
+  currentVersionId String?          @unique @map("current_version_id") @db.Uuid
+  currentVersion   AgentVersion?    @relation("CurrentAgentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdById      String           @map("created_by_id") @db.Uuid
+  createdBy        User             @relation("AgentCreator", fields: [createdById], references: [id])
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  versions         AgentVersion[]   @relation("AgentVersions")
+  workflowSteps    WorkflowStepRun[] @relation("StepRunAgent")
+
+  /// Scoped key. NOTE: PostgreSQL treats NULL as distinct, so this index
+  /// does NOT constrain PLATFORM rows (workspaceId IS NULL) — it only
+  /// enforces one key per workspace. A duplicate PLATFORM key is therefore
+  /// possible at the database level; uniqueness there is enforced in the
+  /// service layer (`gateDefinitionWrite` + `rethrowUnique`) rather than by
+  /// a partial index, which Prisma cannot express in the schema.
+  /// A WORKSPACE row and a PLATFORM row may legitimately share a key: the
+  /// workspace row shadows the shared one at resolve time.
+  @@unique([scope, workspaceId, key], name: "agent_scope_workspace_key")
+  @@index([workspaceId, status])
+  @@map("agents")
+}
+
+/// Immutable agent revision. Never updated in place.
+model AgentVersion {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId     String   @map("agent_id") @db.Uuid
+  agent       Agent    @relation("AgentVersions", fields: [agentId], references: [id], onDelete: Cascade)
+  /// Monotonic per agent, enforced by (agentId, number) unique.
+  number      Int
+  /// Task-oriented system instruction for this role.
+  instructions String  @db.Text
+  /// Model capability this agent asks for (never a provider model name).
+  modelProfile ModelProfile @map("model_profile")
+  /// Skill keys this agent may invoke. Explicit allowlist (SECURITY.md).
+  skillKeys   String[] @map("skill_keys")
+  /// Optional structured-output contract (JSON Schema subset).
+  outputSchema Json?   @map("output_schema")
+  /// Default sampling settings, merged under any per-run override.
+  temperature Float?
+  maxTokens   Int?     @map("max_tokens")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdBy   User     @relation("AgentVersionAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  currentFor  Agent?   @relation("CurrentAgentVersion")
+  stepRuns    WorkflowStepRun[]
+
+  @@unique([agentId, number])
+  @@index([agentId, createdAt])
+  @@map("agent_versions")
+}
+
+/// A reusable capability: HOW a task is performed (CLAUDE.md §3 "Skill").
+model Skill {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scope            DefinitionScope  @default(WORKSPACE)
+  workspaceId      String?          @map("workspace_id") @db.Uuid
+  workspace        Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  key              String
+  name             String
+  description      String?
+  category         SkillCategory    @default(ANALYSIS)
+  status           SkillStatus      @default(DRAFT)
+  currentVersionId String?          @unique @map("current_version_id") @db.Uuid
+  currentVersion   SkillVersion?    @relation("CurrentSkillVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdById      String           @map("created_by_id") @db.Uuid
+  createdBy        User             @relation("SkillCreator", fields: [createdById], references: [id])
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  versions         SkillVersion[]   @relation("SkillVersions")
+  workflowSteps    WorkflowStepRun[] @relation("StepRunSkill")
+
+  @@unique([scope, workspaceId, key], name: "skill_scope_workspace_key")
+  @@index([workspaceId, status])
+  @@map("skills")
+}
+
+model SkillVersion {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  skillId     String   @map("skill_id") @db.Uuid
+  skill       Skill    @relation("SkillVersions", fields: [skillId], references: [id], onDelete: Cascade)
+  number      Int
+  /// Instruction describing how this capability is performed.
+  instructions String  @db.Text
+  /// Model capability this skill needs when it runs on its own.
+  modelProfile ModelProfile @map("model_profile")
+  outputSchema Json?   @map("output_schema")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdBy   User     @relation("SkillVersionAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  currentFor  Skill?   @relation("CurrentSkillVersion")
+  stepRuns    WorkflowStepRun[]
+
+  @@unique([skillId, number])
+  @@index([skillId, createdAt])
+  @@map("skill_versions")
+}
+
+/// Orchestration of agents, skills, retrieval and approvals (CLAUDE.md §3).
+model Workflow {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scope            DefinitionScope  @default(WORKSPACE)
+  workspaceId      String?          @map("workspace_id") @db.Uuid
+  workspace        Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Scoped to a single novel when set; workspace-wide when null.
+  novelId          String?          @map("novel_id") @db.Uuid
+  novel            Novel?           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  key              String
+  name             String
+  description      String?
+  status           WorkflowStatus   @default(DRAFT)
+  currentVersionId String?          @unique @map("current_version_id") @db.Uuid
+  currentVersion   WorkflowVersion? @relation("CurrentWorkflowVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdById      String           @map("created_by_id") @db.Uuid
+  createdBy        User             @relation("WorkflowCreator", fields: [createdById], references: [id])
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  versions         WorkflowVersion[] @relation("WorkflowVersions")
+  runs             WorkflowRun[]
+
+  @@unique([scope, workspaceId, key], name: "workflow_scope_workspace_key")
+  @@index([workspaceId, status])
+  @@index([novelId])
+  @@map("workflows")
+}
+
+/// Immutable workflow revision. `graph` is validated (acyclic, deterministic,
+/// bounded) before the row is written; the executor re-validates on load so a
+/// hand-edited or migrated row cannot bypass the checks (CLAUDE.md §19).
+model WorkflowVersion {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflowId  String   @map("workflow_id") @db.Uuid
+  workflow    Workflow @relation("WorkflowVersions", fields: [workflowId], references: [id], onDelete: Cascade)
+  number      Int
+  /// { steps: [...], edges: [...], maxSteps: n } — see @novelforge/validation.
+  graph       Json
+  /// Snapshot of the keys this version references, for display and drift
+  /// detection without re-walking the graph.
+  agentKeys   String[] @map("agent_keys")
+  skillKeys   String[] @map("skill_keys")
+  createdById String   @map("created_by_id") @db.Uuid
+  createdBy   User     @relation("WorkflowVersionAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  currentFor  Workflow? @relation("CurrentWorkflowVersion")
+  runs        WorkflowRun[]
+
+  @@unique([workflowId, number])
+  @@index([workflowId, createdAt])
+  @@map("workflow_versions")
+}
+
+/// One execution of one workflow version.
+model WorkflowRun {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflowId        String            @map("workflow_id") @db.Uuid
+  workflow          Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  /// The exact version executed — the definitions may move on afterwards.
+  workflowVersionId String            @map("workflow_version_id") @db.Uuid
+  workflowVersion   WorkflowVersion   @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
+  workflowVersionNumber Int             @map("workflow_version_number")
+  workspaceId       String?           @map("workspace_id") @db.Uuid
+  novelId           String?           @map("novel_id") @db.Uuid
+  triggeredById     String?           @map("triggered_by_id") @db.Uuid
+  triggeredBy       User?             @relation("WorkflowRunTrigger", fields: [triggeredById], references: [id], onDelete: SetNull)
+  status            WorkflowRunStatus @default(PENDING)
+  /// Run inputs. Never contains credentials.
+  input             Json              @default("{}")
+  /// Final outputs of each step, keyed by step key.
+  output            Json              @default("{}")
+  errorMessage      String?           @map("error_message")
+  /// Steps executed, bounded by the graph's maxSteps.
+  stepCount         Int               @default(0) @map("step_count")
+  startedAt         DateTime          @default(now()) @map("started_at")
+  completedAt       DateTime?          @map("completed_at")
+  steps             WorkflowStepRun[]
+
+  @@index([workflowId, startedAt])
+  @@index([workspaceId, startedAt])
+  // SetNull trigger column (see the note on WorkflowStepRun below).
+  @@index([triggeredById])
+  @@map("workflow_runs")
+}
+
+/// One step of one run. Records the resolved definition versions so a run
+/// stays explainable after an agent or skill is edited (CLAUDE.md §2.11).
+model WorkflowStepRun {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId            String        @map("run_id") @db.Uuid
+  run              WorkflowRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  /// Step key from the graph.
+  stepKey          String        @map("step_key")
+  /// Execution order, 1-based within the run.
+  sequence         Int
+  kind             String
+  status           StepRunStatus @default(PENDING)
+  /// Resolved agent and its pinned version number.
+  agentId          String?       @map("agent_id") @db.Uuid
+  agent            Agent?        @relation("StepRunAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  agentVersionId   String?       @map("agent_version_id") @db.Uuid
+  agentVersion     AgentVersion? @relation(fields: [agentVersionId], references: [id], onDelete: SetNull)
+  agentVersionNumber Int?        @map("agent_version_number")
+  skillId          String?       @map("skill_id") @db.Uuid
+  skill            Skill?        @relation("StepRunSkill", fields: [skillId], references: [id], onDelete: SetNull)
+  skillVersionId   String?       @map("skill_version_id") @db.Uuid
+  skillVersion     SkillVersion? @relation(fields: [skillVersionId], references: [id], onDelete: SetNull)
+  skillVersionNumber Int?        @map("skill_version_number")
+  /// Links to the Phase 3 AI ledger when the step called a model.
+  generationId     String?       @map("generation_id") @db.Uuid
+  generation       Generation?   @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  /// Rendered instruction actually sent, for reproducibility.
+  instruction      String?       @db.Text
+  output           Json?         @map("output")
+  errorMessage     String?       @map("error_message")
+  latencyMs        Int?          @map("latency_ms")
+  startedAt        DateTime      @default(now()) @map("started_at")
+  completedAt      DateTime?     @map("completed_at")
+
+  @@unique([runId, sequence])
+  @@unique([runId, stepKey])
+  // Every nullable FK here is `SetNull`, so deleting the parent issues an
+  // `UPDATE ... WHERE col = $1` against this table. PostgreSQL does not
+  // index a referencing column automatically, so without these each such
+  // delete seq-scans every step row ever recorded (a workspace delete
+  // cascades through agents and skills, hitting exactly this path).
+  @@index([agentId])
+  @@index([agentVersionId])
+  @@index([skillId])
+  @@index([skillVersionId])
+  @@index([generationId])
+  @@map("workflow_step_runs")
 }

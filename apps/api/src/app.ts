@@ -20,10 +20,13 @@ import { registerAuthRoutes } from "./auth-routes.ts";
 import { registerPlatformRoutes } from "./platform-routes.ts";
 import { registerManuscriptRoutes } from "./manuscript-routes.ts";
 import { registerAiRoutes } from "./ai-routes.ts";
+import { registerDefinitionRoutes } from "./definition-routes.ts";
 import { createAuditService } from "./services/audit.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
 import { createAiServices } from "./services/ai.ts";
+import { createDefinitionServices } from "./services/definitions.ts";
+import { createWorkflowRunServices } from "./services/workflow-runs.ts";
 import { createGatewayRegistry } from "./ai-registry.ts";
 
 export type CheckState = "up" | "down";
@@ -129,25 +132,42 @@ export async function buildApp(
       auth,
       services: createManuscriptServices(options.db, createAuditService(options.db)),
     });
-    registerAiRoutes(app, {
+    // One audit + one AI services instance shared by the AI routes and the
+    // workflow executor: a workflow step must reach a model through the
+    // same generation path as a direct request (CLAUDE.md §18), so the
+    // executor is given `aiServices.generate` rather than its own client.
+    const audit = createAuditService(options.db);
+    const aiServices = createAiServices({
+      db: options.db,
+      registry: createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY),
+      encryptionKey: env.APP_ENCRYPTION_KEY,
+      audit,
+      routingStrategy: env.AI_ROUTING_STRATEGY,
+      // Tests inject a fake adapter here so no test reaches a real
+      // provider; persistence stays real (CLAUDE.md §25).
+      ...(options.createGateway ? { createGateway: options.createGateway } : {}),
+    });
+    const platformRoleOf = async (userId: string) => {
+      const user = await options.db!.user.findUnique({
+        where: { id: userId },
+        select: { platformRole: true },
+      });
+      return user?.platformRole ?? null;
+    };
+    registerAiRoutes(app, { auth, services: aiServices, platformRoleOf });
+    registerDefinitionRoutes(app, {
       auth,
-      services: createAiServices({
+      definitions: createDefinitionServices({ db: options.db, audit }),
+      runs: createWorkflowRunServices({
         db: options.db,
-        registry: createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY),
-        encryptionKey: env.APP_ENCRYPTION_KEY,
-        audit: createAuditService(options.db),
-        routingStrategy: env.AI_ROUTING_STRATEGY,
-        // Tests inject a fake adapter here so no test reaches a real
-        // provider; persistence stays real (CLAUDE.md §25).
-        ...(options.createGateway ? { createGateway: options.createGateway } : {}),
+        audit,
+        ai: aiServices,
+        // A step's raw error is never returned to the client (it can carry a
+        // Prisma string or an upstream provider body), so it is logged here
+        // instead. Reuses the pino instance already configured above.
+        dbg: { error: (message, meta) => app.log.error(meta, message) },
       }),
-      platformRoleOf: async (userId) => {
-        const user = await options.db!.user.findUnique({
-          where: { id: userId },
-          select: { platformRole: true },
-        });
-        return user?.platformRole ?? null;
-      },
+      platformRoleOf,
     });
   }
 

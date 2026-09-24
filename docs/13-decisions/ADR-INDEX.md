@@ -39,6 +39,11 @@ Initial accepted decisions:
     platform-only capabilities never conferred by a workspace role, and a
     closed platform capability set so platform administration is not a
     bypass for workspace authorization.
+-   [ADR-0006](../adr/ADR-0006-agent-skill-workflow-platform.md): Agent /
+    skill / workflow platform — append-only versioned definitions, scoped
+    platform vs workspace catalogs, fail-closed structured-output
+    contracts, validated acyclic workflow graphs, one AI path per step,
+    and structural determinism.
 
 New ADRs start from [ADR-TEMPLATE.md](../adr/ADR-TEMPLATE.md), use the
 next sequential `ADR-NNNN` number, are filed under `docs/adr/`, and are

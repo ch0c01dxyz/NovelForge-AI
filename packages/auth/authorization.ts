@@ -33,6 +33,18 @@ export const CAPABILITIES = [
   "model:manage",
   "generation:create",
   "generation:read",
+  // Agent / skill / workflow platform (Phase 4). Workspace-scoped: a
+  // workspace owns its own agent, skill and workflow definitions.
+  "agent:read",
+  "agent:manage",
+  "skill:read",
+  "skill:manage",
+  "workflow:read",
+  "workflow:manage",
+  "workflow:run",
+  // Platform-scoped catalog. Only a platform administrator may define the
+  // shared agent/skill/workflow catalog every workspace can read.
+  "platform:define",
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -44,17 +56,21 @@ export type Role = (typeof ROLES)[number];
  * Capabilities that only a platform administrator may hold (ADR-0005).
  *
  * These govern platform-wide resources — LLM gateway instances and their
- * credentials, and the model registry. A workspace role must never confer
- * them: workspace membership is per-tenant and self-service, so mapping
- * these to OWNER would let anyone who creates a workspace manage global
- * provider secrets (CLAUDE.md §13/§14). Declared before ROLE_CAPABILITIES
- * because OWNER's set is built from it.
+ * credentials, the model registry, and the PLATFORM-scoped agent/skill/
+ * workflow catalog every workspace can read. A workspace role must never
+ * confer them: workspace membership is per-tenant and self-service, so
+ * mapping these to OWNER would let anyone who creates a workspace manage
+ * global provider secrets or inject shared agent instructions into every
+ * tenant's prompts (CLAUDE.md §13/§14, SECURITY.md prompt-injection
+ * boundary). Declared before ROLE_CAPABILITIES because OWNER's set is
+ * built from it.
  */
 export const PLATFORM_ONLY_CAPABILITIES: ReadonlySet<Capability> = new Set([
   "gateway:read",
   "gateway:manage",
   "model:read",
   "model:manage",
+  "platform:define",
 ]);
 
 /**
@@ -84,6 +100,14 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // omitting them would make ADMIN unable to use AI generation at all.
     "generation:create",
     "generation:read",
+    // ADMIN owns the workspace's AI definitions and can run them.
+    "agent:read",
+    "agent:manage",
+    "skill:read",
+    "skill:manage",
+    "workflow:read",
+    "workflow:manage",
+    "workflow:run",
   ]),
   AUTHOR: new Set<Capability>([
     "novel:create",
@@ -95,6 +119,12 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "chapter:update",
     "generation:create",
     "generation:read",
+    // A writer may use and run the workspace's AI definitions, but
+    // editing shared definitions is an ADMIN act.
+    "agent:read",
+    "skill:read",
+    "workflow:read",
+    "workflow:run",
   ]),
   EDITOR: new Set<Capability>([
     "novel:read",
@@ -103,6 +133,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "chapter:update",
     "generation:create",
     "generation:read",
+    "agent:read",
+    "skill:read",
+    "workflow:read",
+    "workflow:run",
   ]),
   VIEWER: new Set<Capability>(["novel:read", "chapter:read"]),
 };
@@ -130,14 +164,17 @@ export type PlatformRole = "SUPER_ADMIN" | null;
  * Capabilities a platform administrator may exercise. Deliberately a
  * closed set: platform administration must never become a bypass for
  * workspace authorization (a super admin is not implicitly a member of
- * every workspace). `model:read` is included because reading the model
- * registry is part of administration.
+ * every workspace). It therefore does NOT include agent:manage /
+ * skill:manage / workflow:manage — those act on a workspace's own
+ * definitions and still require membership. `platform:define` is the
+ * separate capability for the shared PLATFORM-scoped catalog.
  */
 export const PLATFORM_CAPABILITIES: ReadonlySet<Capability> = new Set([
   "gateway:read",
   "gateway:manage",
   "model:read",
   "model:manage",
+  "platform:define",
 ]);
 
 /**

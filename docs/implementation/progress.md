@@ -374,7 +374,150 @@ plus live end-to-end verification against a real server. Findings fixed:
 
 Streaming and strategy are no longer deferred.
 
-## Phase 4+
+## Phase 4 — Agent / Skill / Workflow Platform (2026-09-26)
+
+Exit criterion from the roadmap: *"chapter test workflow can run multiple
+agents deterministically"* — met, and covered by tests.
+
+Delivered:
+
+- `@novelforge/validation` (previously an empty placeholder): a
+  fail-closed structured-output contract validator and a workflow graph
+  validator. Pure, no IO, 55 tests.
+- Schema + migrations `20260926_phase4_agent_skill_workflow`,
+  `20260927_phase4_platform_key_uniqueness` and
+  `20260927_phase4_steprun_fk_indexes`: `Agent` / `AgentVersion`,
+  `Skill` / `SkillVersion`, `Workflow` / `WorkflowVersion`, `WorkflowRun` /
+  `WorkflowStepRun`, plus `DefinitionScope`, `SkillCategory` and the three
+  status enums. Verified: applies from empty, zero drift against the schema.
+- `services/definitions.ts` — versioned CRUD for all three definition
+  kinds, scoped to platform or workspace.
+- `services/workflow-runs.ts` — the executor, running steps over the
+  Phase 3 generation path.
+- `definition-routes.ts` — 16 endpoints under `/api/agents`,
+  `/api/skills`, `/api/workflows`, `/api/workspaces/:id/workflow-runs`.
+- Seven new capabilities (`agent:read|manage`, `skill:read|manage`,
+  `workflow:read|manage|run`) plus platform-only `platform:define`;
+  ADR-0006 records the design.
+
+Exit-criterion evidence: a three-agent chapter pipeline runs in
+deterministic order, each step pinned to its definition version and to a
+real `Generation` row, and repeated runs of one graph produce identical
+step order.
+
+Full repo gate 2026-09-26: lint 0, typecheck Done (incl. web),
+17 files / 267 passed / 1 skipped, apps build green.
+
+Full repo gate 2026-09-27 (after the audit fixes below): lint 0,
+typecheck 0, 17 files / 277 passed / 1 skipped.
+
+### Defects found and fixed during this phase
+
+- **Write authorization was never called.** `gateDefinitionWrite` existed
+  but no `create*` invoked it, so an AUTHOR could create definitions and a
+  workspace ADMIN could create PLATFORM-scoped ones. Every create now
+  gates, and `novelId` is validated against the caller's workspace.
+- **`nextNumber` used a computed object key** (`{agentId: id}[...]`),
+  which evaluates to the bare id string rather than a `where` clause, so
+  every version append threw. Split into per-kind helpers.
+- **Downstream steps were skipped after a TRANSFORM or VALIDATOR.** Branch
+  liveness was propagated only in the AGENT and CONDITION paths, so a
+  chain beginning with either kind had every later step silently
+  `SKIPPED`. Propagation is now one `advance()` called from every success
+  path, with a regression test.
+- **`skillKeys` was stored but never used** — declaring an agent's skill
+  allowlist had no effect. Granted skills are now resolved up front and
+  injected into that agent's system prompt, so the allowlist is
+  deterministic rather than inferred from execution order.
+- **`gateRead` hardcoded `agent:read`**, so reading a skill checked the
+  wrong capability. Now per-kind.
+- **A malformed `required` contract enforced nothing.** Verified against
+  the installed zod: a `required` entry with no matching `properties`
+  declaration is silently ignored. `compileSchema` now rejects it, along
+  with any keyword it cannot actually enforce.
+- **Concurrent version appends surfaced as 500.** Two simultaneous
+  appends collide on `@@unique([parentId, number])`; the P2002 is now
+  retried with small jitter and reported as 409 if it persists.
+- **An unreachable `GRAPH_UNREACHABLE_STEP` check** was provably dead
+  (in a DAG every node reaches an entry) and was removed rather than
+  left as a branch that cannot fire.
+
+### Second pass — 2026-09-27
+
+Two parallel audits over the executor/routes and the schema/authz
+surfaces, plus direct probing of the installed zod. Findings fixed:
+
+- **A failing step left no record.** `executed` is pushed only on
+  success, so a step that threw produced no `WorkflowStepRun` row: the
+  run showed the steps that worked and then simply stopped, with no
+  indication of which step died or why. The catch block now writes a
+  FAILED row for the in-flight step, carrying the client-safe summary in
+  `errorMessage`; the VALIDATOR path marks its row already-written so it
+  is not duplicated.
+- **Raw error text could reach a client.** `failure = err.message` was
+  persisted into `WorkflowRun.errorMessage` and served by `run()`,
+  `getRun()` and `listRuns()` — responses that never pass through the
+  API error handler, so a Prisma message or an upstream provider body
+  would have been returned verbatim. Only `GatewayError`,
+  `ConflictError` and `NotFoundError` messages are now surfaced; anything
+  else becomes a fixed string, with the real error sent to an injected
+  `dbg` sink.
+- **`AWAITING_APPROVAL` was stamped `completedAt`**, making a halted run
+  indistinguishable from a finished one. It is now left null, and the
+  schema comment no longer claims these runs are resumable — they are
+  terminal until a resume path exists.
+- **Duplicate PLATFORM keys were possible.** `@@unique([scope,
+  workspaceId, key])` does not constrain `workspace_id IS NULL` rows,
+  because PostgreSQL treats NULL as distinct in a unique index; the
+  schema comment claiming otherwise was wrong. Migration `20260927` adds
+  three partial unique indexes (with a guard that names offending rows
+  rather than failing opaquely), and the corrected comment states where
+  uniqueness is really enforced.
+- **Two formats were wrongly rejected.** The docstring and the screen
+  both claimed `hostname`, `uri` and `base64` are accepted-and-ignored
+  by zod. Probed: all three genuinely reject malformed input, so those
+  contracts were refused for no reason. They are now supported, along
+  with `base64url`, `ksuid`, `xid` and `mac`; `url`, `regex`, `cuid2`,
+  `cidrv4`, `cidrv6`, `hash`, `hex`, `lowercase` and `uppercase` are
+  excluded because they accept anything.
+- **A dead `TYPE_DEPENDENT_KEYWORDS` constant** (superseded by the
+  `SCHEMA_MISSING_TYPE` rule) was removed.
+- **Docstring defects** corrected: `minItems`/`maxItems` are ignored
+  even alongside `type: "array"` (verified), and the test file no longer
+  refers to a `FAIL_OPEN_CASES` that does not exist.
+- **A VALIDATOR step could not fail.** `outputSchema` was optional on
+  every step kind, so a VALIDATOR without one recorded `SUCCEEDED` for
+  any value while reading as a real check in run history — a check that
+  silently does nothing. The graph validator now requires a VALIDATOR to
+  declare a contract, and to bind exactly one input (the executor reads
+  only the first, so a second was silently dropped).
+- **Four unindexed nullable FKs on `workflow_step_runs`.** Every one is
+  `SetNull`, so deleting the parent issues an `UPDATE ... WHERE col = $1`
+  with no index — a sequential scan over all accumulated step rows.
+  Migration `20260927_phase4_steprun_fk_indexes` (and the matching schema
+  declarations) adds them, plus `workflow_runs.triggeredById`. A workspace
+  delete cascades into agents and skills and hits exactly this path.
+- **The FAILED-row write could escape its own catch.** It runs inside the
+  `catch` block, before the run-status update; a DB error there would have
+  skipped that update, leaving the run stuck at `RUNNING` forever with no
+  terminal state. It is now wrapped, since losing the diagnostic row is
+  survivable and losing the run's outcome is not.
+- **`dbg` was never wired**, so the "keep the detail server-side" branch
+  discarded it. `app.ts` now passes the existing pino instance.
+
+Every supported keyword was then re-probed with a deliberately-invalid
+value to confirm it actually bites; `minItems`/`maxItems` and `$ref`
+siblings were the only ones that did not, and both are rejected.
+
+Not implemented, and refused explicitly rather than silently skipped:
+`RETRIEVAL` steps (Phase 5 owns retrieval), streaming runs, resuming an
+`AWAITING_APPROVAL` run, and moving runs to the worker queue.
+
+Known follow-up: deleting a `Workflow` cascades its `WorkflowRun` rows
+away. Nothing deletes a workflow yet, so no run history can be lost
+today; the FK should move to `Restrict` before a delete endpoint exists.
+
+## Phase 5+
 
 NOT STARTED.
 

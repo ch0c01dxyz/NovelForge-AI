@@ -33,6 +33,8 @@ const DEFAULT_PORTS: Record<string, number> = {
   "redis:": 6379,
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * TCP-connect probe with timeout. The URL may embed credentials, so it is
  * never logged — only the up/down result is.
@@ -77,8 +79,14 @@ export async function buildApp(
     // Structured JSON logs (pino) with a request ID on every line; honor an
     // inbound x-request-id so traces correlate across services.
     logger: env.NODE_ENV === "test" ? false : { level: "info" },
-    genReqId: (req) =>
-      (req.headers["x-request-id"] as string | undefined) ?? randomUUID(),
+    genReqId: (req) => {
+      // Honor an inbound x-request-id for trace correlation, but only when
+      // it is a well-formed uuid — a spoofable free-text field must not
+      // become the log correlation key.
+      const inbound = req.headers["x-request-id"];
+      if (typeof inbound === "string" && UUID_RE.test(inbound)) return inbound;
+      return randomUUID();
+    },
   });
 
   await app.register(cookie);

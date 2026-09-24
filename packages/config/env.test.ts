@@ -89,6 +89,18 @@ describe("loadEnv", () => {
       expect(message).toContain("[REDACTED]");
     }
   });
+
+  it("masks the whole password when it contains '@'", () => {
+    const env: Env = loadEnv({
+      ...VALID,
+      DATABASE_URL: "postgres://user:p@ss@localhost:5432/novelforge",
+    });
+    const redacted = redactEnv(env);
+    expect(String(redacted.DATABASE_URL)).not.toContain("ss@");
+    expect(String(redacted.DATABASE_URL)).toBe(
+      "postgres://user:[REDACTED]@localhost:5432/novelforge",
+    );
+  });
 });
 
 describe("redactEnv", () => {

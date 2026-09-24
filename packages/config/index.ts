@@ -96,5 +96,8 @@ export function redactEnv(env: Env): Record<string, unknown> {
 
 /** Replace the password component of credentials in a URL string. */
 function maskUrlCredentials(value: string): string {
-  return value.replace(/:\/\/([^:/@\s]+):([^@\s]+)@/, "://$1:" + REDACTED + "@");
+  // Greedy password group: must swallow '@' chars inside the password
+  // (legal unencoded in WHATWG URLs) and stop at the LAST '@', else the
+  // tail of the password leaks past the redaction.
+  return value.replace(/:\/\/([^:/@\s]+):(.+)@/, "://$1:" + REDACTED + "@");
 }

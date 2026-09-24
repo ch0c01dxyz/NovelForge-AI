@@ -1,60 +1,180 @@
 <script setup lang="ts">
 /**
- * Writer workspace shell (Phase 2, no AI chrome yet).
- * Layout per docs/design/writer-workspace + DESIGN-TOKENS.md:
- * header / nav | editor | context rail / status footer.
- * Manuscript data comes from the API once auth-gated flows land;
- * this shell wires the structure, autosave state machine, and token look.
+ * Writer workspace shell (Phase 2). Layout per docs/design/writer-workspace
+ * + DESIGN-TOKENS.md: header / nav | editor | context rail / status footer.
+ *
+ * Data comes from the manuscript API; autosave PUTs a new immutable
+ * version with the optimistic-concurrency expectedVersion and handles 409
+ * (someone else saved first) by refetching rather than clobbering.
  */
-const route = useRoute();
-
-// ponytail: static demo state until API auth cookie flow is wired in a
-// follow-up task; structure + autosave UX are the deliverable here.
-const chapters = ref([
-  { id: "1", number: 84, title: "The Ash Gate", words: 2100, status: "PUBLISHED" },
-  { id: "2", number: 85, title: "Ember Debt", words: 1412, status: "DRAFT" },
-]);
-const active = ref("2");
-const content = ref(
-  "The hall smelled of wet iron and old smoke. Veyra counted the braziers out of habit — seven, same as the night her father burned the ledgers — and found the number wanting.",
-);
-
-type SaveState = "saved" | "dirty" | "saving";
-const saveState = ref<SaveState>("saved");
-const version = ref(1);
-
-let timer: ReturnType<typeof setTimeout> | undefined;
-onUnmounted(() => clearTimeout(timer));
-function onInput() {
-  saveState.value = "dirty";
-  clearTimeout(timer);
-  // Autosave: 1.5s debounce after last keystroke.
-  timer = setTimeout(() => {
-    saveState.value = "saving";
-    // TODO(phase2-api): PUT chapter version with expectedVersion: version
-    setTimeout(() => {
-      version.value += 1;
-      saveState.value = "saved";
-    }, 300);
-  }, 1500);
+interface ChapterSummary {
+  id: string;
+  number: number;
+  title: string;
+  status: string;
+  wordCount: number;
+  currentVersion: number | null;
 }
+interface ChapterDetail extends ChapterSummary {
+  content: string;
+}
+
+const route = useRoute();
+const router = useRouter();
+
+const workspaceId = computed(() => String(route.params.workspaceId ?? ""));
+const novelId = computed(() => String(route.params.novelId ?? ""));
+
+const chapters = ref<ChapterSummary[]>([]);
+const activeId = ref<string | null>(null);
+const content = ref("");
+const version = ref<number | null>(null);
+const loading = ref(true);
+const error = ref<string | null>(null);
+const saveState = ref<"saved" | "dirty" | "saving" | "conflict">("saved");
+
+const activeChapter = computed(
+  () => chapters.value.find((c) => c.id === activeId.value) ?? null,
+);
+const wordCount = computed(() =>
+  content.value.trim() ? content.value.trim().split(/\s+/).length : 0,
+);
 
 const saveLabel = computed(
   () =>
-    ({ saved: "Saved", dirty: "Unsaved changes", saving: "Saving…" })[
-      saveState.value
-    ],
+    ({
+      saved: "Saved",
+      dirty: "Unsaved changes",
+      saving: "Saving…",
+      conflict: "Conflict — reloaded",
+    })[saveState.value],
 );
 
-const activeChapter = computed(
-  () => chapters.value.find((c) => c.id === active.value) ?? chapters.value[0],
+const base = computed(
+  () => `/api/workspaces/${workspaceId.value}/novels/${novelId.value}`,
 );
-void route;
+
+/** Parse the {error: CODE} envelope without throwing on empty bodies. */
+async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    credentials: "same-origin",
+    headers: init?.body ? { "content-type": "application/json" } : undefined,
+    ...init,
+  });
+  if (!res.ok) {
+    let code = String(res.status);
+    try {
+      code = ((await res.json()) as { error?: string }).error ?? code;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(code, res.status);
+  }
+  return (await res.json()) as T;
+}
+
+class ApiError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status: number,
+  ) {
+    super(`${status} ${code}`);
+  }
+}
+
+async function loadChapters() {
+  chapters.value = await api<ChapterSummary[]>(`${base.value}/chapters`);
+  if (!activeId.value && chapters.value.length) {
+    await selectChapter(chapters.value[0]!.id);
+  }
+}
+
+async function selectChapter(id: string) {
+  if (saveState.value === "dirty") await saveNow();
+  activeId.value = id;
+  const detail = await api<ChapterDetail>(`${base.value}/chapters/${id}`);
+  content.value = detail.content;
+  version.value = detail.currentVersion;
+  saveState.value = "saved";
+}
+
+let timer: ReturnType<typeof setTimeout> | undefined;
+onUnmounted(() => clearTimeout(timer));
+
+function onInput() {
+  saveState.value = "dirty";
+  clearTimeout(timer);
+  timer = setTimeout(() => void saveNow(), 1500); // 1.5s debounce
+}
+
+async function saveNow() {
+  const chapter = activeChapter.value;
+  if (!chapter || !workspaceId.value || saveState.value === "saving") return;
+  clearTimeout(timer);
+  saveState.value = "saving";
+  try {
+    const result = await api<{ version: number; wordCount: number }>(
+      `${base.value}/chapters/${chapter.id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          content: content.value,
+          expectedVersion: version.value,
+        }),
+      },
+    );
+    version.value = result.version;
+    chapter.currentVersion = result.version;
+    chapter.wordCount = result.wordCount;
+    saveState.value = "saved";
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) {
+      // Stale version or published chapter: refetch instead of clobbering.
+      saveState.value = "conflict";
+      await selectChapter(chapter.id);
+    } else {
+      saveState.value = "dirty"; // keep the text; retry on next edit
+      error.value = "Could not save — your text is still here.";
+    }
+  }
+}
+
+onMounted(async () => {
+  try {
+    await loadChapters();
+  } catch (e) {
+    error.value =
+      e instanceof ApiError && e.status === 401
+        ? "Please sign in to open this novel."
+        : "Could not load the manuscript.";
+  } finally {
+    loading.value = false;
+  }
+});
+
+async function publish() {
+  const chapter = activeChapter.value;
+  if (!chapter) return;
+  if (saveState.value !== "saved") await saveNow();
+  try {
+    await api(`${base.value}/chapters/${chapter.id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "PUBLISHED" }),
+    });
+    chapter.status = "PUBLISHED";
+  } catch (e) {
+    error.value =
+      e instanceof ApiError && e.status === 403
+        ? "You do not have permission to publish."
+        : "Publish failed.";
+  }
+}
+
+void router;
 </script>
 
 <template>
   <div class="grid h-dvh grid-rows-[52px_1fr_30px] bg-nf-bg-0 text-nf-text">
-    <!-- Header -->
     <header
       class="flex items-center gap-5 border-b border-nf-border bg-nf-bg-1 px-5 shadow-nf-sm"
     >
@@ -65,57 +185,58 @@ void route;
         >
         NovelForge
       </div>
-      <div
-        class="hidden h-6 items-center gap-2 border-l border-nf-border pl-5 text-[13px] text-nf-text-faint sm:flex"
-      >
-        The Ashen Throne <span class="text-nf-border-strong">/</span>
-        <b class="font-semibold text-nf-text">Arc II — The Ember War</b>
-      </div>
       <div class="flex-1" />
       <button
-        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:border-nf-border-strong hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        :disabled="saveState === 'saved'"
+        @click="saveNow"
       >
-        Outline
+        Save
       </button>
       <button
-        class="rounded-lg bg-nf-accent px-3.5 py-1.5 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus"
+        class="rounded-lg bg-nf-accent px-3.5 py-1.5 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
+        :disabled="!activeChapter || saveState === 'saving'"
+        @click="publish"
       >
         Publish
       </button>
     </header>
 
-    <!-- 3-region -->
-    <div class="grid min-h-0 grid-cols-1 lg:grid-cols-[264px_1fr] xl:grid-cols-[264px_1fr_312px]">
-      <!-- Left nav -->
-      <nav
-        class="hidden overflow-y-auto border-r border-nf-border bg-nf-bg-1 p-4 lg:block"
-      >
-        <div class="mb-2 px-2.5 pb-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint">
+    <div
+      class="grid min-h-0 grid-cols-1 lg:grid-cols-[264px_1fr] xl:grid-cols-[264px_1fr_312px]"
+    >
+      <nav class="hidden overflow-y-auto border-r border-nf-border bg-nf-bg-1 p-4 lg:block">
+        <div
+          class="mb-2 px-2.5 pb-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint"
+        >
           Chapters
         </div>
+        <p v-if="loading" class="px-2.5 text-[13px] text-nf-text-faint">Loading…</p>
+        <p v-else-if="!chapters.length" class="px-2.5 text-[13px] text-nf-text-faint">
+          No chapters yet.
+        </p>
         <button
           v-for="c in chapters"
           :key="c.id"
           class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] focus-visible:nf-focus"
           :class="
-            c.id === active
+            c.id === activeId
               ? 'border-l-2 border-nf-accent bg-nf-accent/10 font-semibold text-nf-accent-hi'
               : 'text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text'
           "
-          @click="active = c.id"
+          @click="selectChapter(c.id)"
         >
-          {{ c.number }} — {{ c.title }}
-          <span class="ml-auto rounded bg-nf-bg-0 px-1.5 py-px text-[11px] tabular-nums text-nf-text-faint">
-            {{ (c.words / 1000).toFixed(1) }}k
+          <span class="truncate">{{ c.number }} — {{ c.title }}</span>
+          <span
+            class="ml-auto shrink-0 rounded bg-nf-bg-0 px-1.5 py-px text-[11px] tabular-nums text-nf-text-faint"
+          >
+            {{ c.wordCount.toLocaleString() }}
           </span>
         </button>
       </nav>
 
-      <!-- Editor -->
       <main class="flex min-w-0 flex-col bg-nf-bg-0">
-        <div
-          class="flex items-center gap-2 border-b border-nf-border bg-nf-bg-1 px-6 py-2"
-        >
+        <div class="flex items-center gap-2 border-b border-nf-border bg-nf-bg-1 px-6 py-2">
           <span class="text-[12.5px] font-semibold text-nf-text-dim">B</span>
           <span class="font-nf-literary text-[12.5px] font-bold italic text-nf-text-dim">I</span>
           <span class="text-[12.5px] font-semibold text-nf-text-dim">H2</span>
@@ -126,62 +247,76 @@ void route;
               :class="saveState === 'saved' ? 'text-nf-ok' : 'text-nf-accent-hi'"
               >●</span
             >
-            {{ saveLabel }} · v{{ version }}
+            {{ saveLabel }}<template v-if="version !== null"> · v{{ version }}</template>
           </span>
         </div>
 
         <div class="flex-1 overflow-y-auto">
-          <div class="mx-auto max-w-[700px] px-6 py-10 lg:px-10">
+          <p
+            v-if="error"
+            class="mx-auto mt-6 max-w-[700px] rounded-lg border border-nf-warn/40 bg-nf-warn/10 px-4 py-3 text-[13px] text-nf-warn"
+          >
+            {{ error }}
+          </p>
+          <div v-if="activeChapter" class="mx-auto max-w-[700px] px-6 py-10 lg:px-10">
             <div
               class="mb-2.5 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-nf-accent-hi"
             >
-              Chapter {{ activeChapter?.number }} · Scene 1
+              Chapter {{ activeChapter.number }}
               <span class="h-px flex-1 bg-gradient-to-r from-nf-border-strong to-transparent" />
             </div>
             <h1 class="mb-2 font-nf-literary text-3xl font-semibold leading-tight">
-              {{ activeChapter?.title }}
+              {{ activeChapter.title }}
             </h1>
             <div class="mb-8 text-[13px] tabular-nums text-nf-text-faint">
-              Draft · {{ activeChapter?.words.toLocaleString() }} words
+              {{ activeChapter.status }} · {{ wordCount.toLocaleString() }} words
             </div>
             <textarea
               v-model="content"
               rows="18"
+              aria-label="Chapter content"
               class="w-full resize-none border-none bg-transparent font-nf-literary text-[17.5px] leading-[1.85] text-nf-text outline-none placeholder:text-nf-text-faint focus-visible:nf-focus"
+              placeholder="Begin the chapter…"
               @input="onInput"
+              @blur="saveState === 'dirty' && saveNow()"
             />
           </div>
+          <p v-else-if="!loading" class="px-6 py-10 text-center text-sm text-nf-text-faint">
+            Select or create a chapter to start writing.
+          </p>
         </div>
       </main>
 
-      <!-- Right rail: desktop only for now (mock data, Phase 2 wiring next) -->
-      <aside class="hidden overflow-y-auto border-l border-nf-border bg-nf-bg-1 px-4 py-5 xl:block">
+      <aside
+        class="hidden overflow-y-auto border-l border-nf-border bg-nf-bg-1 px-4 py-5 xl:block"
+      >
         <div
           class="mb-2.5 border-b border-nf-border pb-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint"
         >
-          Scene Context
+          Chapter
         </div>
         <div class="rounded-xl border border-nf-border bg-nf-bg-2 p-3">
-          <div class="mb-1.5 flex items-center gap-2.5">
-            <span class="grid size-7 place-items-center rounded-full border border-nf-border-strong bg-nf-bg-0 font-nf-literary text-xs font-bold text-nf-text-dim">V</span>
-            <span class="text-[13px] font-semibold">Veyra Ashborn</span>
-            <span class="ml-auto rounded-full border border-nf-accent/40 bg-nf-accent/10 px-2 py-px text-[10px] font-semibold text-nf-accent-hi">POV</span>
+          <div class="text-[13px] font-semibold">
+            {{ activeChapter?.title ?? "—" }}
           </div>
-          <p class="text-xs leading-relaxed text-nf-text-dim">
-            Determined, hiding exhaustion. Carries the ember-debt ledger.
+          <p class="mt-1 text-xs leading-relaxed text-nf-text-dim">
+            Status {{ activeChapter?.status ?? "—" }} · version
+            {{ version ?? "—" }}
           </p>
         </div>
       </aside>
     </div>
 
-    <!-- Footer -->
     <footer
       class="flex items-center gap-5 border-t border-nf-border bg-nf-bg-1 px-5 text-[11.5px] tabular-nums text-nf-text-faint"
     >
-      <span>Version <b class="font-semibold text-nf-text-dim">v{{ version }}</b></span>
-      <span>Words today <b class="font-semibold text-nf-text-dim">1,847</b></span>
+      <span>Version <b class="font-semibold text-nf-text-dim">v{{ version ?? "—" }}</b></span>
+      <span>Words <b class="font-semibold text-nf-text-dim">{{ wordCount.toLocaleString() }}</b></span>
       <div class="ml-auto hidden gap-5 sm:flex">
-        <span>Chapter <b class="font-semibold text-nf-text-dim">85 / 2,400</b></span>
+        <span>
+          Chapter
+          <b class="font-semibold text-nf-text-dim">{{ activeChapter?.number ?? "—" }}</b>
+        </span>
       </div>
     </footer>
   </div>

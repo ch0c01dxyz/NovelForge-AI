@@ -569,6 +569,48 @@ describe("candidate canon is not silently committed (TESTING.md mandatory scenar
     });
     expect(audited).toHaveLength(1);
   });
+
+  // Re-assertion through the candidate pipeline — the documented route (an
+  // AI proposes, a human approves) rather than a direct write. A retracted
+  // row must not count as live at propose time (it would classify DUPLICATE
+  // and refuse) nor at approval time (it would be superseded, inventing a
+  // correction that never happened).
+  it("re-asserts a retracted claim through propose and approve", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const created = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 10,
+    });
+    const factId = (created.body as { id: string }).id;
+    expect((await retract(owner.cookie, workspaceId, novelId, factId)).statusCode).toBe(204);
+
+    const reproposal = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 10,
+    });
+    expect(reproposal.statusCode).toBe(201);
+    expect(reproposal.body.conflictKind).toBeNull(); // not a DUPLICATE of a live fact
+
+    const approved = await approve(owner.cookie, workspaceId, reproposal.body.id as string);
+    expect(approved.statusCode).toBe(200);
+    // Nothing was live, so nothing is superseded.
+    expect(approved.body.supersededFactId).toBeNull();
+
+    const rows = await db.canonFact.findMany({
+      where: { novelId, predicate: "hair-colour" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(rows.map((f) => f.status).sort()).toEqual(["ACTIVE", "RETRACTED"]);
+    // The retracted row is untouched: not resurrected, not linked.
+    expect(rows.find((f) => f.status === "RETRACTED")?.supersededById).toBeNull();
+  });
   // Retraction withdraws a claim, so an as-of question must stop answering
   // with it. The STATE chain query has no status filter, and a retracted row
   // keeps a NULL validUntilChapter (retraction does not date when the claim

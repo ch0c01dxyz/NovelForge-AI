@@ -172,7 +172,7 @@ export interface AiServices {
     actorUserId: string;
     workspaceId: string;
     texts: string[];
-  }): Promise<{ vectors: number[][]; model: string }>;
+  }): Promise<{ vectors: number[][]; model: string; generationId: string | null }>;
   /**
    * Streamed generation. Yields text deltas; the returned promise resolves
    * with the final status once the stream ends. A stream that fails after
@@ -674,7 +674,8 @@ export function createAiServices(deps: {
       await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
       // An empty batch is a caller bug, not a request: no model call, so
       // no Generation row and no audit noise. `manager.embed` agrees.
-      if (input.texts.length === 0) return { vectors: [], model: "" };
+      // No model call and no Generation row, so there is nothing to link.
+      if (input.texts.length === 0) return { vectors: [], model: "", generationId: null };
 
       const generation = await db.generation.create({
         data: {
@@ -712,7 +713,7 @@ export function createAiServices(deps: {
           entityId: generation.id,
           payload: { task: "embed", profile: "EMBEDDING", model: result.model, texts: input.texts.length },
         });
-        return { vectors: result.vectors, model: result.model };
+        return { vectors: result.vectors, model: result.model, generationId: generation.id };
       } catch (err) {
         const latencyMs = Date.now() - started;
         const noRoute = err instanceof NoRouteError;

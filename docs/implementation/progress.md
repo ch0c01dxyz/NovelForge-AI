@@ -533,12 +533,12 @@ today; the FK should move to `Restrict` before a delete endpoint exists.
 ## Phase 5 — Knowledge & Retrieval (2026-09-25)
 
 Exit criterion from the roadmap: *"retrieval is evidence-bearing and
-tenant-safe"* — met, and covered by 14 DB-backed integration tests plus
-54 unit tests over the pure retrieval modules.
+tenant-safe"* — met, and covered by 21 DB-backed integration tests plus
+62 unit tests over the pure retrieval modules.
 
 Delivered:
 
-- **`@novelforge/retrieval`** (new package, pure, no IO, 61 tests):
+- **`@novelforge/retrieval`** (new package, pure, no IO, 62 tests):
   - `chunk.ts` — `chunkText` splits on paragraphs, then lines, then
     sentence boundaries, and merges short segments. Offsets are into the
     ORIGINAL text, so `text.slice(start, end)` always equals
@@ -779,13 +779,71 @@ tests had `minChars` cases that should have caught it.
   integration test's header advertised coverage — a shared novel id, a
   new-version projection — that no test exercised; and
   `docs/implementation` claimed 61 unit tests for `@novelforge/retrieval`
-  when the package had 46 (now 54).
+  when the package had 46 (now 62).
 
 `RETRIEVAL` steps are no longer refused: `EXECUTABLE_STEP_KINDS` includes
 them, and the graph validator now requires a RETRIEVAL step to declare an
 instruction (its query) — without one the step would record an empty
 result set, which reads as "the knowledge base has nothing on this"
 rather than "the step is misconfigured".
+
+### Phase 5 second audit round (2026-09-25)
+
+Adversarial audit of the Phase 5 code (9 finder lenses, then independent
+verifiers per finding). Eleven findings were **refuted** by their verifiers
+because they described commit `920ae60` — the state before the first fixes
+landed in `65111a1`. Those are recorded here so they are not re-opened:
+
+- chunker: merge-branch span rewrite, surrogate split, bare-CR separator
+  (all three were already fixed in `65111a1`).
+- fuse: duplicate-id double-count, missing `lists` guard (already fixed).
+- retrieval: all-legs-down returning 200, non-finite *stored* vector
+  (already fixed).
+- docstring claims about `visibleTo`, `withheldCount`, the migration
+  header, `contentHash`, and the test header (all already corrected).
+
+Confirmed and fixed:
+
+1. **A new version silently removed a reference from search.** Both legs
+   join `r.current_version_id = rv.id`, so repointing `currentVersionId`
+   orphaned the ingested chunks while the row still read `ACTIVE` — and
+   `publish` returned early on `ACTIVE`, so the re-publish that would have
+   fixed it did nothing. `addReferenceVersion` now drops an ACTIVE
+   reference to DRAFT; publish then works.
+2. **A repair ingest cleared the spoiler boundary.** An omitted
+   `availableFromChapter` wrote NULL over a boundary the author had set,
+   widening what readers could see. The existing value is now carried
+   forward.
+3. **The vector leg could not exclude a stale embedding model.**
+   `dimensions` cannot distinguish a remapped profile, so old vectors were
+   ranked against a query vector from a different model. The leg filters
+   on `e.model` and the idempotence skip is model-aware, so re-ingest
+   repairs it instead of reporting "already done".
+4. **Unmapped Prisma P2002 became a 500.** A duplicate reference key and a
+   concurrent version append both produced `500 INTERNAL`. The create maps
+   it to 409; version append reuses `appendVersionWithRetry` from the
+   Phase 4 definitions service (now exported rather than copied).
+5. **`outputSchema` on RETRIEVAL/TRANSFORM/HUMAN_APPROVAL was stored but
+   never enforced.** The validator rejects it on those kinds
+   (`STEP_SCHEMA_NOT_ENFORCED`) rather than persisting an inert contract.
+6. **A RETRIEVAL instruction could exceed the query limit.** The generic
+   20000-char bound let a published workflow fail at run time; RETRIEVAL
+   instructions are now capped at 2000, matching the search.
+7. **`generation_id` on a retrieval audit row was unreachable.** `embed`
+   did not return the Generation id, so no caller could populate it. It
+   now returns it and search persists it.
+8. **CJK references 413'd well below the advertised cap.** Fastify counts
+   bytes, Zod counts characters, and the limit had 1:1 headroom — a CJK
+   document hit the limit at ~2.67M characters against a promised 8M.
+   Restored to the 2x headroom rule the manuscript routes state.
+9. Also: the `publish` early-return made the versioning bug unrecoverable;
+   `canReadDrafts`'s docstring promised draft access the mode-independent
+   ACTIVE filter never grants (now documented as inert); `detail` is
+   documented as always-NULL rather than left implying a producer; the
+   documented test counts were corrected (62 unit / 21 integration).
+
+Verified after: lint 0, typecheck all workspaces clean, 368 passed / 1
+skipped, migration drift 0. Eight regression tests added.
 
 ## Phase 6+
 

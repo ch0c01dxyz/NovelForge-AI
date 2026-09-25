@@ -446,6 +446,236 @@ describe("reference ingestion", () => {
     expect((await aReader()).hits.length).toBeGreaterThan(0);
   });
 
+  it("takes a new version out of scope until it is re-ingested and re-published", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    const { referenceId } = await seedReference(owner.cookie, workspaceId, {
+      key: "lore",
+      content: OATH_TEXT.join("\n\n"),
+    });
+
+    const search = async (q: string) =>
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/workspaces/${workspaceId}/retrieval/search`,
+          headers: { cookie: owner.cookie },
+          payload: searchBody(q),
+        })
+      ).json() as { hits: unknown[] };
+
+    expect((await search("oath")).hits.length).toBeGreaterThan(0);
+
+    // A new version supersedes the ingested projection. Both search legs
+    // join on `r.current_version_id = rv.id`, so the moment that pointer
+    // moves the old chunks stop matching and the new version has none.
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/references/${referenceId}/versions`,
+      headers: { cookie: owner.cookie },
+      payload: { content: "An entirely different body of text, with no oath in it." },
+    });
+    expect(created.statusCode).toBe(201);
+    const { versionId } = created.json() as { versionId: string };
+
+    // The reference must not claim to be in the retrieval scope while it has
+    // nothing to retrieve: the old version's chunks are now unreachable, and
+    // a stale ACTIVE was invisible to the author and to search alike.
+    const afterVersion = await app.inject({
+      method: "GET",
+      url: `/api/references/${referenceId}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect((afterVersion.json() as { status: string }).status).toBe("DRAFT");
+    expect((await search("oath")).hits).toHaveLength(0);
+
+    const ingest = await app.inject({
+      method: "POST",
+      url: `/api/reference-versions/${versionId}/ingest`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(ingest.statusCode).toBe(200);
+
+    // Publishing again is the step that puts it back. Returning early on
+    // ACTIVE made this a silent no-op for exactly the case that needed it.
+    const pub = await app.inject({
+      method: "POST",
+      url: `/api/references/${referenceId}/publish`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(pub.statusCode).toBe(200);
+    expect((await search("oath")).hits.length).toBeGreaterThan(0);
+  });
+
+  it("does not clear a boundary when a repair re-ingest omits the option", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    const { referenceId, versionId } = await seedReference(owner.cookie, workspaceId, {
+      key: "lore",
+      content: OATH_TEXT.join("\n\n"),
+      boundary: 900,
+    });
+
+    // Make the projection incomplete so the next ingest takes the repair
+    // path — the only route past the skip guard on an unchanged version.
+    await db.$executeRawUnsafe(`DELETE FROM embeddings`);
+
+    const repair = await app.inject({
+      method: "POST",
+      url: `/api/reference-versions/${versionId}/ingest`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(repair.statusCode).toBe(200);
+    expect((repair.json() as { skipped: boolean }).skipped).toBe(false);
+
+    // The boundary must survive the rewrite. Reading the chunks directly is
+    // the point: an omitted option used to write NULL, un-classifying every
+    // chunk and widening what a reader at chapter 10 could see.
+    const rows = await db.chunk.findMany({
+      where: { referenceVersionId: versionId },
+      select: { availableFromChapter: true },
+    });
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.availableFromChapter).toBe(900);
+
+    // And the reader still cannot reach it, which is the consequence that
+    // actually matters (boundary 900 is far above the reader's chapter).
+    const reader = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/retrieval/search`,
+      headers: { cookie: owner.cookie },
+      payload: { query: "oath", mode: "READER", readerChapter: 10, limit: 5 },
+    });
+    expect((reader.json() as { hits: unknown[] }).hits).toHaveLength(0);
+    expect(referenceId).toBeTruthy();
+  });
+
+  it("does not rank an embedding produced by a different model", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    await seedReference(owner.cookie, workspaceId, {
+      key: "lore",
+      content: OATH_TEXT.join("\n\n"),
+    });
+
+    // A query no lexical term matches, so anything returned came from the
+    // vector leg alone. fakeVector always produces a vector, so the leg
+    // returns nearest neighbours for any input.
+    const vectorOnly = { query: "qwxzkjv", mode: "AUTHOR", limit: 5 };
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/retrieval/search`,
+      headers: { cookie: owner.cookie },
+      payload: vectorOnly,
+    });
+    const firstBody = first.json() as { hits: unknown[]; retrievers: string[] };
+    expect(firstBody.hits.length).toBeGreaterThan(0);
+    expect(firstBody.retrievers).toContain("VECTOR");
+
+    // dimensions alone cannot exclude a stale model: every 1536-wide
+    // embedding passes that check regardless of who produced it, so a
+    // profile change left old vectors being ranked against a query vector
+    // from a different model — distances between unrelated vector spaces.
+    const changed = await db.$executeRawUnsafe(`UPDATE embeddings SET model = 'other-model'`);
+    expect(Number(changed)).toBeGreaterThan(0);
+
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/retrieval/search`,
+      headers: { cookie: owner.cookie },
+      payload: vectorOnly,
+    });
+    const secondBody = second.json() as { hits: unknown[]; retrievers: string[] };
+    // Nothing to rank in that vector space, so no hits — but the leg still
+    // ran, which is what distinguishes this from a broken index.
+    expect(secondBody.hits).toHaveLength(0);
+    expect(secondBody.retrievers).toContain("VECTOR");
+
+    // Re-ingesting must be able to repair that. The skip guard originally
+    // looked only at chunk/vector counts, so it reported "already done" for
+    // vectors from a model the search leg would no longer accept — the one
+    // operation that could have fixed the reference was the one it refused.
+    const { versionId } = await db.reference.findFirstOrThrow({
+      where: { workspaceId },
+      select: { currentVersionId: true },
+    }).then((r) => ({ versionId: r.currentVersionId! }));
+    const repair = await app.inject({
+      method: "POST",
+      url: `/api/reference-versions/${versionId}/ingest`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(repair.statusCode).toBe(200);
+    expect((repair.json() as { skipped: boolean }).skipped).toBe(false);
+
+    const third = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/retrieval/search`,
+      headers: { cookie: owner.cookie },
+      payload: vectorOnly,
+    });
+    expect((third.json() as { hits: unknown[] }).hits.length).toBeGreaterThan(0);
+  });
+
+  it("answers a duplicate key with 409, not 500", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    const create = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/workspaces/${workspaceId}/references`,
+        headers: { cookie: owner.cookie },
+        payload: { key: "dup", title: "Dup", content: "some text" },
+      });
+
+    expect((await create()).statusCode).toBe(201);
+    // The unique index is the real check, so its violation is a client
+    // mistake — an unmapped P2002 surfaced as an opaque 500 INTERNAL.
+    expect((await create()).statusCode).toBe(409);
+  });
+
+  it("does not 500 when versions are appended concurrently", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/references`,
+      headers: { cookie: owner.cookie },
+      payload: { key: "raced", title: "Raced", content: "first" },
+    });
+    const { id } = created.json() as { id: string };
+
+    // Each appender reads the highest number and inserts the next one, so
+    // concurrent calls all pick the same number and all but one lose the
+    // `@@unique([referenceId, number])` race. That is a lost race, not a
+    // malformed request: it must resolve to a retry, never a 500.
+    const results = await Promise.all(
+      Array.from({ length: 5 }, (_, i) =>
+        app.inject({
+          method: "POST",
+          url: `/api/references/${id}/versions`,
+          headers: { cookie: owner.cookie },
+          payload: { content: `body ${i}` },
+        }),
+      ),
+    );
+    expect(results.map((r) => r.statusCode)).toEqual([201, 201, 201, 201, 201]);
+
+    // The numbers must still be a gap-free run from 1, which is what the
+    // retry guarantees and a bare 409 would not.
+    const versions = await db.referenceVersion.findMany({
+      where: { referenceId: id },
+      orderBy: { number: "asc" },
+      select: { number: true },
+    });
+    expect(versions.map((v) => v.number)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
   it("refuses to publish a reference that has no ingested chunks", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
@@ -779,6 +1009,27 @@ describe("evidence and audit", () => {
     expect(generations.every((g) => g.task === "embed")).toBe(true);
     expect(generations.every((g) => g.status === "SUCCEEDED")).toBe(true);
     expect(generations.every((g) => g.userId === owner.userId)).toBe(true);
+
+    // The audit row must name the generation that produced its query
+    // vector. `generation_id` was declared on the row and on the search
+    // input but no caller could ever populate it — `embed` did not return
+    // the id — so the schema's promise that a retrieval links to its
+    // generation was false for every row.
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/retrieval/search`,
+      headers: { cookie: owner.cookie },
+      payload: searchBody("oath"),
+    });
+    expect(res.statusCode).toBe(200);
+    const audit = await db.retrievalAudit.findFirstOrThrow({
+      where: { workspaceId },
+      orderBy: { createdAt: "desc" },
+      select: { generationId: true },
+    });
+    expect(audit.generationId).not.toBeNull();
+    const linked = await db.generation.findUnique({ where: { id: audit.generationId! } });
+    expect(linked?.task).toBe("embed");
   });
 });
 

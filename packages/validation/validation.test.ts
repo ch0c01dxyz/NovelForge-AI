@@ -490,6 +490,70 @@ describe("validateGraph", () => {
     if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("RETRIEVAL_NO_QUERY");
   });
 
+  it("rejects an outputSchema on a kind whose executor never reads it", () => {
+    // The RETRIEVAL/TRANSFORM/HUMAN_APPROVAL branches return before contract
+    // enforcement, so such a schema was screened, stored and published while
+    // being unable to fail a run — an author-declared contract that silently
+    // does nothing, which is what this module rejects elsewhere.
+    for (const kind of ["RETRIEVAL", "TRANSFORM", "HUMAN_APPROVAL"] as const) {
+      const r = validateGraph({
+        steps: [
+          {
+            key: "a",
+            kind,
+            instruction: "q",
+            outputSchema: { type: "object", required: ["x"], properties: { x: { type: "string" } } },
+          },
+        ],
+        edges: [],
+      });
+      expect(r.ok, `${kind} should reject an inert outputSchema`).toBe(false);
+      if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("STEP_SCHEMA_NOT_ENFORCED");
+    }
+
+    // The kinds that DO enforce it must still accept one.
+    for (const kind of ["AGENT", "SKILL"] as const) {
+      const r = validateGraph({
+        steps: [
+          {
+            key: "a",
+            kind,
+            ref: "writer",
+            instruction: "q",
+            outputSchema: { type: "object", required: ["x"], properties: { x: { type: "string" } } },
+          },
+        ],
+        edges: [],
+      });
+      expect(r.ok, `${kind} should accept an enforced outputSchema`).toBe(true);
+    }
+  });
+
+  it("caps a RETRIEVAL instruction at the search query limit, not the prompt limit", () => {
+    // The instruction IS the search query for this kind, and the search
+    // rejects anything over 2000 chars — so the generic 20000 bound allowed a
+    // definition to be published that could only ever fail at run time.
+    const at = validateGraph({
+      steps: [{ key: "a", kind: "RETRIEVAL", instruction: "x".repeat(2_000) }],
+      edges: [],
+    });
+    expect(at.ok).toBe(true);
+
+    const over = validateGraph({
+      steps: [{ key: "a", kind: "RETRIEVAL", instruction: "x".repeat(2_001) }],
+      edges: [],
+    });
+    expect(over.ok).toBe(false);
+    if (!over.ok) expect(over.failures.map((f) => f.code)).toContain("STEP_BAD_INSTRUCTION");
+
+    // A prompt for a model has no such limit, so the wider bound still holds.
+    const prompt = validateGraph({
+      steps: [{ key: "a", kind: "AGENT", ref: "writer", instruction: "x".repeat(3_000) }],
+      edges: [],
+    });
+    expect(prompt.ok).toBe(true);
+  });
+
   it("rejects a third outgoing edge on a CONDITION", () => {
     // An extra UNLABELED edge is read by the executor as
     // `(edge.when === "true") === taken`, which is true on the false

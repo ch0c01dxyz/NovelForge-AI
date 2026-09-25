@@ -215,7 +215,7 @@ an unreadable credential yields 409 with the breaker left at 0.
 
 | Area | Unit | Integration | Contract | E2E | Migration |
 | ---- | ---- | ----------- | -------- | --- | --------- |
-| Contract validator (`packages/validation`) | passing (55) | — | — | — | — |
+| Contract validator (`packages/validation`) | passing (59) | — | — | — | — |
 | Workflow graph validator | passing | — | — | — | — |
 | Phase 4 schema (`packages/database`) | — | passing | — | — | passing (drift-free, 8 migrations) |
 | Definition CRUD + versioning | — | passing | — | — | — |
@@ -276,7 +276,7 @@ run is 404; run history lists; a completed run is audited.
 
 | Area | Unit | Integration | Contract | E2E | Migration |
 | ---- | ---- | ----------- | -------- | --- | --------- |
-| Chunker (`packages/retrieval`) | passing (27) | — | — | — | — |
+| Chunker (`packages/retrieval`) | passing (28) | — | — | — | — |
 | Rank fusion | passing (15) | — | — | — | — |
 | Spoiler predicate | passing (12) | — | — | — | — |
 | Embedding routing (`packages/ai-core`) | passing (6) | — | — | — | — |
@@ -290,8 +290,8 @@ run is 404; run history lists; a completed run is audited.
 | `RETRIEVAL` workflow step | passing | passing | — | — | — |
 
 Executed results (2026-09-25, Windows, live compose PostgreSQL 0.8.6
-pgvector; full suite 350 passed / 1 skipped).
-`chunk.test.ts` (27) — paragraph/line/sentence splitting, offsets into the
+pgvector; full suite 368 passed / 1 skipped).
+`chunk.test.ts` (28) — paragraph/line/sentence splitting, offsets into the
 original text, CRLF and mixed line endings, short-segment merging on both
 sides, oversized runs split at sentence boundaries then hard-split,
 `maxChars`/`minChars` validation, blank input, and `verifyChunks`
@@ -316,7 +316,7 @@ and an empty batch making no attempt at all.
 step with no instruction is refused (`RETRIEVAL_NO_QUERY`); `extractJson`
 skips a prose bracket that is not JSON (`"The [main] character: {…}"`) and
 still fails closed when no value parses.
-`retrieval.test.ts` (14, `novelforge_test_phase5`) — an ingested
+`retrieval.test.ts` (21, `novelforge_test_phase5`) — an ingested
 reference is citable to its exact character span (`content.slice(start,
 end) === text`, asserted on a real hit); re-ingesting unchanged content
 skips and makes **no** second provider call; publishing a reference with
@@ -335,7 +335,18 @@ caller received; the embedding call leaves a `Generation` row with profile
 EMBEDDING, task `embed`, status SUCCEEDED and the actor's id; a RETRIEVAL
 workflow step returns cited hits and its audit row is linked to the step;
 an empty index succeeds with zero hits while recording that only the
-lexical leg ran.
+lexical leg ran. Second audit round adds: a new version takes an ACTIVE
+reference out of scope until it is re-ingested and re-published; a repair
+re-ingest does not clear the spoiler boundary; an embedding from a
+different model is not ranked, and re-ingest repairs it; a duplicate key
+is 409 rather than 500; five concurrent version appends all succeed with
+a gap-free number run; and a retrieval audit row names the generation
+that produced its query vector.
+`validation.test.ts` (+2, 59 total) — an `outputSchema` is rejected on
+RETRIEVAL/TRANSFORM/HUMAN_APPROVAL (accepted on AGENT/SKILL); a RETRIEVAL
+instruction is capped at the 2000-char query limit while a prompt is not.
+`chunk.test.ts` (+1, 28 total) — a hard split never emits a blank chunk,
+and dropping the blanks loses no content.
 `definitions.test.ts` (+3, 36 total) — an unpublished WORKSPACE workflow
 is 409 with no generation and no run row; an inherited `$input.constructor`
 reference renders as `(not available)` and never as a function's

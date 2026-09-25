@@ -36,6 +36,7 @@ import {
   type ViewMode,
 } from "@novelforge/retrieval";
 import { BadGatewayError, ConflictError, NotFoundError } from "./platform.ts";
+import { appendVersionWithRetry, prismaCode } from "./definitions.ts";
 import type { AuditService } from "./audit.ts";
 
 /**
@@ -53,6 +54,20 @@ export const EMBED_BATCH_SIZE = 64;
 
 /** Candidate pool per retriever before fusion. */
 export const DEFAULT_CANDIDATE_LIMIT = 50;
+
+/**
+ * Ceiling on the chunks one version may project.
+ *
+ * `ingest` inserts every chunk in a SINGLE statement with 4 bound parameters
+ * each, and PostgreSQL's wire protocol caps a statement at 65535 parameters
+ * (u16). Past ~16000 chunks the insert dies with a driver error the routes
+ * turn into a bare 500 — so an author who pasted a long reference got a
+ * failure that named nothing. Refusing the version with a typed 409 says
+ * which limit was hit and by how much. 12000 leaves headroom under the cap
+ * while sitting far above any real reference; a version approaching it is a
+ * sign the material should be split, not a sign the limit should be raised.
+ */
+export const MAX_CHUNKS_PER_VERSION = 12_000;
 
 export interface ReferenceView {
   id: string;
@@ -120,7 +135,7 @@ export interface Embedder {
     actorUserId: string;
     workspaceId: string;
     texts: string[];
-  }): Promise<{ vectors: number[][]; model: string }>;
+  }): Promise<{ vectors: number[][]; model: string; generationId: string | null }>;
 }
 
 export interface RetrievalServices {
@@ -174,6 +189,12 @@ export interface RetrievalServices {
     limit?: number;
     /** Attribution: which generation or workflow step issued this. */
     generationId?: string;
+    /**
+     * Set by the caller once the step row exists, so the audit row can be
+     * linked back to the step that issued the search. The executor writes the
+     * step row AFTER the search returns (it needs the results to fill it), so
+     * this is a second, best-effort update rather than a create-time field.
+     */
     stepRunId?: string;
   }): Promise<SearchResult>;
 
@@ -208,6 +229,14 @@ interface SearchRow {
   end: number;
   rank: number;
   score: number | null;
+  /**
+   * Retriever-specific provenance, matching `fuse`'s `Hit.detail`. Always
+   * NULL today: neither leg has a value worth the cost — a lexical
+   * `ts_headline` would re-parse every candidate chunk per search for a
+   * snippet no caller reads. The column stays in the select so the shape
+   * matches `Hit` without a conditional spread, and so a future leg that
+   * does produce provenance has somewhere to put it.
+   */
   detail: string | null;
 }
 
@@ -236,6 +265,21 @@ export function createRetrievalServices(deps: {
 
   function hash(content: string): string {
     return createHash("sha256").update(content, "utf8").digest("hex");
+  }
+
+  /**
+   * The model id the EMBEDDING profile currently resolves to, read from the
+   * admin mapping rather than by calling a provider. Returns null when the
+   * profile is unmapped — in which case a skip is never taken, so an
+   * unmapped profile keeps its previous behaviour of re-ingesting.
+   */
+  async function embeddingModelFor(): Promise<string | null> {
+    const mapping = await db.modelProfileMapping.findFirst({
+      where: { profile: "EMBEDDING", enabled: true },
+      orderBy: [{ priority: "asc" }],
+      select: { model: { select: { modelId: true } } },
+    });
+    return mapping?.model.modelId ?? null;
   }
 
   function checkKey(key: string): void {
@@ -361,36 +405,47 @@ export function createRetrievalServices(deps: {
       }
 
       const content = input.content ?? "";
-      const created = await db.$transaction(async (tx) => {
-        const ref = await tx.reference.create({
-          data: {
-            workspaceId: input.workspaceId,
-            novelId: input.novelId ?? null,
-            key: input.key,
-            title: input.title,
-            kind: (input.kind ?? "NOTE") as never,
-            source: input.source ?? null,
-            createdById: input.actorUserId,
-          },
-          select: { id: true },
+      // A duplicate key is a client mistake, not a server fault. The unique
+      // index is the real check — a read-then-write pre-check would still
+      // lose the race — so the P2002 it raises is translated to the 409
+      // every other create in this codebase returns.
+      const created = await db
+        .$transaction(async (tx) => {
+          const ref = await tx.reference.create({
+            data: {
+              workspaceId: input.workspaceId,
+              novelId: input.novelId ?? null,
+              key: input.key,
+              title: input.title,
+              kind: (input.kind ?? "NOTE") as never,
+              source: input.source ?? null,
+              createdById: input.actorUserId,
+            },
+            select: { id: true },
+          });
+          const version = await tx.referenceVersion.create({
+            data: {
+              referenceId: ref.id,
+              number: 1,
+              content,
+              contentHash: hash(content),
+              charCount: content.length,
+              createdById: input.actorUserId,
+            },
+            select: { id: true },
+          });
+          await tx.reference.update({
+            where: { id: ref.id },
+            data: { currentVersionId: version.id },
+          });
+          return { id: ref.id, versionId: version.id, version: 1 };
+        })
+        .catch((err: unknown): never => {
+          if (prismaCode(err) === "P2002") {
+            throw new ConflictError(`reference key "${input.key}" already exists in this workspace`);
+          }
+          throw err;
         });
-        const version = await tx.referenceVersion.create({
-          data: {
-            referenceId: ref.id,
-            number: 1,
-            content,
-            contentHash: hash(content),
-            charCount: content.length,
-            createdById: input.actorUserId,
-          },
-          select: { id: true },
-        });
-        await tx.reference.update({
-          where: { id: ref.id },
-          data: { currentVersionId: version.id },
-        });
-        return { id: ref.id, versionId: version.id, version: 1 };
-      });
 
       await audit.record({
         actorUserId: input.actorUserId,
@@ -407,31 +462,49 @@ export function createRetrievalServices(deps: {
       const ref = await referenceForWrite(input.referenceId, input.actorUserId);
       const content = input.content ?? "";
 
-      const created = await db.$transaction(async (tx) => {
-        const last = await tx.referenceVersion.findFirst({
-          where: { referenceId: ref.id },
-          orderBy: { number: "desc" },
-          select: { number: true },
-        });
-        const number = (last?.number ?? 0) + 1;
-        const version = await tx.referenceVersion.create({
-          data: {
-            referenceId: ref.id,
-            number,
-            content,
-            contentHash: hash(content),
-            charCount: content.length,
-            note: input.note ?? null,
-            createdById: input.actorUserId,
-          },
-          select: { id: true },
-        });
-        await tx.reference.update({
-          where: { id: ref.id },
-          data: { currentVersionId: version.id },
-        });
-        return { versionId: version.id, version: number };
-      });
+      const created = await appendVersionWithRetry(
+        () =>
+          db.$transaction(async (tx) => {
+            const last = await tx.referenceVersion.findFirst({
+              where: { referenceId: ref.id },
+              orderBy: { number: "desc" },
+              select: { number: true },
+            });
+            const number = (last?.number ?? 0) + 1;
+            const version = await tx.referenceVersion.create({
+              data: {
+                referenceId: ref.id,
+                number,
+                content,
+                contentHash: hash(content),
+                charCount: content.length,
+                note: input.note ?? null,
+                createdById: input.actorUserId,
+              },
+              select: { id: true },
+            });
+            await tx.reference.update({
+              where: { id: ref.id },
+              data: {
+                currentVersionId: version.id,
+                // A new revision supersedes the ingested projection, so an
+                // ACTIVE reference must return to DRAFT. Both search legs join
+                // `r.current_version_id = rv.id`, so the moment this pointer
+                // moves, the previous version's chunks stop matching and the
+                // new version has none — the reference vanished from every
+                // search while still reading ACTIVE, with no error and no way
+                // for the author to tell why. Dropping to DRAFT makes that
+                // state honest, and it is what makes the second publish below
+                // able to run at all. ARCHIVED is deliberately left alone: it
+                // is out of scope by choice, not by staleness.
+                ...(ref.status === "ACTIVE" ? { status: "DRAFT" as const } : {}),
+              },
+            });
+            return { versionId: version.id, version: number };
+          }),
+        "reference",
+        ref.id,
+      );
 
       await audit.record({
         actorUserId: input.actorUserId,
@@ -553,30 +626,58 @@ export function createRetrievalServices(deps: {
       const existing = await db.chunk.count({
         where: { referenceVersionId: version.id },
       });
-      const alreadyEmbedded = await db.$queryRawUnsafe<Array<{ n: bigint }>>(
-        `SELECT count(*)::bigint AS n
+      const alreadyEmbedded = await db.$queryRawUnsafe<
+        Array<{ n: bigint; models: bigint; model: string | null }>
+      >(
+        `SELECT count(*)::bigint AS n,
+                count(DISTINCT e.model)::bigint AS models,
+                min(e.model) AS model
            FROM embeddings e
            JOIN chunks c ON c.id = e.chunk_id
           WHERE c.reference_version_id = $1::uuid`,
         version.id,
       );
       const embeddedCount = Number(alreadyEmbedded[0]?.n ?? 0);
+      const storedModels = Number(alreadyEmbedded[0]?.models ?? 0);
+      const storedModel = alreadyEmbedded[0]?.model ?? null;
+
+      // The skip also has to prove the stored vectors came from the model
+      // retrieval will now search against. `search` filters the vector leg on
+      // `e.model = <the model this query was embedded with>`, so when an
+      // admin remaps the EMBEDDING profile the existing vectors stop
+      // matching and the vector leg goes silent — and a skip here refused
+      // the one operation that could repair it, leaving the reference
+      // vector-unsearchable with no path back. Comparing the recorded model
+      // against the profile's current mapping is enough: routing may choose a
+      // different gateway, but a gateway serves a model under the same name.
+      const profileModel = await embeddingModelFor();
+
+      const modelsMatch =
+        profileModel !== null && storedModels === 1 && storedModel === profileModel;
 
       // Re-ingesting with a DIFFERENT boundary is a real request, not a
       // no-op: the chunks must be rewritten. The old condition returned
       // `skipped: true` for exactly that case, so a caller setting
       // `availableFromChapter` on an already-ingested version was told the
       // work was done while every chunk kept its old boundary.
-      const boundary = input.availableFromChapter ?? null;
       const existingBoundaries = await db.chunk.findMany({
         where: { referenceVersionId: version.id },
         select: { availableFromChapter: true },
       });
-      const boundaryMatches =
-        input.availableFromChapter === undefined ||
-        existingBoundaries.every((c) => c.availableFromChapter === boundary);
+      const boundary =
+        input.availableFromChapter !== undefined
+          ? input.availableFromChapter
+          : // An omitted boundary on a REPAIR ingest must not be read as
+            // "clear the boundary". The skip guard above only short-circuits
+            // when the projection is complete, so reaching here with an
+            // omitted option means the chunks are being rewritten — and
+            // writing NULL would silently un-classify every chunk of a
+            // version whose boundary the author set earlier, widening what
+            // readers can see. Carry the existing value forward instead.
+            (existingBoundaries[0]?.availableFromChapter ?? null);
+      const boundaryMatches = existingBoundaries.every((c) => c.availableFromChapter === boundary);
 
-      if (existing > 0 && embeddedCount === existing && boundaryMatches) {
+      if (existing > 0 && embeddedCount === existing && boundaryMatches && modelsMatch) {
         return { chunks: existing, embedded: embeddedCount, skipped: true };
       }
 
@@ -585,6 +686,13 @@ export function createRetrievalServices(deps: {
         throw new ConflictError("reference content could not be chunked");
       }
       const units: ChunkUnit[] = chunked.value;
+
+      if (units.length > MAX_CHUNKS_PER_VERSION) {
+        throw new ConflictError(
+          `reference is too large to ingest in one version: ${units.length} chunks ` +
+            `exceeds the ${MAX_CHUNKS_PER_VERSION}-chunk limit; split it into several references`,
+        );
+      }
 
       // Verify before persisting: an unsound span would make every citation
       // into this version point at text that is not what was embedded.
@@ -619,7 +727,7 @@ export function createRetrievalServices(deps: {
         // search(); a different configuration here would make lexical search
         // silently miss matches.
         if (units.length === 0) return;
-        const params: unknown[] = [version.id, workspaceId, input.availableFromChapter ?? null];
+        const params: unknown[] = [version.id, workspaceId, boundary];
         const values = units.map((u) => {
           // `id` is deliberately absent from the column list: it is
           // gen_random_uuid(). Passing the chunk index there instead was a
@@ -697,18 +805,25 @@ export function createRetrievalServices(deps: {
       // "the knowledge base has nothing on this".
       const retrievers: Retriever[] = [];
       const failedLegs: string[] = [];
+      // Captured inside the vector-leg try so the audit row can name the
+      // generation that produced the query vector. Declared here because the
+      // audit write is far below the leg.
+      let embeddingGenerationId: string | undefined;
 
       // ---- lexical leg: PostgreSQL full-text over the GIN index ----
       //
       // Every predicate is in the SQL: workspace isolation, publication
       // state, and the spoiler boundary. Filtering after ranking would mean
       // reading rows this caller may not see at all.
-      const spoilerSql =
-        mode === "READER" ? `AND c.available_from_chapter IS NOT NULL AND c.available_from_chapter <= $3::int` : "";
+      const spoilerClause = (readerParam: number): string =>
+        mode === "READER"
+          ? `AND c.available_from_chapter IS NOT NULL AND c.available_from_chapter <= $${readerParam}::int`
+          : "";
       const lexicalParams: unknown[] = [input.workspaceId, query];
       if (mode === "READER") lexicalParams.push(readerChapter ?? 0);
       const novelFilter = input.novelId ? `AND r.novel_id = $${lexicalParams.length + 1}::uuid` : "";
       if (input.novelId) lexicalParams.push(input.novelId);
+      const lexicalSpoilerSql = spoilerClause(3);
       const lexicalLimit = `LIMIT ${candidates}`;
 
       let lexical: SearchRow[] = [];
@@ -728,7 +843,7 @@ export function createRetrievalServices(deps: {
              CROSS JOIN plainto_tsquery('english', $2) q
             WHERE c.workspace_id = $1::uuid
               AND r.status = 'ACTIVE'
-              ${spoilerSql}
+              ${lexicalSpoilerSql}
               ${novelFilter}
               AND c.content_ts @@ q
             ORDER BY score DESC, c.id
@@ -753,11 +868,26 @@ export function createRetrievalServices(deps: {
           texts: [query],
         });
         const qv = embedded.vectors[0];
+        embeddingGenerationId = embedded.generationId ?? undefined;
         if (!qv || qv.length !== EMBEDDING_DIMENSION) {
           throw new ConflictError("embedding provider returned an unusable query vector");
         }
-        const vectorParams: unknown[] = [input.workspaceId, `[${qv.join(",")}]`];
+        // Same guard `embedChunks` applies to stored vectors, for the same
+        // reason: the value is stringified into a SQL literal, so it must be
+        // finite numbers before that happens. Without it the failure is a raw
+        // pgvector cast error caught by the leg's own handler, which then
+        // reports "vector leg unavailable" for what is really a bad provider
+        // response — pointing the operator at the database instead.
+        if (!qv.every((n) => typeof n === "number" && Number.isFinite(n))) {
+          throw new ConflictError("embedding provider returned a non-finite query vector");
+        }
+        const vectorParams: unknown[] = [input.workspaceId, `[${qv.join(",")}]`, embedded.model];
         if (mode === "READER") vectorParams.push(readerChapter ?? 0);
+        // The reader chapter sits at $4 here, not $3 — $3 is the embedding
+        // model. Sharing one hardcoded `$3` between the legs would bind the
+        // model name to an int cast, and the query would fail at runtime
+        // only for READER searches.
+        const vectorSpoilerSql = spoilerClause(4);
         const vNovel = input.novelId ? `AND r.novel_id = $${vectorParams.length + 1}::uuid` : "";
         if (input.novelId) vectorParams.push(input.novelId);
 
@@ -777,7 +907,8 @@ export function createRetrievalServices(deps: {
             WHERE c.workspace_id = $1::uuid
               AND r.status = 'ACTIVE'
               AND e.dimensions = ${EMBEDDING_DIMENSION}
-              ${spoilerSql}
+              AND e.model = $3
+              ${vectorSpoilerSql}
               ${vNovel}
             ORDER BY score ASC, c.id
             LIMIT ${candidates}`,
@@ -894,6 +1025,12 @@ export function createRetrievalServices(deps: {
           readerChapter,
           returnedCount: visible.length,
           withheldCount: withheld,
+          // The Generation row is the record of the embedding call this
+          // search made. Persisting its id is what makes the audit row
+          // traceable to the AI call that produced the query vector, which
+          // is what the schema promises; without it the column was
+          // unreachable by construction.
+          ...(embeddingGenerationId ? { generationId: embeddingGenerationId } : {}),
           results: visible.map((h) => ({
             chunkId: h.chunkId,
             referenceId: h.referenceId,

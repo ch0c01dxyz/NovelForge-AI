@@ -48,6 +48,19 @@ export const EXECUTABLE_STEP_KINDS: ReadonlySet<StepKind> = new Set([
   "HUMAN_APPROVAL",
 ]);
 
+/**
+ * Kinds whose executor branch compiles and applies `outputSchema`.
+ *
+ * The other executable kinds return before that point, so a schema on them
+ * is stored but unreachable — `validateGraph` rejects it rather than let an
+ * author believe a contract is being checked.
+ */
+export const SCHEMA_ENFORCING_STEP_KINDS: ReadonlySet<StepKind> = new Set([
+  "AGENT",
+  "SKILL",
+  "VALIDATOR",
+]);
+
 export interface WorkflowEdge {
   from: string;
   to: string;
@@ -224,11 +237,22 @@ export function validateGraph(
 
     const instruction = raw["instruction"];
     if (instruction !== undefined) {
-      if (typeof instruction !== "string" || instruction.trim().length === 0 || instruction.length > 20_000) {
+      // The cap is per-kind because the value's meaning is per-kind. A
+      // RETRIEVAL instruction IS the search query, and the search rejects
+      // anything over 2000 chars — so the generic 20000 bound let a
+      // definition be created and published that could only ever fail at
+      // run time, defeating the definition-time validation this module
+      // exists to provide (CLAUDE.md §19). Prompt text has no such limit.
+      const maxInstruction = kind === "RETRIEVAL" ? 2_000 : 20_000;
+      if (
+        typeof instruction !== "string" ||
+        instruction.trim().length === 0 ||
+        instruction.length > maxInstruction
+      ) {
         failures.push({
           path: at(path, "instruction"),
           code: "STEP_BAD_INSTRUCTION",
-          message: "instruction must be a non-empty string of at most 20000 chars",
+          message: `instruction must be a non-empty string of at most ${maxInstruction} chars`,
         });
       } else {
         step.instruction = instruction;
@@ -317,10 +341,28 @@ export function validateGraph(
     }
 
     if (raw["outputSchema"] !== undefined) {
-      if (screenSchema) {
-        failures.push(...screenSchema(raw["outputSchema"], at(path, "outputSchema")));
+      // Only the kinds whose executor branch actually compiles and applies
+      // the contract may carry one. RETRIEVAL, TRANSFORM and HUMAN_APPROVAL
+      // return before that enforcement, so a schema on them was screened,
+      // stored and published while never being able to fail a run — the same
+      // "contract that silently does nothing" that maxRetries/timeoutMs are
+      // rejected for. Rejecting it here is one guard; adding enforcement to
+      // three executor branches would be three, for kinds where a contract
+      // has no obvious meaning anyway.
+      if (!SCHEMA_ENFORCING_STEP_KINDS.has(kind as StepKind)) {
+        failures.push({
+          path: at(path, "outputSchema"),
+          code: "STEP_SCHEMA_NOT_ENFORCED",
+          message:
+            `outputSchema is only enforced on ${[...SCHEMA_ENFORCING_STEP_KINDS].join(", ")} steps; ` +
+            `a ${kind} step would store a contract that never gates anything`,
+        });
+      } else {
+        if (screenSchema) {
+          failures.push(...screenSchema(raw["outputSchema"], at(path, "outputSchema")));
+        }
+        step.outputSchema = raw["outputSchema"];
       }
-      step.outputSchema = raw["outputSchema"];
     }
 
     // A VALIDATOR is a step whose entire purpose is to reject a bad value.

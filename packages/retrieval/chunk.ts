@@ -148,7 +148,11 @@ function splitOversized(
   let cutIdx = 0;
   while (cursor < text.length) {
     if (text.length - cursor <= maxChars) {
-      out.push({ text: text.slice(cursor), start: base + cursor });
+      const tail = text.slice(cursor);
+      // Same blank rule as the loop body below: a trailing run of spaces is
+      // not a chunk. Without this the LAST piece was still emitted blank
+      // whenever the budget happened to land exactly on the whitespace.
+      if (!isBlank(tail)) out.push({ text: tail, start: base + cursor });
       break;
     }
     const limit = cursor + maxChars;
@@ -174,7 +178,15 @@ function splitOversized(
     if (cut < text.length && isLowSurrogate(text.charCodeAt(cut)) && cut > cursor + 1) {
       cut -= 1;
     }
-    out.push({ text: text.slice(cursor, cut), start: base + cursor });
+    const piece = text.slice(cursor, cut);
+    // A piece that is entirely whitespace produces the low-signal vector
+    // `minChars` exists to avoid, and the docstring promises leading and
+    // trailing whitespace is excluded from `text`. Blank paragraphs and
+    // lines are filtered by the caller, but hard-split pieces were not — so
+    // an indented or space-padded run emitted chunks of pure spaces. The
+    // span still advances, so no content is lost; the blanks simply are not
+    // chunks.
+    if (!isBlank(piece)) out.push({ text: piece, start: base + cursor });
     cursor = cut;
   }
   return out;

@@ -1007,7 +1007,7 @@ function countSteps(graph: unknown): number | null {
 }
 
 /** Read a Prisma error code without importing the generated error class. */
-function prismaCode(err: unknown): string {
+export function prismaCode(err: unknown): string {
   return typeof err === "object" && err !== null && "code" in err
     ? String((err as { code: unknown }).code)
     : "";
@@ -1022,7 +1022,7 @@ function prismaCode(err: unknown): string {
  * reporting a 500 (and rather than telling the caller their request was
  * malformed). Bounded, so a persistent conflict still surfaces.
  */
-async function appendVersionWithRetry<T>(
+export async function appendVersionWithRetry<T>(
   attempt: () => Promise<T>,
   kind: string,
   parentId: string,

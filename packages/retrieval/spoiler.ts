@@ -86,6 +86,15 @@ export function visibleTo<T extends SpoilerBoundary>(
 /**
  * Whether a mode may read unpublished (DRAFT) source material at all.
  * A reader sees only published prose; an editor or author may read drafts.
+ *
+ * No caller uses this today, and it does not govern any current path. The
+ * DRAFT exclusion in retrieval is mode-INDEPENDENT — both search legs carry
+ * `r.status = 'ACTIVE'`, so an AUTHOR-mode search never returns a DRAFT
+ * reference either. That filter plus the `reference:read` capability are the
+ * working controls; this predicate is a capability statement about a
+ * draft-reading path that does not exist yet. Kept (rather than deleted)
+ * because that path is a plausible next step, and a future editor of the
+ * DRAFT gate should be able to see that this is NOT what enforces it.
  */
 export function canReadDrafts(mode: ViewMode): boolean {
   return mode === "AUTHOR" || mode === "EDITOR";

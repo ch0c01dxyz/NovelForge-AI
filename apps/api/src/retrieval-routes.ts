@@ -43,7 +43,15 @@ const keyField = z
 
 // A reference is a document, so its body can be large — the manuscript
 // import limit, for the same reason.
-const REFERENCE_BODY_LIMIT = 8_000_000;
+//
+// 2x the 8M-character schema cap, matching the headroom rule stated in
+// manuscript-routes.ts. The two limits are measured in DIFFERENT UNITS:
+// Fastify counts UTF-8 BYTES of the received body, Zod counts JavaScript
+// string characters. At 1:1 the advertised cap was unreachable for anything
+// non-ASCII — a CJK document costs 3 bytes per character, so it 413'd at
+// ~2.67M characters while the schema promised 8M. Headroom restores the cap
+// that the message and the schema both claim.
+const REFERENCE_BODY_LIMIT = 16_000_000;
 
 const createReferenceBody = z.object({
   novelId: uuid.optional(),

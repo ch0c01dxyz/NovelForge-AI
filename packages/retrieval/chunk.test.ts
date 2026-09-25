@@ -182,6 +182,22 @@ describe("chunkText", () => {
     expect(chunks.map((c) => c.text).join("")).toBe(emoji);
   });
 
+  it("never emits a chunk that is pure whitespace", () => {
+    // A space-padded run reached the hard-split path (no paragraph or line
+    // boundary at all) and every piece it produced was emitted, blank ones
+    // included — exactly the low-signal vector `minChars` exists to avoid.
+    // Both the mid-loop and the final tail piece had the hole.
+    const chunks = ok("x" + " ".repeat(300), { maxChars: 100 });
+    for (const c of chunks) expect(c.text.trim().length).toBeGreaterThan(0);
+    // Every piece past the "x" is blank, so the hard split yields ONE chunk
+    // instead of the four it used to emit; only the first is non-blank.
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]!.text.trim()).toBe("x");
+    expect(chunks[0]!.text.length).toBeLessThanOrEqual(100);
+    // The dropped blanks were whitespace-only, so nothing was lost.
+    expect(verifyChunks("x" + " ".repeat(300), chunks)).toEqual([]);
+  });
+
   it("rejects a nonsensical budget rather than guessing", () => {
     expect(chunkText("x", { maxChars: 0 }).ok).toBe(false);
     expect(chunkText("x", { maxChars: -1 }).ok).toBe(false);

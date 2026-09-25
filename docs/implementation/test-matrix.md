@@ -359,11 +359,70 @@ stringification; a run parked at an approval gate records
 `workflow.run_awaiting_approval`, never `workflow.run_completed`.
 
 Migration verified: applies from empty on a scratch database through all
-nine migrations (`migrate deploy` on a fresh database, 2026-09-25), and
+ten migrations (`migrate deploy` on a fresh database, 2026-09-25), and
 `migrate diff --from-migrations --to-schema --exit-code` reports 0 (no
 drift) against the schema.
 
-## Phase 6+
+## Phase 6 — Story Intelligence Core
+
+**Mandatory cross-cutting scenario (TESTING.md): candidate canon conflict
+is not silently committed.** Covered by
+`apps/api/src/canon.test.ts` — a proposal whose (entity, predicate) matches
+a live ACTIVE fact with a different object stays `PROPOSED` with
+`conflictKind = FUNCTIONAL_CONFLICT` and `conflictsWithFactId` set, the
+live fact is asserted **byte-identical** afterwards (`toEqual` on the whole
+row, not just its status), no second fact is minted, and a proposal
+identical to live canon is refused with a 409 rather than stored.
+
+`canon.test.ts` (+19, `novelforge_test_canon`) — the DB constraints are the
+subject, not the service: a second live value for one (entity, predicate)
+is 409 with no read-then-write pre-check; a claim with both or neither
+object form is refused; two spellings that fold to one subject key produce
+ONE entity; approval supersedes non-destructively (old row `SUPERSEDED`,
+linked, window closed at the replacement's start chapter, object text never
+overwritten) and approving twice cannot mint a second fact; rejection
+creates no canon row but records the decider; a chapter span whose quote
+does not match its offsets is refused rather than stored; evidence naming
+both a chapter and a reference is refused; FACT answers with
+`ESTABLISHED_FACT` and names its fact; a missing fact reports
+`insufficient: true` (no evidence — not "false"); STATE reconstructs
+as-of history, reports `notYetTrue` with the chapter a fact starts, and
+returns `INFERENCE` for reconstructed rows; the four slice-2 question
+kinds return `NOT_IMPLEMENTED_IN_PHASE_6` rather than an empty result; a
+ch-400 fact is withheld from a reader at ch 3 and shown at ch 400; a fact
+with no boundary is withheld at every reader position (deny by default)
+while the author sees it; READER requires a reader position and AUTHOR
+refuses one; a non-member, a foreign novel id, a foreign entity id and a
+foreign proposal id are all 404; an EDITOR reads canon but is 403 on
+propose and create; an unauthenticated request is 401.
+
+`packages/story-intelligence/canon.test.ts` (+31) — the pure rules, pinned
+because a domain package may not import the generated client:
+`canonicalSubjectKey` folds case, whitespace, punctuation and diacritics
+but NOT a typo (silently merging two names is worse than asking) and
+returns `""` for unusable input; the enum member sets are pinned so a
+schema member added without updating the local union fails a test rather
+than a typecheck that still passes; `resolveObject` mirrors the DB CHECK
+including the empty-literal case; `classifyProposal` separates DUPLICATE
+from FUNCTIONAL_CONFLICT (only NEW is free of a live fact); `answerBasis`
+takes the MINIMUM over evidence — one candidate row demotes an otherwise
+established chain to INFERENCE, a superseded row is never established, an
+as-of reconstruction is never established, a draft chapter is inference
+while a published one is established, and a reference chunk is only ever a
+suggestion; `locateQuote` refuses an unlocatable quote instead of guessing;
+`verifySpan` rejects empty, reversed, negative, fractional and
+past-the-end spans; `canonBoundary` maps absent or malformed boundaries to
+`null`, which `canView` withholds.
+
+`authorization.test.ts` (+3, 27 total) — canon capabilities are asserted
+per role rather than left to the generic loops: none is a platform
+capability and `canPlatform(SUPER_ADMIN, "canon:approve")` is false;
+`canon:read` is held by OWNER/ADMIN/AUTHOR/EDITOR and not VIEWER;
+`canon:manage` and `canon:approve` are held by OWNER/ADMIN/AUTHOR and
+NOT by EDITOR. The EDITOR asymmetry is the point — no generic loop covers
+it, so a future edit granting it would otherwise pass every test.
+
+## Phase 7+
 
 Rows added when each phase starts. Mandatory cross-cutting scenarios
 (streaming interruption, candidate canon, etc.) are listed in TESTING.md

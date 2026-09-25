@@ -47,6 +47,14 @@ export const CAPABILITIES = [
   // external material that will be embedded and fed to models.
   "reference:read",
   "reference:manage",
+  // Story intelligence (Phase 6). Novel-scoped story truth: canon lives
+  // inside one tenant's novel, so none of these is a platform capability
+  // (see PLATFORM_ONLY_CAPABILITIES below — a platform SUPER_ADMIN is
+  // deliberately not a member of every workspace and must not become the
+  // approver of every tenant's canon).
+  "canon:read", // read approved canon facts, their sources, and proposals
+  "canon:manage", // author a fact directly, or propose a candidate
+  "canon:approve", // decide a proposal: commit it to canon, or reject it
   // Platform-scoped catalog. Only a platform administrator may define the
   // shared agent/skill/workflow catalog every workspace can read.
   "platform:define",
@@ -116,6 +124,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // ADMIN curates the workspace's knowledge base.
     "reference:read",
     "reference:manage",
+    // ADMIN curates the workspace's story truth.
+    "canon:read",
+    "canon:manage",
+    "canon:approve",
   ]),
   AUTHOR: new Set<Capability>([
     "novel:create",
@@ -136,6 +148,11 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // A writer may consult the knowledge base and run retrieval against it,
     // but importing or editing reference material is an ADMIN act.
     "reference:read",
+    // The author owns the story's canon: authoring a fact and committing a
+    // proposal are both authoring acts (CLAUDE.md §5).
+    "canon:read",
+    "canon:manage",
+    "canon:approve",
   ]),
   EDITOR: new Set<Capability>([
     "novel:read",
@@ -149,6 +166,13 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "workflow:read",
     "workflow:run",
     "reference:read",
+    // An editor is a continuity reviewer: they read canon and flag
+    // conflicts. Committing story truth is the canon-authority act
+    // CLAUDE.md §5 reserves, so EDITOR gets canon:read and NOT
+    // canon:manage / canon:approve. This asymmetry is deliberate and is
+    // asserted explicitly in authorization.test.ts — the generic loops
+    // would not catch a future edit that granted it.
+    "canon:read",
   ]),
   VIEWER: new Set<Capability>(["novel:read", "chapter:read"]),
 };

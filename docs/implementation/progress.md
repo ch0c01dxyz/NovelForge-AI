@@ -870,7 +870,71 @@ apart by where the throw happens.
 Verified after: lint 0, typecheck all workspaces clean, 370 passed / 1
 skipped, migration drift 0. Ten regression tests added.
 
-## Phase 6+
+## Phase 6 — Story Intelligence Core
 
-NOT STARTED.
+**Slice 1 (canon + candidate canon + Story Brain) COMPLETE.**
+`docs/adr/ADR-0008-canon-authority.md`.
+
+What shipped: `story_entities`, `canon_facts`, `canon_fact_sources`,
+`canon_proposals` (migration `20260929_phase6_story_intelligence`); three
+capabilities; a deterministic read-only Story Brain answering FACT, STATE
+and RETRIEVAL with evidence; and `@novelforge/story-intelligence` as the
+pure rule layer.
+
+Three things were **probed against real PostgreSQL before the migration was
+written**, because the design rests on them and reasoning was not enough:
+
+- The one-live-value-per-subject+predicate constraint is a status-anchored
+  partial unique index (`canon_facts_live`), keyed on `(novel, entity,
+  predicate)` — NOT on the object value, which would let two contradictory
+  live facts coexist, the exact conflict it exists to catch. Anchored on
+  `status = 'ACTIVE'` rather than `superseded_by_id IS NULL`, so RETRACT
+  frees the slot instead of trapping it forever. Verified: a second ACTIVE
+  value is refused with `23505`, and retraction allows re-assertion.
+- The supersede transaction is FOUR statements, and the order is
+  load-bearing. Both two-statement orders fail: `UPDATE`-then-`INSERT`
+  violates the self-FK (`23503`), `INSERT`-then-`UPDATE` violates the
+  partial index (`23505`). The shipped order — supersede, insert, link,
+  decide — commits with correct final rows (verified including `COMMIT`).
+- A **generated** tsvector column is permanent Prisma drift (Prisma cannot
+  express `GENERATED ALWAYS AS`), which is why no chapter `content_ts` was
+  added. That finding is what removed chapter prose search from this slice.
+
+Deliberately **not** in slice 1, each with its reason recorded in
+`decisions.md` and ADR-0008: `story_events`, `causal_edges`,
+`story_threads`, `story_promises`, `timeline_events`, hierarchical-memory
+tables (rebuildable projections — materialise only with a
+`built_from_revision` FK in Phase 11), LLM fact extraction, the
+auto-approve class, free-text question dispatch, and chapter prose search.
+`EVENT`/`CAUSAL`/`UNRESOLVED`/`PROMISES` return an explicit
+not-implemented marker rather than a fabricated answer.
+
+Known limitations carried forward:
+
+- Canon carries no `revision_id` until Phase 11, so it participates in no
+  checkpoint or branch. Non-destructive correction is met by the supersede
+  chain only. Bounded gap, recorded in ADR-0008 §4.
+- A canon fact's chapter citation is a HISTORICAL pin: `ChapterVersion` is
+  immutable, but `Chapter.current_version_id` moves on the next save, so a
+  source is resolvable forever yet not "the current version".
+- `available_from_chapter` is a chapter number, and reordering chapters
+  swaps numbers in a transaction, so a reorder must recompute authored
+  boundaries or the spoiler filter drifts. Inherited exposure (no reorder
+  path ships here), now on tables that are explicitly story truth.
+- The Brain writes a `RetrievalAudit` row per ask, widening the already
+  unpruned Phase 5 retention gap.
+
+Verified after: lint 0, typecheck clean in every workspace except
+`apps/web` (see below), 423 passed / 1 skipped, migration drift 0, and the
+migration applies from empty through all ten migrations.
+
+**Pre-existing, NOT introduced here:** `apps/web` typecheck fails at
+`nuxt.config.ts:7` (`Plugin<any>[]` vs `PluginOption`). Two hoisted vite
+versions — 8.3.0 via `@tailwindcss/vite` and 7.3.6 via `nuxt` — give
+`tailwindcss()` a plugin type from one and the config a type from the
+other. Confirmed by stashing this phase's work and reproducing the failure
+at committed HEAD. The web app has no Phase 6 surface, so it is untouched
+by this work; fixing it is a dependency-dedup task, not a Phase 6 change.
+
+## Phase 7+
 

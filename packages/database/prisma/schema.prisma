@@ -60,6 +60,11 @@ model User {
   triggeredRuns       WorkflowRun[]    @relation("WorkflowRunTrigger")
   createdReferences   Reference[]      @relation("ReferenceCreator")
   authoredRefVers     ReferenceVersion[] @relation("ReferenceVersionCreator")
+  createdEntities     StoryEntity[]    @relation("StoryEntityCreator")
+  createdCanonFacts   CanonFact[]      @relation("CanonFactCreator")
+  createdFactSources  CanonFactSource[] @relation("CanonFactSourceCreator")
+  proposedCanon       CanonProposal[]  @relation("CanonProposalAuthor")
+  decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
 
   @@map("users")
 }
@@ -95,6 +100,8 @@ model Workspace {
   workflows    Workflow[]
   references   Reference[]
   retrievals   RetrievalAudit[]
+  canonFacts   CanonFact[]
+  proposals    CanonProposal[]
 
   @@map("workspaces")
 }
@@ -130,6 +137,9 @@ model Novel {
   workflows   Workflow[]
   references  Reference[]
   retrievals  RetrievalAudit[]
+  entities    StoryEntity[]
+  canonFacts  CanonFact[]
+  proposals   CanonProposal[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -225,6 +235,7 @@ model ChapterVersion {
   createdAt         DateTime @default(now()) @map("created_at")
   // Opposite side of Chapter.currentVersion pointer.
   currentForChapter Chapter? @relation("CurrentChapterVersion")
+  factSources       CanonFactSource[]
 
   @@unique([chapterId, number])
   @@index([chapterId, createdAt])
@@ -839,6 +850,7 @@ model ReferenceVersion {
   chunks      Chunk[]
   /// Opposite side of Reference.currentVersion.
   currentForReference Reference? @relation("CurrentReferenceVersion")
+  factSources         CanonFactSource[]
 
   @@unique([referenceId, number])
   @@index([referenceId, createdAt])
@@ -982,4 +994,265 @@ model RetrievalAudit {
   @@index([stepRunId])
   @@index([generationId])
   @@map("retrieval_audits")
+}
+
+// ==================== Story Intelligence (Phase 6) ====================
+// Canon is the source of story truth (CLAUDE.md section 2.1): canon_facts and
+// canon_fact_sources are authoritative. Everything derived from them —
+// summaries, embeddings, hierarchical memory — is a rebuildable projection
+// (section 2.2), which is why no summary table is created here.
+//
+// story_entities is the naming layer that gives canon a SUBJECT. It is not
+// canon: an entity row asserts only that the story names a thing, so creating
+// one commits no story truth and needs no approval (section 2.13 constrains
+// canon commits, not naming).
+//
+// NOT in this phase (their own phases own them — do not add early):
+//   synopses/sagas/arcs/outline_nodes                      -> Phase 7
+//   characters/character_states/relationship graph          -> Phase 8
+//   settlements/economy/politics/technology                 -> Phase 10
+//   revisions/change_sets/snapshots/checkpoints/branches     -> Phase 11
+//   ending_visions/resolution_items/callback_candidates      -> Phase 12
+// Accepted consequence: canon facts carry NO revision_id until Phase 11, so
+// "canon is never destructively overwritten" (section 2.11) is met here by
+// CanonFactStatus plus the supersede chain. See ADR-0008.
+
+/// What kind of thing a story entity names. Deliberately coarse: this is an
+/// identity layer, not a detail model. A world rule is a CanonFact on a
+/// CONCEPT entity; structured location/faction/economy detail belongs to its
+/// own phase and would be a separate table.
+enum StoryEntityKind {
+  CHARACTER
+  LOCATION
+  ORGANIZATION
+  FACTION
+  ITEM
+  RESOURCE
+  CONCEPT
+}
+
+/// Liveness of a canon fact. ACTIVE is the single live state (ADR-0008 §1);
+/// there is no separate pointer-based liveness predicate. RETRACTED means the
+/// author withdrew the claim — it frees the live slot, so the same claim can
+/// be re-asserted later.
+enum CanonFactStatus {
+  ACTIVE
+  SUPERSEDED
+  RETRACTED
+}
+
+enum CanonProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  SUPERSEDED
+}
+
+/// How a proposal relates to what is already canon.
+///
+/// CONFLICT is deliberately NOT a CanonProposalStatus: as a status value the
+/// approval gate would be a forgettable code path, whereas a nullable flag is
+/// structural — "only a NEW claim may be auto-approved" becomes a property of
+/// the row rather than a rule someone must remember.
+enum ConflictKind {
+  FUNCTIONAL_CONFLICT
+}
+
+/// Where a source's evidence came from. Drives which span columns are
+/// populated; a CHECK in the migration requires exactly one form.
+enum SourceKind {
+  CHAPTER
+  REFERENCE
+}
+
+/// A named thing in the story: the subject canon talks about.
+///
+/// `key` is the stable machine identity (unique per novel) and is what
+/// canonicalSubjectKey() produces; `name` is display only. Aliases are
+/// deliberately NOT modelled here (ADR-0008 §5): an exact-match alias array
+/// cannot resolve a typo, so the alias structure waits for real data rather
+/// than guessing at a shape now.
+model StoryEntity {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId     String          @map("novel_id") @db.Uuid
+  novel       Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  kind        StoryEntityKind
+  /// Stable machine key, unique within the novel (lowercase kebab).
+  key         String
+  name        String
+  createdById String          @map("created_by_id") @db.Uuid
+  createdBy   User            @relation("StoryEntityCreator", fields: [createdById], references: [id])
+  createdAt   DateTime        @default(now()) @map("created_at")
+  facts       CanonFact[]     @relation("CanonFactSubject")
+  objectOf    CanonFact[]     @relation("CanonFactObjectEntity")
+  proposals   CanonProposal[]
+
+  @@unique([novelId, key])
+  @@index([novelId, kind])
+  @@map("story_entities")
+}
+
+/// One approved claim about the story: (entity, predicate, object).
+///
+/// APPEND-ONLY. A correction supersedes; it never edits. The supersede chain
+/// (supersededById) IS the version history — there is no separate version
+/// table, because a fact's content is never mutated (ADR-0008 §2).
+///
+/// Exactly one of objectEntityId / objectText is set, enforced by CHECK. An
+/// entity-valued object ("A is B's father") gets a real FK; a literal object
+/// ("A's hair is black") gets text.
+///
+/// Live uniqueness — at most one ACTIVE row per (novel, entity, predicate) —
+/// is a PARTIAL UNIQUE INDEX created in the Phase 6 migration, NOT an
+/// @@unique here: Prisma cannot declare a partial index without a preview
+/// flag, and the constraint must be anchored on status so RETRACTED frees the
+/// slot (ADR-0008 §1). Do NOT "fix" this by adding an @@unique to the model —
+/// a key containing the object value would stop detecting contradictions
+/// entirely, which is the one thing this constraint exists to catch.
+model CanonFact {
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching Chunk (ADR-0007): a filtered
+  /// query never joins to enforce isolation.
+  workspaceId          String          @map("workspace_id") @db.Uuid
+  workspace            Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId              String          @map("novel_id") @db.Uuid
+  novel                Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  entityId             String          @map("entity_id") @db.Uuid
+  entity               StoryEntity     @relation("CanonFactSubject", fields: [entityId], references: [id], onDelete: Cascade)
+  predicate            String
+  /// Entity-valued object (a relationship). Null when the object is text.
+  objectEntityId       String?         @map("object_entity_id") @db.Uuid
+  objectEntity         StoryEntity?    @relation("CanonFactObjectEntity", fields: [objectEntityId], references: [id], onDelete: Cascade)
+  /// Literal object. Null when the object is an entity.
+  objectText           String?         @map("object_text")
+  /// Human-readable rendering of the claim, for display. The structured
+  /// columns remain authoritative; this must never be parsed back into them.
+  statement            String
+  status               CanonFactStatus @default(ACTIVE)
+  /// In-story validity window. Distinct from the spoiler axis below: a fact
+  /// can be true in-story from ch 5 but revealed to readers at ch 400.
+  validFromChapter     Int?            @map("valid_from_chapter")
+  validUntilChapter    Int?            @map("valid_until_chapter")
+  /// Chapter at which this becomes reader-visible (CLAUDE.md section 10). The
+  /// identical column and null-means-not-visible semantics as
+  /// Chunk.availableFromChapter, so one predicate governs both.
+  availableFromChapter Int?            @map("available_from_chapter")
+  /// The fact that replaced this one. Set once, on supersede; this is the
+  /// whole version history. SET NULL because deleting a successor must not
+  /// cascade-delete the fact it replaced.
+  supersededById       String?         @map("superseded_by_id") @db.Uuid
+  supersededBy         CanonFact?      @relation("CanonFactSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersededFrom       CanonFact[]     @relation("CanonFactSupersede")
+  createdById          String          @map("created_by_id") @db.Uuid
+  createdBy            User            @relation("CanonFactCreator", fields: [createdById], references: [id])
+  createdAt            DateTime        @default(now()) @map("created_at")
+  sources              CanonFactSource[]
+  conflictsWith        CanonProposal[] @relation("CanonProposalConflict")
+  approvedProposal     CanonProposal?  @relation("CanonProposalFact")
+
+  @@index([novelId, entityId, predicate])
+  @@index([novelId, status])
+  @@index([novelId, validFromChapter])
+  @@index([availableFromChapter])
+  // Self-FK target of the supersede chain: without this, deleting a fact
+  // seq-scans every canon fact to resolve the SetNull.
+  @@index([supersededById])
+  @@index([objectEntityId])
+  @@map("canon_facts")
+}
+
+/// Evidence for one canon fact: the exact span of the exact revision the
+/// claim came from.
+///
+/// Follows the Chunk discipline (ADR-0007): `quote` is exactly
+/// `source.slice(start, end)` against an IMMUTABLE version, verified by the
+/// writer before insert. That is what makes a citation resolvable — nothing
+/// is inferred in between.
+///
+/// Deliberately NO chunk_id: re-ingesting a reference DELETEs and re-inserts
+/// its chunks with fresh uuids, so a chunk citation dangles after an
+/// unrelated re-ingest. (referenceVersionId, start, end) is the stable
+/// identity, which is exactly what the reference legs already verify.
+///
+/// Deliberately NO generation_id: nothing in this phase can populate it. Add
+/// it with the extraction pipeline that produces those generations.
+model CanonFactSource {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  canonFactId        String            @map("canon_fact_id") @db.Uuid
+  canonFact          CanonFact         @relation(fields: [canonFactId], references: [id], onDelete: Cascade)
+  sourceKind         SourceKind        @map("source_kind")
+  /// The exact immutable chapter revision. Stays resolvable forever, but it
+  /// is a HISTORICAL pin: Chapter.currentVersion moves on the next save, so a
+  /// source is not "the current version" by definition.
+  chapterVersionId   String?           @map("chapter_version_id") @db.Uuid
+  chapterVersion     ChapterVersion?   @relation(fields: [chapterVersionId], references: [id], onDelete: Cascade)
+  /// The exact immutable reference revision.
+  referenceVersionId String?           @map("reference_version_id") @db.Uuid
+  referenceVersion   ReferenceVersion? @relation(fields: [referenceVersionId], references: [id], onDelete: Cascade)
+  quote              String            @db.Text
+  start              Int
+  end                Int
+  createdById        String            @map("created_by_id") @db.Uuid
+  createdBy          User              @relation("CanonFactSourceCreator", fields: [createdById], references: [id])
+  createdAt          DateTime          @default(now()) @map("created_at")
+
+  @@index([canonFactId])
+  // Every nullable FK gets its own index: both relations Cascade, but the
+  // referencing side is still scanned when the parent row is deleted.
+  @@index([chapterVersionId])
+  @@index([referenceVersionId])
+  @@map("canon_fact_sources")
+}
+
+/// A claim under review. Becomes canon only through an explicit
+/// canon:approve decision (CLAUDE.md section 2.13) — there is no silent
+/// commit, from any code path.
+///
+/// claim_kind is deliberately ABSENT: basis is a property of the evidence
+/// (CLAUDE.md section 21). A proposer-authored ESTABLISHED label would let
+/// whoever writes the row satisfy the very gate it is meant to pass.
+model CanonProposal {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, as on CanonFact.
+  workspaceId         String              @map("workspace_id") @db.Uuid
+  workspace           Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId             String              @map("novel_id") @db.Uuid
+  novel               Novel               @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  entityId            String              @map("entity_id") @db.Uuid
+  entity              StoryEntity         @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  predicate           String
+  objectEntityId      String?             @map("object_entity_id") @db.Uuid
+  objectText          String?             @map("object_text")
+  statement           String
+  /// When the proposed claim becomes true in-story. Carried onto the fact at
+  /// approval, and used to CLOSE the superseded fact's window — without it a
+  /// correction would be undatable and an as-of query could not tell which
+  /// value held when.
+  validFromChapter    Int?                @map("valid_from_chapter")
+  status              CanonProposalStatus @default(PROPOSED)
+  /// How this claim relates to existing canon. Null means NEW — and only a
+  /// NEW claim is ever eligible for auto-approval.
+  conflictKind        ConflictKind?       @map("conflict_kind")
+  conflictsWithFactId String?             @map("conflicts_with_fact_id") @db.Uuid
+  conflictsWithFact   CanonFact?          @relation("CanonProposalConflict", fields: [conflictsWithFactId], references: [id], onDelete: SetNull)
+  /// The fact minted by approval. @unique makes approval idempotent: a second
+  /// approve cannot mint a second fact.
+  canonFactId         String?             @unique @map("canon_fact_id") @db.Uuid
+  canonFact           CanonFact?          @relation("CanonProposalFact", fields: [canonFactId], references: [id], onDelete: SetNull)
+  proposedById        String?             @map("proposed_by_id") @db.Uuid
+  proposedBy          User?               @relation("CanonProposalAuthor", fields: [proposedById], references: [id], onDelete: SetNull)
+  decidedById         String?             @map("decided_by_id") @db.Uuid
+  decidedBy           User?               @relation("CanonProposalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt           DateTime?           @map("decided_at")
+  decisionNote        String?             @map("decision_note")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  @@index([workspaceId, status])
+  @@index([novelId, status])
+  @@index([entityId])
+  @@index([conflictsWithFactId])
+  @@index([proposedById])
+  @@index([decidedById])
+  @@map("canon_proposals")
 }

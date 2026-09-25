@@ -51,6 +51,15 @@ Initial accepted decisions:
     legs, tenant and spoiler predicates in the SQL rather than after
     ranking, and an audit row per search. Embeddings run through the
     Phase 3 AI path so they share its retry policy and generation ledger.
+-   [ADR-0008](../adr/ADR-0008-canon-authority.md): Canon authority &
+    the candidate pipeline — append-only `canon_facts` with a self-FK
+    supersede chain; one-live-value-per-subject+predicate enforced as a
+    status-anchored partial unique index in SQL, not a service check; a
+    four-statement supersede order (both two-statement orders violate a
+    constraint); proposals as a status column with conflict as a flag, and
+    no proposer-authored claim kind (basis comes from evidence);
+    workspace-scoped `canon:read`/`canon:manage`/`canon:approve`, none of
+    them platform capabilities. Realises baseline ADR-007.
 
 New ADRs start from [ADR-TEMPLATE.md](../adr/ADR-TEMPLATE.md), use the
 next sequential `ADR-NNNN` number, are filed under `docs/adr/`, and are

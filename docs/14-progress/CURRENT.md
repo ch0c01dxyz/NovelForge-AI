@@ -1,7 +1,7 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: **Phase 5 COMPLETE (2026-09-25)**. Phase 0
+Implementation status: **Phase 6 slice 1 COMPLETE (2026-09-25)**. Phase 0
 (NF-0001..NF-0010), Phase 1 (auth, workspaces, memberships, novels,
 permissions, audit), Phase 2 (chapters, immutable versions, autosave,
 editor shell, import/export), Phase 3 (AIGateway/OmniRoute adapter,
@@ -9,29 +9,51 @@ gateway + model registry, model profiles, logical requests/attempts,
 bounded retry/fallback, error classification, generation history,
 platform-admin authorization), Phase 4 (versioned agents, skills and
 workflows, fail-closed structured-output contracts, validated acyclic
-workflow graphs, deterministic multi-agent execution, run history), and
+workflow graphs, deterministic multi-agent execution, run history),
 Phase 5 (references with append-only versions, citable chunk spans,
 pgvector embeddings, hybrid lexical+vector retrieval with RRF fusion,
 tenant and spoiler predicates in SQL, per-search provenance, `RETRIEVAL`
-workflow steps) are implemented, tested, and verified. An independent
+workflow steps), and Phase 6 slice 1 (canon facts with a DB-enforced
+one-live-value-per-subject+predicate constraint, non-destructive supersede
+chain, candidate canon that cannot be silently committed, citable evidence
+spans, and a deterministic Story Brain answering FACT/STATE/RETRIEVAL with
+evidence) are implemented, tested, and verified. An independent
 audit of the committed Phase 4 code also found and fixed three live
-defects in this phase (a prototype key reaching the prompt, a DRAFT
+defects in Phase 5 (a prototype key reaching the prompt, a DRAFT
 WORKSPACE workflow being executable, and a prose bracket defeating
 `extractJson`); two other reported findings were probed and disproved
-(see `progress.md`). Full gate: lint 0, typecheck 0, 370 passed / 1
-skipped, 9 migrations applying from empty with zero drift. See
-`docs/implementation/progress.md`,
-`docs/implementation/test-matrix.md` and
-[ADR-0007](../adr/ADR-0007-knowledge-retrieval.md).
+(see `progress.md`). Full gate: lint 0, typecheck 0 in every workspace
+except `apps/web` (a pre-existing hoisted-vite plugin type mismatch,
+reproduced at HEAD with this phase's work stashed — see `progress.md`),
+423 passed / 1 skipped, 10 migrations applying from empty with zero drift.
+See `docs/implementation/progress.md`,
+`docs/implementation/test-matrix.md`,
+[ADR-0007](../adr/ADR-0007-knowledge-retrieval.md) and
+[ADR-0008](../adr/ADR-0008-canon-authority.md).
 
 ## Next milestone
 
-Phase 6 --- Story Intelligence Core (canon, candidate canon, timeline,
-story events, threads, promises, causal edges, hierarchical memory).
-Exit: Story Brain can answer core factual/continuity questions with
-evidence.
+Phase 6 slice 2 --- story events, causal edges, threads and promises, then
+LLM fact extraction. The roadmap's Phase 6 exit ("Story Brain can answer
+core factual/continuity questions with evidence") is met for FACT and STATE
+with resolvable evidence; the continuity forms (EVENT/CAUSAL/UNRESOLVED/
+PROMISES) currently return an explicit not-implemented marker, so slice 2
+is what closes the continuity half of that sentence.
 
-## Known gaps carried into Phase 6
+## Known gaps carried into Phase 6 slice 2
+
+- **Canon has no `revision_id` until Phase 11.** It participates in no
+  checkpoint or branch; non-destructive correction relies on the supersede
+  chain alone (ADR-0008 §4).
+- A canon fact's chapter citation is a historical pin — resolvable forever,
+  but not "the current version" once the chapter is saved again.
+- Chapter prose is not searchable (no chapter tsvector, no chapter
+  chunks), so prose recall reaches reference material only. Add with the
+  first real consumer (extraction or a search UI).
+- `available_from_chapter` is a chapter number, so a chapter reorder must
+  recompute authored boundaries or the spoiler filter drifts.
+- The Story Brain writes a `RetrievalAudit` row per ask, widening the
+  unpruned Phase 5 retention gap.
 
 - **No ANN index on embeddings.** Prisma 7.10 cannot declare HNSW or
   IVFFlat, so search is an exact scan over a workspace's vectors. Correct

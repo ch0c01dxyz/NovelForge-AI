@@ -22,13 +22,14 @@ import { registerManuscriptRoutes } from "./manuscript-routes.ts";
 import { registerAiRoutes } from "./ai-routes.ts";
 import { registerDefinitionRoutes } from "./definition-routes.ts";
 import { registerRetrievalRoutes } from "./retrieval-routes.ts";
-import { createAuditService } from "./services/audit.ts";
+import { registerCanonRoutes } from "./canon-routes.ts";import { createAuditService } from "./services/audit.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
 import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
 import { createRetrievalServices } from "./services/retrieval.ts";
+import { createCanonServices } from "./services/canon.ts";
 import { createGatewayRegistry } from "./ai-registry.ts";
 
 export type CheckState = "up" | "down";
@@ -175,6 +176,15 @@ export async function buildApp(
       dbg: { error: (message, meta) => app.log.error(meta, message) },
     });
     registerRetrievalRoutes(app, { auth, services: retrievalServices });
+
+    // Story intelligence (Phase 6). The Story Brain's prose leg reuses the
+    // SAME retrieval service a direct search reads, so a Brain answer and a
+    // search can never disagree about what the index contains — and both
+    // pass through one spoiler predicate (CLAUDE.md §10).
+    registerCanonRoutes(app, {
+      auth,
+      services: createCanonServices({ db: options.db, audit, retrieval: retrievalServices }),
+    });
 
     registerDefinitionRoutes(app, {
       auth,

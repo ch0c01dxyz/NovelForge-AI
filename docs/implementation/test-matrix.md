@@ -374,10 +374,10 @@ live fact is asserted **byte-identical** afterwards (`toEqual` on the whole
 row, not just its status), no second fact is minted, and a proposal
 identical to live canon is refused with a 409 rather than stored.
 
-`canon.test.ts` (40, `novelforge_test_canon`) — the DB constraints are the
-subject, not the service: a second live value for one (entity, predicate)
-is 409 with no read-then-write pre-check; a claim with both or neither
-object form is refused; two spellings that fold to one subject key produce
+`canon.test.ts` (46, `novelforge_test_canon`) — the API-level suite, which
+pins the *service* behaviour: a second live value for one (entity,
+predicate) is 409 with no read-then-write pre-check; a claim with both or
+neither object form is refused; two spellings that fold to one subject key produce
 ONE entity; approval supersedes non-destructively (old row `SUPERSEDED`,
 linked, window closed at the replacement's start chapter, object text never
 overwritten) and approving twice cannot mint a second fact; rejection
@@ -449,6 +449,25 @@ Round-2 regressions (each one fails against the pre-fix code):
   (the count is an existence oracle), and a withheld predicate's response body
   is `toEqual` that of a predicate that does not exist.
 
+**The DB constraints themselves** (`canon.test.ts`, "the DB constraints are
+the subject…"). Everything above travels through the HTTP API, and the
+service guards — `resolveObject`, `verifySpan`, the source-kind derivation —
+all fire before the statement reaches the database. Those tests therefore
+pin the *guard*, not the CHECK: they stay green with a constraint dropped.
+Six cases write straight to the database, past every guard, so each fails if
+its constraint is absent — all six were confirmed to fail against a
+migration with the constraints removed, then restored. Covered: the
+`canon_facts_live` partial unique index (a second ACTIVE row for one
+(novel, entity, predicate) is refused, a different predicate is not, and a
+`RETRACTED` row frees the slot — the ADR-0008 §1 anchor); both
+`object_exactly_one` CHECKs; `valid_window_ordered`; both
+`span_matches_kind` and `span_ordered`. Each case also asserts the
+admissible shape still inserts, so a pass means the mismatch was refused
+rather than everything being refused.
+
+Not covered this way, and not coverable: `quote === content.slice(start,
+end)`. A CHECK cannot read another row's content, so that rule is only ever
+a service guard and its test stays in the API suite above.
 
 `packages/story-intelligence/canon.test.ts` (+31) — the pure rules, pinned
 because a domain package may not import the generated client:

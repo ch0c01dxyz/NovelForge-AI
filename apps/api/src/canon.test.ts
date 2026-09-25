@@ -1161,6 +1161,249 @@ describe("evidence must resolve to a real span in an immutable revision", () => 
   });
 });
 
+describe("the DB constraints are the subject, not the service guard in front of them", () => {
+  // Every refusal in the suites above arrives through the HTTP API, and the
+  // service guards — resolveObject, verifySpan, the source-kind derivation —
+  // all fire BEFORE the statement reaches the database. So those tests stay
+  // green with a constraint dropped: they pin the guard, not the CHECK. This
+  // suite writes straight to the database, past every guard, so each case
+  // fails if its constraint is absent. That is the only thing that makes the
+  // test matrix's claim ("the DB constraints are the subject") true.
+  //
+  // Each of these was confirmed to fail with its constraint dropped, not
+  // merely to pass with it present.
+  //
+  // Deliberately NOT here: quote === content.slice(start, end). A CHECK cannot
+  // read another row's content, so that one is only ever a service guard and
+  // its test belongs above.
+
+  async function seedRaw(slug: string) {
+    const owner = await seedUser(`${slug}@example.com`);
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, slug);
+    const subject = await db.storyEntity.create({
+      data: {
+        novelId,
+        kind: "CHARACTER",
+        key: `${slug}-subject`,
+        name: "Subject",
+        createdById: owner.userId,
+      },
+    });
+    const object = await db.storyEntity.create({
+      data: {
+        novelId,
+        kind: "CHARACTER",
+        key: `${slug}-object`,
+        name: "Object",
+        createdById: owner.userId,
+      },
+    });
+    return { owner, workspaceId, novelId, subjectId: subject.id, objectId: object.id };
+  }
+
+  it("enforces the one-live-value partial index, and frees the slot on retraction", async () => {
+    const s = await seedRaw("idx");
+    const row = (predicate: string) => ({
+      workspaceId: s.workspaceId,
+      novelId: s.novelId,
+      entityId: s.subjectId,
+      predicate,
+      objectText: "black",
+      statement: "hair is black",
+      createdById: s.owner.userId,
+    });
+
+    const first = await db.canonFact.create({ data: row("hair-colour") });
+
+    // A second ACTIVE row for the same (novel, entity, predicate) is refused
+    // by `canon_facts_live`. No application check stands in front of this one
+    // on the create path, which is exactly why it needs a test that cannot be
+    // satisfied by a guard.
+    await expect(db.canonFact.create({ data: row("hair-colour") })).rejects.toThrow();
+    // A different predicate is free — the index is not wider than it claims.
+    await db.canonFact.create({ data: row("eye-colour") });
+
+    // The index is anchored on `status`, not on `superseded_by_id IS NULL`,
+    // so RETRACTED frees the slot and the same claim can be re-asserted. This
+    // is ADR-0008 section 1, and it is the reason for that anchor.
+    await db.canonFact.update({ where: { id: first.id }, data: { status: "RETRACTED" } });
+    await db.canonFact.create({ data: row("hair-colour") });
+
+    expect(await db.canonFact.count({ where: { novelId: s.novelId, status: "ACTIVE" } })).toBe(2);
+    expect(await db.canonFact.count({ where: { novelId: s.novelId } })).toBe(3);
+  });
+
+  it("refuses a canon fact with both or neither object form", async () => {
+    const s = await seedRaw("obj");
+    const base = {
+      workspaceId: s.workspaceId,
+      novelId: s.novelId,
+      entityId: s.subjectId,
+      statement: "x",
+      createdById: s.owner.userId,
+    };
+
+    await expect(
+      db.canonFact.create({
+        data: { ...base, predicate: "p1", objectText: "black", objectEntityId: s.objectId },
+      }),
+    ).rejects.toThrow();
+    await expect(db.canonFact.create({ data: { ...base, predicate: "p2" } })).rejects.toThrow();
+
+    expect(await db.canonFact.count({ where: { novelId: s.novelId } })).toBe(0);
+  });
+
+  it("refuses an inverted validity window", async () => {
+    const s = await seedRaw("win");
+    await expect(
+      db.canonFact.create({
+        data: {
+          workspaceId: s.workspaceId,
+          novelId: s.novelId,
+          entityId: s.subjectId,
+          predicate: "hair-colour",
+          objectText: "black",
+          statement: "x",
+          createdById: s.owner.userId,
+          validFromChapter: 10,
+          validUntilChapter: 5,
+        },
+      }),
+    ).rejects.toThrow();
+    expect(await db.canonFact.count({ where: { novelId: s.novelId } })).toBe(0);
+  });
+
+  it("refuses evidence whose source kind and version column disagree", async () => {
+    const s = await seedRaw("kind");
+    const fact = await db.canonFact.create({
+      data: {
+        workspaceId: s.workspaceId,
+        novelId: s.novelId,
+        entityId: s.subjectId,
+        predicate: "p",
+        objectText: "black",
+        statement: "x",
+        createdById: s.owner.userId,
+      },
+    });
+    const chapter = await db.chapter.create({
+      data: { novelId: s.novelId, number: 1, title: "One", status: "DRAFT", createdById: s.owner.userId },
+    });
+    const chapterVersion = await db.chapterVersion.create({
+      data: { chapterId: chapter.id, number: 1, content: "abc", wordCount: 1, authorId: s.owner.userId },
+    });
+    const ref = await db.reference.create({
+      data: {
+        workspaceId: s.workspaceId,
+        key: "guide",
+        title: "Guide",
+        status: "ACTIVE",
+        createdById: s.owner.userId,
+      },
+    });
+    const refVersion = await db.referenceVersion.create({
+      data: {
+        referenceId: ref.id,
+        number: 1,
+        content: "abc",
+        contentHash: "deadbeef",
+        charCount: 3,
+        createdById: s.owner.userId,
+      },
+    });
+
+    const src = (over: Record<string, unknown>) => ({
+      canonFactId: fact.id,
+      quote: "a",
+      start: 0,
+      end: 1,
+      createdById: s.owner.userId,
+      sourceKind: "CHAPTER" as const,
+      ...over,
+    });
+
+    // CHAPTER naming a reference version, REFERENCE naming a chapter version,
+    // and REFERENCE naming nothing at all — three ways to make the kind a lie.
+    await expect(
+      db.canonFactSource.create({ data: src({ sourceKind: "CHAPTER", referenceVersionId: refVersion.id }) }),
+    ).rejects.toThrow();
+    await expect(
+      db.canonFactSource.create({ data: src({ sourceKind: "REFERENCE", chapterVersionId: chapterVersion.id }) }),
+    ).rejects.toThrow();
+    await expect(db.canonFactSource.create({ data: src({ sourceKind: "REFERENCE" }) })).rejects.toThrow();
+
+    expect(await db.canonFactSource.count({ where: { canonFactId: fact.id } })).toBe(0);
+
+    // The two shapes the constraint admits still work, so the test above is
+    // refusing the mismatch rather than refusing everything.
+    await db.canonFactSource.create({ data: src({ sourceKind: "CHAPTER", chapterVersionId: chapterVersion.id }) });
+    await db.canonFactSource.create({
+      data: src({ sourceKind: "REFERENCE", referenceVersionId: refVersion.id, start: 1, end: 2 }),
+    });
+    expect(await db.canonFactSource.count({ where: { canonFactId: fact.id } })).toBe(2);
+  });
+
+  it("refuses a span that is empty, reversed or negative", async () => {
+    const s = await seedRaw("span");
+    const fact = await db.canonFact.create({
+      data: {
+        workspaceId: s.workspaceId,
+        novelId: s.novelId,
+        entityId: s.subjectId,
+        predicate: "p",
+        objectText: "black",
+        statement: "x",
+        createdById: s.owner.userId,
+      },
+    });
+    const chapter = await db.chapter.create({
+      data: { novelId: s.novelId, number: 1, title: "One", status: "DRAFT", createdById: s.owner.userId },
+    });
+    const chapterVersion = await db.chapterVersion.create({
+      data: { chapterId: chapter.id, number: 1, content: "abcdef", wordCount: 1, authorId: s.owner.userId },
+    });
+
+    const src = (start: number, end: number) => ({
+      canonFactId: fact.id,
+      sourceKind: "CHAPTER" as const,
+      chapterVersionId: chapterVersion.id,
+      quote: "a",
+      start,
+      end,
+      createdById: s.owner.userId,
+    });
+
+    await expect(db.canonFactSource.create({ data: src(5, 5) })).rejects.toThrow();
+    await expect(db.canonFactSource.create({ data: src(5, 3) })).rejects.toThrow();
+    await expect(db.canonFactSource.create({ data: src(-1, 2) })).rejects.toThrow();
+
+    expect(await db.canonFactSource.count({ where: { canonFactId: fact.id } })).toBe(0);
+    // And the admissible shape still works, so this is not refusing everything.
+    await db.canonFactSource.create({ data: src(0, 6) });
+    expect(await db.canonFactSource.count({ where: { canonFactId: fact.id } })).toBe(1);
+  });
+
+  it("refuses a proposal with both or neither object form", async () => {
+    const s = await seedRaw("prop");
+    const base = {
+      workspaceId: s.workspaceId,
+      novelId: s.novelId,
+      entityId: s.subjectId,
+      statement: "x",
+      proposedById: s.owner.userId,
+    };
+
+    await expect(
+      db.canonProposal.create({
+        data: { ...base, predicate: "p1", objectText: "black", objectEntityId: s.objectId },
+      }),
+    ).rejects.toThrow();
+    await expect(db.canonProposal.create({ data: { ...base, predicate: "p2" } })).rejects.toThrow();
+
+    expect(await db.canonProposal.count({ where: { novelId: s.novelId } })).toBe(0);
+  });
+});
+
 describe("the Story Brain answers with evidence", () => {
   it("answers FACT with an established basis and quotes its source", async () => {
     const owner = await seedUser("owner@example.com");

@@ -86,7 +86,14 @@ recorded as ADR-NNNN files:
   was computed only from the two start chapters, so superseding `black [1,9)`
   with a ch-20 claim rewrote it to `[1,20)` — filling a gap the author left
   and changing what held at chapters 10..19. A later claim may close an OPEN
-  end; it may not re-date a bound the author set.
+  end; it may not re-date a bound the author set. (Round 2: the authored end
+  caps the window from above, but the correction caps it too. A replacement
+  starting INSIDE the span — ch 5 against `black [1,9)` — closed at 9 left
+  the old row claiming black held at 5..8 while the ACTIVE row answered
+  white there. So the close point is the earlier of the authored end and
+  the start-derived close: a correction may SHORTEN an authored window,
+  never lengthen one. `min` cannot dip below the old start — both operands
+  are >= it — so the window-ordered CHECK keeps holding.)
 - **2026-09-26 — Evidence spans are not shown to readers at all.** Neither
   `ChapterVersion` nor `ReferenceVersion` carries a spoiler boundary, so a
   source's `quote` cannot be classified from the row that references it. The

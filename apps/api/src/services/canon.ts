@@ -902,20 +902,29 @@ export function createCanonServices(deps: {
             // chapter could only have been superseded by a dated proposal.
             // So `closeAt` is never null on this path.
             // A fact may carry an AUTHORED end of window — a claim the author
-            // stated held only for a span, e.g. "black 1..9". Superseding must
-            // not re-date it: writing the replacement's start would fill the
-            // gap the author deliberately left (make a ch-20 correction turn
-            // chapters 10..19 from "nothing holds" into "black"), which is
-            // history mutated by an unrelated later claim. The authored bound
-            // wins whenever there is one; only an open end is closed here.
+            // stated held only for a span, e.g. "black 1..9". The correction
+            // may SHORTEN that window but never lengthen it. Closing at the
+            // authored end alone is wrong when the replacement starts INSIDE
+            // the span: the old row would claim black held at 5..8 while the
+            // ACTIVE row answers white there — window metadata and every
+            // as-of query disagreeing. So the close point is the earlier of
+            // the authored end and the start-derived close: a ch-20
+            // correction leaves [1,9) alone, a ch-5 correction shortens it
+            // to [1,5). Only an open end is closed by the replacement
+            // outright. (min never dips below the old start: both operands
+            // are >= it, so the CHECK keeps holding.)
+            const startClose =
+              proposal.validFromChapter === null
+                ? priorLive.validFromChapter
+                : priorLive.validFromChapter === null
+                  ? proposal.validFromChapter
+                  : Math.max(proposal.validFromChapter, priorLive.validFromChapter);
             const closeAt =
-              priorLive.validUntilChapter !== null
-                ? priorLive.validUntilChapter
-                : proposal.validFromChapter === null
-                  ? priorLive.validFromChapter
-                  : priorLive.validFromChapter === null
-                    ? proposal.validFromChapter
-                    : Math.max(proposal.validFromChapter, priorLive.validFromChapter);
+              priorLive.validUntilChapter === null
+                ? startClose
+                : startClose === null || startClose > priorLive.validUntilChapter
+                  ? priorLive.validUntilChapter
+                  : startClose;
 
             await tx.canonFact.update({
               where: { id: priorLive.id },

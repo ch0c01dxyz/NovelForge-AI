@@ -1595,6 +1595,57 @@ describe("the Story Brain answers with evidence", () => {
     expect(await objectAt(25)).toBe("white");
   });
 
+  // A replacement whose start lands INSIDE the authored span. The authored
+  // end caps the window from above, but the correction caps it too: closing
+  // at the authored end would leave the old row claiming black held at
+  // 5..8 while the ACTIVE replacement answers white there — the window
+  // metadata and every STATE answer would disagree. The correction may
+  // SHORTEN an authored window; it may never lengthen one.
+  it("shortens an authored window to a backdated correction's start", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 1,
+      validUntilChapter: 9,
+    });
+
+    const proposed = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "white",
+      validFromChapter: 5,
+    });
+    expect((await approve(owner.cookie, workspaceId, proposed.body.id as string)).statusCode).toBe(200);
+
+    const row = await db.canonFact.findFirstOrThrow({
+      where: { novelId, objectText: "black" },
+      select: { status: true, validFromChapter: true, validUntilChapter: true },
+    });
+    expect(row.status).toBe("SUPERSEDED");
+    expect(row.validFromChapter).toBe(1);
+    expect(row.validUntilChapter).toBe(5);
+
+    const objectAt = async (ch: number) => {
+      const r = await ask(
+        owner.cookie,
+        workspaceId,
+        novelId,
+        { kind: "STATE", entityId, predicate: "hair-colour", atChapter: ch },
+        { mode: "AUTHOR" },
+      );
+      const c = r.body.claim as Record<string, unknown> | null;
+      return (c?.object as Record<string, unknown>)?.objectText ?? null;
+    };
+    expect(await objectAt(3)).toBe("black");
+    expect(await objectAt(7)).toBe("white");
+    expect(await objectAt(25)).toBe("white");
+  });
+
   it("accepts a dated replacement, keeping the old value reconstructable", async () => {    const owner = await seedUser("owner@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
     const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");

@@ -988,6 +988,17 @@ the reader position only — `atChapter` is not a spoiler input, and enumerating
 it discovers nothing); entity-delete cascades (no delete route exists in this
 slice, so it is unreachable, not a defect).
 
+**Follow-on found while verifying fix 8.** Implementing retraction made a
+pre-existing latent defect reachable, which is worth recording because the
+fix created the exposure: the STATE chain query has no status filter, and a
+retracted row keeps a NULL `validUntilChapter` (withdrawal does not date when
+a claim stopped being true in-story), so its window stays open to infinity —
+the row would cover every chapter at or after its start and be returned as
+the current value forever, and would also appear in `notYetTrue` as a claim
+about to become true. The chain now excludes `RETRACTED` at both call sites
+while leaving the row in the record. Found by writing the failing test first
+and watching it fail for the right reason, not by reading the diff.
+
 **Pre-existing, NOT introduced here:** `apps/web` typecheck fails at
 `nuxt.config.ts:7` (`Plugin<any>[]` vs `PluginOption`). Two hoisted vite
 versions — 8.3.0 via `@tailwindcss/vite` and 7.3.6 via `nuxt` — give

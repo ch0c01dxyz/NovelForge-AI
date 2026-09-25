@@ -569,8 +569,80 @@ describe("candidate canon is not silently committed (TESTING.md mandatory scenar
     });
     expect(audited).toHaveLength(1);
   });
-  it("refuses to retract a fact that is not live, and 404s a foreign one", async () => {
+  // Retraction withdraws a claim, so an as-of question must stop answering
+  // with it. The STATE chain query has no status filter, and a retracted row
+  // keeps a NULL validUntilChapter (retraction does not date when the claim
+  // stopped being true in-story), so its window stays open to infinity — the
+  // row covers every chapter at or after its start and would be returned as
+  // the current value forever. The row must stay in the record while ceasing
+  // to be an answer.
+  it("stops answering with a retracted fact, without deleting it", async () => {
     const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const created = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 1,
+    });
+    const factId = (created.body as { id: string }).id;
+
+    const before = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 50 },
+      { mode: "AUTHOR" },
+    );
+    expect(
+      (before.body as { claim: { object: { objectText?: string } } | null }).claim?.object
+        .objectText,
+    ).toBe("black");
+
+    expect((await retract(owner.cookie, workspaceId, novelId, factId)).statusCode).toBe(204);
+
+    const after = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 50 },
+      { mode: "AUTHOR" },
+    );
+    expect(after.body).toMatchObject({ claim: null, insufficient: true });
+
+    // Still in the record — withdrawn, not destroyed.
+    const row = await db.canonFact.findUniqueOrThrow({ where: { id: factId } });
+    expect(row.status).toBe("RETRACTED");
+
+    // A withdrawn claim is not "about to become true" either, so it must not
+    // appear in the not-yet-true list of an earlier as-of point.
+    const later = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "eye-colour",
+      objectText: "green",
+      validFromChapter: 100,
+    });
+    expect(
+      (await retract(
+        owner.cookie,
+        workspaceId,
+        novelId,
+        (later.body as { id: string }).id,
+      )).statusCode,
+    ).toBe(204);
+    const earlier = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "eye-colour", atChapter: 50 },
+      { mode: "AUTHOR" },
+    );
+    expect((earlier.body as { notYetTrue: unknown[] }).notYetTrue).toEqual([]);
+  });
+
+  it("refuses to retract a fact that is not live, and 404s a foreign one", async () => {    const owner = await seedUser("owner@example.com");
     const other = await seedUser("other@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
     const wsB = await seedWorkspace(other.userId, "wb");

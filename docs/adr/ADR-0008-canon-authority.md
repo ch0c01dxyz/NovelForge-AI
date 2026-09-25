@@ -109,6 +109,16 @@ and predicate can then be asserted. Retraction sets no `valid_until_chapter`
 — that column dates when a claim stopped being *true in-story*, which
 withdrawal does not decide.
 
+- **Retraction sets no `valid_until_chapter`; readers of the chain filter
+  the status instead.** `valid_until_chapter` dates when a claim stopped
+  being *true in-story*, and withdrawal does not decide that — so a
+  retracted row keeps a NULL upper bound and its window stays open to
+  infinity. That is correct as a record and wrong as an answer: the STATE
+  chain query has no status filter, so a retracted row would be returned as
+  the current value for every chapter at or after its start, forever, and
+  would also appear in `notYetTrue` as a claim about to become true. Both
+  call sites now exclude `RETRACTED` while leaving the row in place.
+
 ### 1b. Constraints added in the round-2 audit
 
 - **`canon_fact_sources` evidence FKs are `ON DELETE RESTRICT`.** A citation

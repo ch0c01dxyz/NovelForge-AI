@@ -415,7 +415,11 @@ Round-2 regressions (each one fails against the pre-fix code):
 - retracting a live fact leaves the row with status `RETRACTED` and a NULL
   `supersededById`, and a different value for the same subject+predicate can
   then be asserted — the ADR-0008 §1 claim, previously untestable; a second
-  retraction is 409 and a foreign fact id is 404;
+  retraction is 409 and a foreign fact id is 404; and a retracted fact stops
+  answering a STATE question (it keeps a NULL `validUntilChapter`, so its
+  window would otherwise stay open to infinity and it would be returned as
+  the current value forever) and stops appearing in `notYetTrue`, while
+  remaining in the record;
 - approving a proposal identical to canon that appeared *after* the proposal
   was filed is 409, leaving one ACTIVE fact with a NULL `supersededById`;
 - a statement renders from display names, never a machine key or a raw uuid.

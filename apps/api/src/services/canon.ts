@@ -1165,8 +1165,18 @@ export function createCanonServices(deps: {
       // A row covers the as-of point when it had already started and had not
       // yet been replaced. `validUntilChapter` is stamped at supersede time
       // (see approveProposal), which is what makes this reconstructable.
+      //
+      // RETRACTED rows are excluded from the ANSWER but kept in the record:
+      // retraction withdraws a claim from canon (and frees the live slot for
+      // a different value), so it must stop answering, but it sets no
+      // validUntilChapter — that column dates when a claim stopped being true
+      // in-story, which withdrawal does not decide. Without this filter a
+      // retracted row's window stays open to infinity and it would be
+      // returned as the current value for every chapter at or after its
+      // start, forever.
       const covering = chain.filter(
         (r) =>
+          r.status !== "RETRACTED" &&
           (r.validFromChapter === null || r.validFromChapter <= atChapter) &&
           (r.validUntilChapter === null || r.validUntilChapter > atChapter),
       );
@@ -1177,7 +1187,12 @@ export function createCanonServices(deps: {
       // caller must not be able to tell "not yet visible" from "does not
       // exist" (CLAUDE.md §10, ADR-0008 §8).
       const notYetTrue = chain
-        .filter((r) => r.validFromChapter !== null && r.validFromChapter > atChapter)
+        .filter(
+          (r) =>
+            r.status !== "RETRACTED" &&
+            r.validFromChapter !== null &&
+            r.validFromChapter > atChapter,
+        )
         .filter((r) =>
           canView(canonBoundary(r.availableFromChapter), {
             mode: viewMode,

@@ -888,9 +888,10 @@ was missing. These were originally edits made in place to
 `20260929_phase6_story_intelligence`, which is only safe while a migration is
 unreleased — Prisma records a migration by CHECKSUM, so editing an applied one
 makes every deployed database disagree with the repository and `migrate deploy`
-refuse. Splitting them restores that migration's immutability and lets an
-already-migrated database converge, because DROP + ADD is idempotent against
-the final state. Generated with `prisma migrate diff`, so drift-zero is the
+refuse. Splitting them restores that migration's immutability and leaves an
+already-edited database one migration behind rather than needing a baseline
+reset. Not re-runnable — replaying it against a hardened database fails on
+`CREATE INDEX`. Generated with `prisma migrate diff`, so drift-zero is the
 proof that the migration and the schema agree.
 
 Three things were **probed against real PostgreSQL before the migration was

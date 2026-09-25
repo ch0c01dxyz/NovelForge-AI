@@ -74,10 +74,14 @@ recorded as ADR-NNNN files:
   appears on someone else's machine, at deploy time, pointing at a migration
   they never touched. The changes now live in
   `20260930_phase6_evidence_fk_hardening`, which restores the Phase 6
-  migration to its committed bytes and lets an already-migrated database
-  converge, because DROP + ADD is idempotent against the final state. The
-  statements were generated with `prisma migrate diff` rather than written by
-  hand, so the drift check is the proof of agreement rather than a hope.
+  migration to its committed bytes and leaves an already-edited database only
+  one migration behind — a normal deploy rather than a baseline reset. It is
+  NOT re-runnable: replaying the file against a hardened database fails on
+  `CREATE INDEX` (duplicate index), measured rather than assumed. The end
+  state is the same however the change arrived; the file itself cannot be run
+  twice. The statements were generated with `prisma migrate diff` rather than
+  written by hand, so the drift check is the proof of agreement rather than a
+  hope.
 - **2026-09-26 — Supersede respects an authored validity window.** `closeAt`
   was computed only from the two start chapters, so superseding `black [1,9)`
   with a ch-20 claim rewrote it to `[1,20)` — filling a gap the author left

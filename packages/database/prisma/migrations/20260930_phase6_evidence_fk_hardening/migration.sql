@@ -7,8 +7,16 @@
 -- editing one that has run anywhere makes every deployed database disagree
 -- with the repository and `migrate deploy` refuse to proceed. Splitting them
 -- into their own migration makes the Phase 6 migration immutable again and
--- lets a database that already applied the edited form converge: the DROP +
--- ADD below is idempotent with respect to the final state.
+-- leaves a database that already applied the edited form only one migration
+-- behind, which is a normal deploy rather than a baseline reset.
+--
+-- It does NOT make the changes re-runnable. Measured, not assumed: replaying
+-- this file against an already-hardened database succeeds for the DROP/ADD
+-- pairs but FAILS on CREATE INDEX with a duplicate-index error, because the
+-- drop half recreates the index under the same name. The migration is
+-- idempotent in the sense that matters for a deploy — the end state is
+-- identical however the change arrived — not in the sense that it can be run
+-- twice. Any manual re-run needs the index statement skipped.
 --
 --   1. canon_fact_sources.chapter_version_id — CASCADE became RESTRICT.
 --      A citation is the only place a fact's span is stored, so cascading one

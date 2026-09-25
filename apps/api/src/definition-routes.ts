@@ -42,8 +42,16 @@ const keyField = z
  * large enough to be a denial-of-service on every run that compiles it;
  * the contract's real validation is `@novelforge/validation`, which fails
  * closed on anything it cannot enforce.
+ *
+ * Booleans are accepted because `compileSchema` accepts them and the graph
+ * path passes them through — `z.record` alone rejected `true`/`false` here
+ * while a graph-embedded contract of the same spelling was accepted, so one
+ * spelling of "no constraint" worked in one place and was refused with no
+ * explanation in another.
  */
-const outputSchemaField = z.record(z.string(), z.unknown()).optional();
+const outputSchemaField = z
+  .union([z.record(z.string(), z.unknown()), z.boolean()])
+  .optional();
 
 const scopeField = z.enum(["PLATFORM", "WORKSPACE"]);
 

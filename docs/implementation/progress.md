@@ -530,7 +530,161 @@ Known follow-up: deleting a `Workflow` cascades its `WorkflowRun` rows
 away. Nothing deletes a workflow yet, so no run history can be lost
 today; the FK should move to `Restrict` before a delete endpoint exists.
 
-## Phase 5+
+## Phase 5 — Knowledge & Retrieval (2026-09-25)
+
+Exit criterion from the roadmap: *"retrieval is evidence-bearing and
+tenant-safe"* — met, and covered by 14 DB-backed integration tests plus
+61 unit tests over the pure retrieval modules.
+
+Delivered:
+
+- **`@novelforge/retrieval`** (new package, pure, no IO, 61 tests):
+  - `chunk.ts` — `chunkText` splits on paragraphs, then lines, then
+    sentence boundaries, and merges short segments. Offsets are into the
+    ORIGINAL text, so `text.slice(start, end)` always equals
+    `chunk.text`; `verifyChunks` asserts exactly that so an unsound span
+    can never be persisted. One forward pass — a 5.5 MB / 2500-chapter
+    document chunks in ~37 ms.
+  - `fuse.ts` — Reciprocal Rank Fusion (k=60). Ranks only, never raw
+    scores: `ts_rank_cd` and cosine distance are not on a comparable
+    scale.
+  - `spoiler.ts` — `canView` / `visibleTo` / `canReadDrafts` /
+    `parseViewMode`. Deny-by-default throughout: a null boundary is
+    withheld from readers, a missing reader position is chapter 0, and an
+    unrecognised mode resolves to `READER`.
+- **Schema + migration `20260928_phase5_knowledge_retrieval`**:
+  `Reference` / `ReferenceVersion` / `Chunk` / `Embedding` /
+  `RetrievalAudit`, plus `SpoilerMode`, `ReferenceKind`,
+  `ReferenceStatus`. Verified: applies from empty, zero drift.
+- **`services/ai.ts` — `embed`**: the Phase 3 path extended to
+  embeddings. Writes a `Generation` row (profile `EMBEDDING`) before the
+  call and updates it to `SUCCEEDED`/`FAILED` with the classified
+  category, exactly as `generate` does.
+- **`@novelforge/ai-core` — `GatewayManager.embed`**, sharing
+  `routeAttempts` with `generate` so retry, jittered backoff, error
+  classification and the circuit breaker cannot drift between the two
+  (CLAUDE.md §27). 6 new ai-core tests.
+- **`services/retrieval.ts`** — reference CRUD with append-only versions,
+  ingestion (chunk → verify → embed, idempotent, projection replaced in
+  one statement), hybrid search, and retrieval history.
+- **`retrieval-routes.ts`** — 7 endpoints: reference CRUD and versions
+  under `/api/workspaces/:id/references` and `/api/references/:id`,
+  ingestion on the version, search, and retrieval history.
+- **`RETRIEVAL` workflow steps** — the Phase 4 executor gains a
+  `StepRetriever` port satisfied by `RetrievalServices.search`, so a
+  retrieval step is the same search a direct request runs, with the same
+  predicates and its own audit row linked back to the step.
+- Two capabilities (`reference:read`, `reference:manage`): ADMIN
+  curates, AUTHOR and EDITOR consult.
+
+### Design decisions worth recording
+
+- **Exact vector search; no ANN index.** Prisma 7.10 rejects every
+  spelling of HNSW and IVFFlat as an unknown index type. Adding one would
+  need a raw-SQL migration that `migrate diff` reports as drift forever,
+  or a dimensionless `vector` column that accepts mixed widths and
+  silently corrupts distances. Zero-drift is a project gate, so the fixed
+  `vector(1536)` column carries no index and search is an exact scan. The
+  upgrade path is documented in ADR-0007.
+- **Tenant and spoiler predicates are SQL predicates**, not post-filters.
+  Filtering a ranked list means having already read rows the caller may
+  not see. `canView` is re-applied afterwards as defence in depth, and its
+  second job is computing `withheldCount` — the number an operator needs
+  when a reader reports missing content.
+- **Chunks carry a character span, not just text.** That is what makes a
+  citation checkable: the test asserts `content.slice(start, end) ===
+  text` on a real hit.
+- **`retrieval_audits.step_run_id` and `generation_id` are deliberately
+  not unique.** A step may retrieve more than once; a unique constraint
+  would turn a legitimate second retrieval into a 500 mid-run.
+
+### Defects found and fixed during this phase
+
+- **Ingestion 500ed on every reference.** The raw chunk `INSERT` passed
+  the chunk's `index` into the `id` column, which is `uuid`, so
+  PostgreSQL rejected it (`42804`). The column list now omits `id`
+  entirely and relies on `gen_random_uuid()`. Found by running ingestion
+  against a real database rather than trusting the typecheck.
+- **A circular type inference** (TS7022) in `chunkText` — `pending` is
+  both read and reassigned inside the merge loop, so `merged` needed an
+  explicit annotation.
+- **The chunker split a CRLF document into one chunk**: `/\n[ \t]*\n/`
+  cannot match `\r\n\r\n`. Caught by the chunker's own tests.
+- **A short TRAILING segment stayed its own chunk**, because the merge
+  rule only checked the pending side. Fixed to check both.
+- **A quadratic `indexOf` scan** in the chunker, replaced with a single
+  forward pass.
+- **The RETRIEVAL step's audit link is best-effort.** The step has
+  already succeeded and its row is durable when the link is written; a
+  failure there would otherwise mark a good run FAILED.
+
+### Phase 4 defects fixed in this phase
+
+An independent audit of the committed Phase 4 code reported findings
+against `workflow-runs.ts`, `json-schema.ts` and `definition-routes.ts`.
+Each was re-probed before acting; three were confirmed and fixed, and two
+were disproved and left alone.
+
+Fixed:
+
+- **A prototype key passed validation and became prompt content**
+  (`workflow-runs.ts`, `resolveReference`). The graph validator screens
+  the reference *syntax*, so `$input.constructor` and `$input.__proto__`
+  both pass it. A bare index lookup then returns the inherited
+  `Object.prototype` member — a function, which is not `undefined`, so
+  the caller's guard never fired and the prompt received the literal text
+  `undefined` as though the caller had supplied it. Now `Object.hasOwn`,
+  mirroring the existing guard in `json-schema.ts`. Probed before and
+  after; `definitions.test.ts` covers it.
+- **A DRAFT WORKSPACE workflow was executable.** The status gate covered
+  `PLATFORM` scope only, and the column defaults to `DRAFT`, so a freshly
+  created workflow ran before anyone published it — contradicting the
+  definition service's own contract and ADR-0006, and unlike agents and
+  skills, where the parallel gate already existed. The caller's own draft
+  is now a 409; anything else stays a 404.
+- **`extractJson` failed on the case its own doc comment names.**
+  `search(/[[{]/)` takes the first bracket *character*, so
+  `"The [main] character: {…}"` returned the prose bracket and
+  `"Note [1]: {…}"` returned `[1]`. It now tries each bracket in turn and
+  takes the first that actually parses. Latent, not live: the executor
+  has its own correct parser and `extractJson` has no production callers.
+- **A boolean JSON Schema was accepted in a graph and refused at the
+  field.** `compileSchema` supports `true`/`false`, and the graph path
+  passes them through, but `definition-routes.ts` used `z.record` alone.
+  One spelling of "no constraint" worked in one place and was rejected
+  with no explanation in another.
+- **A run parked at an approval gate was audited as completed.** The
+  audit action took the same else-branch as a finished run, so the trail
+  disagreed with the run row it describes (whose `completedAt` is held
+  null for exactly that state). It now records
+  `workflow.run_awaiting_approval`.
+- **The global rate-limit fallback made a large test file order-
+  dependent.** The limiter's in-memory store is shared across every
+  request in one app instance, so `definitions.test.ts` began tripping
+  300/min partway through and the failure landed on whichever test ran
+  last — adding two tests was enough to break an unrelated one. The
+  global fallback is now effectively disabled under `NODE_ENV=test`; the
+  per-route limits (register, login) stay enforced, since those are the
+  security-sensitive ones.
+
+Disproved, and therefore not changed:
+
+- **"A VALIDATOR passes vacuously when its input reference is absent."**
+  Probed against `{type:"string"}`, `{type:"object"}`,
+  `{type:"string",minLength:1}` and `{type:"number"}`: `validate(undefined)`
+  reports a failure for every one, so an absent reference fails the
+  validator rather than passing it.
+- **"An absent key interpolates as the string `undefined`."** The
+  `value === undefined` guard does catch an absent key; only the
+  prototype case above slipped through.
+
+`RETRIEVAL` steps are no longer refused: `EXECUTABLE_STEP_KINDS` includes
+them, and the graph validator now requires a RETRIEVAL step to declare an
+instruction (its query) — without one the step would record an empty
+result set, which reads as "the knowledge base has nothing on this"
+rather than "the step is misconfigured".
+
+## Phase 6+
 
 NOT STARTED.
 

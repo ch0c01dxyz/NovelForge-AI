@@ -1087,6 +1087,83 @@ describe("Phase 4 — workflow execution", () => {
     expect(await db.workflowRun.count()).toBe(0);
   });
 
+  it("refuses to run an unpublished WORKSPACE workflow", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+
+    // Created but never published. The status column defaults to DRAFT, so
+    // without this gate a freshly created workflow is runnable before
+    // anyone publishes it — contradicting the definition service's own
+    // contract and the parallel gate already enforced for agents.
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/workflows",
+      headers: { cookie: owner.cookie },
+      payload: {
+        scope: "WORKSPACE",
+        workspaceId,
+        key: "unpublished",
+        name: "unpublished",
+        graph: {
+          steps: [{ key: "go", kind: "AGENT", ref: "writer", instruction: "go" }],
+          edges: [],
+        },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const { id: workflowId } = created.json() as { id: string };
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(409);
+    // Nothing was spent and nothing was recorded.
+    expect(await db.generation.count()).toBe(0);
+    expect(await db.workflowRun.count()).toBe(0);
+  });
+
+  it("does not let an inherited object property stand in for run input", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+
+    // `$input.constructor` passes the reference SYNTAX check, and a bare
+    // index lookup on runInput would return Object.prototype.constructor —
+    // a function, so the `undefined` guard misses it and the prompt gets
+    // the literal text `undefined` as though the caller had supplied it.
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "prototype", {
+      steps: [
+        {
+          key: "go",
+          kind: "AGENT",
+          ref: "writer",
+          instruction: "go",
+          inputs: { seed: "$input.constructor" },
+        },
+      ],
+      edges: [],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(201);
+
+    // The absent value must be rendered as an absence, never as the string
+    // "undefined" and never as a function's stringification.
+    const sent = seenPrompts[0]!.messages[1]!.content;
+    expect(sent).toContain("(not available)");
+    expect(sent).not.toContain("function");
+  });
+
   it("refuses to run a workflow bound to a different novel", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "ws-a");
@@ -1380,5 +1457,34 @@ describe("Phase 4 — workflow execution", () => {
     });
     expect(entry).not.toBeNull();
     expect(entry!.actorUserId).toBe(owner.userId);
+  });
+
+  it("does not file a parked-at-approval run as completed", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "gated", {
+      steps: [{ key: "approve", kind: "HUMAN_APPROVAL", instruction: "review it" }],
+      edges: [],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(201);
+    expect((res.json() as { status: string }).status).toBe("AWAITING_APPROVAL");
+
+    // The run row holds `completedAt` null for exactly this state, so the
+    // audit trail must not disagree with it by recording a completion.
+    expect(
+      await db.auditLog.count({ where: { action: "workflow.run_completed", workspaceId } }),
+    ).toBe(0);
+    expect(
+      await db.auditLog.count({
+        where: { action: "workflow.run_awaiting_approval", workspaceId },
+      }),
+    ).toBe(1);
   });
 });

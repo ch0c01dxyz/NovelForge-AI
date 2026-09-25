@@ -44,6 +44,13 @@ Initial accepted decisions:
     platform vs workspace catalogs, fail-closed structured-output
     contracts, validated acyclic workflow graphs, one AI path per step,
     and structural determinism.
+-   [ADR-0007](../adr/ADR-0007-knowledge-retrieval.md): Knowledge &
+    retrieval — references with append-only versions, citable chunk spans,
+    exact vector search with no ANN index (Prisma 7 cannot declare one
+    without permanent drift), RRF fusion over two independently-failing
+    legs, tenant and spoiler predicates in the SQL rather than after
+    ranking, and an audit row per search. Embeddings run through the
+    Phase 3 AI path so they share its retry policy and generation ledger.
 
 New ADRs start from [ADR-TEMPLATE.md](../adr/ADR-TEMPLATE.md), use the
 next sequential `ADR-NNNN` number, are filed under `docs/adr/`, and are

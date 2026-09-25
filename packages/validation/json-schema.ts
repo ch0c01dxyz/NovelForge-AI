@@ -606,19 +606,42 @@ export function parseWithSchema(
 }
 
 /**
- * Extract the first JSON value from a model response and validate it.
+ * Extract the first JSON value from a model response.
  *
  * Models wrap structured output in prose or markdown fences even when told
- * not to, so the first balanced `{...}` or `[...]` is taken. This is a
- * convenience for callers that need it, and it is deliberately strict:
- * text with no JSON at all is a failure, not an empty result.
+ * not to, so the first balanced `{...}` or `[...]` is taken. It is
+ * deliberately strict: text with no JSON at all is a failure, not an empty
+ * result.
+ *
+ * A bracket that does not yield parsable JSON is skipped and the next one
+ * tried — prose routinely contains brackets ("The [main] character: {…}"),
+ * and stopping at the first one made this function fail on the very case
+ * its doc comment names. The first candidate that PARSES wins, so a real
+ * JSON array appearing before an object is still returned as documented.
+ * (Note the limit of that: `Note [1]: {…}` yields `[1]`, because `[1]` is
+ * valid JSON. Prefer `parseWithSchema` when the shape is known.)
+ *
+ * This does not validate against a schema; use `parseWithSchema` for that.
  */
 export function extractJson(text: string): ValidationResult<unknown> {
   const trimmed = text.trim();
-  const start = trimmed.search(/[[{]/);
-  if (start === -1) {
-    return fail("$", "NO_JSON_FOUND", "response contained no JSON value");
+  let firstFailure: ValidationFailure | null = null;
+
+  for (let start = 0; start < trimmed.length; start += 1) {
+    const ch = trimmed[start]!;
+    if (ch !== "{" && ch !== "[") continue;
+    const parsed = tryBalancedFrom(trimmed, start);
+    if (parsed.ok) return parsed;
+    firstFailure ??= parsed.failures[0]!;
   }
+
+  return firstFailure
+    ? { ok: false, failures: [firstFailure] }
+    : fail("$", "NO_JSON_FOUND", "response contained no JSON value");
+}
+
+/** Parse the balanced JSON value starting at `start`, or fail. */
+function tryBalancedFrom(trimmed: string, start: number): ValidationResult<unknown> {
   const open = trimmed[start]!;
   const close = open === "{" ? "}" : "]";
   let depth = 0;

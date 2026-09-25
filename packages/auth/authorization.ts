@@ -42,6 +42,11 @@ export const CAPABILITIES = [
   "workflow:read",
   "workflow:manage",
   "workflow:run",
+  // Knowledge / retrieval (Phase 5). Reading a reference means querying the
+  // workspace's knowledge base; managing one means importing or editing
+  // external material that will be embedded and fed to models.
+  "reference:read",
+  "reference:manage",
   // Platform-scoped catalog. Only a platform administrator may define the
   // shared agent/skill/workflow catalog every workspace can read.
   "platform:define",
@@ -108,6 +113,9 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "workflow:read",
     "workflow:manage",
     "workflow:run",
+    // ADMIN curates the workspace's knowledge base.
+    "reference:read",
+    "reference:manage",
   ]),
   AUTHOR: new Set<Capability>([
     "novel:create",
@@ -125,6 +133,9 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "skill:read",
     "workflow:read",
     "workflow:run",
+    // A writer may consult the knowledge base and run retrieval against it,
+    // but importing or editing reference material is an ADMIN act.
+    "reference:read",
   ]),
   EDITOR: new Set<Capability>([
     "novel:read",
@@ -137,6 +148,7 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "skill:read",
     "workflow:read",
     "workflow:run",
+    "reference:read",
   ]),
   VIEWER: new Set<Capability>(["novel:read", "chapter:read"]),
 };

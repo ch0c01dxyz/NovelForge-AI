@@ -272,7 +272,78 @@ an unpublished agent reference refuses the run with no generation and no
 run row; a novel-bound workflow rejects a different novel; cross-tenant
 run is 404; run history lists; a completed run is audited.
 
-## Phase 5+
+## Phase 5 — Knowledge & Retrieval
+
+| Area | Unit | Integration | Contract | E2E | Migration |
+| ---- | ---- | ----------- | -------- | --- | --------- |
+| Chunker (`packages/retrieval`) | passing (21) | — | — | — | — |
+| Rank fusion | passing (13) | — | — | — | — |
+| Spoiler predicate | passing (12) | — | — | — | — |
+| Embedding routing (`packages/ai-core`) | passing (6) | — | — | — | — |
+| Phase 5 schema (`packages/database`) | — | passing | — | — | passing (drift-free, 9 migrations) |
+| Reference CRUD + versioning | — | passing | — | — | — |
+| Ingestion (chunk + embed) | — | passing | — | — | — |
+| Hybrid search | — | passing | — | — | — |
+| Tenant isolation | — | passing | — | — | — |
+| Spoiler enforcement | — | passing | — | — | — |
+| Retrieval audit / provenance | — | passing | — | — | — |
+| `RETRIEVAL` workflow step | passing | passing | — | — | — |
+
+Executed results (2026-09-25, Windows, live compose PostgreSQL 0.8.6
+pgvector; full suite 350 passed / 1 skipped).
+`chunk.test.ts` (21) — paragraph/line/sentence splitting, offsets into the
+original text, CRLF and mixed line endings, short-segment merging on both
+sides, oversized runs split at sentence boundaries then hard-split,
+`maxChars`/`minChars` validation, blank input, and `verifyChunks`
+soundness (span, overlap, index, text-match).
+`fuse.test.ts` (13) — RRF rank-only scoring, k's effect on the
+adjacent-rank gap, ties broken by id, single-list and empty-list inputs,
+`minRetrievers`, limit, and the rejection codes for a rank mismatch, a
+bad hit id, and non-positive k/limit.
+`spoiler.test.ts` (12) — AUTHOR/EDITOR see everything, READER bounded by
+`availableFromChapter`, a null boundary withheld, a missing reader
+position treated as chapter 0, an invalid one refused, unrecognised modes
+resolving to READER, `visibleTo` filtering, and `canReadDrafts`.
+`ai-core.test.ts` (+6) — `embed` routes through the same policy as
+`generate`: profile resolution, retry on a transient failure, no retry on
+a non-retryable one, an attempt row per transport call, breaker update,
+and an empty batch making no attempt at all.
+`validation.test.ts` — RETRIEVAL validates as a runnable kind; a RETRIEVAL
+step with no instruction is refused (`RETRIEVAL_NO_QUERY`); `extractJson`
+skips a prose bracket that is not JSON (`"The [main] character: {…}"`) and
+still fails closed when no value parses.
+`retrieval.test.ts` (14, `novelforge_test_phase5`) — an ingested
+reference is citable to its exact character span (`content.slice(start,
+end) === text`, asserted on a real hit); re-ingesting unchanged content
+skips and makes **no** second provider call; publishing a reference with
+no chunks is 409; a DRAFT reference is absent from search until
+published; a chunk above the reader's chapter is withheld (and
+`withheldCount` is 0, proving the SQL predicate filtered rather than a
+post-filter) while a chunk at or below it is returned; an unclassified
+chunk is withheld from readers at any position; READER mode without a
+reader position is 400 and a reader position on an AUTHOR query is 400;
+another workspace's reference is 404 on direct read and absent from that
+workspace's search; a novel-scoped reference is absent from a query for a
+different novel; a VIEWER (a member, so scope passes) is 403 on reference
+read; every search writes an audit row carrying the query, mode,
+returned/withheld counts, which legs ran, and the same chunk ids the
+caller received; the embedding call leaves a `Generation` row with profile
+EMBEDDING, task `embed`, status SUCCEEDED and the actor's id; a RETRIEVAL
+workflow step returns cited hits and its audit row is linked to the step;
+an empty index succeeds with zero hits while recording that only the
+lexical leg ran.
+`definitions.test.ts` (+3, 36 total) — an unpublished WORKSPACE workflow
+is 409 with no generation and no run row; an inherited `$input.constructor`
+reference renders as `(not available)` and never as a function's
+stringification; a run parked at an approval gate records
+`workflow.run_awaiting_approval`, never `workflow.run_completed`.
+
+Migration verified: applies from empty on a scratch database through all
+nine migrations (`migrate deploy` on a fresh database, 2026-09-25), and
+`migrate diff --from-migrations --to-schema --exit-code` reports 0 (no
+drift) against the schema.
+
+## Phase 6+
 
 Rows added when each phase starts. Mandatory cross-cutting scenarios
 (streaming interruption, candidate canon, etc.) are listed in TESTING.md

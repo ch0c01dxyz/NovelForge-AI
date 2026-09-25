@@ -58,6 +58,8 @@ model User {
   createdWorkflows    Workflow[]       @relation("WorkflowCreator")
   authoredFlowVers    WorkflowVersion[] @relation("WorkflowVersionAuthor")
   triggeredRuns       WorkflowRun[]    @relation("WorkflowRunTrigger")
+  createdReferences   Reference[]      @relation("ReferenceCreator")
+  authoredRefVers     ReferenceVersion[] @relation("ReferenceVersionCreator")
 
   @@map("users")
 }
@@ -91,6 +93,8 @@ model Workspace {
   agents       Agent[]
   skills       Skill[]
   workflows    Workflow[]
+  references   Reference[]
+  retrievals   RetrievalAudit[]
 
   @@map("workspaces")
 }
@@ -124,6 +128,8 @@ model Novel {
   settings    NovelSettings?
   chapters    Chapter[]
   workflows   Workflow[]
+  references  Reference[]
+  retrievals  RetrievalAudit[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -387,6 +393,7 @@ model Generation {
   completedAt     DateTime?        @map("completed_at")
   attempts        GenerationAttempt[]
   stepRuns        WorkflowStepRun[]
+  retrievals      RetrievalAudit[] @relation("GenerationRetrieval")
 
   @@index([workspaceId, createdAt])
   @@index([novelId, createdAt])
@@ -708,6 +715,9 @@ model WorkflowStepRun {
   latencyMs        Int?          @map("latency_ms")
   startedAt        DateTime      @default(now()) @map("started_at")
   completedAt      DateTime?     @map("completed_at")
+  /// Phase 5: retrievals triggered by or within this step. One-to-many
+  /// because a step may retrieve more than once.
+  retrievals       RetrievalAudit[] @relation("StepRunRetrieval")
 
   @@unique([runId, sequence])
   @@unique([runId, stepKey])
@@ -722,4 +732,247 @@ model WorkflowStepRun {
   @@index([skillVersionId])
   @@index([generationId])
   @@map("workflow_step_runs")
+}
+
+// ==================== Knowledge / Retrieval (Phase 5) ====================
+// Scope: references (external source material), their chunks, embeddings and
+// retrieval provenance, per docs/04-data/DATA-MODEL-BLUEPRINT.md
+// §Knowledge/RAG and CLAUDE.md §9/§10.
+//
+// Invariant that shapes every model here (CLAUDE.md §2.2, invariants: "canonical
+// relational state is authoritative; embeddings, summaries, caches, LLM memory
+// and generated candidate facts are rebuildable projections"): chunks and
+// embeddings are PROJECTIONS. Deleting every row in chunks/embeddings loses no
+// truth — it regenerates from the reference version. Nothing may treat a chunk
+// as authoritative.
+
+/// How much of the story a viewer has read (CLAUDE.md §10). A third mode is
+/// what makes reader-facing AI expressible at all; an unrecognised value must
+/// fail closed to READER, never open.
+enum SpoilerMode {
+  /// Sees everything, including drafts and pre-publication notes.
+  AUTHOR
+  /// Sees everything for continuity review; may read drafts.
+  EDITOR
+  /// Sees only what is available at the chapter they have reached.
+  READER
+}
+
+enum ReferenceKind {
+  NOTE
+  GUIDE
+  RESEARCH
+  STYLE
+  GLOSSARY
+  IMPORTED
+}
+
+enum ReferenceStatus {
+  DRAFT
+  /// In the workspace's retrieval scope. Still never canon.
+  ACTIVE
+  ARCHIVED
+}
+
+/// External source material: a writing guide, a research note, an imported
+/// document (CLAUDE.md §3 "Reference").
+///
+/// A reference is NOT canon and does not become canon by ingestion. Nothing in
+/// this table is story truth; it is guidance the author chose to consult.
+/// Ingestion writes only to these tables (CLAUDE.md §21).
+model Reference {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Tenant boundary. Always workspace-scoped: material one author imports is
+  /// not another tenant's business.
+  workspaceId      String            @map("workspace_id") @db.Uuid
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  /// Optional narrowing to one novel, for material specific to it.
+  novelId          String?           @map("novel_id") @db.Uuid
+  novel            Novel?            @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  key              String
+  title            String
+  kind             ReferenceKind     @default(NOTE)
+  /// Where it came from: a URL, a citation, a filename. Provenance for the
+  /// author. The server never fetches it, so it is data, not a fetch target.
+  source           String?
+  status           ReferenceStatus   @default(DRAFT)
+  currentVersionId String?           @unique @map("current_version_id") @db.Uuid
+  currentVersion   ReferenceVersion? @relation("CurrentReferenceVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdById      String            @map("created_by_id") @db.Uuid
+  createdBy        User              @relation("ReferenceCreator", fields: [createdById], references: [id])
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  versions         ReferenceVersion[] @relation("ReferenceVersions")
+
+  @@unique([workspaceId, key], name: "reference_workspace_key")
+  @@index([workspaceId, status])
+  @@index([novelId])
+  @@map("references")
+}
+
+/// Immutable revision of a reference's text.
+///
+/// Append-only, matching ChapterVersion (Phase 2) and the Phase 4 definitions.
+/// Chunks are keyed to the version they were cut from, so re-ingesting never
+/// mixes text from two revisions in one index.
+model ReferenceVersion {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  referenceId String    @map("reference_id") @db.Uuid
+  reference   Reference @relation("ReferenceVersions", fields: [referenceId], references: [id], onDelete: Cascade)
+  number      Int
+  content     String    @db.Text
+  /// SHA-256 of `content`, so a no-op re-save is detectable without
+  /// re-embedding. Indexed because ingest checks it on every save.
+  contentHash String    @map("content_hash")
+  charCount   Int       @map("char_count")
+  note        String?
+  createdById String    @map("created_by_id") @db.Uuid
+  createdBy   User      @relation("ReferenceVersionCreator", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  chunks      Chunk[]
+  /// Opposite side of Reference.currentVersion.
+  currentForReference Reference? @relation("CurrentReferenceVersion")
+
+  @@unique([referenceId, number])
+  @@index([referenceId, createdAt])
+  @@index([contentHash])
+  @@map("reference_versions")
+}
+
+/// One retrievable unit of a reference version.
+///
+/// `start`/`end` are character offsets into `referenceVersion.content`, and
+/// `text` is exactly `content.slice(start, end)` — enforced by the chunker's
+/// verifier before insert. That is what makes a citation resolvable: a result
+/// traces back to the exact span of the exact revision, with nothing inferred
+/// in between.
+model Chunk {
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  referenceVersionId   String           @map("reference_version_id") @db.Uuid
+  referenceVersion     ReferenceVersion @relation(fields: [referenceVersionId], references: [id], onDelete: Cascade)
+  /// Denormalised tenant boundary so a filtered query never joins to enforce
+  /// isolation. Ingest asserts it matches the reference's workspace; a
+  /// mismatch would be a cross-tenant leak.
+  workspaceId          String           @map("workspace_id") @db.Uuid
+  index                Int
+  text                 String           @db.Text
+  start                Int
+  end                  Int
+  /// Chapter at which this becomes reader-visible (CLAUDE.md §10). null means
+  /// not reader-visible at all — the safe default for imported material, which
+  /// is the author's reference, not the story.
+  availableFromChapter Int?             @map("available_from_chapter")
+  /// tsvector for the lexical half of hybrid retrieval. Populated by the
+  /// ingest statement from `text` (see the Phase 5 migration), NOT by a
+  /// database default — Prisma cannot declare a generated column, and a
+  /// column Prisma cannot see would be reported as drift forever. Because
+  /// it is written in the same INSERT as `text`, the two cannot disagree.
+  /// Unsupported() because the generated client does not model tsvector;
+  /// lexical search reaches it through raw SQL.
+  contentTs            Unsupported("tsvector")? @map("content_ts")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  embedding            Embedding?
+
+  @@unique([referenceVersionId, index])
+  @@index([workspaceId])
+  @@index([availableFromChapter])
+  /// GIN over the tsvector: the lexical half of hybrid retrieval. Without it
+  /// every `@@` match is a sequential scan of all chunks in the workspace.
+  @@index([contentTs], type: Gin)
+  @@map("chunks")
+}
+
+/// The vector projection of one chunk.
+///
+/// Separate from Chunk because this is the rebuildable half: re-embedding with
+/// a new model writes new rows and never touches the text. `model` records
+/// which model produced the vector, so a mixed index is detectable — comparing
+/// vectors from two models is meaningless and would degrade ranking silently
+/// rather than fail.
+model Embedding {
+  chunkId    String   @id @map("chunk_id") @db.Uuid
+  chunk      Chunk    @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  /// Provider model id. Not a constant: operators change embedding models, and
+  /// a stale vector must be distinguishable from a current one.
+  model      String
+  /// Recorded so a dimension mismatch is diagnosable rather than mysterious.
+  dimensions Int
+  /// 1536 dims, fixed: pgvector refuses to build an HNSW index on a
+  /// dimensionless column (verified against 0.8.6 — "column does not have
+  /// dimensions"), and a dimensionless column silently accepts mixed lengths.
+  /// A fixed column also rejects a wrong-length vector at insert, loudly.
+  vector     Unsupported("vector(1536)") @map("vector")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([model])
+  // DELIBERATELY NO VECTOR INDEX HERE.
+  //
+  // Neither index pgvector offers can be declared: this Prisma version
+  // rejects every HNSW spelling (`Hnsw`/`HNSW`/`hnsw`/`HnswOps`) and
+  // `IVFFlat`/`IvfFlat`/`ivfflat` alike — all "Unknown index type",
+  // verified by substituting each and running `validate`. The community
+  // workaround is to hand-write the index into the migration, but that is
+  // not neutral: Prisma then reports "Removed index on columns (vector)" as
+  // drift on EVERY later `migrate diff`, and the next person to accept a
+  // generated migration silently destroys vector search.
+  //
+  // Phase 5 therefore runs exact nearest-neighbour search — a sequential
+  // scan computing cosine distance. That is not a compromise but the more
+  // correct answer: no recall loss, no `lists`/`probes` tuning, no reindex
+  // after bulk ingest. It is O(rows scanned), which is fine for a reference
+  // corpus (guides and research notes, not the manuscript) and becomes the
+  // first thing to revisit at scale. See the Phase 5 migration for the
+  // upgrade path, which is an explicit operational step rather than
+  // something `migrate dev` can undo.
+  @@map("embeddings")
+}
+
+/// One retrieval operation, recorded so a generation can cite what it read.
+///
+/// This is the "evidence-bearing" half of the Phase 5 exit criterion: an
+/// answer is traceable to the exact chunks put in front of the model, with the
+/// mode and reader position that governed the filter. Without this row, "the
+/// AI said X" has no audit trail.
+model RetrievalAudit {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId   String           @map("workspace_id") @db.Uuid
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId       String?          @map("novel_id") @db.Uuid
+  novel         Novel?           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// The query as issued. Kept because relevance cannot be judged later
+  /// without it; never carries credentials.
+  query         String
+  mode          SpoilerMode
+  /// Reader position that governed filtering, when mode is READER.
+  readerChapter Int?             @map("reader_chapter")
+  /// Results after spoiler filtering, and how many the boundary withheld. The
+  /// difference is the number an operator needs when a reader reports missing
+  /// content.
+  returnedCount Int              @map("returned_count")
+  withheldCount Int              @map("withheld_count")
+  /// Per-result provenance: chunk id, reference version, each retriever's
+  /// rank, and the final fused score.
+  results       Json             @default("[]")
+  /// Which legs actually ran — a degraded search (vector leg down) must be
+  /// distinguishable from a complete one.
+  retrievers    String[]         @default([])
+  latencyMs     Int?             @map("latency_ms")
+  /// Set when the caller was a workflow step, so a run's retrieval is
+  /// reachable from the run as well as from the generation.
+  ///
+  /// Deliberately NOT unique: a step may retrieve more than once (a
+  /// multi-query retrieval, or a retry after a gateway blip), and a unique
+  /// constraint would turn that into a 500 mid-run rather than a second
+  /// audit row.
+  stepRunId     String?          @map("step_run_id") @db.Uuid
+  stepRun       WorkflowStepRun? @relation("StepRunRetrieval", fields: [stepRunId], references: [id], onDelete: SetNull)
+  generationId  String?          @map("generation_id") @db.Uuid
+  generation    Generation?      @relation("GenerationRetrieval", fields: [generationId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  @@index([workspaceId, createdAt])
+  @@index([novelId, createdAt])
+  @@index([stepRunId])
+  @@index([generationId])
+  @@map("retrieval_audits")
 }

@@ -25,6 +25,7 @@ import {
 import type {
   AIGateway,
   ChatMessage,
+  EmbedResult,
   GatewayModel,
   GenerateResult,
   ModelProfile,
@@ -122,6 +123,28 @@ export interface GenerateOptions {
 
 /** How many transport attempts a single logical request may make. */
 export const DEFAULT_MAX_ATTEMPTS = 3;
+
+/** Options shared by every operation that routes through a profile. */
+export interface RouteAttemptOptions {
+  profile: ModelProfile;
+  /** Logical generation id to attach attempts to. */
+  generationId: string;
+  signal?: AbortSignal;
+  /** Override strategy; defaults to PRIORITY. */
+  strategy?: RoutingStrategy;
+  /** Cap on transport attempts (bounded, CLAUDE.md §27). */
+  maxAttempts?: number;
+  /** Injected for tests: sleep between retries. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injected for tests: deterministic jitter. */
+  random?: () => number;
+  /** Shared round-robin cursor source. */
+  roundRobinCursor?: () => number;
+}
+
+export interface EmbedOptions extends RouteAttemptOptions {
+  input: string[];
+}
 
 /**
  * No model is mapped to the requested capability profile. This is a
@@ -226,6 +249,51 @@ export class GatewayManager {
    * category, never the raw provider message.
    */
   async generate(opts: GenerateOptions): Promise<GenerateResult> {
+    return this.routeAttempts(opts, "generate", (adapter, target) =>
+      adapter.generate({
+        model: target.modelId,
+        messages: opts.messages,
+        temperature: opts.temperature,
+        maxTokens: opts.maxTokens,
+        signal: opts.signal,
+      }),
+    );
+  }
+
+  /**
+   * Embed a batch of texts, routed by the EMBEDDING profile.
+   *
+   * Shares `routeAttempts` with `generate`, so it inherits the same bounded
+   * retry, jittered backoff, non-retryable classification and circuit
+   * breaker. That sharing is the point: a second hand-written loop would be
+   * a second place for the retry policy to drift (CLAUDE.md §27).
+   *
+   * `input` is a batch because one HTTP call for N chunks is far cheaper
+   * than N calls; the caller decides the batch size.
+   */
+  async embed(opts: EmbedOptions): Promise<EmbedResult> {
+    if (opts.input.length === 0) {
+      // Not a gateway failure, and retrying it would only loop: an empty
+      // batch is a caller bug. Return immediately rather than opening a
+      // transport attempt and recording a failure against a healthy gateway.
+      return { vectors: [], model: "", inputTokens: 0 };
+    }
+    return this.routeAttempts(opts, "embed", (adapter, target) =>
+      adapter.embed({ model: target.modelId, input: opts.input, signal: opts.signal }),
+    );
+  }
+
+  /**
+   * The routing, retry, attempt-recording and breaker loop.
+   *
+   * `op` is used only in the synthesised error message, so a failure is
+   * attributable to the operation that caused it.
+   */
+  private async routeAttempts<T extends { model: string }>(
+    opts: RouteAttemptOptions,
+    op: string,
+    call: (adapter: AIGateway, target: Candidate) => Promise<T>,
+  ): Promise<T> {
     const { candidates, gateways } = await this.candidates(opts.profile);
     const plan = planAttempts(candidates, opts.strategy ?? this.deps.defaultStrategy ?? "PRIORITY", {
       random: opts.random,
@@ -244,18 +312,12 @@ export class GatewayManager {
       const adapter = this.build(rec);
       const started = Date.now();
       try {
-        const result = await adapter.generate({
-          model: target.modelId,
-          messages: opts.messages,
-          temperature: opts.temperature,
-          maxTokens: opts.maxTokens,
-          signal: opts.signal,
-        });
+        const result = await call(adapter, target);
         const latencyMs = Date.now() - started;
         await this.registry.recordAttempt(opts.generationId, {
           attemptNumber: i + 1,
           gatewayId: target.gatewayId,
-          modelId: result.model,
+          modelId: result.model || target.modelId,
           status: "SUCCEEDED",
           errorCategory: "NONE",
           errorMessage: null,
@@ -271,7 +333,7 @@ export class GatewayManager {
         const gerr =
           err instanceof GatewayError
             ? err
-            : new GatewayError("INTERNAL", "generate: gateway error");
+            : new GatewayError("INTERNAL", `${op}: gateway error`);
         last = gerr;
         const latencyMs = Date.now() - started;
         await this.registry.recordAttempt(opts.generationId, {

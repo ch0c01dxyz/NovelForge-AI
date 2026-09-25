@@ -17,6 +17,7 @@
     "@novelforge/auth": "workspace:*",
     "@novelforge/config": "workspace:*",
     "@novelforge/database": "workspace:*",
+    "@novelforge/retrieval": "workspace:*",
     "fastify": "^5.0.0",
     "zod": "^4.6.5"
   },

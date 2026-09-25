@@ -54,6 +54,44 @@ export interface StepGenerator {
   }): Promise<{ generationId: string; content: string; model: string }>;
 }
 
+/**
+ * The narrow port to the knowledge index. `RetrievalServices.search`
+ * satisfies it.
+ *
+ * Declared structurally for the same reason as `StepGenerator`: the
+ * executor's contract is "search returns cited hits", not "the API's
+ * retrieval service exists", so a test can drive a RETRIEVAL step without
+ * a database-backed index.
+ */
+export interface StepRetriever {
+  search(input: {
+    actorUserId: string;
+    workspaceId: string;
+    query: string;
+    novelId?: string;
+    mode?: unknown;
+    readerChapter?: number;
+    limit?: number;
+    stepRunId?: string;
+  }): Promise<{
+    hits: Array<{
+      chunkId: string;
+      referenceId: string;
+      referenceVersionId: string;
+      referenceTitle: string;
+      start: number;
+      end: number;
+      text: string;
+      score: number;
+      foundBy: string[];
+    }>;
+    withheldCount: number;
+    retrievers: string[];
+    mode: string;
+    auditId: string;
+  }>;
+}
+
 export interface StepRunView {
   stepKey: string;
   sequence: number;
@@ -140,10 +178,17 @@ export function createWorkflowRunServices(deps: {
   db: NovelForgeDb;
   audit: AuditService;
   ai: StepGenerator;
+  /**
+   * Knowledge index port for RETRIEVAL steps. Optional so a deployment (or
+   * a test) without a knowledge engine still runs every other step kind;
+   * a workflow that declares a RETRIEVAL step then fails with a clear
+   * conflict instead of a silent empty result.
+   */
+  retrieval?: StepRetriever;
   /** Optional diagnostic sink for details that must not reach a client. */
   dbg?: { error?: (message: string, meta: unknown) => void };
 }): WorkflowRunServices {
-  const { db, audit, ai, dbg } = deps;
+  const { db, audit, ai, dbg, retrieval } = deps;
 
   async function gateWorkspace(
     workspaceId: string,
@@ -242,7 +287,16 @@ export function createWorkflowRunServices(deps: {
     outcomes: Map<string, StepOutcome>,
   ): unknown {
     if (expr.startsWith("$input.")) {
-      return runInput[expr.slice("$input.".length)];
+      // `Object.hasOwn`, never a bare index. The validator screens the
+      // reference SYNTAX, so `$input.constructor` and `$input.__proto__`
+      // both pass it, and a bare lookup would return the inherited
+      // `Object.prototype` member — a function, which is not `undefined`,
+      // so the caller's guard below never fires and `JSON.stringify(fn)`
+      // injects the literal text `undefined` into the prompt as if it were
+      // caller-supplied data. The same trap is documented at
+      // packages/validation/json-schema.ts (§ prototype keys).
+      const key = expr.slice("$input.".length);
+      return Object.hasOwn(runInput, key) ? runInput[key] : undefined;
     }
     const m = /^\$steps\.([a-z0-9_-]{1,64})\.(text|json)$/.exec(expr);
     if (!m) return undefined;
@@ -289,6 +343,23 @@ export function createWorkflowRunServices(deps: {
         throw new NotFoundError("workflow");
       }
       if (workflow.scope === "PLATFORM" && workflow.status !== "PUBLISHED") {
+        throw new NotFoundError("workflow");
+      }
+      // Only a PUBLISHED workflow runs, in EVERY scope. The gate used to
+      // cover PLATFORM only, so a WORKSPACE-scoped DRAFT was fully
+      // executable — and since the column defaults to DRAFT, a freshly
+      // created workflow ran before anyone published it. That contradicts
+      // the definition service's own contract ("A DRAFT definition cannot
+      // be executed ... publishing is a real gate") and ADR-0006, and it is
+      // the same gate already enforced for agents and skills.
+      //
+      // The caller's own draft is a conflict they can fix; anything else
+      // stays hidden behind the 404 above, so this never confirms the
+      // existence of a definition the caller may not see.
+      if (workflow.status !== "PUBLISHED") {
+        if (workflow.scope === "WORKSPACE" && workflow.workspaceId === input.workspaceId) {
+          throw new ConflictError("workflow is not published");
+        }
         throw new NotFoundError("workflow");
       }
       const version = workflow.currentVersion;
@@ -461,6 +532,103 @@ export function createWorkflowRunServices(deps: {
             });
             status = "AWAITING_APPROVAL";
             break;
+          }
+
+          // ---- RETRIEVAL: search the knowledge index, no model call ----
+          //
+          // Deliberately AUTHOR mode. A workflow runs on behalf of a
+          // workspace member who already holds `workflow:run` and (via the
+          // retrieval service) `reference:read`, so the caller is the
+          // author of this novel, not a reader. Reader-facing retrieval
+          // takes its mode from the request and is served by the search
+          // route, which carries a reader position.
+          //
+          // ponytail: mode is fixed at AUTHOR because no graph field
+          // declares one. Add a validated `mode`/`readerChapter` pair to
+          // the step contract when a reader-facing workflow exists.
+          if (step.kind === "RETRIEVAL") {
+            if (!retrieval) {
+              throw new ConflictError("retrieval is not configured on this deployment");
+            }
+            const query = renderInstruction(step, runInput, outcomes);
+            if (query.trim().length === 0) {
+              throw new ConflictError(`retrieval step "${stepKey}" has an empty query`);
+            }
+            const found = await retrieval.search({
+              actorUserId: input.actorUserId,
+              workspaceId: input.workspaceId,
+              query,
+              ...(novelId ? { novelId } : {}),
+              mode: "AUTHOR",
+              limit: 10,
+            });
+
+            // The text form is what a later AGENT step receives, so it
+            // carries the citation (reference title + character span), not
+            // just the prose: a model that cannot cite cannot be checked.
+            const text = found.hits
+              .map(
+                (h, i) =>
+                  `[${i + 1}] ${h.referenceTitle} (chars ${h.start}-${h.end})\n${h.text}`,
+              )
+              .join("\n\n");
+            const json = {
+              query,
+              mode: found.mode,
+              hits: found.hits.map((h) => ({
+                chunkId: h.chunkId,
+                referenceId: h.referenceId,
+                referenceVersionId: h.referenceVersionId,
+                referenceTitle: h.referenceTitle,
+                start: h.start,
+                end: h.end,
+                text: h.text,
+                score: h.score,
+                foundBy: h.foundBy,
+              })),
+              withheldCount: found.withheldCount,
+              retrievers: found.retrievers,
+            };
+
+            executed.push(stepKey);
+            outcomes.set(stepKey, { text, json });
+            const stepRow = await db.workflowStepRun.create({
+              data: {
+                runId: run.id,
+                stepKey,
+                sequence,
+                kind: step.kind,
+                status: "SUCCEEDED",
+                instruction: query,
+                output: json as never,
+                latencyMs: Date.now() - started,
+                completedAt: new Date(),
+              },
+              select: { id: true },
+            });
+            // Link the audit row to the step that issued it, so a run's
+            // evidence is reachable from the run and not only from the
+            // knowledge trail. Written after the step row exists because
+            // `step_run_id` is a foreign key.
+            //
+            // Best-effort, and deliberately so: the step has already
+            // succeeded and its row is durable. A failure here would
+            // otherwise mark a good run FAILED, and the audit row itself
+            // still exists under its workspace.
+            try {
+              await db.retrievalAudit.update({
+                where: { id: found.auditId },
+                data: { stepRunId: stepRow.id },
+              });
+            } catch (linkErr) {
+              dbg?.error?.("could not link retrieval audit to workflow step", {
+                runId: run.id,
+                stepKey,
+                linkErr,
+              });
+            }
+            advance(stepKey);
+            continue;
           }
 
           const instruction = renderInstruction(step, runInput, outcomes);
@@ -711,7 +879,16 @@ export function createWorkflowRunServices(deps: {
       await audit.record({
         actorUserId: input.actorUserId,
         workspaceId: input.workspaceId,
-        action: status === "FAILED" ? "workflow.run_failed" : "workflow.run_completed",
+        // Three terminal-ish states, three actions. A run parked at an
+        // approval gate is deliberately NOT complete (its `completedAt` is
+        // held null above), so filing it as `workflow.run_completed` made
+        // the audit trail disagree with the run row it describes.
+        action:
+          status === "FAILED"
+            ? "workflow.run_failed"
+            : status === "AWAITING_APPROVAL"
+              ? "workflow.run_awaiting_approval"
+              : "workflow.run_completed",
         entityType: "WorkflowRun",
         entityId: run.id,
         payload: {

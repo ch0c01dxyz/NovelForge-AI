@@ -248,6 +248,22 @@ describe("extractJson", () => {
     expect(extractJson('{"a":"\\""}')).toEqual({ ok: true, value: { a: '"' } });
   });
 
+  it("skips a bracket that is not JSON and keeps looking", () => {
+    // The doc comment names this case, so it must actually work. `[main]`
+    // is prose, not JSON — stopping at the first bracket character made
+    // this fail outright. (A bracket whose contents DO parse is still
+    // returned, which is the documented behaviour: `Note [1]` yields [1].)
+    expect(extractJson('The [main] character: {"a":1} trailing')).toEqual({
+      ok: true,
+      value: { a: 1 },
+    });
+    // No JSON anywhere: the `[sic]` bracket is malformed, and with nothing
+    // else to parse the failure is reported rather than swallowed.
+    const none = extractJson("as noted [sic] the result is 42");
+    expect(none.ok).toBe(false);
+    if (!none.ok) expect(none.failures[0]!.code).toBe("JSON_MALFORMED");
+  });
+
   it("fails closed on truncated or absent JSON", () => {
     expect(extractJson("no json here").ok).toBe(false);
     const truncated = extractJson('{"a":1');
@@ -456,13 +472,22 @@ describe("validateGraph", () => {
     }
   });
 
-  it("rejects a step kind the executor cannot run", () => {
-    // RETRIEVAL is in the domain vocabulary (CLAUDE.md §19) but has no
-    // executor, so accepting it at definition time would let a workflow be
-    // published and then fail mid-run with a partially executed run.
+  it("accepts a RETRIEVAL step that declares a query", () => {
+    // Phase 5 gave RETRIEVAL an executor, so it is now a runnable kind.
+    const r = validateGraph({
+      steps: [{ key: "a", kind: "RETRIEVAL", instruction: "what is the oath?" }],
+      edges: [],
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("rejects a RETRIEVAL step with no instruction", () => {
+    // Without a query there is nothing to search for; the step would record
+    // an empty result set, which reads as "the knowledge base has nothing"
+    // rather than "the step is misconfigured".
     const r = validateGraph({ steps: [{ key: "a", kind: "RETRIEVAL" }], edges: [] });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("STEP_NOT_EXECUTABLE");
+    if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("RETRIEVAL_NO_QUERY");
   });
 
   it("rejects a third outgoing edge on a CONDITION", () => {

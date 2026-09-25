@@ -29,10 +29,19 @@ export const STEP_KINDS = [
 ] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
-/** Kinds implemented by the Phase 4 executor. Others validate but cannot run. */
+/**
+ * Kinds the executor can run. The `STEP_NOT_EXECUTABLE` check in
+ * `validateGraph` consults this, so adding a kind to `STEP_KINDS` without
+ * an executor fails at definition time rather than mid-run. Every kind
+ * currently declared has an executor, so the check is dormant today — it
+ * exists for the next kind.
+ */
 export const EXECUTABLE_STEP_KINDS: ReadonlySet<StepKind> = new Set([
   "AGENT",
   "SKILL",
+  // Phase 5: a retrieval step searches the workspace's reference index and
+  // passes the citations to later steps.
+  "RETRIEVAL",
   "CONDITION",
   "TRANSFORM",
   "VALIDATOR",
@@ -338,6 +347,19 @@ export function validateGraph(
             `checks); got ${inputCount}`,
         });
       }
+    }
+
+    // A RETRIEVAL step's query is its rendered `instruction` — the same
+    // text an AGENT step sends as its user message. Without one there is
+    // nothing to search for, and the step would record an empty result set
+    // that reads as "the knowledge base has nothing on this", which is the
+    // wrong diagnosis.
+    if (kind === "RETRIEVAL" && step.instruction === undefined) {
+      failures.push({
+        path: at(path, "instruction"),
+        code: "RETRIEVAL_NO_QUERY",
+        message: "a RETRIEVAL step must declare an instruction to use as its query",
+      });
     }
 
     // `maxRetries` and `timeoutMs` are not consumed by the executor: retry

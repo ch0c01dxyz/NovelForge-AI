@@ -308,6 +308,7 @@ function fakeGateway(rec: GatewayRecord, opts: FakeOptions): AIGateway {
       yield { delta: "world" };
     },
     async embed() {
+      if (!b.ok) fail();
       return { vectors: [[0.1]], model: rec.name, inputTokens: 1 };
     },
     async healthCheck() {
@@ -517,6 +518,81 @@ describe("gateway manager", () => {
     expect(results).toHaveLength(1);
     expect(results[0]!.gatewayId).toBe("g1");
     expect(registry.health).toEqual(["g1:ok"]);
+  });
+});
+
+describe("embedding routes through the same policy as generate", () => {
+  it("returns vectors from the first successful attempt and records it", async () => {
+    const { manager, registry } = makeManager([gw()], { g1: { ok: true } });
+    const result = await manager.embed({
+      profile: "EMBEDDING",
+      input: ["alpha", "beta"],
+      generationId: "gen-embed",
+    });
+    expect(result.vectors).toEqual([[0.1]]);
+    expect(registry.attempts).toHaveLength(1);
+    expect(registry.attempts[0]!.status).toBe("SUCCEEDED");
+  });
+
+  it("fails over to a second gateway exactly as generate does", async () => {
+    // The property that matters: embed was not given its own retry loop, so
+    // it must inherit bounded retry and fallback rather than failing on the
+    // first gateway that blinks.
+    const { manager, registry } = makeManager(
+      [gw({ id: "g1", name: "one", priority: 1 }), gw({ id: "g2", name: "two", priority: 2 })],
+      { g1: { ok: false, category: "TRANSIENT" }, g2: { ok: true } },
+    );
+    const result = await manager.embed({
+      profile: "EMBEDDING",
+      input: ["x"],
+      generationId: "gen-embed",
+    });
+    expect(result.model).toBe("two");
+    expect(registry.attempts.map((a) => a.status)).toEqual(["FAILED", "SUCCEEDED"]);
+  });
+
+  it("does not retry a deterministic failure", async () => {
+    // A malformed request fails identically everywhere; retrying it would
+    // waste the budget and delay the caller's error (CLAUDE.md §27).
+    const { manager, registry } = makeManager(
+      [gw({ id: "g1", name: "one" }), gw({ id: "g2", name: "two" })],
+      { g1: { ok: false, category: "INVALID_REQUEST" }, g2: { ok: true } },
+    );
+    await expect(
+      manager.embed({ profile: "EMBEDDING", input: ["x"], generationId: "g" }),
+    ).rejects.toBeInstanceOf(GatewayError);
+    expect(registry.attempts).toHaveLength(1);
+  });
+
+  it("counts a gateway fault against the breaker", async () => {
+    const { manager, registry } = makeManager([gw()], { g1: { ok: false, category: "TRANSIENT" } });
+    await expect(
+      manager.embed({ profile: "EMBEDDING", input: ["x"], generationId: "g" }),
+    ).rejects.toBeInstanceOf(GatewayError);
+    // The fake records `${id}:${ok ? "ok" : category}`.
+    expect(registry.health).toContain("g1:TRANSIENT");
+  });
+
+  it("returns an empty result for an empty batch without opening an attempt", async () => {
+    // An empty batch is a caller bug, not a gateway fault. Recording an
+    // attempt (and possibly a health failure) against a healthy gateway
+    // would be wrong.
+    const { manager, registry } = makeManager([gw()], { g1: { ok: true } });
+    const result = await manager.embed({
+      profile: "EMBEDDING",
+      input: [],
+      generationId: "g",
+    });
+    expect(result.vectors).toEqual([]);
+    expect(registry.attempts).toHaveLength(0);
+    expect(registry.health).toEqual([]);
+  });
+
+  it("raises NoRouteError when nothing is mapped to the profile", async () => {
+    const { manager } = makeManager([], {});
+    await expect(
+      manager.embed({ profile: "EMBEDDING", input: ["x"], generationId: "g" }),
+    ).rejects.toBeInstanceOf(NoRouteError);
   });
 });
 

@@ -1,31 +1,51 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: **Phase 4 COMPLETE (2026-09-27)**. Phase 0
+Implementation status: **Phase 5 COMPLETE (2026-09-25)**. Phase 0
 (NF-0001..NF-0010), Phase 1 (auth, workspaces, memberships, novels,
 permissions, audit), Phase 2 (chapters, immutable versions, autosave,
 editor shell, import/export), Phase 3 (AIGateway/OmniRoute adapter,
 gateway + model registry, model profiles, logical requests/attempts,
 bounded retry/fallback, error classification, generation history,
-platform-admin authorization), and Phase 4 (versioned agents, skills and
+platform-admin authorization), Phase 4 (versioned agents, skills and
 workflows, fail-closed structured-output contracts, validated acyclic
-workflow graphs, deterministic multi-agent execution, run history) are
-implemented, tested, and verified. Phase 4 was closed by a second-pass
-audit on 2026-09-27 that fixed eight further defects (see
-`progress.md`); full gate: lint 0, typecheck 0, 277 passed / 1 skipped.
-See `docs/implementation/progress.md` and
-`docs/implementation/test-matrix.md`.
+workflow graphs, deterministic multi-agent execution, run history), and
+Phase 5 (references with append-only versions, citable chunk spans,
+pgvector embeddings, hybrid lexical+vector retrieval with RRF fusion,
+tenant and spoiler predicates in SQL, per-search provenance, `RETRIEVAL`
+workflow steps) are implemented, tested, and verified. An independent
+audit of the committed Phase 4 code also found and fixed three live
+defects in this phase (a prototype key reaching the prompt, a DRAFT
+WORKSPACE workflow being executable, and a prose bracket defeating
+`extractJson`); two other reported findings were probed and disproved
+(see `progress.md`). Full gate: lint 0, typecheck 0, 350 passed / 1
+skipped, 9 migrations applying from empty with zero drift. See
+`docs/implementation/progress.md`,
+`docs/implementation/test-matrix.md` and
+[ADR-0007](../adr/ADR-0007-knowledge-retrieval.md).
 
 ## Next milestone
 
-Phase 5 --- Knowledge & Retrieval (references, parsing/chunking,
-pgvector, hybrid retrieval, provenance). Exit: retrieval is
-evidence-bearing and tenant-safe.
+Phase 6 --- Story Intelligence Core (canon, candidate canon, timeline,
+story events, threads, promises, causal edges, hierarchical memory).
+Exit: Story Brain can answer core factual/continuity questions with
+evidence.
 
-## Known gaps carried into Phase 5
+## Known gaps carried into Phase 6
 
-- Workflow `RETRIEVAL` steps validate as a graph kind but are not
-  executable; Phase 5 owns retrieval and will implement them.
+- **No ANN index on embeddings.** Prisma 7.10 cannot declare HNSW or
+  IVFFlat, so search is an exact scan over a workspace's vectors. Correct
+  at current scale; revisit with a raw-SQL migration when it is
+  measurably slow (ADR-0007 §2).
+- Retrieval quality is bounded by the chunker's paragraph/line/sentence
+  heuristics. No semantic chunking, no overlap between chunks.
+- Ingestion is synchronous within the request. Embeddings should move to
+  the worker queue once a document is large enough to time out a request
+  (CLAUDE.md §24).
+- Only text ingestion exists: PDF/DOCX/TXT/Markdown extraction is not
+  implemented (CLAUDE.md §32). `ReferenceKind.IMPORTED` is reserved for it.
+- A `RETRIEVAL` workflow step always searches in AUTHOR mode; the step
+  contract has no `mode`/`readerChapter` field.
 - Workflow runs execute synchronously within the request. Moving them to
   the worker queue is a later concern (Phase 13); the run record already
   carries status and timing for it.

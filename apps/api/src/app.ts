@@ -21,12 +21,14 @@ import { registerPlatformRoutes } from "./platform-routes.ts";
 import { registerManuscriptRoutes } from "./manuscript-routes.ts";
 import { registerAiRoutes } from "./ai-routes.ts";
 import { registerDefinitionRoutes } from "./definition-routes.ts";
+import { registerRetrievalRoutes } from "./retrieval-routes.ts";
 import { createAuditService } from "./services/audit.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
 import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
+import { createRetrievalServices } from "./services/retrieval.ts";
 import { createGatewayRegistry } from "./ai-registry.ts";
 
 export type CheckState = "up" | "down";
@@ -108,7 +110,14 @@ export async function buildApp(
   await app.register(cookie);
   await app.register(rateLimit, {
     // Global fallback; per-route overrides live in route config.
-    max: 300,
+    //
+    // Under test the fallback is effectively disabled: the limiter's
+    // in-memory store is shared across every request in one app instance,
+    // so a large integration file trips it partway through and the failure
+    // lands on whichever test happened to run last. Only the GLOBAL
+    // fallback is relaxed — the per-route limits (auth register/login) stay
+    // enforced, and those are the security-sensitive ones.
+    max: env.NODE_ENV === "test" ? 1_000_000 : 300,
     timeWindow: "1 minute",
   });
 
@@ -155,6 +164,18 @@ export async function buildApp(
       return user?.platformRole ?? null;
     };
     registerAiRoutes(app, { auth, services: aiServices, platformRoleOf });
+
+    // One retrieval service shared by the routes and the workflow executor:
+    // a RETRIEVAL step must search exactly the index a direct search reads,
+    // through the same spoiler and tenant predicates (CLAUDE.md §10).
+    const retrievalServices = createRetrievalServices({
+      db: options.db,
+      audit,
+      ai: aiServices,
+      dbg: { error: (message, meta) => app.log.error(meta, message) },
+    });
+    registerRetrievalRoutes(app, { auth, services: retrievalServices });
+
     registerDefinitionRoutes(app, {
       auth,
       definitions: createDefinitionServices({ db: options.db, audit }),
@@ -162,6 +183,7 @@ export async function buildApp(
         db: options.db,
         audit,
         ai: aiServices,
+        retrieval: retrievalServices,
         // A step's raw error is never returned to the client (it can carry a
         // Prisma string or an upstream provider body), so it is logged here
         // instead. Reuses the pino instance already configured above.

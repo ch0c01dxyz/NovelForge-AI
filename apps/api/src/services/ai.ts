@@ -159,6 +159,21 @@ export interface AiServices {
     maxTokens?: number;
   }): Promise<{ generationId: string; content: string; model: string }>;
   /**
+   * Embed a batch of texts through the EMBEDDING profile.
+   *
+   * Workspace-scoped and audited exactly like `generate`: a `Generation`
+   * row (profile EMBEDDING) is written first, so every embedding is
+   * attributable to a user, a workspace and a model, and a failed batch
+   * leaves the same diagnosable record as a failed generation. Callers
+   * that need no provenance should not exist — this is an AI call that
+   * costs money (CLAUDE.md §22).
+   */
+  embed(input: {
+    actorUserId: string;
+    workspaceId: string;
+    texts: string[];
+  }): Promise<{ vectors: number[][]; model: string }>;
+  /**
    * Streamed generation. Yields text deltas; the returned promise resolves
    * with the final status once the stream ends. A stream that fails after
    * emitting content is INCOMPLETE — never SUCCEEDED — so a partial
@@ -648,6 +663,90 @@ export function createAiServices(deps: {
         // classified message, never the raw provider error. Anything
         // else is our own bug and is rethrown as-is so it is not
         // misreported as a provider fault.
+        if (err instanceof GatewayError) {
+          throw new BadGatewayError(message);
+        }
+        throw err;
+      }
+    },
+
+    async embed(input) {
+      await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
+      // An empty batch is a caller bug, not a request: no model call, so
+      // no Generation row and no audit noise. `manager.embed` agrees.
+      if (input.texts.length === 0) return { vectors: [], model: "" };
+
+      const generation = await db.generation.create({
+        data: {
+          workspaceId: input.workspaceId,
+          userId: input.actorUserId,
+          task: "embed",
+          modelProfile: "EMBEDDING",
+          status: "IN_PROGRESS",
+        },
+        select: { id: true },
+      });
+
+      const started = Date.now();
+      try {
+        const result = await manager.embed({
+          profile: "EMBEDDING",
+          input: input.texts,
+          generationId: generation.id,
+        });
+        const latencyMs = Date.now() - started;
+        await db.generation.update({
+          where: { id: generation.id },
+          data: {
+            status: "SUCCEEDED",
+            inputTokens: result.inputTokens,
+            latencyMs,
+            completedAt: new Date(),
+          },
+        });
+        await audit.record({
+          actorUserId: input.actorUserId,
+          workspaceId: input.workspaceId,
+          action: "generation.completed",
+          entityType: "Generation",
+          entityId: generation.id,
+          payload: { task: "embed", profile: "EMBEDDING", model: result.model, texts: input.texts.length },
+        });
+        return { vectors: result.vectors, model: result.model };
+      } catch (err) {
+        const latencyMs = Date.now() - started;
+        const noRoute = err instanceof NoRouteError;
+        const category = noRoute
+          ? "INTERNAL"
+          : err instanceof GatewayError
+            ? err.category
+            : "INTERNAL";
+        const message = noRoute
+          ? "no model is configured for this capability profile"
+          : err instanceof GatewayError
+            ? err.message
+            : "embedding failed";
+        await db.generation.update({
+          where: { id: generation.id },
+          data: {
+            status: "FAILED",
+            latencyMs,
+            errorCategory: category,
+            errorMessage: message,
+            completedAt: new Date(),
+          },
+        });
+        await audit.record({
+          actorUserId: input.actorUserId,
+          workspaceId: input.workspaceId,
+          action: "generation.failed",
+          entityType: "Generation",
+          entityId: generation.id,
+          payload: { task: "embed", profile: "EMBEDDING", category },
+        });
+        if (noRoute) {
+          throw new ConflictError("no model is configured for profile EMBEDDING");
+        }
         if (err instanceof GatewayError) {
           throw new BadGatewayError(message);
         }

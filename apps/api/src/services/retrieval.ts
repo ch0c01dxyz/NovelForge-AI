@@ -35,7 +35,7 @@ import {
   type Retriever,
   type ViewMode,
 } from "@novelforge/retrieval";
-import { ConflictError, NotFoundError } from "./platform.ts";
+import { BadGatewayError, ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
 
 /**
@@ -93,7 +93,14 @@ export interface RetrievalHit {
 
 export interface SearchResult {
   hits: RetrievalHit[];
-  /** How many candidates the spoiler boundary withheld. */
+  /**
+   * How many fused candidates the application-level recheck dropped.
+   *
+   * The SQL predicate is the primary spoiler control and already filtered,
+   * so in normal operation this is 0 — a non-zero value means the SQL
+   * predicate and `canView` have drifted and a leg is admitting rows it
+   * should not. It is reported (and persisted) as that signal.
+   */
   withheldCount: number;
   /** Which legs ran; a degraded search is distinguishable from a full one. */
   retrievers: Retriever[];
@@ -301,6 +308,17 @@ export function createRetrievalServices(deps: {
           throw new ConflictError(
             `embedding provider returned a ${vector.length}-dimensional vector; ` +
               `this deployment stores ${EMBEDDING_DIMENSION}`,
+          );
+        }
+        // The vector is stringified into a SQL literal below, so what the
+        // provider returned must be numbers before that happens. pgvector
+        // rejects NaN, Infinity and any non-numeric element, so this fails
+        // closed either way — but without the check the failure is a raw
+        // driver error surfacing as a 500, with no indication that the
+        // provider, not the database, was at fault.
+        if (!vector.every((n) => typeof n === "number" && Number.isFinite(n))) {
+          throw new ConflictError(
+            `embedding provider returned a non-finite value at index ${j}`,
           );
         }
       }
@@ -524,9 +542,14 @@ export function createRetrievalServices(deps: {
       await gateWorkspace(workspaceId, input.actorUserId, "reference:manage");
 
       // Idempotence: content that has not changed does not need re-chunking
-      // or re-embedding. The hash is compared against the chunks already
-      // present rather than a stored flag, so a partially ingested version
-      // is still repaired.
+      // or re-embedding. The test is the PROJECTION's own state — are there
+      // chunks, and does every one of them have a vector? — so a partially
+      // ingested version is repaired rather than skipped.
+      //
+      // `contentHash` is NOT consulted, deliberately: chunks are keyed to an
+      // immutable version, so a version's text can never change under them,
+      // and a hash comparison would need a stored per-ingest hash to compare
+      // against. The projection state is the honest signal.
       const existing = await db.chunk.count({
         where: { referenceVersionId: version.id },
       });
@@ -538,7 +561,22 @@ export function createRetrievalServices(deps: {
         version.id,
       );
       const embeddedCount = Number(alreadyEmbedded[0]?.n ?? 0);
-      if (existing > 0 && embeddedCount === existing && input.availableFromChapter === undefined) {
+
+      // Re-ingesting with a DIFFERENT boundary is a real request, not a
+      // no-op: the chunks must be rewritten. The old condition returned
+      // `skipped: true` for exactly that case, so a caller setting
+      // `availableFromChapter` on an already-ingested version was told the
+      // work was done while every chunk kept its old boundary.
+      const boundary = input.availableFromChapter ?? null;
+      const existingBoundaries = await db.chunk.findMany({
+        where: { referenceVersionId: version.id },
+        select: { availableFromChapter: true },
+      });
+      const boundaryMatches =
+        input.availableFromChapter === undefined ||
+        existingBoundaries.every((c) => c.availableFromChapter === boundary);
+
+      if (existing > 0 && embeddedCount === existing && boundaryMatches) {
         return { chunks: existing, embedded: embeddedCount, skipped: true };
       }
 
@@ -559,16 +597,28 @@ export function createRetrievalServices(deps: {
 
       // Replacing projections is the only safe re-ingest: keeping old chunks
       // would leave citations pointing at text from a previous revision.
-      await db.$executeRawUnsafe(
-        `DELETE FROM chunks WHERE reference_version_id = $1::uuid`,
-        version.id,
-      );
+      //
+      // Delete and insert share ONE transaction. Without it a failure between
+      // them — a connection drop, a constraint violation, a process kill —
+      // left the version with zero chunks, so a published reference silently
+      // vanished from every search result until someone re-ingested it. With
+      // it, a failed insert rolls the delete back and the previous chunks
+      // survive: still searchable, just not yet reflecting the new options.
+      //
+      // The embeddings upsert stays OUTSIDE. It is idempotent, and a version
+      // with chunks but no vectors is self-healing — the skip condition below
+      // sees embedded < existing and re-runs rather than skipping.
+      await db.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          `DELETE FROM chunks WHERE reference_version_id = $1::uuid`,
+          version.id,
+        );
 
-      // Insert text and tsvector in the SAME statement, so the two cannot
-      // disagree. `to_tsvector('english', ...)` matches the query side in
-      // search(); a different configuration here would make lexical search
-      // silently miss matches.
-      if (units.length > 0) {
+        // Insert text and tsvector in the SAME statement, so the two cannot
+        // disagree. `to_tsvector('english', ...)` matches the query side in
+        // search(); a different configuration here would make lexical search
+        // silently miss matches.
+        if (units.length === 0) return;
         const params: unknown[] = [version.id, workspaceId, input.availableFromChapter ?? null];
         const values = units.map((u) => {
           // `id` is deliberately absent from the column list: it is
@@ -582,14 +632,14 @@ export function createRetrievalServices(deps: {
             `$3::int, to_tsvector('english', $${base + 1}))`
           );
         });
-        await db.$executeRawUnsafe(
+        await tx.$executeRawUnsafe(
           `INSERT INTO chunks
              (reference_version_id, workspace_id, "index", text, "start", "end",
               available_from_chapter, content_ts)
            VALUES ${values.join(", ")}`,
           ...params,
         );
-      }
+      });
 
       const chunkRows = await db.chunk.findMany({
         where: { referenceVersionId: version.id },
@@ -640,7 +690,13 @@ export function createRetrievalServices(deps: {
       }
 
       const started = Date.now();
+      // Each leg pushes itself only AFTER its query returns, so a leg that
+      // threw is absent here — a broken index is not reported as a leg that
+      // ran. `failedLegs` is the other half: it lets an all-legs-down search
+      // fail loudly instead of returning an empty result that reads as
+      // "the knowledge base has nothing on this".
       const retrievers: Retriever[] = [];
+      const failedLegs: string[] = [];
 
       // ---- lexical leg: PostgreSQL full-text over the GIN index ----
       //
@@ -682,9 +738,10 @@ export function createRetrievalServices(deps: {
         retrievers.push("LEXICAL");
       } catch (err) {
         // A lexical failure must not take the whole search down: the vector
-        // leg can still answer. The audit records which legs ran, so a
-        // degraded search is visible rather than silent.
+        // leg can still answer. `retrievers` records which legs actually
+        // returned, so a degraded search is visible rather than silent.
         dbg?.error?.("lexical retrieval failed", { err });
+        failedLegs.push("LEXICAL");
       }
 
       // ---- vector leg: exact cosine over the embedding projection ----
@@ -729,6 +786,16 @@ export function createRetrievalServices(deps: {
         retrievers.push("VECTOR");
       } catch (err) {
         dbg?.error?.("vector retrieval failed", { err });
+        failedLegs.push("VECTOR");
+      }
+
+      // Every leg down is an OUTAGE, not an empty knowledge base. Returning
+      // zero hits with `retrievers: []` would be indistinguishable from a
+      // working search that matched nothing, and the caller would draw the
+      // wrong conclusion about the index (CLAUDE.md §26 — a retrieval
+      // failure is handled explicitly, not reported as no results).
+      if (retrievers.length === 0 && failedLegs.length > 0) {
+        throw new BadGatewayError("retrieval failed: no retriever answered");
       }
 
       // ---- fuse ----
@@ -751,10 +818,22 @@ export function createRetrievalServices(deps: {
 
       // ---- assemble, with the spoiler check re-applied ----
       //
-      // The SQL predicate already filtered, so this is defence in depth, not
-      // the primary control. It exists because the two filters can drift:
-      // a future leg that forgets the predicate would otherwise leak, and
-      // `withheldCount` needs a number the SQL cannot report.
+      // The SQL predicate already filtered, and it is the PRIMARY control:
+      // for every combination of mode, reader position and boundary, a row
+      // the SQL admitted is one `canView` also permits — verified by
+      // enumerating the combinations, not assumed. Filtering after ranking
+      // would mean reading rows this caller may not see at all.
+      //
+      // The recheck below is therefore a tripwire, not a second control. It
+      // is kept because the two filters could drift: a future leg that omits
+      // the predicate would otherwise leak, and this catches it. Its cost is
+      // one map lookup per hit.
+      //
+      // Consequence, stated plainly: `withheldCount` counts what THIS layer
+      // withheld, so with both filters in agreement it is always 0. It is
+      // reported rather than removed because a non-zero value is the signal
+      // that the tripwire fired and one of the legs is wrong — that is the
+      // number an operator needs when a reader reports missing content.
       const byId = new Map<string, SearchRow>();
       for (const r of [...lexical, ...vector]) byId.set(r.chunk_id, r);
 
@@ -772,8 +851,15 @@ export function createRetrievalServices(deps: {
       const visible: RetrievalHit[] = [];
       let withheld = 0;
       for (const f of top) {
+        // A fused hit with no raw row cannot happen today — every fused id
+        // came from a leg's rows — but it is not impossible after an edit,
+        // and silently dropping it would under-report the result set. Count
+        // it with the withheld so the number is never quietly wrong.
         const row = byId.get(f.id);
-        if (!row) continue;
+        if (!row) {
+          withheld += 1;
+          continue;
+        }
         const boundary = { availableFromChapter: boundaries.get(f.id) ?? null };
         if (!canView(boundary, { mode, ...(readerChapter !== null ? { readerChapter } : {}) })) {
           withheld += 1;

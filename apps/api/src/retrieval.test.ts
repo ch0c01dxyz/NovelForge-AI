@@ -10,15 +10,18 @@
  * evidence-bearing and tenant-safe" — by asserting the specific ways it
  * can fail:
  *
- *   - tenant safety: another workspace's reference is a 404, and its chunks
- *     never appear as a hit, including through a shared novel id;
- *   - spoiler safety (CLAUDE.md §10): the filtering happens in SQL, so a
- *     reader-mode query cannot return a withheld chunk at all, and the
- *     withheld count reports what the boundary cost;
+ *   - tenant safety: another workspace's reference is a 404, its chunks
+ *     never appear in another workspace's results, and a novel-scoped
+ *     reference is absent from a query for a different novel;
+ *   - spoiler safety (CLAUDE.md §10): a reader cannot get a withheld chunk,
+ *     an unclassified chunk stays invisible at any reader position, and the
+ *     boundary rules are enforced rather than defaulted;
  *   - evidence: every hit resolves back to the exact character span it was
  *     cut from, and every search leaves a provenance row;
- *   - rebuildability (CLAUDE.md §2.2): re-ingesting is idempotent, and a
- *     new version replaces the projection rather than mixing revisions.
+ *   - rebuildability (CLAUDE.md §2.2): re-ingesting unchanged content skips
+ *     without a second provider call, and changing the spoiler boundary
+ *     re-ingests instead of silently skipping;
+ *   - failure honesty: an all-legs-down search is a 502, not an empty 200.
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -159,6 +162,18 @@ afterAll(async () => {
 
 beforeEach(async () => {
   embedCalls = 0;
+  // Self-heal before anything else: the all-legs-down test renames the
+  // tsvector column to force a query failure, and a run killed between the
+  // rename and its restore would fail every later suite with an unrelated
+  // "column does not exist". Cheaper than debugging that.
+  await db.$executeRawUnsafe(
+    `DO $$ BEGIN
+       IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'chunks' AND column_name = 'content_ts_hidden')
+       THEN ALTER TABLE chunks RENAME COLUMN content_ts_hidden TO content_ts;
+       END IF;
+     END $$`,
+  );
   // Order matters: retrieval audits reference step runs and generations.
   await db.retrievalAudit.deleteMany();
   await db.workflowStepRun.deleteMany();
@@ -380,6 +395,57 @@ describe("reference ingestion", () => {
     expect(embedCalls).toBe(before);
   });
 
+  it("re-ingests when the spoiler boundary changes instead of reporting a skip", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    // Ingested WITHOUT a boundary, so every chunk is reader-invisible.
+    const { referenceId, versionId } = await seedReference(owner.cookie, workspaceId, {
+      key: "lore",
+      content: OATH_TEXT.join("\n\n"),
+      publish: false,
+    });
+
+    const aReader = async () =>
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/workspaces/${workspaceId}/retrieval/search`,
+          headers: { cookie: owner.cookie },
+          payload: { query: "oath", mode: "READER", readerChapter: 50, limit: 5 },
+        })
+      ).json() as { hits: unknown[] };
+
+    // Publish so the reference is in the retrieval scope; a null boundary
+    // still keeps it out of READER results.
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/references/${referenceId}/publish`,
+          headers: { cookie: owner.cookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await aReader()).hits).toHaveLength(0);
+
+    // Setting a boundary on an already-ingested version is a real request.
+    // The skip condition used to return `skipped: true` for exactly this
+    // case, so every chunk kept its old (null) boundary and the reference
+    // stayed invisible to readers despite the re-ingest appearing to work.
+    const reingest = await app.inject({
+      method: "POST",
+      url: `/api/reference-versions/${versionId}/ingest`,
+      headers: { cookie: owner.cookie },
+      payload: { availableFromChapter: 10 },
+    });
+    expect(reingest.statusCode).toBe(200);
+    expect((reingest.json() as { skipped: boolean }).skipped).toBe(false);
+
+    // The chunks were rewritten and re-embedded, so the boundary took effect.
+    expect((await aReader()).hits.length).toBeGreaterThan(0);
+  });
+
   it("refuses to publish a reference that has no ingested chunks", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
@@ -460,11 +526,12 @@ describe("spoiler safety", () => {
     const readerBody = reader.json() as { hits: unknown[]; withheldCount: number; mode: string };
     expect(readerBody.hits).toHaveLength(0);
     expect(readerBody.mode).toBe("READER");
-    // Zero withheld is the assertion that proves WHERE the filtering
-    // happened: the SQL predicate removed the chunk before it was ever
-    // returned, so the application-level recheck saw nothing to withhold.
-    // A non-zero value here would mean the row was read and only then
-    // dropped — the wrong order, and one that leaks via timing/ranking.
+    // `withheldCount` is 0 here because the SQL predicate removed the chunk
+    // before it was ever returned, so the application-level recheck had
+    // nothing to drop. That is the correct value — but it is also the value
+    // a broken query would produce, so it is NOT evidence on its own. The
+    // evidence is the pair below: the reader sees nothing, and the AUTHOR
+    // query in the same state DOES see the chunk. Only the boundary differs.
     expect(readerBody.withheldCount).toBe(0);
 
     // And once the reader has reached it, it appears.
@@ -530,6 +597,46 @@ describe("spoiler safety", () => {
 });
 
 describe("tenant isolation", () => {
+  it("distinguishes a broken index from an empty one", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    // No embedding route, so the vector leg cannot run at all; the lexical
+    // leg still queries. Both legs answering (even emptily) is a search that
+    // matched nothing, which must be reported as such...
+    const empty = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/retrieval/search`,
+      headers: { cookie: owner.cookie },
+      payload: searchBody("oath"),
+    });
+    expect(empty.statusCode).toBe(200);
+    expect((empty.json() as { hits: unknown[] }).hits).toHaveLength(0);
+
+    // ...whereas EVERY leg failing is an outage, and must not be reported as
+    // an empty knowledge base — the caller would draw the wrong conclusion
+    // about the index. Take the lexical leg down by dropping the GIN index's
+    // table dependency: point the search at a workspace whose chunks table
+    // query fails. Simplest honest simulation: rename the tsvector column
+    // out from under the query.
+    await db.$executeRawUnsafe(
+      `ALTER TABLE chunks RENAME COLUMN content_ts TO content_ts_hidden`,
+    );
+    try {
+      const broken = await app.inject({
+        method: "POST",
+        url: `/api/workspaces/${workspaceId}/retrieval/search`,
+        headers: { cookie: owner.cookie },
+        payload: searchBody("oath"),
+      });
+      // 502, not 200-with-zero-hits.
+      expect(broken.statusCode).toBe(502);
+    } finally {
+      await db.$executeRawUnsafe(
+        `ALTER TABLE chunks RENAME COLUMN content_ts_hidden TO content_ts`,
+      );
+    }
+  });
+
   it("hides another workspace's reference behind 404 and out of search", async () => {
     const alice = await seedUser("alice@example.com");
     const bob = await seedUser("bob@example.com");

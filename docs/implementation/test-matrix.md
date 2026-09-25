@@ -276,8 +276,8 @@ run is 404; run history lists; a completed run is audited.
 
 | Area | Unit | Integration | Contract | E2E | Migration |
 | ---- | ---- | ----------- | -------- | --- | --------- |
-| Chunker (`packages/retrieval`) | passing (21) | — | — | — | — |
-| Rank fusion | passing (13) | — | — | — | — |
+| Chunker (`packages/retrieval`) | passing (27) | — | — | — | — |
+| Rank fusion | passing (15) | — | — | — | — |
 | Spoiler predicate | passing (12) | — | — | — | — |
 | Embedding routing (`packages/ai-core`) | passing (6) | — | — | — | — |
 | Phase 5 schema (`packages/database`) | — | passing | — | — | passing (drift-free, 9 migrations) |
@@ -291,15 +291,19 @@ run is 404; run history lists; a completed run is audited.
 
 Executed results (2026-09-25, Windows, live compose PostgreSQL 0.8.6
 pgvector; full suite 350 passed / 1 skipped).
-`chunk.test.ts` (21) — paragraph/line/sentence splitting, offsets into the
+`chunk.test.ts` (27) — paragraph/line/sentence splitting, offsets into the
 original text, CRLF and mixed line endings, short-segment merging on both
 sides, oversized runs split at sentence boundaries then hard-split,
 `maxChars`/`minChars` validation, blank input, and `verifyChunks`
-soundness (span, overlap, index, text-match).
-`fuse.test.ts` (13) — RRF rank-only scoring, k's effect on the
+soundness (span, overlap, index, text-match, gap-drops-content). Plus the
+invariant regressions: chunk text equals its source slice across a merge
+(CRLF, blank-line runs, indent-padded separators), a bare CR is a line
+separator, and a surrogate pair is never split between two chunks.
+`fuse.test.ts` (15) — RRF rank-only scoring, k's effect on the
 adjacent-rank gap, ties broken by id, single-list and empty-list inputs,
 `minRetrievers`, limit, and the rejection codes for a rank mismatch, a
-bad hit id, and non-positive k/limit.
+bad hit id, a duplicated id within one list, a missing `lists`, and
+non-positive k/limit.
 `spoiler.test.ts` (12) — AUTHOR/EDITOR see everything, READER bounded by
 `availableFromChapter`, a null boundary withheld, a missing reader
 position treated as chapter 0, an invalid one refused, unrecognised modes

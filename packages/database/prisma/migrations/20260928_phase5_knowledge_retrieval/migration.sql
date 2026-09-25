@@ -1,7 +1,7 @@
 -- Phase 5: references, chunks, embeddings, retrieval provenance.
 --
--- Two indexes required by hybrid retrieval cannot be declared in the Prisma
--- schema, so they are written by hand here. Both are paired with a schema
+-- One index required by hybrid retrieval cannot be declared in the Prisma
+-- schema, so it is written by hand here. It is paired with a schema
 -- declaration so `migrate diff` reports no drift:
 --
 --   * `chunks_content_ts_idx` is declared as @@index([contentTs], type: Gin)
@@ -9,13 +9,20 @@
 --     index because Prisma cannot express `to_tsvector(...)`; the ingest path
 --     therefore writes `content_ts` itself, in the same INSERT as `text`, so
 --     the column and the tsvector cannot disagree.
---   * `embeddings_vector_hnsw_idx` cannot be declared at all: this Prisma
---     version rejects `type: Hnswops` ("Unknown index type"). It is created
---     here and the schema carries a comment explaining the asymmetry.
 --
--- This migration applies to an EMPTY table set, so both index builds are
--- instantaneous. On a populated corpus they would be a write outage and
--- would belong in a separate concurrent-index migration.
+-- There is deliberately NO vector index. `embeddings.vector` is a fixed-width
+-- `vector(1536)` column searched exactly (a sequential scan per workspace).
+-- This Prisma version rejects every spelling of HNSW and IVFFlat as an
+-- unknown index type, so an ANN index would need a raw-SQL `CREATE INDEX`
+-- that `migrate diff` reports as permanent drift forever, or a dimensionless
+-- `vector` column that accepts mixed widths and silently corrupts cosine
+-- distance. Search is exact at present scale; ADR-0007 §2 records the
+-- trade and the upgrade path. The commented block at the end of this file
+-- shows the statement that would be run when that happens.
+--
+-- The GIN build is instantaneous on an empty table set, which is what this
+-- migration sees. On a populated corpus it would be a write outage and would
+-- belong in a separate concurrent-index migration.
 
 -- CreateEnum
 CREATE TYPE "SpoilerMode" AS ENUM ('AUTHOR', 'EDITOR', 'READER');

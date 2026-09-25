@@ -137,6 +137,51 @@ describe("chunkText", () => {
     expect(chunks.map((c) => c.text)).toEqual(["One.", "Two."]);
   });
 
+  it("keeps chunk text identical to its source slice across a merge", () => {
+    // The merge branch used to rebuild the chunk by concatenation with a
+    // literal "\n\n", which normalised CRLF to LF, collapsed runs of blank
+    // lines, and swallowed indentation on the separator line. `text.slice`
+    // then no longer matched `chunk.text`, so a resolved citation returned
+    // different bytes from the ones that were embedded. `expectSound`
+    // asserts exactly that equality, so these all failed before the fix.
+    const cases = [
+      "aaaa\r\n\r\nbbbb",
+      "aaaa\n\n\n\nbbbb",
+      "aaaa\n   \nbbbb",
+      "aaaa\rbbbb",
+    ];
+    for (const text of cases) {
+      const chunks = expectSound(text, { maxChars: 100, minChars: 8 });
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]!.text).toBe(text);
+    }
+  });
+
+  it("treats a bare CR as a line separator", () => {
+    // Classic-Mac line endings and some .txt/.doc conversions use a lone
+    // CR. It matched no separator at all, so every run went down the
+    // hard-split path and was cut mid-word rather than at a line.
+    const chunks = expectSound("wordone\rwordtwo\rwordthree", { maxChars: 10 });
+    expect(chunks.map((c) => c.text)).toEqual(["wordone", "wordtwo", "wordthree"]);
+  });
+
+  it("does not split a surrogate pair across two chunks", () => {
+    // maxChars is in UTF-16 code units, so a hard split can land between the
+    // halves of an astral character. Both resulting strings are well-formed
+    // enough for slice/JSON, so the corruption is silent — the two halves
+    // embed as replacement characters and no citation reaches the original.
+    const emoji = "\u{1F600}".repeat(10);
+    const chunks = expectSound(emoji, { maxChars: 3 });
+    for (const c of chunks) {
+      const first = c.text.charCodeAt(0);
+      const last = c.text.charCodeAt(c.text.length - 1);
+      expect(first >= 0xdc00 && first <= 0xdfff).toBe(false);
+      expect(last >= 0xd800 && last <= 0xdbff).toBe(false);
+    }
+    // Nothing was lost: concatenating the chunks reproduces the source.
+    expect(chunks.map((c) => c.text).join("")).toBe(emoji);
+  });
+
   it("rejects a nonsensical budget rather than guessing", () => {
     expect(chunkText("x", { maxChars: 0 }).ok).toBe(false);
     expect(chunkText("x", { maxChars: -1 }).ok).toBe(false);
@@ -175,6 +220,36 @@ describe("verifyChunks", () => {
   it("catches a wrong index", () => {
     const failures = verifyChunks("abc", [{ index: 5, text: "abc", start: 0, end: 3 }]);
     expect(failures.map((f) => f.code)).toContain("CHUNK_BAD_INDEX");
+  });
+
+  it("catches dropped content in a gap between chunks", () => {
+    // Ordering alone cannot see this: the surviving span is well-formed and
+    // correctly ordered, but "bb" never reached the index. Every citation
+    // into the document still resolves — it simply cannot find that text.
+    const failures = verifyChunks("aa\n\nbb", [{ index: 0, text: "aa", start: 0, end: 2 }]);
+    expect(failures.map((f) => f.code)).toContain("CHUNK_GAP_DROPS_CONTENT");
+  });
+
+  it("catches dropped content before the first and after the last chunk", () => {
+    // Checked independently of each other: nesting the tail check under the
+    // head check made it unreachable whenever the document began with
+    // whitespace, which is the common case for an indented file.
+    const before = verifyChunks("zz\naa", [{ index: 0, text: "aa", start: 3, end: 5 }]);
+    expect(before.map((f) => f.code)).toContain("CHUNK_GAP_DROPS_CONTENT");
+
+    const after = verifyChunks("aa\nzz", [{ index: 0, text: "aa", start: 0, end: 2 }]);
+    expect(after.map((f) => f.code)).toContain("CHUNK_GAP_DROPS_CONTENT");
+  });
+
+  it("accepts a whitespace-only gap, which is what the chunker produces", () => {
+    // A chunk ends at its last non-blank character and the next starts at
+    // its first, so the separator belongs to neither. That gap is expected —
+    // asserting the spans tile the source would fail on every real document.
+    const text = "First para.\n\n\n  \n\nSecond para.";
+    expect(verifyChunks(text, [
+      { index: 0, text: "First para.", start: 0, end: 11 },
+      { index: 1, text: "Second para.", start: 18, end: 30 },
+    ])).toEqual([]);
   });
 });
 

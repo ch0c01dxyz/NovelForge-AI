@@ -134,11 +134,29 @@ describe("fuse", () => {
     if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("FUSE_BAD_HIT_ID");
   });
 
-  it("deduplicates a repeated id within one list", () => {
-    // A lexical query can return the same chunk twice (two terms matched
-    // two segments of it); the second must not double-count the rank.
-    const fused = ok({ lists: { LEXICAL: hits("dup", "dup") } });
-    expect(fused).toHaveLength(1);
-    expect(fused[0]!.foundBy).toEqual(["LEXICAL", "LEXICAL"]);
+  it("rejects a repeated id within one list rather than double-counting it", () => {
+    // The test previously asserted the OPPOSITE — that a repeat is merged
+    // into one result with foundBy ["LEXICAL","LEXICAL"] and a doubled
+    // score. That is the defect, not the contract: RRF contributes one
+    // reciprocal rank per retriever per document, so a repeat inflated the
+    // score and made a single-leg hit satisfy `minRetrievers: 2`.
+    const r = fuse({ lists: { LEXICAL: hits("dup", "dup") } });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("FUSE_DUPLICATE_HIT");
+  });
+
+  it("counts distinct retrievers, so one leg cannot satisfy minRetrievers 2", () => {
+    const r = fuse({ lists: { LEXICAL: hits("x", "x") }, minRetrievers: 2 });
+    // Rejected outright — previously this returned the hit, claiming it was
+    // found by two retrievers when only one had run.
+    expect(r.ok).toBe(false);
+  });
+
+  it("fails closed when lists is missing, rather than throwing", () => {
+    // Every other malformed option returns a structured failure; the one
+    // mandatory field used to dereference and throw a TypeError.
+    const r = fuse({ k: 60 } as never);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("FUSE_BAD_LISTS");
   });
 });

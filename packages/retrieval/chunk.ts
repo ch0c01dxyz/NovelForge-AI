@@ -58,9 +58,16 @@ export const DEFAULT_MAX_CHARS = 1200;
  * produces CRLF, and a separator that only matched `\n\n` left such a
  * document as ONE chunk — no paragraph boundary ever matched, so the whole
  * file went into the index as a single oversized vector.
+ *
+ * A bare `\r` (classic-Mac line endings, and some .txt/.doc conversions) is
+ * matched too. It was not, so such a document matched no boundary at all and
+ * every run went down the hard-split path, cutting mid-word at the budget
+ * instead of at a line. `\r?\n|\r` matches LF, CRLF and lone CR without
+ * double-counting the CR of a CRLF (the alternation is ordered, and `\r?`
+ * consumes the CR before `\n` is tried).
  */
-const PARAGRAPH_SEP = /\r?\n[ \t]*\r?\n/;
-const LINE_SEP = /\r?\n/;
+const PARAGRAPH_SEP = /(?:\r?\n|\r)[ \t]*(?:\r?\n|\r)/;
+const LINE_SEP = /\r?\n|\r/;
 
 /**
  * Sentence boundary: terminator followed by whitespace. Deliberately
@@ -72,6 +79,11 @@ const SENTENCE_END_SOURCE = String.raw`[.!?…]["')\]]*\s`;
 
 function isBlank(text: string): boolean {
   return text.trim().length === 0;
+}
+
+/** A UTF-16 low surrogate — the second half of a surrogate pair. */
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
 }
 
 /**
@@ -147,6 +159,21 @@ function splitOversized(
       cutIdx += 1;
     }
     if (cut <= cursor) cut = limit;
+    // Never cut between a high and a low surrogate. Offsets are UTF-16 code
+    // units, so a hard split at exactly `maxChars` can land mid-pair and
+    // emit a chunk ending in a lone high surrogate and one starting with a
+    // lone low surrogate. Both strings are still well-formed enough for
+    // `slice`, `verifyChunks` and JSON.stringify to accept them, so the
+    // corruption is silent: the two halves embed as replacement characters
+    // and no citation ever points at the original emoji.
+    //
+    // Backing up one unit keeps the pair whole (the next chunk starts with
+    // it). Only applied when a backup actually lands inside the run —
+    // otherwise a run of nothing but surrogates would shrink to an empty
+    // chunk.
+    if (cut < text.length && isLowSurrogate(text.charCodeAt(cut)) && cut > cursor + 1) {
+      cut -= 1;
+    }
     out.push({ text: text.slice(cursor, cut), start: base + cursor });
     cursor = cut;
   }
@@ -246,13 +273,22 @@ export function chunkText(
       pending = { text: seg.text, start: seg.start, end: seg.start + seg.text.length };
       continue;
     }
-    // Annotated: without it TS reports a circular inference (TS7022),
-    // because `pending` is both read here and reassigned in the closure
-    // above. The type is obvious; the annotation just breaks the cycle.
-    const merged: string = `${pending.text}\n\n${seg.text}`;
     const wantMerge = pending.text.length < minChars || seg.text.length < minChars;
-    if (wantMerge && merged.length <= maxChars) {
-      pending = { text: merged, start: pending.start, end: seg.start + seg.text.length };
+    // The merged chunk's text is SLICED FROM THE SOURCE, never rebuilt by
+    // concatenation. Concatenating with a literal "\n\n" joiner rewrote the
+    // document: it normalised CRLF to LF, collapsed runs of blank lines to
+    // one, and swallowed indentation on the separator line. `text.slice`
+    // then no longer equalled `chunk.text`, which is the invariant every
+    // citation rests on — `resolveChunkSpan` would return the original
+    // separators while the stored `text` held the normalised ones, so a
+    // cited span and its embedded text disagreed.
+    const mergedEnd = seg.start + seg.text.length;
+    if (wantMerge && mergedEnd - pending.start <= maxChars) {
+      pending = {
+        text: text.slice(pending.start, mergedEnd),
+        start: pending.start,
+        end: mergedEnd,
+      };
       continue;
     }
     flush();
@@ -277,10 +313,18 @@ export function resolveChunkSpan(
 }
 
 /**
- * Assert the tiling property that makes a citation trustworthy: chunks are
- * ordered, non-overlapping, within bounds, and each one's text is exactly
- * what its span contains. Exported because the ingest path should check
- * this before persisting rather than trusting the chunker.
+ * Assert the property that makes a citation trustworthy: chunks are ordered,
+ * non-overlapping, within bounds, each one's text is exactly what its span
+ * contains, and nothing but whitespace falls between them.
+ *
+ * Spans are deliberately NOT contiguous — a chunk ends at its last non-blank
+ * character and the next begins at its first, so the separator between them
+ * belongs to neither. That gap is why this cannot simply assert that the
+ * spans tile the source: the meaningful guarantee is that the gaps contain
+ * only whitespace, which is what proves no prose was dropped.
+ *
+ * Exported because the ingest path should check this before persisting
+ * rather than trusting the chunker.
  */
 export function verifyChunks(text: string, chunks: Chunk[]): ValidationFailure[] {
   const failures: ValidationFailure[] = [];
@@ -309,8 +353,41 @@ export function verifyChunks(text: string, chunks: Chunk[]): ValidationFailure[]
         message: "chunk text does not match its source span",
       });
     }
+    // A span that skips non-whitespace means content was dropped from the
+    // index — the failure mode that silently makes a document
+    // unsearchable, and the one a pure ordering check cannot see.
+    if (i > 0 && !isBlank(text.slice(prevEnd, c.start))) {
+      failures.push({
+        path,
+        code: "CHUNK_GAP_DROPS_CONTENT",
+        message: "non-whitespace content falls between this chunk and the previous one",
+      });
+    }
     prevEnd = c.end;
   });
+
+  // The head and the tail are gaps too. Leading whitespace is ordinary, but
+  // text before the first chunk or after the last was dropped. The two are
+  // checked INDEPENDENTLY: nesting the tail check under the head check made
+  // it unreachable whenever the document happened to start with whitespace,
+  // which is the common case for an indented file.
+  if (chunks.length > 0) {
+    if (!isBlank(text.slice(0, chunks[0]!.start))) {
+      failures.push({
+        path: at("$.chunks", 0),
+        code: "CHUNK_GAP_DROPS_CONTENT",
+        message: "non-whitespace content precedes the first chunk",
+      });
+    }
+    const last = chunks[chunks.length - 1]!;
+    if (!isBlank(text.slice(last.end))) {
+      failures.push({
+        path: at("$.chunks", chunks.length - 1),
+        code: "CHUNK_GAP_DROPS_CONTENT",
+        message: "non-whitespace content follows the last chunk",
+      });
+    }
+  }
 
   return failures;
 }

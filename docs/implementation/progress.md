@@ -534,7 +534,7 @@ today; the FK should move to `Restrict` before a delete endpoint exists.
 
 Exit criterion from the roadmap: *"retrieval is evidence-bearing and
 tenant-safe"* — met, and covered by 14 DB-backed integration tests plus
-61 unit tests over the pure retrieval modules.
+54 unit tests over the pure retrieval modules.
 
 Delivered:
 
@@ -677,6 +677,109 @@ Disproved, and therefore not changed:
 - **"An absent key interpolates as the string `undefined`."** The
   `value === undefined` guard does catch an absent key; only the
   prototype case above slipped through.
+- **"A provider vector can inject SQL through the interpolated literal."**
+  pgvector rejects `NaN`, `Infinity` and any non-numeric element at the
+  cast (`NaN not allowed in vector`, `invalid input syntax for type
+  vector`), so the literal cannot carry a payload. The finite-number guard
+  was still added, for a different reason: without it the rejection
+  surfaces as an unclassified driver error (a 500) instead of a 409 naming
+  the provider as the culprit.
+
+### Second audit round (2026-09-25)
+
+A nine-dimension adversarial audit of the committed Phase 5 code (finders
+→ independent refutation → completeness critic) confirmed a further set of
+defects, all fixed here. Each was reproduced before being changed.
+
+**The span invariant was falsifiable.** `chunkText` documents that
+`text.slice(chunk.start, chunk.end)` always equals `chunk.text`, and that
+is the property every citation rests on. The merge branch violated it:
+it rebuilt a merged chunk by concatenation with a literal `"\n\n"`, which
+normalised CRLF to LF, collapsed runs of blank lines to one, and swallowed
+indentation on the separator line. A cited span therefore returned
+different bytes from the ones that had been embedded. The merge now slices
+from the source. Not reachable in production today — `ingest` calls
+`chunkText(content)` with no `minChars`, so the branch never runs — but it
+was one option away from breaking every citation, and the module's own
+tests had `minChars` cases that should have caught it.
+
+- **A bare CR was not a separator.** `/\r?\n/` matches LF and CRLF but not
+  a lone CR (classic-Mac endings, some .txt/.doc conversions), so such a
+  document matched no boundary at all and every run went down the
+  hard-split path, cutting mid-word at the budget. Now `/\r?\n|\r/`.
+- **A hard split cut surrogate pairs.** Offsets are UTF-16 code units, so a
+  split at exactly `maxChars` could land between the halves of an astral
+  character, emitting a chunk ending in a lone high surrogate and one
+  starting with a lone low surrogate. Both strings are well-formed enough
+  for `slice`, `JSON.stringify` and `verifyChunks` to accept, so the
+  corruption was silent — the halves embed as replacement characters and
+  no citation reaches the original. The split now backs up one unit.
+- **`verifyChunks` did not check coverage**, despite documenting that
+  chunks "tile the source without gaps". A chunk list that dropped content
+  verified clean, so the ingest guard could not detect the failure mode it
+  exists for. It now rejects non-whitespace in any gap, including before
+  the first and after the last chunk. It does NOT assert contiguity —
+  spans are legitimately non-contiguous because the separator between two
+  chunks belongs to neither, and asserting tiling would fail on every real
+  document.
+- **`fuse` double-counted a duplicate id within one list.** RRF contributes
+  one reciprocal rank per retriever per document; a repeated id added a
+  second, so a chunk outranked genuinely better results as though two
+  retrievers had agreed on it, and `foundBy` named the same retriever
+  twice. Rejected now (`FUSE_DUPLICATE_HIT`) rather than deduped, because
+  a leg emitting a duplicate is broken and collapsing it would hide the
+  bug behind a plausible score. The existing test asserted the *buggy*
+  behaviour — its comment claimed the opposite of what the code did — and
+  has been corrected.
+- **`minRetrievers` counted contributions, not retrievers.** Consequence of
+  the above: a single-leg hit could satisfy `minRetrievers: 2`. Fixed by
+  the duplicate rejection, which makes the count distinct by construction.
+- **A missing `lists` threw a TypeError.** Every other malformed option
+  returns a structured failure; the one mandatory field dereferenced and
+  threw, from a function whose whole contract is that failures are data.
+- **A total retriever outage returned 200 with empty hits.** Both legs
+  failing produced `hits: []` and `retrievers: []` — indistinguishable
+  from a working search that matched nothing, so the caller would conclude
+  the knowledge base was empty rather than that the index was down. Now a
+  502 (`BadGatewayError`).
+- **The embedding provider's numbers were not validated as finite** before
+  being stringified into the vector literal. pgvector rejects them either
+  way, but the rejection surfaced as an unclassified 500 rather than an
+  error naming the provider.
+- **`ingest` was not transactional.** The re-ingest path deleted the
+  version's chunks and then inserted replacements as separate statements;
+  a failure between them left a published reference with zero chunks,
+  silently gone from every search until someone re-ingested. Both now run
+  in one transaction, so a failed insert rolls the delete back and the
+  previous chunks survive. The embeddings upsert stays outside — it is
+  idempotent, and a version with chunks but no vectors is self-healing.
+- **Changing the spoiler boundary was reported as a no-op.** The skip
+  condition returned `skipped: true` whenever chunks existed and were
+  embedded and `availableFromChapter` was `undefined`; a caller setting a
+  boundary on an already-ingested version was told the work was done while
+  every chunk kept its old boundary. The condition now compares the
+  requested boundary against the stored one.
+- **`withheldCount` was documented as a spoiler metric but is always 0.**
+  Proven by enumerating every combination of mode, reader position and
+  boundary: the SQL predicate and `canView` agree on all of them, so the
+  application-level recheck can never fire. The SQL predicate is the real
+  control; the recheck is a tripwire for future drift, and `withheldCount`
+  is the signal that the tripwire fired. The docstrings now say that, and
+  the integration test that asserted `withheldCount === 0` — which proves
+  nothing, since 0 is also what a broken query returns — says so too.
+- **A fused hit with no raw row vanished silently** from the result set.
+  It cannot happen today, but it is now counted with the withheld so the
+  number is never quietly wrong.
+- **False claims corrected**: the migration header described a vector index
+  it does not create (it is commented out, and there is deliberately no
+  vector index); the schema said `ingest` reads `contentHash` on every
+  save (it never reads it, and the docstring now explains why the
+  projection's own state is the honest signal); `visibleTo`'s docstring
+  named two call sites that do not exist (no caller uses it); the
+  integration test's header advertised coverage — a shared novel id, a
+  new-version projection — that no test exercised; and
+  `docs/implementation` claimed 61 unit tests for `@novelforge/retrieval`
+  when the package had 46 (now 54).
 
 `RETRIEVAL` steps are no longer refused: `EXECUTABLE_STEP_KINDS` includes
 them, and the graph validator now requires a RETRIEVAL step to declare an

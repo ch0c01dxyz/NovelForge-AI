@@ -71,6 +71,11 @@ export interface FuseOptions {
    * everything). Raising it to 2 is a precision/recall trade: it keeps only
    * items both retrievers agree on, which is exactly the case hybrid search
    * exists to catch.
+   *
+   * Counts DISTINCT retrievers, which is guaranteed because a repeated id
+   * within one list is rejected (`FUSE_DUPLICATE_HIT`) rather than counted
+   * twice. Without that rejection a single-leg hit could satisfy a
+   * two-retriever filter.
    */
   minRetrievers?: number;
   /** Cap on returned results, applied AFTER ordering. */
@@ -115,8 +120,24 @@ export function fuse(options: FuseOptions): ValidationResult<FusedResult[]> {
 
   // RETRIEVERS order, not object-key order: the output must be independent
   // of the order the caller happened to build the object in.
+  //
+  // `lists` is validated rather than dereferenced. Every other malformed
+  // input returns a structured failure; without this the one MANDATORY
+  // field threw a TypeError, so a JS caller (or a spread that dropped the
+  // key) got an exception from a function whose whole contract is that
+  // failures are data.
+  const lists = options.lists;
+  if (lists === null || typeof lists !== "object") {
+    return {
+      ok: false,
+      failures: [
+        { path: "$.lists", code: "FUSE_BAD_LISTS", message: "lists must be an object of ranked lists" },
+      ],
+    };
+  }
+
   for (const retriever of RETRIEVERS) {
-    const hits = options.lists[retriever];
+    const hits = lists[retriever];
     if (!hits) continue;
 
     hits.forEach((hit, i) => {
@@ -140,6 +161,21 @@ export function fuse(options: FuseOptions): ValidationResult<FusedResult[]> {
       }
 
       const existing = acc.get(hit.id);
+      // A retriever must return each document at most once. RRF scores one
+      // rank per retriever per document, so a repeated id would add a second
+      // reciprocal rank — the chunk would outrank genuinely better results
+      // as though two retrievers had agreed on it, and `foundBy` would name
+      // the same retriever twice. Rejected rather than deduped: a leg that
+      // emits a duplicate is broken, and silently collapsing it would hide
+      // the bug behind a plausible score.
+      if (existing && existing.foundBy.includes(retriever)) {
+        failures.push({
+          path: at(at("$.lists", retriever), i),
+          code: "FUSE_DUPLICATE_HIT",
+          message: `hit "${hit.id}" appears twice in the ${retriever} list`,
+        });
+        return;
+      }
       const contribution: Contribution = {
         retriever,
         rank: hit.rank,

@@ -66,9 +66,15 @@ export function canView(boundary: SpoilerBoundary, viewer: ViewerContext): boole
 }
 
 /**
- * Filter items for a viewer. Kept here rather than inlined at each call
- * site so a new retrieval path cannot forget the check: the API layer
- * filters through this, and the executor's RETRIEVAL step does too.
+ * Filter items for a viewer.
+ *
+ * Exported as the single predicate for any caller holding a LIST, so a new
+ * retrieval path cannot forget the check. Note that no caller uses it today:
+ * the API's search applies `canView` per hit inside its SQL-filtered
+ * assembly loop, where it also counts what was withheld, and the executor's
+ * RETRIEVAL step delegates to that same search. Kept because the next
+ * caller that has a list in hand should reach for this rather than
+ * re-deriving the comparison.
  */
 export function visibleTo<T extends SpoilerBoundary>(
   items: readonly T[],

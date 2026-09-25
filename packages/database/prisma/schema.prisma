@@ -821,8 +821,15 @@ model ReferenceVersion {
   reference   Reference @relation("ReferenceVersions", fields: [referenceId], references: [id], onDelete: Cascade)
   number      Int
   content     String    @db.Text
-  /// SHA-256 of `content`, so a no-op re-save is detectable without
-  /// re-embedding. Indexed because ingest checks it on every save.
+  /// SHA-256 of `content`, so a version's text is addressable and an
+  /// identical re-import is detectable without comparing the whole body.
+  ///
+  /// Nothing READS it today: a version is immutable, so its own hash can
+  /// never change, and `ingest` decides what to rebuild from the projection's
+  /// state (does this version have chunks, and does each have a vector?)
+  /// rather than from a hash comparison. The index stays because the natural
+  /// reader is a future dedup path — imported material frequently re-arrives
+  /// under a new key — and it is the cheap half of that.
   contentHash String    @map("content_hash")
   charCount   Int       @map("char_count")
   note        String?

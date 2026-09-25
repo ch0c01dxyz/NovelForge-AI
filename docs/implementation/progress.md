@@ -881,6 +881,18 @@ capabilities; a deterministic read-only Story Brain answering FACT, STATE
 and RETRIEVAL with evidence; and `@novelforge/story-intelligence` as the
 pure rule layer.
 
+A second migration, `20260930_phase6_evidence_fk_hardening`, carries the
+evidence-FK hardening: both `canon_fact_sources` version FKs become
+`RESTRICT`, and `canon_proposals.object_entity_id` gains the FK and index it
+was missing. These were originally edits made in place to
+`20260929_phase6_story_intelligence`, which is only safe while a migration is
+unreleased — Prisma records a migration by CHECKSUM, so editing an applied one
+makes every deployed database disagree with the repository and `migrate deploy`
+refuse. Splitting them restores that migration's immutability and lets an
+already-migrated database converge, because DROP + ADD is idempotent against
+the final state. Generated with `prisma migrate diff`, so drift-zero is the
+proof that the migration and the schema agree.
+
 Three things were **probed against real PostgreSQL before the migration was
 written**, because the design rests on them and reasoning was not enough:
 

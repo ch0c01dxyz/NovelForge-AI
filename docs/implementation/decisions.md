@@ -64,6 +64,20 @@ recorded as ADR-NNNN files:
   correct if the caller can act on the refusal. Both halves now ship together
   — a mapped 409 naming the cause, and
   `DELETE .../canon/facts/:factId/sources/:sourceId` to release it.
+- **2026-09-26 — A migration that has been committed is immutable.** The
+  evidence-FK hardening (both `canon_fact_sources` version FKs to `RESTRICT`,
+  plus the missing `canon_proposals.object_entity_id` FK and its index) was
+  first written as edits in place to `20260929_phase6_story_intelligence`.
+  That is safe only while unreleased. Prisma records a migration by CHECKSUM,
+  so editing one that has run anywhere makes every deployed database disagree
+  with the repository and `migrate deploy` refuses to proceed — the failure
+  appears on someone else's machine, at deploy time, pointing at a migration
+  they never touched. The changes now live in
+  `20260930_phase6_evidence_fk_hardening`, which restores the Phase 6
+  migration to its committed bytes and lets an already-migrated database
+  converge, because DROP + ADD is idempotent against the final state. The
+  statements were generated with `prisma migrate diff` rather than written by
+  hand, so the drift check is the proof of agreement rather than a hope.
 - **2026-09-26 — Supersede respects an authored validity window.** `closeAt`
   was computed only from the two start chapters, so superseding `black [1,9)`
   with a ch-20 claim rewrote it to `[1,20)` — filling a gap the author left

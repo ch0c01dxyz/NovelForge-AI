@@ -859,8 +859,16 @@ could not see, because each read only one side of a comparison:
   retention/pruning gap on the Phase 5 audit tables is recorded in
   Known gaps.
 
-Verified after: lint 0, typecheck all workspaces clean, 369 passed / 1
-skipped, migration drift 0. Nine regression tests added.
+Also refined while acting on that pass: the vector leg now separates its two
+failure domains, which it previously conflated. "The embedding route is
+unavailable" is a degraded search (recorded as a failed leg); "the provider
+returned a vector we cannot use" is a data fault, and is raised to the
+caller instead of being recorded as an unavailable index. They cannot be
+told apart by error class — both arrive as ConflictError — so they are told
+apart by where the throw happens.
+
+Verified after: lint 0, typecheck all workspaces clean, 370 passed / 1
+skipped, migration drift 0. Ten regression tests added.
 
 ## Phase 6+
 

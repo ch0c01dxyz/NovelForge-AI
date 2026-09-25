@@ -872,24 +872,39 @@ export function createRetrievalServices(deps: {
       }
 
       // ---- vector leg: exact cosine over the embedding projection ----
+      //
+      // Two distinct failure domains, deliberately separated. "The embedding
+      // route is unavailable" is a degraded search — the lexical leg can
+      // still answer, so it is recorded as a failed leg. "The provider
+      // returned a vector we cannot use" is a data fault and is raised to
+      // the caller. They cannot be told apart by error class (both reach
+      // here as ConflictError), so they are told apart by where the throw
+      // happens: the embed call is caught, the validation is not.
       let vector: SearchRow[] = [];
+      let embedded: Awaited<ReturnType<typeof ai.embed>> | null = null;
       try {
-        const embedded = await ai.embed({
+        embedded = await ai.embed({
           actorUserId: input.actorUserId,
           workspaceId: input.workspaceId,
           texts: [query],
         });
+      } catch (err) {
+        dbg?.error?.("embedding unavailable for the vector leg", { err });
+        failedLegs.push("VECTOR");
+      }
+
+      if (embedded) {
         const qv = embedded.vectors[0];
         embeddingGenerationId = embedded.generationId ?? undefined;
         if (!qv || qv.length !== EMBEDDING_DIMENSION) {
           throw new ConflictError("embedding provider returned an unusable query vector");
         }
-        // Same guard `embedChunks` applies to stored vectors, for the same
-        // reason: the value is stringified into a SQL literal, so it must be
-        // finite numbers before that happens. Without it the failure is a raw
-        // pgvector cast error caught by the leg's own handler, which then
-        // reports "vector leg unavailable" for what is really a bad provider
-        // response — pointing the operator at the database instead.
+        // The vector is stringified into a SQL literal below, so what the
+        // provider returned must be finite numbers before that happens.
+        // pgvector rejects NaN/Infinity, so this fails closed either way —
+        // but the failure is the PROVIDER's, and recording it as a failed
+        // leg would report "the vector leg is unavailable" and send the
+        // operator to debug the database.
         if (!qv.every((n) => typeof n === "number" && Number.isFinite(n))) {
           throw new ConflictError("embedding provider returned a non-finite query vector");
         }
@@ -903,33 +918,35 @@ export function createRetrievalServices(deps: {
         const vNovel = input.novelId ? `AND r.novel_id = $${vectorParams.length + 1}::uuid` : "";
         if (input.novelId) vectorParams.push(input.novelId);
 
-        vector = await db.$queryRawUnsafe<SearchRow[]>(
-          `SELECT c.id AS chunk_id,
-                  r.id AS reference_id,
-                  c.reference_version_id,
-                  r.title AS reference_title,
-                  c.text, c."start", c."end",
-                  row_number() OVER (ORDER BY e.vector <=> $2::vector, c.id) AS rank,
-                  (e.vector <=> $2::vector) AS score,
-                  NULL::text AS detail
-             FROM embeddings e
-             JOIN chunks c ON c.id = e.chunk_id
-             JOIN reference_versions rv ON rv.id = c.reference_version_id
-             JOIN "references" r ON r.id = rv.reference_id AND r.current_version_id = rv.id
-            WHERE c.workspace_id = $1::uuid
-              AND r.status = 'ACTIVE'
-              AND e.dimensions = ${EMBEDDING_DIMENSION}
-              AND e.model = $3
-              ${vectorSpoilerSql}
-              ${vNovel}
-            ORDER BY score ASC, c.id
-            LIMIT ${candidates}`,
-          ...vectorParams,
-        );
-        retrievers.push("VECTOR");
-      } catch (err) {
-        dbg?.error?.("vector retrieval failed", { err });
-        failedLegs.push("VECTOR");
+        try {
+          vector = await db.$queryRawUnsafe<SearchRow[]>(
+            `SELECT c.id AS chunk_id,
+                    r.id AS reference_id,
+                    c.reference_version_id,
+                    r.title AS reference_title,
+                    c.text, c."start", c."end",
+                    row_number() OVER (ORDER BY e.vector <=> $2::vector, c.id) AS rank,
+                    (e.vector <=> $2::vector) AS score,
+                    NULL::text AS detail
+               FROM embeddings e
+               JOIN chunks c ON c.id = e.chunk_id
+               JOIN reference_versions rv ON rv.id = c.reference_version_id
+               JOIN "references" r ON r.id = rv.reference_id AND r.current_version_id = rv.id
+              WHERE c.workspace_id = $1::uuid
+                AND r.status = 'ACTIVE'
+                AND e.dimensions = ${EMBEDDING_DIMENSION}
+                AND e.model = $3
+                ${vectorSpoilerSql}
+                ${vNovel}
+              ORDER BY score ASC, c.id
+              LIMIT ${candidates}`,
+            ...vectorParams,
+          );
+          retrievers.push("VECTOR");
+        } catch (err) {
+          dbg?.error?.("vector retrieval failed", { err });
+          failedLegs.push("VECTOR");
+        }
       }
 
       // Every leg down is an OUTAGE, not an empty knowledge base. Returning

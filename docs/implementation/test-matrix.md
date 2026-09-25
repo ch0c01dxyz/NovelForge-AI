@@ -290,7 +290,7 @@ run is 404; run history lists; a completed run is audited.
 | `RETRIEVAL` workflow step | passing | passing | — | — | — |
 
 Executed results (2026-09-25, Windows, live compose PostgreSQL 0.8.6
-pgvector; full suite 369 passed / 1 skipped).
+pgvector; full suite 370 passed / 1 skipped).
 `chunk.test.ts` (28) — paragraph/line/sentence splitting, offsets into the
 original text, CRLF and mixed line endings, short-segment merging on both
 sides, oversized runs split at sentence boundaries then hard-split,

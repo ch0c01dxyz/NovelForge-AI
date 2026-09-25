@@ -18,7 +18,7 @@ audit of the committed Phase 4 code also found and fixed three live
 defects in this phase (a prototype key reaching the prompt, a DRAFT
 WORKSPACE workflow being executable, and a prose bracket defeating
 `extractJson`); two other reported findings were probed and disproved
-(see `progress.md`). Full gate: lint 0, typecheck 0, 369 passed / 1
+(see `progress.md`). Full gate: lint 0, typecheck 0, 370 passed / 1
 skipped, 9 migrations applying from empty with zero drift. See
 `docs/implementation/progress.md`,
 `docs/implementation/test-matrix.md` and

@@ -98,6 +98,8 @@ function fakeVector(text: string): number[] {
 }
 
 let embedCalls = 0;
+/** When set, the fake embed returns this verbatim instead of a real vector. */
+let poisonVector: number[] | null = null;
 
 function fakeCreateGateway(rec: GatewayRecord): AIGateway {
   return {
@@ -121,7 +123,7 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
     async embed(req) {
       embedCalls += 1;
       return {
-        vectors: req.input.map(fakeVector),
+        vectors: poisonVector ? req.input.map(() => poisonVector!) : req.input.map(fakeVector),
         model: "fake-embed",
         inputTokens: req.input.length,
       };
@@ -162,6 +164,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   embedCalls = 0;
+  poisonVector = null;
   // Self-heal before anything else: the all-legs-down test renames the
   // tsvector column to force a query failure, and a run killed between the
   // rename and its restore would fail every later suite with an unrelated
@@ -903,6 +906,37 @@ describe("tenant isolation", () => {
         `ALTER TABLE chunks RENAME COLUMN content_ts_hidden TO content_ts`,
       );
     }
+  });
+
+  it("reports a non-finite provider vector as a fault, not a degraded search", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    await seedReference(owner.cookie, workspaceId, {
+      key: "lore",
+      content: OATH_TEXT.join("\n\n"),
+    });
+
+    // A provider can return NaN/Infinity (JSON.parse('[1e400]') yields
+    // Infinity). The value is stringified into a SQL vector literal, so it
+    // must be rejected before that. The rejection is a PROVIDER fault, so
+    // it must surface as a classified error — recording it as a failed leg
+    // instead would report "the vector leg is unavailable" and send the
+    // operator to debug the database when the cause is upstream.
+    const poison = new Array<number>(DIMENSION).fill(0);
+    poison[0] = Number.POSITIVE_INFINITY;
+    poisonVector = poison;
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/retrieval/search`,
+      headers: { cookie: owner.cookie },
+      payload: searchBody("oath"),
+    });
+    // 409 CONFLICT (the ConflictError mapping), not a 200 whose `retrievers`
+    // quietly omits VECTOR.
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: "CONFLICT" });
   });
 
   it("hides another workspace's reference behind 404 and out of search", async () => {

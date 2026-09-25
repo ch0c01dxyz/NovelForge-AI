@@ -491,23 +491,28 @@ describe("validateGraph", () => {
   });
 
   it("rejects an outputSchema on a kind whose executor never reads it", () => {
-    // The RETRIEVAL/TRANSFORM/HUMAN_APPROVAL branches return before contract
-    // enforcement, so such a schema was screened, stored and published while
-    // being unable to fail a run — an author-declared contract that silently
-    // does nothing, which is what this module rejects elsewhere.
-    for (const kind of ["RETRIEVAL", "TRANSFORM", "HUMAN_APPROVAL"] as const) {
+    // The RETRIEVAL/TRANSFORM/CONDITION/HUMAN_APPROVAL branches return before
+    // contract enforcement, so such a schema was screened, stored and
+    // published while being unable to fail a run — an author-declared
+    // contract that silently does nothing, which is what this module rejects
+    // elsewhere.
+    const inert: Array<Record<string, unknown>> = [
+      { key: "a", kind: "RETRIEVAL", instruction: "q" },
+      { key: "a", kind: "TRANSFORM", instruction: "q" },
+      { key: "a", kind: "HUMAN_APPROVAL", instruction: "q" },
+      { key: "a", kind: "CONDITION", condition: { path: "$input.x", equals: 1 } },
+    ];
+    for (const step of inert) {
       const r = validateGraph({
         steps: [
           {
-            key: "a",
-            kind,
-            instruction: "q",
+            ...step,
             outputSchema: { type: "object", required: ["x"], properties: { x: { type: "string" } } },
           },
         ],
         edges: [],
       });
-      expect(r.ok, `${kind} should reject an inert outputSchema`).toBe(false);
+      expect(r.ok, `${step["kind"]} should reject an inert outputSchema`).toBe(false);
       if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("STEP_SCHEMA_NOT_ENFORCED");
     }
 

@@ -65,6 +65,14 @@ is what closes the continuity half of that sentence.
   recompute authored boundaries or the spoiler filter drifts.
 - The Story Brain writes a `RetrievalAudit` row per ask, widening the
   unpruned Phase 5 retention gap.
+- **Deleting a `StoryEntity` would cascade canon away, and no delete route
+  exists yet.** `canon_facts.entity_id`, `canon_facts.object_entity_id` and
+  `canon_proposals.entity_id` are all `ON DELETE CASCADE`, so removing one
+  entity would take the facts about it, the facts naming it as their object,
+  their evidence, and every proposal for it. Unreachable today because no
+  entity-delete route ships; whoever adds one must choose `RESTRICT` or a
+  guarded delete. Recorded as a real hazard, not a refuted finding — the
+  same-shaped evidence cascade *was* reachable and is now `RESTRICT`.
 
 - **No ANN index on embeddings.** Prisma 7.10 cannot declare HNSW or
   IVFFlat, so search is an exact scan over a workspace's vectors. Correct

@@ -923,6 +923,20 @@ Known limitations carried forward:
   path ships here), now on tables that are explicitly story truth.
 - The Brain writes a `RetrievalAudit` row per ask, widening the already
   unpruned Phase 5 retention gap.
+- **Deleting a `StoryEntity` would cascade canon away, and no delete route
+  exists yet.** `canon_facts.entity_id` and `canon_facts.object_entity_id`
+  are `ON DELETE CASCADE` (`migration.sql:188, 191`), as is
+  `canon_proposals.entity_id` (`:218`), so removing one entity row would take
+  the facts about it, the facts naming it as their object, their
+  `canon_fact_sources` evidence, and every proposal for it. This is
+  deliberately NOT fixed yet: with no entity-delete route the cascade is
+  unreachable, so the choice between `RESTRICT` and a guarded delete belongs
+  to whoever builds that route. It is recorded as a real hazard rather than a
+  refuted finding because the same-shaped finding next to it — evidence
+  cascading from `chapter_versions` — *was* reachable and was fixed (both
+  evidence FKs are now `RESTRICT`). The moment an entity-delete route lands,
+  this becomes that bug. `object_entity_id` cannot become `SET NULL`: both
+  object columns NULL would violate `CanonFact_object_exactly_one`.
 
 Verified after: lint 0, typecheck clean in every workspace except
 `apps/web` (see below), 435 passed / 1 skipped, migration drift 0, and the
@@ -982,11 +996,24 @@ path already guarded, and the first pass's tests only covered the primary path.
 10. Non-`P2002` constraint rejections were unmapped; `P2039`/`P2004`/`P2003`
     now map to a 409 (verified that no constraint name or data value leaks).
 
-Refuted, and deliberately NOT changed: an `atChapter`/`readerChapter` binding
-requirement (the spoiler boundary is `available_from_chapter` compared against
-the reader position only — `atChapter` is not a spoiler input, and enumerating
-it discovers nothing); entity-delete cascades (no delete route exists in this
-slice, so it is unreachable, not a defect).
+Two findings were NOT fixed, for different reasons — the distinction matters,
+because only one of them was actually wrong:
+
+- **Refuted on the code: an `atChapter`/`readerChapter` binding requirement.**
+  The claim was that a reader can ask about an unreached chapter and bisect
+  when a hidden fact becomes true. `canView` compares
+  `availableFromChapter` against the **reader position only** — `atChapter`
+  is never an input to it and `canonBoundary` wraps only
+  `availableFromChapter` — so a fact hidden from a reader is withheld at
+  every `atChapter` and sweeping it discovers nothing. The cited example also
+  set `availableFromChapter: 1`, which is the author declaring the
+  information reader-visible from ch 1. No change made; the premise was an
+  opinion, not a defect.
+- **Accurate but unreachable: entity-delete cascades.** The cascade is real
+  and would destroy canon — but no entity-delete route exists in this slice,
+  so nothing can trigger it. Moved to the known-limitations list above rather
+  than dismissed, because the same-shaped sibling finding (evidence cascading
+  from `chapter_versions`) WAS reachable and was fixed.
 
 **Follow-on found while verifying fix 8.** Implementing retraction made a
 pre-existing latent defect reachable, which is worth recording because the

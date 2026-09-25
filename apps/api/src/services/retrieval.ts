@@ -21,7 +21,6 @@
  */
 import { createHash } from "node:crypto";
 import type { NovelForgeDb } from "@novelforge/database";
-import type { ModelProfile } from "@novelforge/ai-core";
 import { requireCapability } from "@novelforge/auth/authorization";
 import {
   chunkText,
@@ -244,8 +243,6 @@ export function createRetrievalServices(deps: {
   db: NovelForgeDb;
   audit: AuditService;
   ai: Embedder;
-  /** The profile used to resolve an embedding model. */
-  embeddingProfile?: ModelProfile;
   dbg?: { error?: (message: string, meta: unknown) => void };
 }): RetrievalServices {
   const { db, audit, ai, dbg } = deps;
@@ -270,12 +267,24 @@ export function createRetrievalServices(deps: {
   /**
    * The model id the EMBEDDING profile currently resolves to, read from the
    * admin mapping rather than by calling a provider. Returns null when the
-   * profile is unmapped — in which case a skip is never taken, so an
-   * unmapped profile keeps its previous behaviour of re-ingesting.
+   * profile is unmapped OR its route is disabled — in which case a skip is
+   * never taken, so a misconfigured profile re-ingests and fails loudly
+   * instead of silently reporting "already done".
+   *
+   * The filter MUST match `ai-registry.resolveProfile` exactly (model and
+   * gateway both enabled): that is what the vector leg actually routes
+   * through. A weaker filter here — mapping enabled, but pointing at a
+   * disabled model or gateway — returned a model id that search could never
+   * reach, so the skip guard computed `modelsMatch` and refused the one
+   * operation that could repair the reference.
    */
   async function embeddingModelFor(): Promise<string | null> {
     const mapping = await db.modelProfileMapping.findFirst({
-      where: { profile: "EMBEDDING", enabled: true },
+      where: {
+        profile: "EMBEDDING",
+        enabled: true,
+        model: { enabled: true, gateway: { enabled: true } },
+      },
       orderBy: [{ priority: "asc" }],
       select: { model: { select: { modelId: true } } },
     });
@@ -650,6 +659,9 @@ export function createRetrievalServices(deps: {
       // vector-unsearchable with no path back. Comparing the recorded model
       // against the profile's current mapping is enough: routing may choose a
       // different gateway, but a gateway serves a model under the same name.
+      // `embeddingModelFor` applies the same enabled-model/enabled-gateway
+      // filter the router does, so this compares against a route the vector
+      // leg can actually use.
       const profileModel = await embeddingModelFor();
 
       const modelsMatch =

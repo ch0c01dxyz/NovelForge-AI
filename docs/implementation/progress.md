@@ -534,11 +534,11 @@ today; the FK should move to `Restrict` before a delete endpoint exists.
 
 Exit criterion from the roadmap: *"retrieval is evidence-bearing and
 tenant-safe"* — met, and covered by 21 DB-backed integration tests plus
-62 unit tests over the pure retrieval modules.
+55 unit tests over the pure retrieval modules.
 
 Delivered:
 
-- **`@novelforge/retrieval`** (new package, pure, no IO, 62 tests):
+- **`@novelforge/retrieval`** (new package, pure, no IO, 55 tests):
   - `chunk.ts` — `chunkText` splits on paragraphs, then lines, then
     sentence boundaries, and merges short segments. Offsets are into the
     ORIGINAL text, so `text.slice(start, end)` always equals
@@ -840,10 +840,27 @@ Confirmed and fixed:
    `canReadDrafts`'s docstring promised draft access the mode-independent
    ACTIVE filter never grants (now documented as inert); `detail` is
    documented as always-NULL rather than left implying a producer; the
-   documented test counts were corrected (62 unit / 21 integration).
+   documented test counts were corrected (55 unit / 21 integration).
 
-Verified after: lint 0, typecheck all workspaces clean, 368 passed / 1
-skipped, migration drift 0. Eight regression tests added.
+A completeness pass afterwards found three things the per-lens finders
+could not see, because each read only one side of a comparison:
+
+- `embeddingModelFor`'s filter (mapping enabled) was weaker than the
+  router's (`resolveProfile`: mapping AND model AND gateway enabled). With
+  an EMBEDDING mapping pointing at a disabled model or gateway, the skip
+  guard computed a match and returned "already done" for vectors the
+  vector leg could never reach — refusing the one repair. The filter now
+  matches `resolveProfile` exactly.
+- `embeddingProfile` was a declared constructor dependency that no code
+  ever read, letting a caller believe the profile was configurable.
+  Removed.
+- `docs/14-progress/CURRENT.md` had gone stale at 350 passed. All three
+  progress documents now state the measured total, and the missing
+  retention/pruning gap on the Phase 5 audit tables is recorded in
+  Known gaps.
+
+Verified after: lint 0, typecheck all workspaces clean, 369 passed / 1
+skipped, migration drift 0. Nine regression tests added.
 
 ## Phase 6+
 

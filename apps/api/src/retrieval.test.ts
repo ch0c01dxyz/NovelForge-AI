@@ -676,6 +676,44 @@ describe("reference ingestion", () => {
     expect(versions.map((v) => v.number)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
+  it("treats a disabled model as no route, so re-ingest repairs rather than skips", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    const { versionId } = await seedReference(owner.cookie, workspaceId, {
+      key: "lore",
+      content: OATH_TEXT.join("\n\n"),
+      publish: false,
+    });
+
+    // Disable the mapped model. The router requires model.enabled and
+    // gateway.enabled, so the vector leg can now route nothing — and the
+    // skip guard must agree with the router, not with a weaker filter. When
+    // it did not, it reported "already done" for vectors search could never
+    // reach, refusing the one operation that could repair the reference.
+    const model = await db.aIModel.findFirstOrThrow({ select: { id: true } });
+    const admin = await seedUser("model-admin@example.com", "SUPER_ADMIN");
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/models/${model.id}`,
+      headers: { cookie: admin.cookie },
+      payload: { enabled: false },
+    });
+    expect(patched.statusCode).toBe(200);
+
+    const again = await app.inject({
+      method: "POST",
+      url: `/api/reference-versions/${versionId}/ingest`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    // It must TRY, not skip. The embed then fails because no route is
+    // available, which is the honest outcome: a loud failure beats a silent
+    // "already done" for a reference that is not actually searchable.
+    expect(again.statusCode).not.toBe(200);
+    expect((again.json() as { skipped?: boolean }).skipped).toBeUndefined();
+  });
+
   it("refuses to publish a reference that has no ingested chunks", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");

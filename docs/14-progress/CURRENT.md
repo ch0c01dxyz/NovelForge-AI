@@ -18,7 +18,7 @@ audit of the committed Phase 4 code also found and fixed three live
 defects in this phase (a prototype key reaching the prompt, a DRAFT
 WORKSPACE workflow being executable, and a prose bracket defeating
 `extractJson`); two other reported findings were probed and disproved
-(see `progress.md`). Full gate: lint 0, typecheck 0, 350 passed / 1
+(see `progress.md`). Full gate: lint 0, typecheck 0, 369 passed / 1
 skipped, 9 migrations applying from empty with zero drift. See
 `docs/implementation/progress.md`,
 `docs/implementation/test-matrix.md` and
@@ -62,6 +62,14 @@ evidence.
   editor chrome pass.
 - No automated E2E runner; browser flows are verified manually and
   recorded in `test-matrix.md`.
+- **No retention or pruning on the Phase 5 audit tables.** Every search
+  inserts a `retrieval_audits` row carrying the full JSONB provenance
+  array, and every embed call inserts a `Generation` row; neither is ever
+  deleted, and the worker is heartbeat-only. CLAUDE.md §22 requires
+  retention to be considered when prompts and outputs are stored, and
+  ADR-0007 §5 makes auditing mandatory without setting a ceiling. Needs a
+  TTL, partition, or archive job before the tables are large — a
+  Phase 13 (worker/ops) concern.
 
 ## Phase 0 task sequence (completed)
 

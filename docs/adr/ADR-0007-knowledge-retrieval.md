@@ -45,8 +45,10 @@ migration). What Phase 5 had to decide is how to *use* it.
   `index` within the version, and the spoiler boundary
   `available_from_chapter`.
 - `embeddings` — one row per chunk, holding the vector as a rebuildable
-  projection. `dimensions` is stored alongside so a search can exclude
-  vectors from a different model width instead of comparing them.
+  projection. `dimensions` and `model` are stored alongside so a search can
+  exclude vectors that are not comparable with its query vector: `dimensions`
+  catches a model of a different width, and `model` catches a different model
+  of the SAME width (a remapped profile), which the width check cannot see.
 
 Publishing is refused while a reference has no chunks: an `ACTIVE`
 reference with nothing to find is a silent no-op the author would read as
@@ -163,9 +165,11 @@ reader.
   transaction.
 - Deleting a reference cascades through versions, chunks and embeddings.
   An append-only version row is never mutated.
-- A model change requires re-ingestion, because the `dimensions` filter
-  excludes the old vectors — deliberately, so a changed width is a visible
-  empty result rather than a wrong one.
+- A model change requires re-ingestion: the `model` filter excludes vectors
+  produced by the previous model, so a changed model is a visible empty
+  result rather than a wrong one. The ingest idempotence check compares the
+  stored model against the profile's current mapping, so the re-ingest that
+  repairs it is not skipped as "already done".
 - Retrieval quality is bounded by exact search and by the chunker. Both are
   measurable; neither is claimed to be optimal.
 - No object storage is involved: reference text lives in PostgreSQL. Large

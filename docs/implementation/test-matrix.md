@@ -374,7 +374,7 @@ live fact is asserted **byte-identical** afterwards (`toEqual` on the whole
 row, not just its status), no second fact is minted, and a proposal
 identical to live canon is refused with a 409 rather than stored.
 
-`canon.test.ts` (30, `novelforge_test_canon`) — the DB constraints are the
+`canon.test.ts` (37, `novelforge_test_canon`) — the DB constraints are the
 subject, not the service: a second live value for one (entity, predicate)
 is 409 with no read-then-write pre-check; a claim with both or neither
 object form is refused; two spellings that fold to one subject key produce
@@ -422,7 +422,22 @@ Round-2 regressions (each one fails against the pre-fix code):
   remaining in the record;
 - approving a proposal identical to canon that appeared *after* the proposal
   was filed is 409, leaving one ACTIVE fact with a NULL `supersededById`;
-- a statement renders from display names, never a machine key or a raw uuid.
+- a statement renders from display names, never a machine key or a raw uuid;
+- **the RETRIEVAL leg** (previously untested, while three docs claimed the
+  Brain answers three kinds): a query with a matching ingested chunk returns
+  hits with `basis: SUGGESTION` — reference material is guidance, never story
+  truth — and a query that matches nothing returns `insufficient: true` with
+  `basis: null`, the same representation FACT and STATE use. The embedder is
+  faked through `BuildAppOptions.createGateway`, so no test reaches a provider;
+- an entity name whose key is already taken by a DIFFERENT kind is 409 rather
+  than silently returning the stored entity, while the same kind stays
+  idempotent;
+- one of two concurrent decisions on a proposal wins and the other is
+  rejected; a `REJECTED` row never points at a fact and an `APPROVED` row
+  always does (the guard is compare-and-set, not read-then-write);
+- an undated replacement is refused (409) because it would make the old value
+  unreachable at every as-of chapter, and a DATED replacement leaves the old
+  value reconstructable across its window.
 
 
 `packages/story-intelligence/canon.test.ts` (+31) — the pure rules, pinned

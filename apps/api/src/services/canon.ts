@@ -184,7 +184,8 @@ export type BrainAnswer =
         end: number;
         score: number;
       }>;
-      basis: ClaimBasis;
+      /** Null when the answer has no evidence — the same representation FACT and STATE use. */
+      basis: ClaimBasis | null;
       insufficient: boolean;
       /** Which legs ran. A search that lost every leg 502s instead of answering. */
       retrievers: string[];
@@ -462,12 +463,25 @@ export function createCanonServices(deps: {
 
       const existing = await db.storyEntity.findUnique({
         where: { novelId_key: { novelId, key: resolvedKey } },
-        select: { id: true, key: true },
+        select: { id: true, key: true, kind: true },
       });
       // Idempotent: naming a thing that is already named returns the
       // existing identity rather than a 409. Creating an entity commits no
       // story truth (ADR-0008 §5), so there is nothing to protect here.
-      if (existing) return existing;
+      if (existing) {
+        // ...except identity itself. The key is derived from the name, so two
+        // different callers can land on the same key with different kinds
+        // ("River" as a LOCATION vs a CHARACTER). Silently returning the
+        // stored row would answer 201 to a request that asked for a kind the
+        // caller did not get, and the mismatch would only surface later as a
+        // fact attached to the wrong sort of thing.
+        if (existing.kind !== kind) {
+          throw new ConflictError(
+            `"${resolvedKey}" already exists as a ${existing.kind.toLowerCase()}`,
+          );
+        }
+        return { id: existing.id, key: existing.key };
+      }
 
       const created = await db.storyEntity.create({
         data: {
@@ -782,14 +796,27 @@ export function createCanonServices(deps: {
             }
           }
 
+          // A supersede needs a date to be reconstructable. The replacement's
+          // chapter is what closes the old window, so without one there is no
+          // chapter that separates the two values and the old one becomes
+          // unreachable at EVERY as-of point — including chapters before it
+          // changed. Closing at the old row's own start does not save it: the
+          // undated replacement covers from -infinity, so it shadows the old
+          // value everywhere anyway. That is history destroyed by omission,
+          // and the field being optional is what makes it the common path.
+          // Refused at the boundary (CLAUDE.md §15) rather than guessed at.
+          if (priorLive && proposal.validFromChapter === null) {
+            throw new ConflictError(
+              "a superseding claim needs validFromChapter — without it the value it replaces cannot be reconstructed as of any chapter",
+            );
+          }
+
           let supersededFactId: string | null = null;
           if (priorLive) {
             // (1) Close the old fact's window so an as-of query can tell the
             // two values apart.
             //
-            // The close point is `max(replacement start, old start)`. Those
-            // are the only two defensible values, and taking the larger is
-            // what keeps the window non-degenerate in every case:
+            // The close point is `max(replacement start, old start)`:
             //
             //   - Replacement later than the old claim (the ordinary case:
             //     old was true from 10, corrected to be true from 20). Close
@@ -801,17 +828,12 @@ export function createCanonServices(deps: {
             //     approval failed with an opaque 500. A backdated correction
             //     means the old claim never held, so close at 10: an empty
             //     window, which is the truthful answer.
-            //   - Replacement has no validFromChapter at all (the field is
-            //     optional). Closing at null would leave the old window open
-            //     to infinity, so EVERY as-of query — including chapters
-            //     before the correction — returned the new value and the old
-            //     one was unreachable forever even though its row survived.
-            //     Close at the old row's own start instead.
             //
-            // When BOTH starts are null there is no chapter to split on, so
-            // the old window stays open and the most recent row wins every
-            // as-of query. That is a genuine limit of as-of reconstruction
-            // without a validity chapter, not a bug to fix by guessing.
+            // The undated replacement is refused above rather than closed
+            // here, and the both-null case is now unreachable: `priorLive`
+            // means a live fact exists, and a live fact without a start
+            // chapter could only have been superseded by a dated proposal.
+            // So `closeAt` is never null on this path.
             const closeAt =
               proposal.validFromChapter === null
                 ? priorLive.validFromChapter
@@ -852,11 +874,17 @@ export function createCanonServices(deps: {
             });
           }
 
-          // (4) canonFactId is @unique, so a second approve cannot mint a
-          // second fact: the racing loser gets P2002 and is retried by the
-          // caller as a 409.
-          await tx.canonProposal.update({
-            where: { id: proposal.id },
+          // (4) The decision is a compare-and-set, so it is atomic with the
+          // fact it mints. `canonFactId` is @unique so a racing second approve
+          // cannot mint a second fact, but a racing REJECT could otherwise
+          // commit its status write against this proposal after the supersede
+          // above had already run — and this update would then overwrite
+          // REJECTED with APPROVED while the minted fact survived either way.
+          // Predicating on PROPOSED makes the loser's count 0, which throws
+          // and rolls the entire transaction back, so either the decision
+          // commits with its canon or neither does.
+          const decided = await tx.canonProposal.updateMany({
+            where: { id: proposal.id, status: "PROPOSED" },
             data: {
               status: "APPROVED",
               canonFactId: fact.id,
@@ -864,6 +892,9 @@ export function createCanonServices(deps: {
               decidedAt: new Date(),
             },
           });
+          if (decided.count === 0) {
+            throw new ConflictError("this proposal was already decided");
+          }
 
           return { canonFactId: fact.id, supersededFactId };
         })
@@ -919,8 +950,17 @@ export function createCanonServices(deps: {
       if (proposal.status !== "PROPOSED") {
         throw new ConflictError(`proposal is already ${proposal.status.toLowerCase()}`);
       }
-      await db.canonProposal.update({
-        where: { id: proposal.id },
+      // Compare-and-set, not read-then-write. The guard above is an optimistic
+      // fast path off a row read earlier in a different statement; without a
+      // status predicate on the write itself, a concurrent approve can commit
+      // its fact-minting transaction between the two, and this rejection then
+      // lands on a proposal that already produced canon — leaving a row the
+      // status column calls REJECTED while `canonFactId` points at a live
+      // ACTIVE fact nobody approved. That is the "no canon without a decision"
+      // rule (CLAUDE.md §2.13) bypassed by interleaving rather than by logic.
+      // The predicate makes the decision atomic with the write.
+      const rejected = await db.canonProposal.updateMany({
+        where: { id: proposal.id, status: "PROPOSED" },
         data: {
           status: "REJECTED",
           decidedById: actorUserId,
@@ -928,6 +968,9 @@ export function createCanonServices(deps: {
           decisionNote: note?.trim() || null,
         },
       });
+      if (rejected.count === 0) {
+        throw new ConflictError("this proposal was already decided");
+      }
       await audit.record({
         actorUserId,
         workspaceId,
@@ -1040,7 +1083,13 @@ export function createCanonServices(deps: {
           kind: "RETRIEVAL",
           answered: true,
           hits,
-          basis: basis.insufficient ? "SUGGESTION" : basis.basis,
+          // `basis: null` whenever there is no evidence, matching FACT and
+          // STATE exactly. This branch used to substitute "SUGGESTION" for a
+          // null basis, so the same `insufficient: true` carried a non-null
+          // basis here and a null one there — no client could key on
+          // `basis === null` to detect an unbacked answer without also
+          // knowing which question kind it asked.
+          basis: basis.insufficient ? null : basis.basis,
           insufficient: basis.insufficient,
           retrievers: found.retrievers,
           withheldCount: found.withheldCount,

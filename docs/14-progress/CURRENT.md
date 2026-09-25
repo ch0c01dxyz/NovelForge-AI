@@ -63,8 +63,10 @@ is what closes the continuity half of that sentence.
   first real consumer (extraction or a search UI).
 - `available_from_chapter` is a chapter number, so a chapter reorder must
   recompute authored boundaries or the spoiler filter drifts.
-- The Story Brain writes a `RetrievalAudit` row per ask, widening the
-  unpruned Phase 5 retention gap.
+- **The Brain's structured answers are not audited.** The `RETRIEVAL` leg
+  writes a `RetrievalAudit` row; `FACT`, `STATE` and the not-implemented
+  responses never call `search`, so they write nothing. An earlier note said
+  "a row per ask" — false, and the truth is worse.
 - **Deleting a `StoryEntity` would cascade canon away, and no delete route
   exists yet.** `canon_facts.entity_id`, `canon_facts.object_entity_id` and
   `canon_proposals.entity_id` are all `ON DELETE CASCADE`, so removing one

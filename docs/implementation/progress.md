@@ -921,8 +921,14 @@ Known limitations carried forward:
   swaps numbers in a transaction, so a reorder must recompute authored
   boundaries or the spoiler filter drifts. Inherited exposure (no reorder
   path ships here), now on tables that are explicitly story truth.
-- The Brain writes a `RetrievalAudit` row per ask, widening the already
-  unpruned Phase 5 retention gap.
+- **The Brain's structured answers are not audited.** Corrected claim: the
+  `RETRIEVAL` leg writes a `RetrievalAudit` row (widening the unpruned
+  Phase 5 retention gap), but `FACT`, `STATE` and the not-implemented
+  responses never call `search` and so write nothing. An earlier note here
+  said "a row per ask", which was false — and the truth is worse, because a
+  deterministic answer about canon currently leaves no trace of what was
+  asked. Write a row for the structured paths (query = kind + predicate,
+  mode, readerChapter, returned/withheld counts) or delete the claim.
 - **Deleting a `StoryEntity` would cascade canon away, and no delete route
   exists yet.** `canon_facts.entity_id` and `canon_facts.object_entity_id`
   are `ON DELETE CASCADE` (`migration.sql:188, 191`), as is
@@ -1014,6 +1020,47 @@ because only one of them was actually wrong:
   so nothing can trigger it. Moved to the known-limitations list above rather
   than dismissed, because the same-shaped sibling finding (evidence cascading
   from `chapter_versions`) WAS reachable and was fixed.
+
+**Audit round 3 — the full verified workflow, and a correction.** The 18-agent
+workflow that round 2 drew its findings from completed *after* the fixes were
+committed, and it audited **pre-fix HEAD** — so most of its 43 surviving
+findings describe defects already closed. Reading it against current code
+separated those from what was genuinely new, and three things in it mattered:
+
+1. **Defect 1's fix was incomplete, and my own test encoded the bug.** Round 2
+   fixed the *null* `validUntilChapter` by closing the old window at the old
+   row's own start. That still destroys the history, differently: an undated
+   replacement has `valid_from_chapter = NULL`, so it covers from −∞ and
+   shadows the old value at *every* as-of chapter anyway. My regression test
+   asserted `STATE at ch 5 → "white"` — that is, it asserted the corruption.
+   The undated replacement is now refused at the boundary (409): with no
+   chapter to split on there is no honest as-of answer, and guessing one is
+   what produced both versions of this bug. This is the failure mode a
+   self-written test cannot catch — it encodes the same misunderstanding as
+   the fix — which is the whole argument for the external refutation pass.
+2. **The decision paths were not atomic.** `approveProposal` and
+   `rejectProposal` each read `status !== "PROPOSED"` in one statement and
+   wrote in another, so concurrent approve+reject could both pass their
+   guards: a live ACTIVE fact minted while the row ended `REJECTED`, and an
+   audit entry recording a rejection for a decision that created canon —
+   CLAUDE.md §2.13 defeated by interleaving. Both writes are now
+   compare-and-set on `status`, so the loser throws and its transaction rolls
+   back entirely.
+3. **Three doc claims were false.** "The Brain writes a `RetrievalAudit` row
+   per ask" — the row is written inside `RetrievalServices.search`, so only
+   the RETRIEVAL leg writes one and FACT/STATE/not-implemented write nothing.
+   The truth is worse than the claim: structured answers about canon leave no
+   trace. Corrected in the ADR and both progress docs rather than silently
+   deleted. Similarly, "the Brain answers FACT, STATE and RETRIEVAL" was true
+   of the code and false of the tests — the RETRIEVAL leg had no assertion at
+   all, which is how its `basis` drifted to a non-null `"SUGGESTION"` on a
+   null basis while FACT and STATE returned `null`. Now tested and aligned.
+
+Refuted again, and worth recording because it keeps recurring: reference
+evidence "should be scoped to the novel like its sibling chapter branch" —
+`Reference.novelId` is **nullable by design** ("Optional narrowing to one
+novel"), so a workspace-wide reference is legitimate and requiring a novel
+would break it.
 
 **Follow-on found while verifying fix 8.** Implementing retraction made a
 pre-existing latent defect reachable, which is worth recording because the

@@ -314,9 +314,14 @@ That was raised as a defect in the audit and refuted on the code.
   citation stays resolvable (the version still exists and its text is
   unchanged); "is this the current version" is not a property canon
   sources assert.
-- **Negative:** the Story Brain writes a `RetrievalAudit` row per ask,
-  widening the already-unpruned Phase 5 retention gap. Ceiling recorded,
-  not implemented here.
+- **Negative:** the Story Brain's `RETRIEVAL` leg writes a `RetrievalAudit`
+  row, widening the already-unpruned Phase 5 retention gap. This originally
+  read "per ask", which was wrong: the row is written inside
+  `RetrievalServices.search`, so the FACT, STATE and not-implemented answer
+  paths — which never call search — write nothing. Those three are therefore
+  NOT audited at all, which is the more serious half of this note: a
+  structured answer about canon currently leaves no retrieval-audit trace.
+  Ceiling recorded, not implemented here.
 - **Negative:** `available_from_chapter` is a chapter *number*, and
   chapter numbers are swapped in a transaction during reorder. A reorder
   must recompute authored boundaries or the spoiler filter drifts. Phase 6

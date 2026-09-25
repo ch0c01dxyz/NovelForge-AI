@@ -33,6 +33,7 @@ import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
+import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
 
 const TEST_DB = "novelforge_test_canon";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -74,6 +75,61 @@ const env: Env = {
 let db: NovelForgeDb;
 let app: FastifyInstance;
 
+const EMBED_DIMENSION = 1536;
+
+/**
+ * A deterministic embedding for a chunk of text. Only the RETRIEVAL leg of
+ * the Brain needs an embedder, and no test may reach a real provider
+ * (CLAUDE.md §25) — so the same shape retrieval.test.ts uses: hash the text
+ * into a few buckets so two different strings have a defined, non-zero
+ * cosine distance.
+ */
+function fakeVector(text: string): number[] {
+  const v = new Array<number>(EMBED_DIMENSION).fill(0);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h = (h ^ text.charCodeAt(i)) * 16777619;
+  }
+  for (let k = 0; k < 16; k += 1) {
+    h = (h ^ (h >>> 13)) * 2654435761;
+    v[Math.abs(h) % EMBED_DIMENSION] = 1;
+  }
+  const norm = Math.sqrt(v.reduce((a, x) => a + x * x, 0)) || 1;
+  return v.map((x) => x / norm);
+}
+
+function fakeCreateGateway(rec: GatewayRecord): AIGateway {
+  return {
+    id: rec.id,
+    name: rec.name,
+    async listModels() {
+      return [{ modelId: "fake-embed", capabilities: ["embedding"] }];
+    },
+    async generate() {
+      return {
+        content: '{"summary":"ok"}',
+        model: "fake-embed",
+        inputTokens: 1,
+        outputTokens: 1,
+        finishReason: "stop",
+      };
+    },
+    async *generateStream() {
+      yield { delta: "unused" };
+    },
+    async embed(req) {
+      return {
+        vectors: req.input.map(fakeVector),
+        model: "fake-embed",
+        inputTokens: req.input.length,
+      };
+    },
+    async healthCheck() {
+      return { healthy: true, category: null };
+    },
+  } as AIGateway;
+}
+
 beforeAll(async () => {
   const admin = new pg.Client({ connectionString: withDb(BASE_URL, "postgres") });
   await admin.connect();
@@ -91,14 +147,13 @@ beforeAll(async () => {
     env: { ...process.env, DATABASE_URL: TEST_URL },
   });
   db = createDb(TEST_URL);
-  app = await buildApp(env, { db });
+  app = await buildApp(env, { db, createGateway: fakeCreateGateway });
 });
 
 afterAll(async () => {
   await app?.close();
   await db?.$disconnect();
 });
-
 beforeEach(async () => {
   await db.auditLog.deleteMany();
   // Canon rows cascade from novels, but delete explicitly so a leftover row
@@ -125,9 +180,17 @@ beforeEach(async () => {
   await db.user.deleteMany();
 });
 
-async function seedUser(email: string): Promise<{ userId: string; cookie: string }> {
+async function seedUser(
+  email: string,
+  platformRole: "SUPER_ADMIN" | null = null,
+): Promise<{ userId: string; cookie: string }> {
   const user = await db.user.create({
-    data: { email, passwordHash: "x", displayName: email },
+    data: {
+      email,
+      passwordHash: "x",
+      displayName: email,
+      platformRole: platformRole ?? undefined,
+    },
   });
   const token = generateSessionToken();
   await db.session.create({
@@ -256,6 +319,96 @@ async function retract(
   return { statusCode: res.statusCode };
 }
 
+/**
+ * Route a model to the EMBEDDING profile so the RETRIEVAL leg can embed.
+ *
+ * Only that leg needs this — FACT/STATE read canon rows and never search —
+ * so it is done once lazily, the first time a RETRIEVAL test runs, rather
+ * than for every test in the file. The gateway is registered through the
+ * real admin routes (the adapter is faked, persistence is not), which is
+ * what makes `embeddingModelFor` resolve.
+ */
+async function seedEmbeddingRoute(): Promise<void> {
+  if (embeddingRouteReady) return;
+  const admin = await seedUser("platform-admin@example.com", "SUPER_ADMIN");
+  const gw = await app.inject({
+    method: "POST",
+    url: "/api/gateways",
+    headers: { cookie: admin.cookie },
+    payload: { name: "canon-embed-gw", baseUrl: "http://localhost:20128", apiKey: "sk-secret" },
+  });
+  expect(gw.statusCode, gw.body).toBe(201);
+  const gatewayId = (gw.json() as { id: string }).id;
+  expect(
+    (
+      await app.inject({
+        method: "POST",
+        url: `/api/gateways/${gatewayId}/sync-models`,
+        headers: { cookie: admin.cookie },
+      })
+    ).statusCode,
+  ).toBe(200);
+  const models = await app.inject({
+    method: "GET",
+    url: "/api/models",
+    headers: { cookie: admin.cookie },
+  });
+  const model = (models.json() as Array<{ id: string }>)[0];
+  expect(model).toBeDefined();
+  expect(
+    (
+      await app.inject({
+        method: "PUT",
+        url: "/api/model-profiles",
+        headers: { cookie: admin.cookie },
+        payload: { profile: "EMBEDDING", modelId: model!.id },
+      })
+    ).statusCode,
+  ).toBe(200);
+  embeddingRouteReady = true;
+}
+let embeddingRouteReady = false;
+
+/**
+ * A published reference with one ingested chunk, so the Brain's RETRIEVAL
+ * leg has something to find. The full create → ingest → publish path is used
+ * rather than a direct row insert, because a chunk only becomes searchable
+ * once ingest has embedded it.
+ */
+async function seedReferenceChunk(
+  owner: { cookie: string },
+  workspaceId: string,
+  novelId: string,
+  content: string,
+): Promise<void> {
+  await seedEmbeddingRoute();
+  const created = await app.inject({
+    method: "POST",
+    url: `/api/workspaces/${workspaceId}/references`,
+    headers: { cookie: owner.cookie },
+    // Scoped to the novel: the Vector leg filters `r.novel_id = $n`, so a
+    // workspace-wide reference is invisible to a search that names a novel.
+    payload: { key: "guide", title: "Guide", kind: "GUIDE", content, novelId },
+  });
+  expect(created.statusCode, created.body).toBe(201);
+  const { id, versionId } = created.json() as { id: string; versionId: string };
+
+  const ingest = await app.inject({
+    method: "POST",
+    url: `/api/reference-versions/${versionId}/ingest`,
+    headers: { cookie: owner.cookie },
+    payload: {},
+  });
+  expect(ingest.statusCode, ingest.body).toBe(200);
+
+  const published = await app.inject({
+    method: "POST",
+    url: `/api/references/${id}/publish`,
+    headers: { cookie: owner.cookie },
+  });
+  expect(published.statusCode, published.body).toBe(200);
+}
+
 describe("canon facts and the one-live-value invariant", () => {
   it("creates a fact, reads it back with its subject key, and refuses a second live value", async () => {
     const owner = await seedUser("owner@example.com");
@@ -350,6 +503,33 @@ describe("canon facts and the one-live-value invariant", () => {
         })
       ).statusCode,
     ).toBe(409); // MISSING
+  });
+
+  it("refuses an entity name whose key is taken by a different kind", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const post = (kind: string, name: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/entities`,
+        headers: { cookie: owner.cookie },
+        payload: { kind, name },
+      });
+
+    const asCharacter = await post("CHARACTER", "River");
+    expect(asCharacter.statusCode).toBe(201);
+
+    // "River" folds to the key "river", so this collides — and answering 201
+    // with the CHARACTER would hand back a kind the caller did not ask for,
+    // surfacing much later as a fact attached to the wrong sort of thing.
+    const asLocation = await post("LOCATION", "River");
+    expect(asLocation.statusCode).toBe(409);
+
+    // The same kind stays idempotent.
+    const again = await post("CHARACTER", "River");
+    expect(again.statusCode).toBe(201);
+    expect(again.json()).toMatchObject({ id: asCharacter.json().id });
+    expect(await db.storyEntity.count({ where: { novelId } })).toBe(1);
   });
 
   it("names the same subject twice without creating two entities", async () => {
@@ -484,6 +664,67 @@ describe("candidate canon is not silently committed (TESTING.md mandatory scenar
     expect(row.status).toBe("REJECTED");
     expect(row.decidedById).toBe(owner.userId);
     expect(row.canonFactId).toBeNull();
+  });
+
+  // The decision has to be atomic with the write, not read-then-write. Both
+  // decisions used to read PROPOSED in one statement and write in another, so
+  // concurrent approve+reject could both pass their guards: the approval
+  // committed a live ACTIVE fact while the row ended REJECTED, and the audit
+  // trail recorded a rejection for a decision that created canon. That is
+  // "no canon without an explicit decision" (CLAUDE.md §2.13) defeated by
+  // interleaving. Both writes are now compare-and-set on status.
+  it("lets only one of two concurrent decisions win", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const proposed = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 5,
+    });
+    const proposalId = proposed.body.id as string;
+
+    const [approved, rejected] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: `/api/workspaces/${workspaceId}/canon/proposals/${proposalId}/approve`,
+        headers: { cookie: owner.cookie },
+        payload: {},
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/workspaces/${workspaceId}/canon/proposals/${proposalId}/reject`,
+        headers: { cookie: owner.cookie },
+        payload: { note: "raced" },
+      }),
+    ]);
+
+    const row = await db.canonProposal.findUniqueOrThrow({ where: { id: proposalId } });
+    const facts = await db.canonFact.findMany({ where: { novelId } });
+    const ok = [approved.statusCode, rejected.statusCode].filter((c) => c < 400).length;
+
+    // Exactly one decision takes effect.
+    expect(ok).toBe(1);
+
+    if (row.status === "APPROVED") {
+      // Approval won: canon exists and is linked.
+      expect(rejected.statusCode).toBeGreaterThanOrEqual(400);
+      expect(row.canonFactId).not.toBeNull();
+      expect(facts).toHaveLength(1);
+    } else {
+      // Rejection won: no canon was created at all.
+      expect(row.status).toBe("REJECTED");
+      expect(approved.statusCode).toBeGreaterThanOrEqual(400);
+      expect(row.canonFactId).toBeNull();
+      expect(facts).toHaveLength(0);
+    }
+
+    // The invariant regardless of who won: a REJECTED row never points at a
+    // fact, and an APPROVED row always does.
+    if (row.status === "REJECTED") expect(row.canonFactId).toBeNull();
+    if (row.status === "APPROVED") expect(row.canonFactId).not.toBeNull();
   });
 
   // Two proposals for the same subject and predicate may coexist — an author
@@ -903,7 +1144,7 @@ describe("the Story Brain answers with evidence", () => {
     expect((late.object as Record<string, unknown>).objectText).toBe("white");
   });
 
-  it("still closes the old window when the replacement has no validFromChapter", async () => {
+  it("REFUSES an undated replacement, because it would destroy the old value", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
     const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
@@ -914,14 +1155,71 @@ describe("the Story Brain answers with evidence", () => {
       objectText: "black",
       validFromChapter: 10,
     });
-    // No validFromChapter on the replacement — the field is optional, so this
-    // is the COMMON path. Closing the old window at null would leave it open
-    // to infinity and every as-of query, including chapters BEFORE the
-    // correction, would return the new value.
+    // The replacement carries no validFromChapter. Closing the old window at
+    // null leaves it open to infinity and every as-of query returns the new
+    // value; closing it at the old row's own start is no better, because the
+    // undated replacement covers from -infinity and shadows the old value
+    // everywhere anyway. Either way the old value is unreachable at EVERY
+    // as-of chapter, including chapters before the correction. There is no
+    // chapter to split on, so the write is refused at the boundary rather
+    // than guessed at (CLAUDE.md §15).
     const proposed = await propose(owner.cookie, workspaceId, novelId, {
       entityId,
       predicate: "hair-colour",
       objectText: "white",
+    });
+    const res = await approve(owner.cookie, workspaceId, proposed.body.id as string);
+    expect(res.statusCode).toBe(409);
+
+    // Nothing changed: the old value still stands and no second fact exists.
+    const rows = await db.canonFact.findMany({ where: { novelId } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.objectText).toBe("black");
+    expect(rows[0]?.status).toBe("ACTIVE");
+    expect(rows[0]?.validUntilChapter).toBeNull();
+
+    // The history is intact: the original claim is still what holds at ch 15
+    // (it starts at 10), and nothing holds before that.
+    const objectAt = async (ch: number) => {
+      const r = await ask(
+        owner.cookie,
+        workspaceId,
+        novelId,
+        { kind: "STATE", entityId, predicate: "hair-colour", atChapter: ch },
+        { mode: "AUTHOR" },
+      );
+      const c = r.body.claim as Record<string, unknown> | null;
+      return (c?.object as Record<string, unknown>)?.objectText;
+    };
+    expect(await objectAt(15)).toBe("black");
+    const before = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 5 },
+      { mode: "AUTHOR" },
+    );
+    expect(before.body).toMatchObject({ claim: null, insufficient: true });
+  });
+
+  it("accepts a dated replacement, keeping the old value reconstructable", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 10,
+    });
+    // Dated: the correction takes effect at ch 20, so ch 5..19 still answer
+    // with the old value — the property the undated case cannot preserve.
+    const proposed = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "white",
+      validFromChapter: 20,
     });
     expect((await approve(owner.cookie, workspaceId, proposed.body.id as string)).statusCode).toBe(200);
 
@@ -930,21 +1228,21 @@ describe("the Story Brain answers with evidence", () => {
       select: { status: true, validUntilChapter: true },
     });
     expect(old.status).toBe("SUPERSEDED");
-    // Closed at the old row's own start, so its window is empty: it never
-    // held. Still closed, so it cannot shadow the replacement.
-    expect(old.validUntilChapter).toBe(10);
+    expect(old.validUntilChapter).toBe(20);
 
-    const atFive = await ask(
-      owner.cookie,
-      workspaceId,
-      novelId,
-      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 5 },
-      { mode: "AUTHOR" },
-    );
-    const claim = atFive.body.claim as Record<string, unknown> | null;
-    // The replacement is what stands at ch 5, because nothing says when the
-    // correction took effect — but the OLD row must not be what answers.
-    expect((claim?.object as Record<string, unknown>)?.objectText).toBe("white");
+    const objectAt = async (ch: number) => {
+      const r = await ask(
+        owner.cookie,
+        workspaceId,
+        novelId,
+        { kind: "STATE", entityId, predicate: "hair-colour", atChapter: ch },
+        { mode: "AUTHOR" },
+      );
+      const c = r.body.claim as Record<string, unknown> | null;
+      return (c?.object as Record<string, unknown>)?.objectText;
+    };
+    expect(await objectAt(15)).toBe("black");
+    expect(await objectAt(25)).toBe("white");
   });
 
   it("accepts a BACKDATED correction instead of failing on the window CHECK", async () => {
@@ -1090,6 +1388,46 @@ describe("the Story Brain answers with evidence", () => {
       expect(res.body.answered, kind).toBe(false);
       expect(res.body.reason, kind).toBe("NOT_IMPLEMENTED_IN_PHASE_6");
     }
+  });
+
+  // The RETRIEVAL leg is the one answer path that reaches the search service,
+  // and it had no assertion at all — the docs claimed the Brain answers
+  // "FACT, STATE and RETRIEVAL with evidence" while nothing exercised the
+  // third. `basis` is the specific thing that had drifted: a null basis with
+  // `insufficient: true` on one kind and a non-null "SUGGESTION" on another.
+  it("answers RETRIEVAL with hits, marking prose recall as a suggestion", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    await seedReferenceChunk(owner, workspaceId, novelId, "The capital is Aldermere.");
+
+    const hit = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "RETRIEVAL", query: "capital" },
+      { mode: "AUTHOR" },
+    );
+    expect(hit.statusCode).toBe(200);
+    expect(hit.body.answered).toBe(true);
+    expect((hit.body.hits as unknown[]).length).toBeGreaterThan(0);
+    // Reference material is guidance, never story truth (CLAUDE.md §3).
+    expect(hit.body.basis).toBe("SUGGESTION");
+    expect(hit.body.insufficient).toBe(false);
+  });
+
+  it("reports an unbacked RETRIEVAL as insufficient with a null basis", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+
+    const miss = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "RETRIEVAL", query: "nothing in the corpus matches this" },
+      { mode: "AUTHOR" },
+    );
+    expect(miss.body).toMatchObject({ answered: true, insufficient: true, basis: null });
+    expect(miss.body.hits).toEqual([]);
   });
 });
 

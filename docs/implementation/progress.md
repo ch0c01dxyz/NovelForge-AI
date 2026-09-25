@@ -925,8 +925,68 @@ Known limitations carried forward:
   unpruned Phase 5 retention gap.
 
 Verified after: lint 0, typecheck clean in every workspace except
-`apps/web` (see below), 423 passed / 1 skipped, migration drift 0, and the
+`apps/web` (see below), 435 passed / 1 skipped, migration drift 0, and the
 migration applies from empty through all ten migrations.
+
+**Audit round 2 (same day).** A second adversarial pass over slice 1 — eight
+independent finder agents, then a refutation pass in which every finding had
+to survive a verifier trying to kill it — found ten real defects behind the
+green first-run gate. All were fixed and re-verified; the verified-then-refuted
+findings are recorded so they are not re-litigated. The pattern worth naming:
+every one of the four serious ones was a *second path* onto data the primary
+path already guarded, and the first pass's tests only covered the primary path.
+
+1. **Supersede destroyed history when the proposal had no `validFromChapter`.**
+   `validUntilChapter: proposal.validFromChapter ?? null` left the old row's
+   window open to infinity, so the supersession had no effect on any as-of
+   query: STATE returned the new value at every chapter, including before the
+   correction, and the old value was unreachable forever while its row
+   survived. `validFromChapter` is optional, so this was the common path.
+   Fixed by closing at `max(replacement start, old start)`, falling back to
+   the old row's own start; the both-null case is a genuine limit of as-of
+   reconstruction and is documented as such rather than guessed at.
+2. **The READER spoiler boundary was bypassed on both list and STATE paths.**
+   The list route applied no filter at all, and the STATE branch built
+   `notYetTrue` from the ungated row chain, disclosing the fact id and the
+   exact chapter a hidden claim takes effect — precisely what the FACT branch
+   refuses to disclose. Three independent verifiers confirmed the STATE leak.
+3. **A withheld fact was distinguishable from an absent one.** STATE computed
+   `insufficient` from the ungated covering set, so `{claim: null,
+   insufficient: false}` meant "a claim holds here that you may not see" — an
+   existence oracle, and a direct contradiction of the FACT branch's stated
+   "the caller must not be able to tell the difference".
+4. **A backdated correction was an unmapped 500.** Closing the old window at
+   a chapter earlier than the old row's start wrote `valid_until < valid_from`,
+   violating the window CHECK; only `P2002` was translated, so the caller got
+   a bare `INTERNAL` from deterministic input.
+5. **Canon evidence could be silently deleted.** `canon_fact_sources`
+   cascaded from `chapter_versions`, and `deleteChapter` hard-deletes any
+   non-PUBLISHED chapter — so a routine draft deletion stripped a fact's only
+   citation while the fact stayed ACTIVE, with nothing canon-side recording
+   why. Both evidence FKs are now `RESTRICT`.
+6. **`canon_proposals.object_entity_id` had no foreign key** while its twin on
+   `canon_facts` did, so a proposal could name a nonexistent entity and
+   approval copied it verbatim into the constrained table.
+7. **Approving a proposal that restated existing canon superseded a fact with
+   a copy of itself.** `proposeCandidate` classifies only against the live
+   fact at propose time, and the live fact can appear afterwards, so the
+   approval gate must re-check. It now does.
+8. **`RETRACTED` was declared, documented as the live-index's whole
+   justification, and unwritable** — no service, route or test produced it.
+   `retractFact` + `POST .../canon/facts/:factId/retract` now exist, and a
+   test pins that retraction frees the slot for re-assertion, which is the
+   claim ADR-0008 §1 makes and nothing previously exercised.
+9. **Statement rendering used machine keys and could emit a raw uuid**
+   (`ling-fan father-of wei-zhao`); `renderStatement` now takes display names
+   and `(unknown entity)` replaces the uuid fallback.
+10. Non-`P2002` constraint rejections were unmapped; `P2039`/`P2004`/`P2003`
+    now map to a 409 (verified that no constraint name or data value leaks).
+
+Refuted, and deliberately NOT changed: an `atChapter`/`readerChapter` binding
+requirement (the spoiler boundary is `available_from_chapter` compared against
+the reader position only — `atChapter` is not a spoiler input, and enumerating
+it discovers nothing); entity-delete cascades (no delete route exists in this
+slice, so it is unreachable, not a defect).
 
 **Pre-existing, NOT introduced here:** `apps/web` typecheck fails at
 `nuxt.config.ts:7` (`Plugin<any>[]` vs `PluginOption`). Two hoisted vite

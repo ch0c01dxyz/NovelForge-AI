@@ -99,6 +99,38 @@ row does not set `superseded_by_id`, so a supersede-anchored index would
 trap the slot permanently and make re-asserting a retracted fact
 impossible. Verified: with the status anchor, retraction frees the slot.
 
+That rationale was carried for a round while `RETRACTED` had **no writer**
+anywhere in the repository — the state was unreachable, so the index was
+justified by a claim nothing exercised. `retractFact` and
+`POST .../canon/facts/:factId/retract` now exist, and a test asserts the
+slot actually frees: retracting leaves the row with `status = 'RETRACTED'`
+and a NULL `superseded_by_id`, and a different value for the same subject
+and predicate can then be asserted. Retraction sets no `valid_until_chapter`
+— that column dates when a claim stopped being *true in-story*, which
+withdrawal does not decide.
+
+### 1b. Constraints added in the round-2 audit
+
+- **`canon_fact_sources` evidence FKs are `ON DELETE RESTRICT`.** A citation
+  is the only place a fact's span is stored, and `deleteChapter` hard-deletes
+  any non-PUBLISHED chapter, so `CASCADE` let an ordinary draft deletion strip
+  an ACTIVE fact's evidence with nothing canon-side recording why. The
+  fact-owning FK stays `CASCADE` — losing the fact should take its citations
+  with it — but losing the *source* must not silently hollow out a fact that
+  survives.
+- **`canon_proposals.object_entity_id` carries the same FK as
+  `canon_facts.object_entity_id`.** It was a bare uuid while its twin was
+  constrained, and `approveProposal` copies it verbatim into the constrained
+  table.
+- **Approval re-classifies against canon as it stands at approval time.**
+  Competing proposals for one subject are a legitimate authoring flow, so no
+  partial index forbids them; but `proposeCandidate` classifies against the
+  live fact *at propose time*, and a live fact can appear afterwards.
+  Approving a then-identical claim superseded a fact with a copy of itself —
+  a phantom correction that shifts every as-of answer — so the decision point
+  re-checks and refuses with a 409.
+
+
 ### 2. Supersession is four statements in this order
 
 A plain (non-deferrable) self-FK plus a partial unique index cannot be
@@ -192,6 +224,36 @@ that assuming away a boundary is how leaks appear; adding the column
 later to a populated table is the trap this avoids. A test asserts the
 **withheld count**, not merely a short list — a post-filter leak passes
 the latter.
+
+**Every read path, not just the first one** (added in the round-2 audit).
+The boundary is a property of the data, so it has to hold on *each* way
+the data can leave the service. The first implementation applied it on the
+FACT question and the Brain, and missed three sibling paths: the fact
+**list** route applied no filter at all, and the **STATE** branch built
+`notYetTrue` from the ungated row chain — disclosing a hidden fact's id
+and the exact chapter its value takes effect, which is the same disclosure
+the FACT branch refuses. STATE also keyed `insufficient` on the ungated
+covering set, making `{claim: null, insufficient: false}` a positive
+existence signal ("a claim holds here that you may not see") while FACT
+reported the identical row as `insufficient: true`. Two rules follow, and
+they are the general form of this mistake:
+
+1. **A withheld row must be indistinguishable from an absent one.** Not
+   merely unreadable — the response shape must not differ. A test asserts
+   `toEqual` between the withheld and absent STATE bodies, because equal
+   field values reached by different code paths is exactly what a
+   shape-level leak survives.
+2. **When a new read path is added, it inherits the boundary.** The list
+   route defaults to READER, not to the permissive mode: an omitted
+   `mode` is a 400 (`READER_CHAPTER_REQUIRED`), never an implicit grant.
+
+Also settled here: the boundary is `available_from_chapter` compared
+against the **reader's position only**. A STATE question's `atChapter` is
+not a spoiler input and is deliberately not tied to `readerChapter` — the
+in-story chapter a question asks about cannot widen what the reader may
+see, and enumerating `atChapter` reveals nothing about a withheld fact.
+That was raised as a defect in the audit and refuted on the code.
+
 
 ## Alternatives
 

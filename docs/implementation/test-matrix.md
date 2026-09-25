@@ -374,7 +374,7 @@ live fact is asserted **byte-identical** afterwards (`toEqual` on the whole
 row, not just its status), no second fact is minted, and a proposal
 identical to live canon is refused with a 409 rather than stored.
 
-`canon.test.ts` (+19, `novelforge_test_canon`) — the DB constraints are the
+`canon.test.ts` (30, `novelforge_test_canon`) — the DB constraints are the
 subject, not the service: a second live value for one (entity, predicate)
 is 409 with no read-then-write pre-check; a claim with both or neither
 object form is refused; two spellings that fold to one subject key produce
@@ -386,15 +386,40 @@ does not match its offsets is refused rather than stored; evidence naming
 both a chapter and a reference is refused; FACT answers with
 `ESTABLISHED_FACT` and names its fact; a missing fact reports
 `insufficient: true` (no evidence — not "false"); STATE reconstructs
-as-of history, reports `notYetTrue` with the chapter a fact starts, and
-returns `INFERENCE` for reconstructed rows; the four slice-2 question
-kinds return `NOT_IMPLEMENTED_IN_PHASE_6` rather than an empty result; a
-ch-400 fact is withheld from a reader at ch 3 and shown at ch 400; a fact
-with no boundary is withheld at every reader position (deny by default)
-while the author sees it; READER requires a reader position and AUTHOR
-refuses one; a non-member, a foreign novel id, a foreign entity id and a
-foreign proposal id are all 404; an EDITOR reads canon but is 403 on
+as-of history and returns `INFERENCE` for reconstructed rows; the four
+slice-2 question kinds return `NOT_IMPLEMENTED_IN_PHASE_6` rather than an
+empty result; a ch-400 fact is withheld from a reader at ch 3 and shown at
+ch 400; a fact with no boundary is withheld at every reader position (deny
+by default) while the author sees it; READER requires a reader position and
+AUTHOR refuses one; a non-member, a foreign novel id, a foreign entity id
+and a foreign proposal id are all 404; an EDITOR reads canon but is 403 on
 propose and create; an unauthenticated request is 401.
+
+Round-2 regressions (each one fails against the pre-fix code):
+
+- supersede with a NULL `validFromChapter` still closes the old window, so
+  the old value stays reachable as-of a chapter before the correction (the
+  pre-fix behaviour returned the NEW value at every chapter, including ch 0);
+- a backdated correction is accepted rather than 500ing on the window CHECK;
+- a two-step chain reconstructs `black[1,10) red[10,20) white[20,∞)` and as-of
+  5/15/25 answers black/red/white;
+- STATE does not leak a withheld fact's id or start chapter through
+  `notYetTrue`, and returns the same `notYetTrue: []` the FACT branch returns;
+  AUTHOR still sees the chain, so the gate cost the author-facing behaviour
+  nothing;
+- a withheld covering fact and an absent one produce **byte-identical** STATE
+  bodies (`toEqual`), closing the existence oracle;
+- the list route withholds above the reader's position and reports
+  `withheldCount`, and an omitted `mode` is a 400 (READER with no position)
+  rather than the permissive default;
+- retracting a live fact leaves the row with status `RETRACTED` and a NULL
+  `supersededById`, and a different value for the same subject+predicate can
+  then be asserted — the ADR-0008 §1 claim, previously untestable; a second
+  retraction is 409 and a foreign fact id is 404;
+- approving a proposal identical to canon that appeared *after* the proposal
+  was filed is 409, leaving one ACTIVE fact with a NULL `supersededById`;
+- a statement renders from display names, never a machine key or a raw uuid.
+
 
 `packages/story-intelligence/canon.test.ts` (+31) — the pure rules, pinned
 because a domain package may not import the generated client:

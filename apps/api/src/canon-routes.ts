@@ -22,7 +22,6 @@ import {
 } from "./services/canon.ts";
 
 const uuid = z.string().uuid();
-const workspaceParams = z.object({ workspaceId: uuid });
 const novelParams = z.object({ workspaceId: uuid, novelId: uuid });
 const proposalParams = z.object({ workspaceId: uuid, proposalId: uuid });
 
@@ -61,7 +60,18 @@ const createFactBody = z.object({
       end: z.number().int().min(1),
     })
     .optional(),
-});
+})
+  // `valid_until < valid_from` violates CanonFact_valid_window_ordered, and
+  // Prisma 7 surfaces a CHECK violation as P2039 — which the service's
+  // conflict mapping does not catch, so an unguarded window reached the
+  // client as a bare 500. Refuse it here as the 400 it is.
+  .refine(
+    (b) =>
+      b.validFromChapter == null ||
+      b.validUntilChapter == null ||
+      b.validUntilChapter >= b.validFromChapter,
+    { message: "validUntilChapter must not be before validFromChapter" },
+  );
 
 const proposeBody = z.object({
   entityId: uuid,
@@ -80,6 +90,14 @@ const approveBody = z.object({
 
 const rejectBody = z.object({
   note: z.string().trim().max(2000).optional(),
+});
+
+/**
+ * A retraction records why the claim was withdrawn. Optional because the
+ * decision is the point, not the prose — but it is audited.
+ */
+const flagBody = z.object({
+  reason: z.string().trim().max(2000).optional(),
 });
 
 /**
@@ -114,6 +132,23 @@ const askQuery = z.object({
 export interface CanonRoutesOptions {
   auth: AuthService;
   services: CanonServices;
+}
+
+/**
+ * Validate the mode/readerChapter pair.
+ *
+ * A malformed pair is a 400 rather than a silent downgrade: `parseViewMode`
+ * in the library is deny-by-default, which is right as a backstop but wrong
+ * as a user-facing contract. Declared once because all three reader-facing
+ * routes need the same rule.
+ */
+function checkModePair(
+  mode: string,
+  readerChapter: number | undefined,
+): "READER_CHAPTER_REQUIRED" | "READER_CHAPTER_NOT_ALLOWED" | null {
+  if (mode === "READER" && readerChapter === undefined) return "READER_CHAPTER_REQUIRED";
+  if (mode !== "READER" && readerChapter !== undefined) return "READER_CHAPTER_NOT_ALLOWED";
+  return null;
 }
 
 export function registerCanonRoutes(
@@ -195,17 +230,56 @@ export function registerCanonRoutes(
       .object({
         entityId: uuid.optional(),
         predicate: z.string().trim().min(1).max(200).optional(),
-        includeSuperseded: z.coerce.boolean().optional(),
+        // `z.stringbool`, not `z.coerce.boolean`: the latter is Boolean(str),
+        // so the literal query string `includeSuperseded=false` coerces to
+        // TRUE and every request that asks to hide superseded rows shows them.
+        // A typo is a 400 rather than a silently ignored flag.
+        includeSuperseded: z.stringbool().optional(),
+        mode: z.enum(["AUTHOR", "EDITOR", "READER"]).optional(),
+        readerChapter: z.coerce.number().int().min(0).max(100_000).optional(),
       })
       .safeParse(request.query ?? {});
     if (!query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+
+    // Listing canon is a read of story truth, so it obeys the same spoiler
+    // boundary the Brain does (CLAUDE.md §10). Defaulting to READER is
+    // deliberate: an omitted mode must not be the permissive one.
+    const mode = query.data.mode ?? "READER";
+    const pairError = checkModePair(mode, query.data.readerChapter);
+    if (pairError) return reply.code(400).send({ error: pairError });
+
     return services.listFacts({
       actorUserId,
       workspaceId: params.data.workspaceId,
       novelId: params.data.novelId,
       ...query.data,
+      mode,
     });
   });
+
+  // --- Facts ---
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/facts/:factId/retract",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams
+        .extend({ factId: uuid })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = flagBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.retractFact({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        factId: params.data.factId,
+        ...body.data,
+      });
+      return reply.code(204).send();
+    },
+  );
 
   // --- Proposals (candidate canon) ---
 
@@ -293,17 +367,12 @@ export function registerCanonRoutes(
     const query = askQuery.safeParse(request.query ?? {});
     if (!query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
 
-    // The mode/readerChapter pair is validated here rather than in the
-    // service, mirroring retrieval-routes: a malformed pair must be a 400,
-    // not silently downgraded. `parseViewMode` is the deny-by-default
-    // backstop, not the user-facing contract.
+    // The mode/readerChapter pair is validated by checkModePair rather than
+    // silently downgraded. Defaulting to READER is deliberate: an omitted
+    // mode must not be the permissive one.
     const mode = query.data.mode ?? "READER";
-    if (mode === "READER" && query.data.readerChapter === undefined) {
-      return reply.code(400).send({ error: "READER_CHAPTER_REQUIRED" });
-    }
-    if (mode !== "READER" && query.data.readerChapter !== undefined) {
-      return reply.code(400).send({ error: "READER_CHAPTER_NOT_ALLOWED" });
-    }
+    const pairError = checkModePair(mode, query.data.readerChapter);
+    if (pairError) return reply.code(400).send({ error: pairError });
 
     return services.ask({
       actorUserId,
@@ -316,7 +385,4 @@ export function registerCanonRoutes(
         : {}),
     });
   });
-
-  // Silence the unused-params warning for the shared shape.
-  void workspaceParams;
 }

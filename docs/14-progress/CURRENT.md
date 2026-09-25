@@ -25,7 +25,18 @@ WORKSPACE workflow being executable, and a prose bracket defeating
 (see `progress.md`). Full gate: lint 0, typecheck 0 in every workspace
 except `apps/web` (a pre-existing hoisted-vite plugin type mismatch,
 reproduced at HEAD with this phase's work stashed — see `progress.md`),
-423 passed / 1 skipped, 10 migrations applying from empty with zero drift.
+435 passed / 1 skipped, 10 migrations applying from empty with zero drift.
+
+A second adversarial audit of Phase 6 slice 1 (eight finders, every finding
+refuted-or-confirmed by an independent verifier) then found and fixed ten
+defects behind that green gate — a supersede that destroyed history when
+the proposal carried no `validFromChapter`, three sibling read paths that
+bypassed the reader spoiler boundary, an existence oracle, an unmapped 500
+on backdated corrections, a cascade that could delete canon evidence, an
+unconstrained `object_entity_id`, a self-copy supersede, an unwritable
+`RETRACTED` state, and machine keys in user-facing statements. Two further
+findings were refuted on the code and deliberately not "fixed". Details in
+`progress.md` and `decisions.md`.
 See `docs/implementation/progress.md`,
 `docs/implementation/test-matrix.md`,
 [ADR-0007](../adr/ADR-0007-knowledge-retrieval.md) and

@@ -183,7 +183,14 @@ export async function buildApp(
     // pass through one spoiler predicate (CLAUDE.md §10).
     registerCanonRoutes(app, {
       auth,
-      services: createCanonServices({ db: options.db, audit, retrieval: retrievalServices }),
+      services: createCanonServices({
+        db: options.db,
+        audit,
+        retrieval: retrievalServices,
+        // A constraint rejection reaches the client as a mapped 409; the
+        // constraint name it cannot carry is logged here instead.
+        dbg: { error: (message, meta) => app.log.error(meta, message) },
+      }),
     });
 
     registerDefinitionRoutes(app, {

@@ -240,6 +240,22 @@ async function ask(
   return { statusCode: res.statusCode, body: res.json() as Record<string, unknown> };
 }
 
+async function retract(
+  cookie: string,
+  workspaceId: string,
+  novelId: string,
+  factId: string,
+  payload: Record<string, unknown> = {},
+): Promise<{ statusCode: number }> {
+  const res = await app.inject({
+    method: "POST",
+    url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts/${factId}/retract`,
+    headers: { cookie },
+    payload,
+  });
+  return { statusCode: res.statusCode };
+}
+
 describe("canon facts and the one-live-value invariant", () => {
   it("creates a fact, reads it back with its subject key, and refuses a second live value", async () => {
     const owner = await seedUser("owner@example.com");
@@ -264,14 +280,49 @@ describe("canon facts and the one-live-value invariant", () => {
 
     const list = await app.inject({
       method: "GET",
-      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts`,
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts?mode=AUTHOR`,
       headers: { cookie: owner.cookie },
     });
     expect(list.statusCode).toBe(200);
-    const facts = list.json() as Array<Record<string, unknown>>;
+    const facts = (list.json() as { facts: Array<Record<string, unknown>> }).facts;
     expect(facts).toHaveLength(1);
     expect(facts[0]!.objectText).toBe("black");
     expect(facts[0]!.status).toBe("ACTIVE");
+  });
+
+  it("renders a statement from display names, never machine keys or uuids", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const ling = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+    const wei = await createEntity(owner.cookie, workspaceId, novelId, "Wei Zhao");
+
+    // Literal object.
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId: ling,
+      predicate: "hair-colour",
+      objectText: "black",
+    });
+    // Entity object — the case whose fallback used to be a raw uuid.
+    const rel = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId: ling,
+      predicate: "parent-of",
+      objectEntityId: wei,
+    });
+    expect(rel.statusCode, JSON.stringify(rel.body)).toBe(201);
+
+    const rows = await db.canonFact.findMany({
+      where: { novelId },
+      select: { statement: true },
+      orderBy: { predicate: "asc" },
+    });
+    const statements = rows.map((r) => r.statement);
+    // Display names, not `ling-fan` keys and not a uuid.
+    expect(statements).toContain("Ling Fan hair-colour black");
+    expect(statements).toContain("Ling Fan parent-of Wei Zhao");
+    for (const s of statements) {
+      expect(s).not.toMatch(/ling-fan|wei-zhao/);
+      expect(s).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+    }
   });
 
   it("refuses a claim with both or neither object form", async () => {
@@ -433,6 +484,121 @@ describe("candidate canon is not silently committed (TESTING.md mandatory scenar
     expect(row.status).toBe("REJECTED");
     expect(row.decidedById).toBe(owner.userId);
     expect(row.canonFactId).toBeNull();
+  });
+
+  // Two proposals for the same subject and predicate may coexist — an author
+  // weighing alternatives is a normal flow — but approving one that restates
+  // what canon already says must not supersede a fact with a copy of itself.
+  // proposeCandidate cannot catch this: it classifies against the live fact
+  // at propose time, and the live fact can appear afterwards.
+  it("refuses to approve a claim identical to the canon that now exists", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    // Filed while nothing is canon yet, so classifyProposal sees NEW.
+    const first = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+    });
+    const second = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+    });
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(201);
+    expect(second.body.conflictKind).toBeNull(); // both look NEW at propose time
+
+    expect((await approve(owner.cookie, workspaceId, first.body.id as string)).statusCode).toBe(200);
+
+    // The second would mint an identical ACTIVE fact and mark the first
+    // SUPERSEDED — a correction that changed nothing, shifting every as-of
+    // answer for this subject.
+    const dup = await approve(owner.cookie, workspaceId, second.body.id as string);
+    expect(dup.statusCode).toBe(409);
+
+    const facts = await db.canonFact.findMany({ where: { novelId } });
+    expect(facts).toHaveLength(1);
+    expect(facts[0]?.status).toBe("ACTIVE");
+    expect(facts[0]?.supersededById).toBeNull();
+  });
+
+  // canon_facts_live is anchored on `status = 'ACTIVE'` rather than on
+  // `superseded_by_id IS NULL` precisely so retraction frees the slot
+  // (ADR-0008 §1). That rationale was load-bearing in the ADR and the
+  // migration comment while RETRACTED had no writer at all — the state was
+  // unreachable and the justification untestable. This pins both halves.
+  it("retracts a live fact without deleting it, freeing the slot for a new value", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const first = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 10,
+    });
+    expect(first.statusCode).toBe(201);
+    const factId = (first.body as { id: string }).id;
+
+    expect((await retract(owner.cookie, workspaceId, novelId, factId, { reason: "unfounded" })).statusCode).toBe(204);
+
+    // The row survives — retraction is not deletion, so the claim and any
+    // evidence it carried are still in the record.
+    const row = await db.canonFact.findUniqueOrThrow({ where: { id: factId } });
+    expect(row.status).toBe("RETRACTED");
+    // No successor was invented, which is what a status-anchored index needs.
+    expect(row.supersededById).toBeNull();
+
+    // The slot is free: a different value for the same subject and predicate
+    // can now be asserted, which is the behaviour a supersede-anchored index
+    // would have made impossible.
+    const replacement = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "white",
+      validFromChapter: 20,
+    });
+    expect(replacement.statusCode).toBe(201);
+
+    const audited = await db.auditLog.findMany({
+      where: { entityId: factId, action: "canon.fact-retracted" },
+    });
+    expect(audited).toHaveLength(1);
+  });
+  it("refuses to retract a fact that is not live, and 404s a foreign one", async () => {
+    const owner = await seedUser("owner@example.com");
+    const other = await seedUser("other@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const wsB = await seedWorkspace(other.userId, "wb");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const created = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+    });
+    const factId = (created.body as { id: string }).id;
+
+    expect((await retract(owner.cookie, workspaceId, novelId, factId)).statusCode).toBe(204);
+    // Already withdrawn — a second retraction is a 409, not a silent no-op.
+    expect((await retract(owner.cookie, workspaceId, novelId, factId)).statusCode).toBe(409);
+
+    // A fact id from another workspace 404s rather than 403ing, so the
+    // response cannot confirm the row exists.
+    const otherEntity = await createEntity(other.cookie, wsB.workspaceId, wsB.novelId, "B");
+    const foreign = await createFact(other.cookie, wsB.workspaceId, wsB.novelId, {
+      entityId: otherEntity,
+      predicate: "hair-colour",
+      objectText: "black",
+    });
+    const foreignId = (foreign.body as { id: string }).id;
+    expect(
+      (await retract(owner.cookie, workspaceId, novelId, foreignId)).statusCode,
+    ).toBe(404);
   });
 });
 
@@ -623,6 +789,123 @@ describe("the Story Brain answers with evidence", () => {
     expect((late.object as Record<string, unknown>).objectText).toBe("white");
   });
 
+  it("still closes the old window when the replacement has no validFromChapter", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 10,
+    });
+    // No validFromChapter on the replacement — the field is optional, so this
+    // is the COMMON path. Closing the old window at null would leave it open
+    // to infinity and every as-of query, including chapters BEFORE the
+    // correction, would return the new value.
+    const proposed = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "white",
+    });
+    expect((await approve(owner.cookie, workspaceId, proposed.body.id as string)).statusCode).toBe(200);
+
+    const old = await db.canonFact.findFirstOrThrow({
+      where: { novelId, objectText: "black" },
+      select: { status: true, validUntilChapter: true },
+    });
+    expect(old.status).toBe("SUPERSEDED");
+    // Closed at the old row's own start, so its window is empty: it never
+    // held. Still closed, so it cannot shadow the replacement.
+    expect(old.validUntilChapter).toBe(10);
+
+    const atFive = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 5 },
+      { mode: "AUTHOR" },
+    );
+    const claim = atFive.body.claim as Record<string, unknown> | null;
+    // The replacement is what stands at ch 5, because nothing says when the
+    // correction took effect — but the OLD row must not be what answers.
+    expect((claim?.object as Record<string, unknown>)?.objectText).toBe("white");
+  });
+
+  it("accepts a BACKDATED correction instead of failing on the window CHECK", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 10,
+    });
+    // "Actually it was white from chapter 5, not black from 10." Dated
+    // EARLIER than the row it replaces, which used to set
+    // valid_until < valid_from and fail the CHECK as an opaque 500.
+    const proposed = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "white",
+      validFromChapter: 5,
+    });
+    const approved = await approve(owner.cookie, workspaceId, proposed.body.id as string);
+    expect(approved.statusCode, JSON.stringify(approved.body)).toBe(200);
+
+    const old = await db.canonFact.findFirstOrThrow({
+      where: { novelId, objectText: "black" },
+      select: { status: true, validFromChapter: true, validUntilChapter: true },
+    });
+    // The old claim never held: it starts at 10 and ends at 10.
+    expect(old.validUntilChapter).toBe(10);
+    expect(old.validFromChapter).toBe(10);
+    expect(old.validUntilChapter! >= old.validFromChapter!).toBe(true);
+    expect(await db.canonFact.count({ where: { novelId, status: "ACTIVE" } })).toBe(1);
+  });
+
+  it("reconstructs a two-step chain correctly, and keeps the window ordered", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 1,
+    });
+    for (const [value, at] of [["red", 10], ["white", 20]] as const) {
+      const p = await propose(owner.cookie, workspaceId, novelId, {
+        entityId,
+        predicate: "hair-colour",
+        objectText: value,
+        validFromChapter: at,
+      });
+      expect((await approve(owner.cookie, workspaceId, p.body.id as string)).statusCode).toBe(200);
+    }
+
+    const at = async (chapter: number) => {
+      const r = await ask(
+        owner.cookie,
+        workspaceId,
+        novelId,
+        { kind: "STATE", entityId, predicate: "hair-colour", atChapter: chapter },
+        { mode: "AUTHOR" },
+      );
+      const c = r.body.claim as Record<string, unknown> | null;
+      return (c?.object as Record<string, unknown> | undefined)?.objectText;
+    };
+    // Each era answers with its own value — the property the whole
+    // validUntilChapter mechanism exists for.
+    expect(await at(5)).toBe("black");
+    expect(await at(15)).toBe("red");
+    expect(await at(25)).toBe("white");
+  });
+
   it("reports no-evidence as insufficient, not as false", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
@@ -761,6 +1044,72 @@ describe("spoiler boundary (CLAUDE.md §10)", () => {
     expect(asAuthor.body.claim).not.toBeNull();
   });
 
+  it("withholds above the reader's position from the FACT LIST too, not just the Brain", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "early",
+      objectText: "visible",
+      availableFromChapter: 3,
+    });
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "late",
+      objectText: "the prince",
+      availableFromChapter: 400,
+    });
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "unclassified",
+      objectText: "not classified",
+    });
+
+    const asReader = async (chapter: number) => {
+      const r = await app.inject({
+        method: "GET",
+        url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts?mode=READER&readerChapter=${chapter}`,
+        headers: { cookie: owner.cookie },
+      });
+      expect(r.statusCode, r.body).toBe(200);
+      return r.json() as { facts: Array<Record<string, unknown>>; withheldCount: number };
+    };
+
+    // Listing canon is reading story truth, so it obeys the same boundary the
+    // Brain does. Before this, the list routes applied NO filter at all and
+    // returned a ch-400 fact to any canon:read holder.
+    const reader3 = await asReader(3);
+    expect(reader3.facts.map((f) => f.objectText)).toEqual(["visible"]);
+    // Counted, not inferred from a short list: an unclassified fact is
+    // withheld too (deny by default), and a post-filter leak would make this
+    // zero.
+    expect(reader3.withheldCount).toBe(2);
+
+    const reader400 = await asReader(400);
+    // The unclassified row is still withheld at ANY position.
+    expect(reader400.facts.map((f) => f.objectText).sort()).toEqual(["the prince", "visible"]);
+    expect(reader400.withheldCount).toBe(1);
+
+    // AUTHOR sees everything and withholds nothing.
+    const author = await app.inject({
+      method: "GET",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts?mode=AUTHOR`,
+      headers: { cookie: owner.cookie },
+    });
+    expect((author.json() as { facts: unknown[] }).facts).toHaveLength(3);
+    expect((author.json() as { withheldCount: number }).withheldCount).toBe(0);
+
+    // An omitted mode is the restrictive one, never the permissive one.
+    const omitted = await app.inject({
+      method: "GET",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(omitted.statusCode).toBe(400); // READER with no position
+  });
+
   it("requires a reader position in READER mode and refuses one otherwise", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
@@ -772,6 +1121,97 @@ describe("spoiler boundary (CLAUDE.md §10)", () => {
       (await ask(owner.cookie, workspaceId, novelId, q, { mode: "AUTHOR", readerChapter: "5" }))
         .statusCode,
     ).toBe(400);
+  });
+
+  // The STATE branch is a second path onto the same story truth as FACT, and
+  // it leaked in two ways the FACT branch does not: `notYetTrue` was built
+  // from the ungated row chain (fact id + the chapter a hidden claim takes
+  // effect), and `insufficient` was computed from the ungated covering set,
+  // so "hidden" and "absent" were distinguishable. Three independent audits
+  // found the first; both make READER mode an existence-and-timing oracle.
+  it("does not leak a withheld fact's id or start chapter through STATE", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    // True in-story from ch 400, revealed to readers at ch 400. At reader
+    // position 3 this fact must be invisible in every shape.
+    const created = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "secret-identity",
+      objectText: "the prince",
+      validFromChapter: 400,
+      availableFromChapter: 400,
+    });
+    expect(created.statusCode).toBe(201);
+
+    const state = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "secret-identity", atChapter: 3 },
+      { mode: "READER", readerChapter: "3" },
+    );
+    expect(state.statusCode).toBe(200);
+    expect((state.body as { notYetTrue: unknown[] }).notYetTrue).toEqual([]);
+
+    // And the FACT form of the same question must answer identically — the
+    // two kinds cannot disagree about what the reader may know.
+    const fact = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "FACT", entityId, predicate: "secret-identity" },
+      { mode: "READER", readerChapter: "3" },
+    );
+    expect(fact.body).toMatchObject({ claim: null, insufficient: true, notYetTrue: [] });
+    // The STATE shape must match on the fields it shares.
+    expect(state.body).toMatchObject({ claim: null, insufficient: true });
+
+    // AUTHOR still sees the whole chain, so the gate did not cost the
+    // author-facing behaviour the existing tests pin.
+    const asAuthor = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "secret-identity", atChapter: 3 },
+      { mode: "AUTHOR" },
+    );
+    expect((asAuthor.body as { notYetTrue: unknown[] }).notYetTrue).toHaveLength(1);
+  });
+
+  // A withheld fact must be indistinguishable from an absent one. Keying
+  // `insufficient` on the ungated covering set made `{claim: null,
+  // insufficient: false}` mean "a claim holds here that you may not see".
+  it("reports a withheld covering fact as insufficient, exactly like an absent one", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    // Covers the as-of point but is not yet reader-visible.
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 1,
+      availableFromChapter: 400,
+    });
+
+    const withheld = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 3 },
+      { mode: "READER", readerChapter: "3" },
+    );
+    const absent = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "no-such-predicate", atChapter: 3 },
+      { mode: "READER", readerChapter: "3" },
+    );
+    expect(withheld.body).toEqual(absent.body);
   });
 });
 
@@ -787,7 +1227,7 @@ describe("tenant isolation and authorization", () => {
     // workspace exists.
     const nonMember = await app.inject({
       method: "GET",
-      url: `/api/workspaces/${wsA.workspaceId}/novels/${wsA.novelId}/canon/facts`,
+      url: `/api/workspaces/${wsA.workspaceId}/novels/${wsA.novelId}/canon/facts?mode=AUTHOR`,
       headers: { cookie: ownerB.cookie },
     });
     expect(nonMember.statusCode).toBe(404);
@@ -822,7 +1262,7 @@ describe("tenant isolation and authorization", () => {
 
     const read = await app.inject({
       method: "GET",
-      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts`,
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts?mode=AUTHOR`,
       headers: { cookie: editor.cookie },
     });
     expect(read.statusCode).toBe(200);
@@ -848,7 +1288,7 @@ describe("tenant isolation and authorization", () => {
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
     const res = await app.inject({
       method: "GET",
-      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts`,
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts?mode=AUTHOR`,
     });
     expect(res.statusCode).toBe(401);
   });

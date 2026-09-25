@@ -1086,6 +1086,7 @@ model StoryEntity {
   facts       CanonFact[]     @relation("CanonFactSubject")
   objectOf    CanonFact[]     @relation("CanonFactObjectEntity")
   proposals   CanonProposal[]
+  proposedObjectOf CanonProposal[] @relation("CanonProposalObjectEntity")
 
   @@unique([novelId, key])
   @@index([novelId, kind])
@@ -1185,10 +1186,14 @@ model CanonFactSource {
   /// is a HISTORICAL pin: Chapter.currentVersion moves on the next save, so a
   /// source is not "the current version" by definition.
   chapterVersionId   String?           @map("chapter_version_id") @db.Uuid
-  chapterVersion     ChapterVersion?   @relation(fields: [chapterVersionId], references: [id], onDelete: Cascade)
+  /// RESTRICT: a citation is the only place the fact's span is stored, so
+  /// cascading it away would leave an ACTIVE fact claiming support it can no
+  /// longer show. deleteChapter hard-deletes non-PUBLISHED chapters, so
+  /// CASCADE let a routine draft deletion strip canon evidence silently.
+  chapterVersion     ChapterVersion?   @relation(fields: [chapterVersionId], references: [id], onDelete: Restrict)
   /// The exact immutable reference revision.
   referenceVersionId String?           @map("reference_version_id") @db.Uuid
-  referenceVersion   ReferenceVersion? @relation(fields: [referenceVersionId], references: [id], onDelete: Cascade)
+  referenceVersion   ReferenceVersion? @relation(fields: [referenceVersionId], references: [id], onDelete: Restrict)
   quote              String            @db.Text
   start              Int
   end                Int
@@ -1222,6 +1227,7 @@ model CanonProposal {
   entity              StoryEntity         @relation(fields: [entityId], references: [id], onDelete: Cascade)
   predicate           String
   objectEntityId      String?             @map("object_entity_id") @db.Uuid
+  objectEntity        StoryEntity?        @relation("CanonProposalObjectEntity", fields: [objectEntityId], references: [id], onDelete: Cascade)
   objectText          String?             @map("object_text")
   statement           String
   /// When the proposed claim becomes true in-story. Carried onto the fact at
@@ -1251,6 +1257,7 @@ model CanonProposal {
   @@index([workspaceId, status])
   @@index([novelId, status])
   @@index([entityId])
+  @@index([objectEntityId])
   @@index([conflictsWithFactId])
   @@index([proposedById])
   @@index([decidedById])

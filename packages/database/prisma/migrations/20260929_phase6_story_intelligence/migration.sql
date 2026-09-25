@@ -164,6 +164,11 @@ CREATE INDEX "canon_proposals_novel_id_status_idx" ON "canon_proposals"("novel_i
 CREATE INDEX "canon_proposals_entity_id_idx" ON "canon_proposals"("entity_id");
 
 -- CreateIndex
+-- The referencing side of the object FK below; without it deleting a
+-- story entity seq-scans canon_proposals to resolve the cascade.
+CREATE INDEX "canon_proposals_object_entity_id_idx" ON "canon_proposals"("object_entity_id");
+
+-- CreateIndex
 CREATE INDEX "canon_proposals_conflicts_with_fact_id_idx" ON "canon_proposals"("conflicts_with_fact_id");
 
 -- CreateIndex
@@ -200,10 +205,19 @@ ALTER TABLE "canon_facts" ADD CONSTRAINT "canon_facts_created_by_id_fkey" FOREIG
 ALTER TABLE "canon_fact_sources" ADD CONSTRAINT "canon_fact_sources_canon_fact_id_fkey" FOREIGN KEY ("canon_fact_id") REFERENCES "canon_facts"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "canon_fact_sources" ADD CONSTRAINT "canon_fact_sources_chapter_version_id_fkey" FOREIGN KEY ("chapter_version_id") REFERENCES "chapter_versions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- RESTRICT, not CASCADE. A citation is the only place a fact's span is
+-- stored, so cascading one away leaves the fact claiming support it can no
+-- longer show. chapter_versions already cascades from chapters, and
+-- deleteChapter (services/manuscript.ts) hard-deletes any non-PUBLISHED
+-- chapter — so CASCADE let a routine draft deletion silently strip canon
+-- evidence with nothing canon-side recording why. Deleting a cited chapter is
+-- now refused; the author unlinks the evidence explicitly first.
+ALTER TABLE "canon_fact_sources" ADD CONSTRAINT "canon_fact_sources_chapter_version_id_fkey" FOREIGN KEY ("chapter_version_id") REFERENCES "chapter_versions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "canon_fact_sources" ADD CONSTRAINT "canon_fact_sources_reference_version_id_fkey" FOREIGN KEY ("reference_version_id") REFERENCES "reference_versions"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- RESTRICT for the same reason: a reference revision is a pinned citation,
+-- not a disposable child of the fact.
+ALTER TABLE "canon_fact_sources" ADD CONSTRAINT "canon_fact_sources_reference_version_id_fkey" FOREIGN KEY ("reference_version_id") REFERENCES "reference_versions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "canon_fact_sources" ADD CONSTRAINT "canon_fact_sources_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -216,6 +230,14 @@ ALTER TABLE "canon_proposals" ADD CONSTRAINT "canon_proposals_novel_id_fkey" FOR
 
 -- AddForeignKey
 ALTER TABLE "canon_proposals" ADD CONSTRAINT "canon_proposals_entity_id_fkey" FOREIGN KEY ("entity_id") REFERENCES "story_entities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+-- The object-side twin of the subject FK above, and it was missing: the
+-- column was a bare uuid, so a proposal could name an entity that does not
+-- exist (or belongs to another novel) and approveProposal copies it verbatim
+-- into canon_facts.object_entity_id, which IS constrained. Cascade matches
+-- its sibling column on this table.
+ALTER TABLE "canon_proposals" ADD CONSTRAINT "canon_proposals_object_entity_id_fkey" FOREIGN KEY ("object_entity_id") REFERENCES "story_entities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "canon_proposals" ADD CONSTRAINT "canon_proposals_conflicts_with_fact_id_fkey" FOREIGN KEY ("conflicts_with_fact_id") REFERENCES "canon_facts"("id") ON DELETE SET NULL ON UPDATE CASCADE;

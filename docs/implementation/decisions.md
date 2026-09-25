@@ -48,7 +48,35 @@ recorded as ADR-NNNN files:
 - **2026-09-25 — RETRACT is not a one-way trap.** The live-uniqueness
   index is anchored on `status = 'ACTIVE'` rather than
   `superseded_by_id IS NULL`, so retracting a fact frees its slot and the
-  same claim can be re-asserted. Verified against PostgreSQL.
+  same claim can be re-asserted. Verified against PostgreSQL. (Round 2: the
+  state now has a writer — `retractFact` — and a test that pins the
+  slot-freeing behaviour; before that the justification was untestable.)
+- **2026-09-25 — Evidence FKs are RESTRICT, not CASCADE.** A citation is the
+  only place a fact's span is stored, and `deleteChapter` hard-deletes
+  non-PUBLISHED chapters, so CASCADE let a routine draft deletion strip a
+  live fact's evidence silently. Deleting a cited chapter now fails loudly
+  until the author unlinks it. The fact-owning FK stays CASCADE: losing the
+  fact should take its citations with it.
+- **2026-09-25 — The approval gate re-classifies against current canon.**
+  `proposeCandidate` classifies against the live fact *at propose time*, but
+  competing proposals for one subject are legitimate and a live fact can
+  appear between propose and approve. Without a re-check at the decision
+  point, approving a now-identical claim supersedes a fact with a copy of
+  itself — a phantom correction that shifts every as-of answer. Caught at
+  approve, not by a second partial unique index on `canon_proposals`, which
+  would have wrongly forbidden proposing alternatives.
+- **2026-09-25 — Probed, not assumed.** The supersede order and the
+  index's enforcement were proven against a real PostgreSQL database
+  before the migration was written: both two-statement orders fail
+  (`23503` / `23505`), the four-statement order commits with correct
+  final rows, and a duplicate `ACTIVE` insert is refused.
+- **2026-09-25 — A green first pass is not coverage.** Round 2's ten defects
+  were all in code the first pass had tests for — the tests covered the
+  primary path and missed the second path onto the same data (list and STATE
+  vs FACT; optional `validFromChapter` vs supplied). The durable lesson is
+  the refutation step, not the finder step: of eight findings that read as
+  serious, two were wrong on the code and saying so prevented two bad
+  "fixes".
 - **2026-09-25 — Probed, not assumed.** The supersede order and the
   index's enforcement were proven against a real PostgreSQL database
   before the migration was written: both two-statement orders fail

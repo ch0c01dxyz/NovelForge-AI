@@ -123,6 +123,7 @@ function countWords(text: string): number {
 export function createManuscriptServices(
   db: PrismaClient,
   audit?: AuditService,
+  dbg?: { error?: (message: string, meta?: Record<string, unknown>) => void },
 ): ManuscriptServices {
   /** Membership gate — 404 for non-members (ADR-0004), role for caps. */
   async function gate(
@@ -312,7 +313,25 @@ export function createManuscriptServices(
       if (chapter.status === "PUBLISHED") {
         throw new ConflictError("published chapters cannot be deleted; unpublish first");
       }
-      await db.chapter.delete({ where: { id: chapterId } });
+      await db.chapter.delete({ where: { id: chapterId } }).catch((e: unknown) => {
+        // canon_fact_sources.chapter_version_id is ON DELETE RESTRICT, so a
+        // chapter carrying canon evidence cannot be deleted. That refusal is
+        // the point — a citation is the only place a fact's span is stored,
+        // and cascading it away used to leave an ACTIVE fact claiming support
+        // it could no longer show. But the refusal must be legible and must
+        // have a way out, or it is just an unrecoverable 500 (the remedy the
+        // migration comment promises, `DELETE .../canon/facts/:id/sources`,
+        // is what makes it recoverable).
+        const code = (e as { code?: string })?.code;
+        if (code === "P2003" || code === "P2039") {
+          dbg?.error?.("chapter delete blocked by a canon citation", { err: e });
+          throw new ConflictError(
+            "this chapter is cited as evidence by a canon fact — unlink the evidence " +
+              "on those facts first, then delete the chapter",
+          );
+        }
+        throw e;
+      });
       await audit?.record({
         actorUserId,
         workspaceId,

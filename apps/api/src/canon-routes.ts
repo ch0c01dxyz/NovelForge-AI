@@ -281,6 +281,29 @@ export function registerCanonRoutes(
     },
   );
 
+  // The escape hatch for a chapter blocked from deletion by a canon citation:
+  // the evidence FKs are RESTRICT, so without a way to remove a citation the
+  // block would be permanent.
+  app.delete(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/facts/:factId/sources/:sourceId",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams
+        .extend({ factId: uuid, sourceId: uuid })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.unlinkSource({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        factId: params.data.factId,
+        sourceId: params.data.sourceId,
+      });
+      return reply.code(204).send();
+    },
+  );
+
   // --- Proposals (candidate canon) ---
 
   app.post("/api/workspaces/:workspaceId/novels/:novelId/canon/proposals", async (request, reply) => {

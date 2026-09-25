@@ -18,7 +18,7 @@
  * never reimplemented. This module is the IO half: it resolves scope from
  * stored rows, runs the transactions, and writes the audit trail.
  */
-import type { NovelForgeDb } from "@novelforge/database";
+import type { NovelForgeDb, CanonFactStatus } from "@novelforge/database";
 import {
   can,
   requireCapability,
@@ -117,7 +117,13 @@ export interface FactListResult {
     validUntilChapter: number | null;
     availableFromChapter: number | null;
     supersededById: string | null;
-    sources: Array<{
+    /**
+     * Evidence spans. PRESENT for AUTHOR/EDITOR, ABSENT for READER — a
+     * source's quote is raw chapter or reference text and neither version
+     * table carries a spoiler boundary, so a reader-facing list omits them
+     * rather than trying to gate text it cannot classify.
+     */
+    sources?: Array<{
       sourceKind: string;
       quote: string;
       start: number;
@@ -127,9 +133,12 @@ export interface FactListResult {
     }>;
   }>;
   /**
-   * How many rows the READER boundary withheld. Zero in AUTHOR/EDITOR mode.
-   * A non-zero value on a mode that should see everything means the filter
-   * and the boundary have drifted.
+   * How many rows the READER boundary withheld, for AUTHOR/EDITOR only.
+   * ALWAYS 0 in READER mode: the count is an existence oracle — a reader
+   * seeing `withheldCount: 1` learns a claim exists that they may not read,
+   * which is exactly the "no such fact" / "not yet visible" distinction the
+   * Brain refuses to make. It is kept for authors, where no boundary applies
+   * and the number is a genuine drift signal.
    */
   withheldCount: number;
 }
@@ -248,6 +257,23 @@ export interface CanonServices {
     novelId: string;
     factId: string;
     reason?: string;
+  }): Promise<void>;
+
+  /**
+   * Remove one citation from a fact.
+   *
+   * This is the other half of the evidence FKs being RESTRICT: without it, a
+   * chapter cited as evidence could never be deleted, because nothing could
+   * remove the citation blocking it. The fact keeps its other sources, and a
+   * fact with no sources left still stands (its claim was approved on its own
+   * merits) — but it stops claiming support it can no longer show.
+   */
+  unlinkSource(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    factId: string;
+    sourceId: string;
   }): Promise<void>;
 
   proposeCandidate(input: {
@@ -624,10 +650,21 @@ export function createCanonServices(deps: {
       // retraction does not decide — the claim may never have been true, or
       // may still be true and merely withdrawn from canon. Writing a chapter
       // here would assert a story fact the author did not.
-      await db.canonFact.update({
-        where: { id: fact.id },
+      //
+      // Compare-and-set, for the same reason the proposal decisions are: the
+      // guard above read a status in a different statement. Without the
+      // predicate a concurrent approve can supersede this row between the
+      // read and the write, and the write then lands RETRACTED on a row the
+      // supersede already closed — a state ADR-0008 §1 says cannot exist
+      // (retraction sets no supersededById), leaving a withdrawn fact linked
+      // to a successor that replaced it.
+      const retracted = await db.canonFact.updateMany({
+        where: { id: fact.id, status: "ACTIVE" },
         data: { status: "RETRACTED" },
       });
+      if (retracted.count === 0) {
+        throw new ConflictError("this fact was already superseded or withdrawn");
+      }
       await audit.record({
         actorUserId,
         workspaceId,
@@ -640,6 +677,30 @@ export function createCanonServices(deps: {
           predicate: fact.predicate,
           reason: reason ?? null,
         },
+      });
+    },
+
+    async unlinkSource({ actorUserId, workspaceId, novelId, factId, sourceId }) {
+      await gate(workspaceId, novelId, actorUserId, "canon:manage");
+      // Scope BOTH rows through their stored owners, so neither a foreign
+      // fact id nor a source id belonging to another fact can be used to
+      // delete something the caller cannot see. A single deleteMany with both
+      // conditions does that in one statement.
+      const removed = await db.canonFactSource.deleteMany({
+        where: {
+          id: sourceId,
+          canonFactId: factId,
+          canonFact: { novelId, workspaceId },
+        },
+      });
+      if (removed.count === 0) throw new NotFoundError("evidence");
+      await audit.record({
+        actorUserId,
+        workspaceId,
+        action: "canon.source-unlinked",
+        entityType: "CanonFactSource",
+        entityId: sourceId,
+        payload: { novelId, factId },
       });
     },
 
@@ -766,7 +827,13 @@ export function createCanonServices(deps: {
               predicate: proposal.predicate,
               status: "ACTIVE",
             },
-            select: { id: true, validFromChapter: true, objectEntityId: true, objectText: true },
+            select: {
+              id: true,
+              validFromChapter: true,
+              validUntilChapter: true,
+              objectEntityId: true,
+              objectText: true,
+            },
           });
 
           // Re-classify against canon as it stands NOW, not as it stood when
@@ -834,12 +901,21 @@ export function createCanonServices(deps: {
             // means a live fact exists, and a live fact without a start
             // chapter could only have been superseded by a dated proposal.
             // So `closeAt` is never null on this path.
+            // A fact may carry an AUTHORED end of window — a claim the author
+            // stated held only for a span, e.g. "black 1..9". Superseding must
+            // not re-date it: writing the replacement's start would fill the
+            // gap the author deliberately left (make a ch-20 correction turn
+            // chapters 10..19 from "nothing holds" into "black"), which is
+            // history mutated by an unrelated later claim. The authored bound
+            // wins whenever there is one; only an open end is closed here.
             const closeAt =
-              proposal.validFromChapter === null
-                ? priorLive.validFromChapter
-                : priorLive.validFromChapter === null
-                  ? proposal.validFromChapter
-                  : Math.max(proposal.validFromChapter, priorLive.validFromChapter);
+              priorLive.validUntilChapter !== null
+                ? priorLive.validUntilChapter
+                : proposal.validFromChapter === null
+                  ? priorLive.validFromChapter
+                  : priorLive.validFromChapter === null
+                    ? proposal.validFromChapter
+                    : Math.max(proposal.validFromChapter, priorLive.validFromChapter);
 
             await tx.canonFact.update({
               where: { id: priorLive.id },
@@ -995,13 +1071,20 @@ export function createCanonServices(deps: {
       const viewMode: ViewMode = parseViewMode(mode);
       const at = viewMode === "READER" ? (readerChapter ?? 0) : null;
 
+      // Typed explicitly: the ternary below makes TypeScript widen `status` to
+      // a plain string, which Prisma's generated where-input rejects.
       const baseWhere = {
         novelId,
         workspaceId,
         ...(entityId ? { entityId } : {}),
         ...(predicate ? { predicate } : {}),
-        ...(includeSuperseded ? {} : { status: "ACTIVE" as const }),
-      };
+        // Superseded rows are ADMITTED, not "everything except nothing":
+        // dropping the filter entirely also admitted RETRACTED rows, which are
+        // withdrawn from canon and must not appear in a reader's list at all.
+        ...(includeSuperseded
+          ? { status: { in: ["ACTIVE", "SUPERSEDED"] as CanonFactStatus[] } }
+          : { status: "ACTIVE" as CanonFactStatus }),
+      } satisfies Record<string, unknown>;
 
       if (at === null) {
         const facts = await db.canonFact.findMany({
@@ -1015,26 +1098,29 @@ export function createCanonServices(deps: {
       // READER: the boundary is applied in the QUERY, not after it
       // (CLAUDE.md §10, ADR-0007). Filtering after the read means the rows a
       // reader may not see were already read, and the only thing between them
-      // and the response is a forgotten `if`. `withheldCount` is kept so a
-      // post-filter leak shows up as a non-zero number rather than as a
-      // quietly shorter list — the same signal Phase 5's search reports.
+      // and the response is a forgotten `if`.
+      //
+      // Evidence spans are NOT selected here. A source's quote is raw text
+      // from a chapter or a reference, and neither version table carries a
+      // boundary — a chapter source is visible when its parent chapter is,
+      // a reference source not at all — so a row-level gate on
+      // `availableFromChapter` says nothing about the quote inside it. A
+      // reader-facing list therefore omits sources entirely: they are author
+      // provenance, and selecting them out means they are never in memory to
+      // leak. (The Brain's FACT answer redacts them the same way.)
+      //
+      // The withholding COUNT is not reported to a reader either — it is an
+      // existence oracle. Its drift signal is for authors, where no boundary
+      // applies.
       //
       // `not: null` is load-bearing: a null boundary means "not classified",
       // and an unclassified row must be withheld, not treated as chapter 0.
-      const [facts, withheldCount] = await Promise.all([
-        db.canonFact.findMany({
-          where: { ...baseWhere, availableFromChapter: { not: null, lte: at } },
-          orderBy: { createdAt: "asc" },
-          select: FACT_LIST_SELECT,
-        }),
-        db.canonFact.count({
-          where: {
-            ...baseWhere,
-            OR: [{ availableFromChapter: null }, { availableFromChapter: { gt: at } }],
-          },
-        }),
-      ]);
-      return { facts, withheldCount };
+      const facts = await db.canonFact.findMany({
+        where: { ...baseWhere, availableFromChapter: { not: null, lte: at } },
+        orderBy: { createdAt: "asc" },
+        select: { ...FACT_LIST_SELECT, sources: false },
+      });
+      return { facts, withheldCount: 0 };
     },
 
     async ask({ actorUserId, workspaceId, novelId, question, mode, readerChapter }) {

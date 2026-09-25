@@ -57,6 +57,27 @@ recorded as ADR-NNNN files:
   live fact's evidence silently. Deleting a cited chapter now fails loudly
   until the author unlinks it. The fact-owning FK stays CASCADE: losing the
   fact should take its citations with it.
+- **2026-09-26 — A RESTRICT with no unlink path is not a fix.** The round above
+  made the failure loud but left it unescapable: `deleteChapter` had no
+  try/catch, so the FK violation was an unmapped 500, and the unlink route the
+  migration comment promised did not exist. Refusing an operation is only
+  correct if the caller can act on the refusal. Both halves now ship together
+  — a mapped 409 naming the cause, and
+  `DELETE .../canon/facts/:factId/sources/:sourceId` to release it.
+- **2026-09-26 — Supersede respects an authored validity window.** `closeAt`
+  was computed only from the two start chapters, so superseding `black [1,9)`
+  with a ch-20 claim rewrote it to `[1,20)` — filling a gap the author left
+  and changing what held at chapters 10..19. A later claim may close an OPEN
+  end; it may not re-date a bound the author set.
+- **2026-09-26 — Evidence spans are not shown to readers at all.** Neither
+  `ChapterVersion` nor `ReferenceVersion` carries a spoiler boundary, so a
+  source's `quote` cannot be classified from the row that references it. The
+  reader-facing list omits `sources` entirely rather than gating text it
+  cannot classify; the writer's visible row boundary is not a proxy for the
+  quoted text's. `withheldCount` is likewise 0 for readers — it is an
+  existence oracle, and the author-only drift signal it exists for does not
+  need a reader to see it.
+
 - **2026-09-25 — The approval gate re-classifies against current canon.**
   `proposeCandidate` classifies against the live fact *at propose time*, but
   competing proposals for one subject are legitimate and a live fact can

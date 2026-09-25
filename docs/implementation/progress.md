@@ -1062,16 +1062,64 @@ evidence "should be scoped to the novel like its sibling chapter branch" —
 novel"), so a workspace-wide reference is legitimate and requiring a novel
 would break it.
 
-**Follow-on found while verifying fix 8.** Implementing retraction made a
-pre-existing latent defect reachable, which is worth recording because the
-fix created the exposure: the STATE chain query has no status filter, and a
-retracted row keeps a NULL `validUntilChapter` (withdrawal does not date when
-a claim stopped being true in-story), so its window stays open to infinity —
-the row would cover every chapter at or after its start and be returned as
-the current value forever, and would also appear in `notYetTrue` as a claim
-about to become true. The chain now excludes `RETRACTED` at both call sites
-while leaving the row in the record. Found by writing the failing test first
-and watching it fail for the right reason, not by reading the diff.
+**Audit round 4 — re-run against the fixed tree.** The workflow was re-run at
+`c3613cd` with the audit targeting the *current* code and two changes to the
+harness itself: verdicts are keyed by claim index (last round several findings
+were counted as "survived" with no verifier verdict at all, because verdicts
+matched on exact problem text), and a new lens seeds the list of landed fixes
+and asks whether each actually holds. 29 agents, 10 lenses, 6 refuted, 33
+verified survivors, **0 unverified** — the index keying closed that hole. A
+second independent verifier re-checked all 8 critical/high findings and
+overturned none.
+
+Consolidated, the 33 were 15 distinct defects, and the worst was **the
+previous round's own fix**:
+
+1. **The RESTRICT evidence FKs had no way out** — flagged by 6 lenses
+   independently. Changing `canon_fact_sources` FKs to `ON DELETE RESTRICT`
+   correctly stopped a draft-chapter delete from silently destroying a live
+   fact's citation, but `deleteChapter` ran a bare `db.chapter.delete` with no
+   try/catch, so the FK violation surfaced as an unmapped 500 — and the
+   remedy the migration comment promised ("the author unlinks the evidence
+   first") did not exist anywhere in the repo. A silent data loss had become
+   an unrecoverable dead end. Now: the failure is a mapped 409 naming the
+   cause, and `DELETE .../canon/facts/:factId/sources/:sourceId` is the escape
+   hatch that makes it recoverable.
+2. **`retractFact` was read-then-write** — the identical defect the proposal
+   decisions were hardened against one commit earlier, left unfixed on the
+   fact-status write. A concurrent approve could overwrite `RETRACTED` back to
+   `SUPERSEDED`, producing the state ADR-0008 §1 and a test both assert cannot
+   exist (retraction sets no `supersededById`). Now compare-and-set.
+3. **Supersede re-dated an authored window.** `priorLive` did not select
+   `validUntilChapter`, and `closeAt` was computed only from the two start
+   chapters, so a fact authored as `black [1,9)` became `[1,20)` when a ch-20
+   claim superseded it — filling a gap the author deliberately left, turning
+   chapters 10..19 from "nothing holds" into "black". The authored bound now
+   wins; only an open end is closed.
+4. **Three leaks in the READER list path.** Evidence spans (`quote`/`start`/
+   `end`) were returned verbatim with no boundary check — and neither
+   `ChapterVersion` nor `ReferenceVersion` carries one, so a row-level gate
+   could not classify them; they are now omitted for readers entirely.
+   `withheldCount` was an existence oracle (a reader seeing `2` learns two
+   claims exist that they may not read) and is now always 0 for readers.
+   And `includeSuperseded` dropped the status filter entirely rather than
+   admitting only `SUPERSEDED`, so RETRACTED rows appeared in reader lists.
+
+Also fixed from the same run: `notYetTrue` reported empty-window rows as
+claims about to become true; any `P2002` inside the approve transaction was
+reported as "already approved" regardless of which row collided; both list
+routes were unbounded; `readerChapter=abc` silently coerced to 0 instead of
+400ing.
+
+Refuted this round (recorded so they are not re-litigated): the entity-delete
+cascade (still unreachable), reference evidence "not scoped to the novel"
+(`Reference.novelId` is nullable by design), and the RESTRICT change being
+wrong in principle — it is right in principle and was incomplete in practice.
+
+**The pattern, twice now:** a fix that stops one bad outcome can create a
+worse one, and the fix's own tests will not notice because they test the
+outcome it was aimed at. Both rounds' worst defects were of this shape — an
+incomplete fix, caught only by an independent pass.
 
 **Pre-existing, NOT introduced here:** `apps/web` typecheck fails at
 `nuxt.config.ts:7` (`Plugin<any>[]` vs `PluginOption`). Two hoisted vite

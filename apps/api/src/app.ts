@@ -140,7 +140,11 @@ export async function buildApp(
     });
     registerManuscriptRoutes(app, {
       auth,
-      services: createManuscriptServices(options.db, createAuditService(options.db)),
+      services: createManuscriptServices(options.db, createAuditService(options.db), {
+        // A chapter delete blocked by a canon citation is a rejected write,
+        // not a server fault; the constraint name it cannot carry is logged.
+        error: (message, meta) => app.log.error(meta, message),
+      }),
     });
     // One audit + one AI services instance shared by the AI routes and the
     // workflow executor: a workflow step must reach a model through the

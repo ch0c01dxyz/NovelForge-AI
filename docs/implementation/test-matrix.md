@@ -374,7 +374,7 @@ live fact is asserted **byte-identical** afterwards (`toEqual` on the whole
 row, not just its status), no second fact is minted, and a proposal
 identical to live canon is refused with a 409 rather than stored.
 
-`canon.test.ts` (37, `novelforge_test_canon`) — the DB constraints are the
+`canon.test.ts` (40, `novelforge_test_canon`) — the DB constraints are the
 subject, not the service: a second live value for one (entity, predicate)
 is 409 with no read-then-write pre-check; a claim with both or neither
 object form is refused; two spellings that fold to one subject key produce
@@ -437,7 +437,17 @@ Round-2 regressions (each one fails against the pre-fix code):
   always does (the guard is compare-and-set, not read-then-write);
 - an undated replacement is refused (409) because it would make the old value
   unreachable at every as-of chapter, and a DATED replacement leaves the old
-  value reconstructable across its window.
+  value reconstructable across its window;
+- a superseded fact that carried an AUTHORED `validUntilChapter` keeps it —
+  the replacement's start does not reach back and fill the gap the author
+  left (`black [1,9)`, a ch-20 replacement, and ch 15 still answers nothing);
+- deleting a chapter cited as canon evidence is a mapped 409, and
+  `DELETE .../canon/facts/:factId/sources/:sourceId` releases it so the
+  delete then succeeds; the fact itself survives with one fewer citation, and
+  a foreign tenant or a mismatched fact id cannot unlink it (404);
+- READER mode's list omits evidence spans entirely, reports `withheldCount: 0`
+  (the count is an existence oracle), and a withheld predicate's response body
+  is `toEqual` that of a predicate that does not exist.
 
 
 `packages/story-intelligence/canon.test.ts` (+31) — the pure rules, pinned

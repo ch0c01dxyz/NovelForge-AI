@@ -181,6 +181,8 @@ export interface CanonServices {
     objectEntityId?: string | null;
     objectText?: string | null;
     statement?: string;
+    /** When the claim becomes true in-story; closed onto the superseded fact. */
+    validFromChapter?: number | null;
   }): Promise<{
     id: string;
     status: string;
@@ -546,6 +548,7 @@ export function createCanonServices(deps: {
           objectEntityId: object.objectEntityId ?? null,
           objectText: object.objectText ?? null,
           statement,
+          validFromChapter: input.validFromChapter ?? null,
           // CONFLICT is a flag, not a status (ADR-0008 §3): the proposal
           // stays PROPOSED and awaits a human either way.
           conflictKind:

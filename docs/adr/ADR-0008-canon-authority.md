@@ -84,6 +84,16 @@ object value would permit two contradictory live facts to coexist —
 exactly the conflict the constraint is meant to catch — because two rows
 with different objects never collide on a key that contains the object.
 
+Because the key excludes the object, the same index also refuses a claim
+*identical* to the live one: a duplicate collides on `(novel, entity,
+predicate)` just as a contradiction does. That is the desired behaviour
+(there is nothing to assert), but the two cases are told apart in the
+service, before insert, by `classifyProposal` → `DUPLICATE`, so the caller
+gets "this is already canon" rather than a bare `P2002`. A `DUPLICATE`
+proposal is refused rather than stored: an approval gate keyed on "no
+conflict recorded" would otherwise treat it as fresh and hit the index at
+approval time instead of at proposal time.
+
 Anchored on `status`, not on `superseded_by_id IS NULL`: a `RETRACTED`
 row does not set `superseded_by_id`, so a supersede-anchored index would
 trap the slot permanently and make re-asserting a retracted fact

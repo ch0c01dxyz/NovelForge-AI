@@ -68,6 +68,10 @@ const proposeBody = z.object({
   predicate: z.string().trim().min(1).max(200),
   ...objectFields,
   statement: z.string().trim().min(1).max(4000).optional(),
+  // When the proposed claim becomes true in-story. Carried onto the fact at
+  // approval AND used to close the superseded fact's validity window — the
+  // one input that makes as-of reconstruction possible.
+  validFromChapter: z.number().int().min(0).max(100_000).nullable().optional(),
 });
 
 const approveBody = z.object({

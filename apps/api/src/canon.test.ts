@@ -372,17 +372,15 @@ describe("candidate canon is not silently committed (TESTING.md mandatory scenar
     const liveId = (live.body as { id: string }).id;
 
     // The replacement becomes true at chapter 10, which is what closes the
-    // old fact's window.
+    // old fact's window. Supplied through the API — a direct DB write here
+    // would let the route forget to accept the field and still pass.
     const proposed = await propose(owner.cookie, workspaceId, novelId, {
       entityId,
       predicate: "hair-colour",
       objectText: "white",
+      validFromChapter: 10,
     });
     const proposalId = proposed.body.id as string;
-    await db.canonProposal.update({
-      where: { id: proposalId },
-      data: { validFromChapter: 10 },
-    });
 
     const approved = await approve(owner.cookie, workspaceId, proposalId);
     expect(approved.statusCode, JSON.stringify(approved.body)).toBe(200);
@@ -576,6 +574,53 @@ describe("the Story Brain answers with evidence", () => {
     expect(claim.objectText ?? (claim.object as Record<string, unknown>).objectText).toBe("black");
     const evidence = answered.body.evidence as Array<Record<string, unknown>>;
     expect(evidence.some((e) => e.kind === "CANON_FACT" && e.factId === (fact.body as { id: string }).id)).toBe(true);
+  });
+
+  it("reconstructs the OLD value as-of a chapter before the correction", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 1,
+    });
+    // Corrected at chapter 10.
+    const proposed = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "white",
+      validFromChapter: 10,
+    });
+    expect((await approve(owner.cookie, workspaceId, proposed.body.id as string)).statusCode).toBe(200);
+
+    // Before the correction the old value held; after it, the new one. This
+    // is the whole point of closing the superseded fact's window — without
+    // it the old row would cover nothing and history would be lost even
+    // though the row survives.
+    const atFive = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 5 },
+      { mode: "AUTHOR" },
+    );
+    expect(atFive.body.insufficient).toBe(false);
+    const early = atFive.body.claim as Record<string, unknown>;
+    expect((early.object as Record<string, unknown>).objectText).toBe("black");
+    expect(atFive.body.basis).toBe("INFERENCE"); // reconstructed, never established
+
+    const atFifteen = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 15 },
+      { mode: "AUTHOR" },
+    );
+    const late = atFifteen.body.claim as Record<string, unknown>;
+    expect((late.object as Record<string, unknown>).objectText).toBe("white");
   });
 
   it("reports no-evidence as insufficient, not as false", async () => {

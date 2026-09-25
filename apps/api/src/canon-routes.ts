@@ -62,9 +62,13 @@ const createFactBody = z.object({
     .optional(),
 })
   // `valid_until < valid_from` violates CanonFact_valid_window_ordered, and
-  // Prisma 7 surfaces a CHECK violation as P2039 — which the service's
-  // conflict mapping does not catch, so an unguarded window reached the
-  // client as a bare 500. Refuse it here as the 400 it is.
+  // Prisma 7 surfaces a CHECK violation as P2039. The service's own conflict
+  // mapping now catches P2039 and would serve a 409, so this is not the only
+  // guard on the path — but a window that runs backwards is malformed input,
+  // not a conflict with current canon, and 400 names that better. Both
+  // layers are deliberate: the refine states the rule at the boundary the
+  // request enters, the service mapping is the backstop for the paths that
+  // reach the table without it.
   .refine(
     (b) =>
       b.validFromChapter == null ||

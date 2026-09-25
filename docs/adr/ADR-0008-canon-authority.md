@@ -232,8 +232,9 @@ in READER mode only; AUTHOR and EDITOR short-circuit true. CLAUDE.md §10
 warns specifically against treating stored data as safe to show, and adds
 that assuming away a boundary is how leaks appear; adding the column
 later to a populated table is the trap this avoids. A test asserts the
-**withheld count**, not merely a short list — a post-filter leak passes
-the latter.
+**withheld count is exactly 0 for a reader**, not merely a short list — see
+the round-2 correction below, which reclassified the count as an existence
+oracle rather than a metric to report.
 
 **Every read path, not just the first one** (added in the round-2 audit).
 The boundary is a property of the data, so it has to hold on *each* way

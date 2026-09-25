@@ -1202,8 +1202,10 @@ model CanonFactSource {
   createdAt          DateTime          @default(now()) @map("created_at")
 
   @@index([canonFactId])
-  // Every nullable FK gets its own index: both relations Cascade, but the
-  // referencing side is still scanned when the parent row is deleted.
+  // Every nullable FK gets its own index: the referencing side is still
+  // scanned when the parent row is deleted, whatever the delete rule. Both
+  // source FKs are RESTRICT, not Cascade — a draft chapter deletion must not
+  // silently strip a live fact's citation (round 4, ADR-0008).
   @@index([chapterVersionId])
   @@index([referenceVersionId])
   @@map("canon_fact_sources")

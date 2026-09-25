@@ -1646,6 +1646,169 @@ describe("the Story Brain answers with evidence", () => {
     expect(await objectAt(25)).toBe("white");
   });
 
+  it("does not report an emptied window as a claim about to become true", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    // A backdated correction against a claim with no authored end empties the
+    // old window: black is authored `true from 10`, corrected to be true from
+    // 5, so closeAt is max(5, 10) = 10 and the old row becomes [10,10) — a
+    // span that never held. It was still reported as a claim "about to become
+    // true" at any chapter before 10, asserting a future that cannot happen.
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      validFromChapter: 10,
+    });
+    const proposed = await propose(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "white",
+      validFromChapter: 5,
+    });
+    expect(
+      (await approve(owner.cookie, workspaceId, proposed.body.id as string)).statusCode,
+    ).toBe(200);
+
+    const ids = await db.canonFact.findMany({
+      where: { novelId },
+      select: { id: true, objectText: true },
+    });
+    expect(ids).toHaveLength(2);
+    const blackId = ids.find((r) => r.objectText === "black")!.id;
+    const whiteId = ids.find((r) => r.objectText === "white")!.id;
+
+    const r = await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId, predicate: "hair-colour", atChapter: 3 },
+      { mode: "AUTHOR" },
+    );
+    const notYet = ((r.body as { notYetTrue?: { factId: string }[] }).notYetTrue ?? [])
+      .map((n) => n.factId);
+    // white does become true (at 5); black's window never opens at all.
+    expect(notYet).toContain(whiteId);
+    expect(notYet).not.toContain(blackId);
+  });
+
+  it("returns the same entity for a concurrent duplicate create, not a 500", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+
+    // Two creates for the same derived key, both racing past the findUnique
+    // guard. The loser violates story_entities_novel_id_key_key; before the
+    // catch it reached the client as a bare INTERNAL 500 contradicting the
+    // function's documented idempotence. Raw injects, not the helper: the
+    // helper asserts 201 itself, which is the assertion under test.
+    //
+    // One shot of two is not enough to force the interleave — the first
+    // request usually completes its insert before the second's guard read
+    // resolves, and the second then takes the existing-row path. Twelve
+    // simultaneous requests against a real pool overlap reliably; the
+    // assertion is on the OUTCOME (all succeed, one row), so extra
+    // concurrency costs nothing but makes the loser path actually run.
+    const post = () =>
+      app.inject({
+        method: "POST",
+        url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/entities`,
+        headers: { cookie: owner.cookie },
+        payload: { kind: "CHARACTER", name: "River" },
+      });
+    const res = await Promise.all(Array.from({ length: 12 }, post));
+    const codes = res.map((r) => r.statusCode);
+    expect(codes).toEqual(Array.from({ length: 12 }, () => 201));
+    const ids = new Set(res.map((r) => (r.json() as { id: string }).id));
+    expect(ids.size).toBe(1);
+    expect(await db.storyEntity.count({ where: { novelId, key: "river" } })).toBe(1);
+  });
+
+  it("never leaves a retracted fact linked to the successor that replaced it", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+
+    // One fact per round, each raced by its own approve+retract pair. The
+    // supersede used to be an unpredicated update on the id, so a retract
+    // that committed RETRACTED first was silently overwritten back to
+    // SUPERSEDED — leaving the row linked to the successor that replaced it,
+    // the state ADR-0008 §1 says cannot exist. Distinct entities keep the
+    // rounds independent (one live fact per subject+predicate) and running
+    // them concurrently is what makes the interleave happen at all; a single
+    // sequential pair is fast enough that whichever request wins has already
+    // committed before the other's guard read resolves.
+    const N = 10;
+    const prepared: { factId: string; proposalId: string }[] = [];
+    for (let i = 0; i < N; i++) {
+      const entity = await createEntity(owner.cookie, workspaceId, novelId, `Subject ${i}`);
+      const fact = await createFact(owner.cookie, workspaceId, novelId, {
+        entityId: entity,
+        predicate: "hair-colour",
+        objectText: "black",
+        validFromChapter: 1,
+      });
+      const proposed = await propose(owner.cookie, workspaceId, novelId, {
+        entityId: entity,
+        predicate: "hair-colour",
+        objectText: "white",
+        validFromChapter: 2,
+      });
+      expect(fact.statusCode, JSON.stringify(fact.body)).toBe(201);
+      prepared.push({
+        factId: (fact.body as { id: string }).id,
+        proposalId: proposed.body.id as string,
+      });
+    }
+
+    const decided = await Promise.all(
+      prepared.flatMap(({ factId, proposalId }) =>
+        [
+          approve(owner.cookie, workspaceId, proposalId).then((r) => ({
+            kind: "approve" as const,
+            factId,
+            code: r.statusCode,
+          })),
+          retract(owner.cookie, workspaceId, novelId, factId).then((r) => ({
+            kind: "retract" as const,
+            factId,
+            code: r.statusCode,
+          })),
+        ],
+      ),
+    );
+
+    const rows = await db.canonFact.findMany({
+      where: { novelId, id: { in: prepared.map((p) => p.factId) } },
+      select: { id: true, status: true, supersededById: true },
+    });
+    expect(rows).toHaveLength(N);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    for (const { factId } of prepared) {
+      const pair = decided.filter((d) => d.factId === factId);
+      const retractWon = pair.some(
+        (d) => d.kind === "retract" && d.code >= 200 && d.code < 300,
+      );
+      const row = byId.get(factId);
+      expect(row).toBeDefined();
+      // A withdrawal the API reported as done must actually be the state the
+      // row is left in. The unpredicated supersede update rewrote a row the
+      // retract had already committed, so the client was told the fact was
+      // gone while the stored row read SUPERSEDED and carried a successor —
+      // the state ADR-0008 §1 says cannot exist, and every as-of query after
+      // that chapter kept answering with the "withdrawn" value.
+      //
+      // Only the retract direction is asserted: both requests can legally
+      // succeed in sequence (retract commits, approve then finds no live
+      // fact and mints a fresh one rather than superseding anything), so
+      // "exactly one winner" is not an invariant here.
+      if (retractWon) {
+        expect(row?.status).toBe("RETRACTED");
+        expect(row?.supersededById).toBeNull();
+      }
+    }
+  });
+
   it("accepts a dated replacement, keeping the old value reconstructable", async () => {    const owner = await seedUser("owner@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
     const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");

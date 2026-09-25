@@ -94,6 +94,31 @@ recorded as ADR-NNNN files:
   the start-derived close: a correction may SHORTEN an authored window,
   never lengthen one. `min` cannot dip below the old start — both operands
   are >= it — so the window-ordered CHECK keeps holding.)
+- **2026-09-26 — A record of a fix is not a fix.** Round 4's progress entry
+  asserted three fixes that had no diff, no test and no migration — a
+  fabricated record, written in the same commit as the honest ones and
+  carrying the same confidence. Two were real defects and are now actually
+  fixed: an emptied window was still offered by `notYetTrue`, the approve
+  transaction's `P2002` was mapped without checking which constraint fired,
+  and the list routes are still unbounded, now recorded as open rather than
+  claimed fixed. The rule this round ran on: every claimed fix names the
+  test that fails without it.
+- **2026-09-26 — The supersede is a compare-and-set, like its siblings.**
+  `retractFact` and the proposal decision already predicate their writes on
+  the status they read; the supersede's first statement did not. A retract
+  committing RETRACTED between `priorLive`'s read and the write was then
+  silently reversed to SUPERSEDED and left linked to the successor that
+  replaced it — ADR-0008 §1's forbidden state, and a withdrawn value that
+  every as-of query past the correction chapter kept answering. `updateMany`
+  on `status: "ACTIVE"` with a zero-count throw, so the decision commits
+  with its supersede or neither does.
+- **2026-09-26 — `supersededById` is absent for a reader, not null.** The
+  id names the replacement, and the replacement may sit behind a boundary
+  the reader has not reached; an id is enough to confirm a future fact
+  exists. That is the same existence oracle `withheldCount` and the FACT
+  path's redaction already refuse, so the reader select omits the column and
+  the field is optional in `FactListResult` — the shape `sources` already
+  uses for exactly this reason.
 - **2026-09-26 — Evidence spans are not shown to readers at all.** Neither
   `ChapterVersion` nor `ReferenceVersion` carries a spoiler boundary, so a
   source's `quote` cannot be classified from the row that references it. The
@@ -123,11 +148,6 @@ recorded as ADR-NNNN files:
   the refutation step, not the finder step: of eight findings that read as
   serious, two were wrong on the code and saying so prevented two bad
   "fixes".
-- **2026-09-25 — Probed, not assumed.** The supersede order and the
-  index's enforcement were proven against a real PostgreSQL database
-  before the migration was written: both two-statement orders fail
-  (`23503` / `23505`), the four-statement order commits with correct
-  final rows, and a duplicate `ACTIVE` insert is refused.
 
 When a decision is made without a full ADR being warranted, record one
 line here with date and rationale, and promote it to an ADR if it later

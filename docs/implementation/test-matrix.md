@@ -410,8 +410,9 @@ Round-2 regressions (each one fails against the pre-fix code):
 - a withheld covering fact and an absent one produce **byte-identical** STATE
   bodies (`toEqual`), closing the existence oracle;
 - the list route withholds above the reader's position and reports
-  `withheldCount`, and an omitted `mode` is a 400 (READER with no position)
-  rather than the permissive default;
+  `withheldCount: 0` to a reader (the count is an existence oracle — see the
+  round-2 correction), and an omitted `mode` is a 400 (READER with no
+  position) rather than the permissive default;
 - retracting a live fact leaves the row with status `RETRACTED` and a NULL
   `supersededById`, and a different value for the same subject+predicate can
   then be asserted — the ADR-0008 §1 claim, previously untestable; a second
@@ -448,6 +449,29 @@ Round-2 regressions (each one fails against the pre-fix code):
 - READER mode's list omits evidence spans entirely, reports `withheldCount: 0`
   (the count is an existence oracle), and a withheld predicate's response body
   is `toEqual` that of a predicate that does not exist.
+
+Round 5 added three tests, each confirmed to FAIL with its fix reverted (a
+test that passes either way pins the belief, not the behaviour):
+
+- an **emptied window** (`validFrom` >= `validUntil` after a backdated
+  correction) is not reported in `notYetTrue` — it becomes true at no
+  chapter, so offering it as "about to become true" is the same false oracle
+  the `insufficient` path was fixed for;
+- **12 concurrent duplicate entity creates** all answer 201 and yield one
+  row — the loser previously took a bare 500 on
+  `story_entities_novel_id_key_key`, contradicting `createEntity`'s own
+  idempotence contract. Two concurrent requests do NOT reproduce this (the
+  first commits before the second's guard read resolves), which is why the
+  count is 12;
+- a **retract raced against its approve** leaves the row RETRACTED whenever
+  the API reported the retraction done. The supersede was an unpredicated
+  `update` on the id, so a retract that committed first was silently
+  rewritten to SUPERSEDED and left carrying a successor — the ADR-0008 §1
+  forbidden state, with every as-of query after the correction chapter still
+  answering the "withdrawn" value. Note both requests may legally succeed in
+  sequence (retract commits, approve then finds no live fact and mints a
+  fresh one rather than superseding), so the test asserts the terminal state
+  of a successful retract, NOT "exactly one winner".
 
 **The DB constraints themselves** (`canon.test.ts`, "the DB constraints are
 the subject…"). Everything above travels through the HTTP API, and the

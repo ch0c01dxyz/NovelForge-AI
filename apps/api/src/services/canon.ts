@@ -116,7 +116,14 @@ export interface FactListResult {
     validFromChapter: number | null;
     validUntilChapter: number | null;
     availableFromChapter: number | null;
-    supersededById: string | null;
+    /**
+     * ABSENT in READER mode, for the same reason `sources` is: the id names
+     * the replacement, and the replacement may sit behind a boundary the
+     * reader has not reached — an id alone confirms a future fact exists,
+     * which is the existence oracle this branch refuses everywhere else.
+     * `status` already tells the reader the claim was superseded.
+     */
+    supersededById?: string | null;
     /**
      * Evidence spans. PRESENT for AUTHOR/EDITOR, ABSENT for READER — a
      * source's quote is raw chapter or reference text and neither version
@@ -509,16 +516,46 @@ export function createCanonServices(deps: {
         return { id: existing.id, key: existing.key };
       }
 
-      const created = await db.storyEntity.create({
-        data: {
-          novelId,
-          kind,
-          key: resolvedKey,
-          name: trimmed,
-          createdById: actorUserId,
-        },
-        select: { id: true, key: true },
-      });
+      // The findUnique above read in a different statement, so two concurrent
+      // creates for the same derived key both pass it and the loser violates
+      // story_entities_novel_id_key_key. That is the same create-race the
+      // platform service maps on its own slug/key creates (platform.ts
+      // isUniqueViolation → ConflictError); without it the loser got a bare
+      // INTERNAL 500, contradicting this function's own idempotence contract.
+      // Re-read rather than assume: the winner may hold a different kind,
+      // which is the 409 branch above.
+      let created: { id: string; key: string };
+      try {
+        created = await db.storyEntity.create({
+          data: {
+            novelId,
+            kind,
+            key: resolvedKey,
+            name: trimmed,
+            createdById: actorUserId,
+          },
+          select: { id: true, key: true },
+        });
+      } catch (e) {
+        if ((e as { code?: string })?.code !== "P2002") throw e;
+        const won = await db.storyEntity.findUnique({
+          where: { novelId_key: { novelId, key: resolvedKey } },
+          select: { id: true, key: true, kind: true },
+        });
+        // No audit line here: this caller created nothing, and recording one
+        // would attribute the winner's entity to them.
+        if (won && won.kind === kind) return { id: won.id, key: won.key };
+        if (won) {
+          throw new ConflictError(
+            `"${resolvedKey}" already exists as a ${won.kind.toLowerCase()}`,
+          );
+        }
+        // The winner rolled back after our collision — a retry, not a claim
+        // about what is stored.
+        throw new ConflictError(
+          "this entity was created concurrently; retry the request",
+        );
+      }
       await audit.record({
         actorUserId,
         workspaceId,
@@ -926,10 +963,23 @@ export function createCanonServices(deps: {
                   ? priorLive.validUntilChapter
                   : startClose;
 
-            await tx.canonFact.update({
-              where: { id: priorLive.id },
+            // Compare-and-set on ACTIVE, for the same reason the decision
+            // below and retractFact are: `priorLive` was read in a different
+            // statement. A concurrent retract that committed RETRACTED
+            // between that read and this write would be silently reversed
+            // here — a withdrawn fact linked to a successor that replaced it,
+            // the state ADR-0008 §1 says cannot exist. The loser throws and
+            // the whole transaction rolls back, so the decision commits with
+            // its supersede or neither does.
+            const superseded = await tx.canonFact.updateMany({
+              where: { id: priorLive.id, status: "ACTIVE" },
               data: { status: "SUPERSEDED", validUntilChapter: closeAt },
             });
+            if (superseded.count === 0) {
+              throw new ConflictError(
+                "the fact this claim supersedes was withdrawn or already superseded",
+              );
+            }
             supersededFactId = priorLive.id;
           }
 
@@ -986,7 +1036,21 @@ export function createCanonServices(deps: {
         .catch((e: unknown) => {
           const code = (e as { code?: string })?.code;
           if (code === "P2002") {
-            throw new ConflictError("this proposal was already approved");
+            // The only @unique column this transaction writes is
+            // `canonProposals.canonFactId`, and the CAS above already settled
+            // the decision race, so this really is a second approval of the
+            // same proposal. Scoped to the fact on the catch's first
+            // parameter and checked by name: Prisma reports the colliding
+            // constraint in the message tail, and if a future unique index
+            // lands in this transaction the generic text would be a lie.
+            const meta = (e as { meta?: { target?: unknown } })?.meta?.target;
+            const target = Array.isArray(meta) ? meta.join(",") : String(meta ?? "");
+            if (target.includes("canon_fact_id")) {
+              throw new ConflictError("this proposal was already approved");
+            }
+            throw new ConflictError(
+              "this claim cannot be committed against the current canon — a unique constraint rejected it",
+            );
           }
           // A CHECK or FK violation here is a rejected write, not a server
           // fault: the claim and the state it would produce are inconsistent
@@ -1127,7 +1191,12 @@ export function createCanonServices(deps: {
       const facts = await db.canonFact.findMany({
         where: { ...baseWhere, availableFromChapter: { not: null, lte: at } },
         orderBy: { createdAt: "asc" },
-        select: { ...FACT_LIST_SELECT, sources: false },
+        // `supersededById` is omitted for the same reason `withheldCount` is
+        // zeroed: it names the replacement, and the replacement may sit behind
+        // a boundary this reader has not reached — an id is enough to confirm
+        // a future fact exists, which is the oracle the rest of this branch
+        // refuses. `status` already tells the reader the claim was superseded.
+        select: { ...FACT_LIST_SELECT, supersededById: false, sources: false },
       });
       return { facts, withheldCount: 0 };
     },
@@ -1187,7 +1256,13 @@ export function createCanonServices(deps: {
           basis: basis.insufficient ? null : basis.basis,
           insufficient: basis.insufficient,
           retrievers: found.retrievers,
-          withheldCount: found.withheldCount,
+          // Zeroed for a reader on the same rule listFacts applies to its own
+          // return: the withholding COUNT is an existence oracle, so a reader
+          // learning `2` learns two claims exist that they may not read. The
+          // retrieval path's own SQL boundary should already make this 0 —
+          // which is exactly why the leak would go unnoticed, since it fires
+          // only when the boundary drifts.
+          withheldCount: viewMode === "READER" ? 0 : found.withheldCount,
         };
       }
 
@@ -1335,7 +1410,14 @@ export function createCanonServices(deps: {
           (r) =>
             r.status !== "RETRACTED" &&
             r.validFromChapter !== null &&
-            r.validFromChapter > atChapter,
+            r.validFromChapter > atChapter &&
+            // A supersede that lands inside the old claim's own authored
+            // window leaves it with `from >= until`: a window that never
+            // held. Such a row becomes true at no chapter, so reporting it
+            // as "about to become true" is false — the same class of
+            // assertion the `insufficient` oracle above was fixed for.
+            (r.validUntilChapter === null ||
+              r.validUntilChapter > r.validFromChapter),
         )
         .filter((r) =>
           canView(canonBoundary(r.availableFromChapter), {

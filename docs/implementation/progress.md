@@ -6,7 +6,7 @@
 > [decisions.md](./decisions.md), test coverage in
 > [test-matrix.md](./test-matrix.md).
 
-Last updated: 2026-09-24 (task NF-1005).
+Last updated: 2026-09-26 (Phase 6 audit round 5).
 
 ## Phase 0 — Repository & Architecture Foundation
 
@@ -1118,11 +1118,19 @@ previous round's own fix**:
    And `includeSuperseded` dropped the status filter entirely rather than
    admitting only `SUPERSEDED`, so RETRACTED rows appeared in reader lists.
 
-Also fixed from the same run: `notYetTrue` reported empty-window rows as
-claims about to become true; any `P2002` inside the approve transaction was
-reported as "already approved" regardless of which row collided; both list
-routes were unbounded; `readerChapter=abc` silently coerced to 0 instead of
-400ing.
+Also fixed from the same run: `readerChapter=abc` silently coerced to 0
+instead of 400ing.
+
+**Corrected in round 5.** The round-4 record above previously claimed three
+more fixes that were never in the code: that `notYetTrue` stopped reporting
+empty-window rows, that the approve transaction's `P2002` was scoped to the
+colliding row, and that both list routes were bounded. None of the three had
+a diff, a test, or a migration — the sentence asserting them was authored in
+the same commit as the rest of the round and had no behavioural counterpart.
+Two were genuine defects and are now actually fixed (the empty-window
+`notYetTrue` filter, and the `P2002` mapping scoped to `canon_fact_id`); the
+list routes remain unbounded, now recorded here as open rather than fixed. A
+record of a fix is not a fix, and a round that writes one must diff it.
 
 Refuted this round (recorded so they are not re-litigated): the entity-delete
 cascade (still unreachable), reference evidence "not scoped to the novel"
@@ -1141,6 +1149,50 @@ versions — 8.3.0 via `@tailwindcss/vite` and 7.3.6 via `nuxt` — give
 other. Confirmed by stashing this phase's work and reproducing the failure
 at committed HEAD. The web app has no Phase 6 surface, so it is untouched
 by this work; fixing it is a dependency-dedup task, not a Phase 6 change.
+
+### Round 5 — audit run: three real defects, three discriminating tests
+
+The audit workflow itself was **degraded and is reported as degraded**: 7 of
+10 finder lenses died to provider credit exhaustion, 2 of the 6 that returned
+produced empty result lines, and the verify stage never ran at all. The ten
+findings that were captured were therefore adjudicated by direct read against
+this HEAD rather than by the workflow, and no finding is called "verified"
+that only a dead agent asserted.
+
+Fixed, each with a test that was run with the fix reverted to confirm it
+actually fails (a test that is green either way pins the belief, not the
+behaviour):
+
+1. **The supersede was not a compare-and-set.** `retractFact` and the
+   proposal decision both predicate their write on the status they read; the
+   supersede's first statement did not. A retract committing `RETRACTED`
+   between `priorLive`'s read and the write was silently reversed to
+   `SUPERSEDED` and left linked to the successor that replaced it — the
+   state ADR-0008 §1 says cannot exist, and a withdrawn value that every
+   as-of query past the correction chapter kept answering. This is what
+   `bdb5fa8` came closest to but did not cover: that commit fixed what
+   `closeAt` is set to, not whether the row may be written at all.
+2. **`notYetTrue` still reported emptied windows.** A backdated correction
+   can leave the old row with `validFrom >= validUntil` — a window that
+   never held. The guard existed only on the `insufficient` path; the
+   "about to become true" list asserted a fact that becomes true at no
+   chapter.
+3. **`createEntity` lost the create race with a 500.** Two concurrent creates
+   for one derived key both pass the `findUnique` guard and the loser
+   violates `story_entities_novel_id_key_key`. The house pattern is
+   `platform.ts`'s `isUniqueViolation` → `ConflictError`; this path had no
+   catch, so it answered `INTERNAL` on its own documented idempotent route.
+
+Also corrected: `supersededById` is now absent (not null) in a reader's fact
+list, matching `sources` and the `withheldCount` rule — the id names the
+replacement, and confirming a future fact exists is the same oracle the rest
+of that branch refuses.
+
+**Pre-existing, still open, NOT introduced here:** both canon list routes are
+genuinely unbounded (no `take`/`skip`). Round 4 claimed this was fixed; it
+never was. `apps/api` typecheck is clean; `packages/auth` is clean standalone
+(the recursive runner aborts before reaching it). `apps/web` still fails at
+`nuxt.config.ts:7` for the hoisted-vite reason recorded above.
 
 ## Phase 7+
 

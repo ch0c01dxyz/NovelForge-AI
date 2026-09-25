@@ -840,7 +840,7 @@ Confirmed and fixed:
    `canReadDrafts`'s docstring promised draft access the mode-independent
    ACTIVE filter never grants (now documented as inert); `detail` is
    documented as always-NULL rather than left implying a producer; the
-   documented test counts were corrected (55 unit / 21 integration).
+   documented test counts were corrected (55 unit / 23 integration).
 
 A completeness pass afterwards found three things the per-lens finders
 could not see, because each read only one side of a comparison:

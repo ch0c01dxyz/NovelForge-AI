@@ -316,7 +316,7 @@ and an empty batch making no attempt at all.
 step with no instruction is refused (`RETRIEVAL_NO_QUERY`); `extractJson`
 skips a prose bracket that is not JSON (`"The [main] character: {…}"`) and
 still fails closed when no value parses.
-`retrieval.test.ts` (21, `novelforge_test_phase5`) — an ingested
+`retrieval.test.ts` (23, `novelforge_test_phase5`) — an ingested
 reference is citable to its exact character span (`content.slice(start,
 end) === text`, asserted on a real hit); re-ingesting unchanged content
 skips and makes **no** second provider call; publishing a reference with
@@ -340,11 +340,16 @@ reference out of scope until it is re-ingested and re-published; a repair
 re-ingest does not clear the spoiler boundary; an embedding from a
 different model is not ranked, and re-ingest repairs it; a duplicate key
 is 409 rather than 500; five concurrent version appends all succeed with
-a gap-free number run; and a retrieval audit row names the generation
-that produced its query vector.
+a gap-free number run; a retrieval audit row names the generation
+that produced its query vector; a new version takes an ACTIVE reference
+out of scope until it is re-published; a repair re-ingest does not clear
+the boundary; a disabled embedding model is treated as no route so the
+repair is attempted rather than skipped; and a non-finite provider vector
+is a 409, not a degraded 200.
 `validation.test.ts` (+2, 59 total) — an `outputSchema` is rejected on
-RETRIEVAL/TRANSFORM/HUMAN_APPROVAL (accepted on AGENT/SKILL); a RETRIEVAL
-instruction is capped at the 2000-char query limit while a prompt is not.
+RETRIEVAL/TRANSFORM/CONDITION/HUMAN_APPROVAL (accepted on AGENT/SKILL); a
+RETRIEVAL instruction is capped at the 2000-char query limit while a
+prompt is not.
 `chunk.test.ts` (+1, 28 total) — a hard split never emits a blank chunk,
 and dropping the blanks loses no content.
 `definitions.test.ts` (+3, 36 total) — an unpublished WORKSPACE workflow

@@ -127,7 +127,7 @@ export function fuse(options: FuseOptions): ValidationResult<FusedResult[]> {
   // key) got an exception from a function whose whole contract is that
   // failures are data.
   const lists = options.lists;
-  if (lists === null || typeof lists !== "object") {
+  if (lists === null || typeof lists !== "object" || Array.isArray(lists)) {
     return {
       ok: false,
       failures: [
@@ -139,6 +139,18 @@ export function fuse(options: FuseOptions): ValidationResult<FusedResult[]> {
   for (const retriever of RETRIEVERS) {
     const hits = lists[retriever];
     if (!hits) continue;
+    // A non-array value (a string, a number, a bare hit-like object) would
+    // throw on forEach below — an exception from a function whose contract
+    // is that failures are data. Structured failure, like every other
+    // malformed option.
+    if (!Array.isArray(hits)) {
+      failures.push({
+        path: at("$.lists", retriever),
+        code: "FUSE_BAD_LISTS",
+        message: `the ${retriever} list must be an array of hits`,
+      });
+      continue;
+    }
 
     hits.forEach((hit, i) => {
       if (typeof hit.id !== "string" || hit.id.length === 0) {

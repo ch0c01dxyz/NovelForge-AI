@@ -159,4 +159,25 @@ describe("fuse", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("FUSE_BAD_LISTS");
   });
+
+  it("fails closed when lists is an array rather than an object", () => {
+    // typeof [] === "object", so the plain object guard passed an array
+    // through — and the per-retriever lookup then always misses, silently
+    // fusing to an empty result instead of rejecting.
+    const r = fuse({ lists: [hits("a")] as never });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.failures.map((f) => f.code)).toContain("FUSE_BAD_LISTS");
+  });
+
+  it("fails closed when one retriever's list is not an array", () => {
+    // A string or bare object passed the object-level guard and threw a
+    // TypeError on hits.forEach — an exception from a function whose
+    // contract is that failures are data.
+    const r = fuse({ lists: { LEXICAL: "not-a-list", VECTOR: hits("v") } as never });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.failures.map((f) => f.code)).toContain("FUSE_BAD_LISTS");
+      expect(r.failures.some((f) => f.path.includes("LEXICAL"))).toBe(true);
+    }
+  });
 });

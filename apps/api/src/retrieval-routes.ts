@@ -11,15 +11,17 @@
  * - authorization (the service gates each operation by capability);
  * - spoiler filtering (the service applies it in SQL and re-checks it).
  *
- * The mode/readerChapter pair IS validated here, because a malformed value
- * must be a 400 rather than silently downgraded — `parseViewMode` in the
- * library is deny-by-default, which is right as a backstop but wrong as a
- * user-facing contract.
+ * The mode/readerChapter pair IS validated here (by the shared
+ * `checkModePair` from canon-routes), because a malformed value must be a
+ * 400 rather than silently downgraded — `parseViewMode` in the library is
+ * deny-by-default, which is right as a backstop but wrong as a user-facing
+ * contract.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
 import { SESSION_COOKIE } from "./auth-routes.ts";
+import { checkModePair } from "./canon-routes.ts";
 import type { RetrievalServices } from "./services/retrieval.ts";
 
 const uuid = z.string().uuid();
@@ -44,14 +46,12 @@ const keyField = z
 // A reference is a document, so its body can be large — the manuscript
 // import limit, for the same reason.
 //
-// 2x the 8M-character schema cap, matching the headroom rule stated in
-// manuscript-routes.ts. The two limits are measured in DIFFERENT UNITS:
-// Fastify counts UTF-8 BYTES of the received body, Zod counts JavaScript
-// string characters. At 1:1 the advertised cap was unreachable for anything
-// non-ASCII — a CJK document costs 3 bytes per character, so it 413'd at
-// ~2.67M characters while the schema promised 8M. Headroom restores the cap
-// that the message and the schema both claim.
-const REFERENCE_BODY_LIMIT = 16_000_000;
+// The limit is measured in UTF-8 BYTES of the received body; the Zod schema
+// caps CHARACTERS at 8M. For CJK those differ by 3x, and JSON escaping of
+// control characters can add more, so 24MB (3 bytes/char over the full cap)
+// is the smallest limit under which the advertised 8M-character document is
+// actually reachable.
+const REFERENCE_BODY_LIMIT = 24_000_000;
 
 const createReferenceBody = z.object({
   novelId: uuid.optional(),
@@ -207,15 +207,11 @@ export function registerRetrievalRoutes(
     if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
 
     const mode = body.data.mode ?? "READER";
-    if (mode === "READER" && body.data.readerChapter === undefined) {
-      // Defaulting to 0 here would be wrong in a way nobody notices: an
-      // author testing reader mode would see only chapter-0 material and
-      // conclude the index is empty.
-      return reply.code(400).send({ error: "READER_CHAPTER_REQUIRED" });
-    }
-    if (mode !== "READER" && body.data.readerChapter !== undefined) {
-      return reply.code(400).send({ error: "READER_CHAPTER_NOT_ALLOWED" });
-    }
+    // The same mode/readerChapter rule canon-routes applies to fact listing
+    // and Brain asking; one validation, one contract. Defaulting to READER
+    // is deliberate: an omitted mode must not be the permissive one.
+    const pairError = checkModePair(mode, body.data.readerChapter);
+    if (pairError) return reply.code(400).send({ error: pairError });
 
     return services.search({
       actorUserId,

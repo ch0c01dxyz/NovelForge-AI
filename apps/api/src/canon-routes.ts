@@ -143,10 +143,10 @@ export interface CanonRoutesOptions {
  *
  * A malformed pair is a 400 rather than a silent downgrade: `parseViewMode`
  * in the library is deny-by-default, which is right as a backstop but wrong
- * as a user-facing contract. Declared once because all three reader-facing
- * routes need the same rule.
+ * as a user-facing contract. Shared with retrieval-routes, which applies the
+ * identical rule to search's mode/readerChapter.
  */
-function checkModePair(
+export function checkModePair(
   mode: string,
   readerChapter: number | undefined,
 ): "READER_CHAPTER_REQUIRED" | "READER_CHAPTER_NOT_ALLOWED" | null {

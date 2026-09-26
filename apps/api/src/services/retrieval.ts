@@ -267,9 +267,10 @@ export function createRetrievalServices(deps: {
   /**
    * The model id the EMBEDDING profile currently resolves to, read from the
    * admin mapping rather than by calling a provider. Returns null when the
-   * profile is unmapped OR its route is disabled — in which case a skip is
-   * never taken, so a misconfigured profile re-ingests and fails loudly
-   * instead of silently reporting "already done".
+   * profile is unmapped, its route is disabled, OR it maps to more than one
+   * enabled model — in any of which a skip is never taken, so a misconfigured
+   * or ambiguous profile re-ingests and fails loudly instead of silently
+   * reporting "already done".
    *
    * The filter MUST match `ai-registry.resolveProfile` exactly (model and
    * gateway both enabled): that is what the vector leg actually routes
@@ -279,7 +280,13 @@ export function createRetrievalServices(deps: {
    * operation that could repair the reference.
    */
   async function embeddingModelFor(): Promise<string | null> {
-    const mapping = await db.modelProfileMapping.findFirst({
+    // resolveProfile-shaped: the filter matches the router's candidate set
+    // exactly (mapping enabled, model enabled, gateway enabled), so a model
+    // id returned here is one the vector leg can actually route through.
+    // The router picks among these by priority and gateway state; the skip
+    // guard only needs to know whether search's `e.model = <this>` filter
+    // would hit a live route.
+    const mappings = await db.modelProfileMapping.findMany({
       where: {
         profile: "EMBEDDING",
         enabled: true,
@@ -288,7 +295,12 @@ export function createRetrievalServices(deps: {
       orderBy: [{ priority: "asc" }],
       select: { model: { select: { modelId: true } } },
     });
-    return mapping?.model.modelId ?? null;
+    // Several enabled mappings may route different models at different
+    // times; there is no single model the vector leg would filter on, so
+    // the guard cannot prove the stored vectors match what search will
+    // use and must not skip.
+    const ids = new Set(mappings.map((m) => m.model.modelId));
+    return ids.size === 1 ? (mappings[0]?.model.modelId ?? null) : null;
   }
 
   function checkKey(key: string): void {
@@ -350,7 +362,10 @@ export function createRetrievalServices(deps: {
       const result = await ai.embed({ actorUserId, workspaceId, texts: batchTexts });
 
       if (result.vectors.length !== batchTexts.length) {
-        throw new ConflictError(
+        // Provider faults surface as 502 (the upstream failed), not 409 —
+        // the request was valid; blaming the caller would send the author
+        // to debug their content when the provider is at fault.
+        throw new BadGatewayError(
           `embedding provider returned ${result.vectors.length} vectors for ` +
             `${batchTexts.length} inputs`,
         );
@@ -358,7 +373,7 @@ export function createRetrievalServices(deps: {
       for (let j = 0; j < result.vectors.length; j += 1) {
         const vector = result.vectors[j]!;
         if (vector.length !== EMBEDDING_DIMENSION) {
-          throw new ConflictError(
+          throw new BadGatewayError(
             `embedding provider returned a ${vector.length}-dimensional vector; ` +
               `this deployment stores ${EMBEDDING_DIMENSION}`,
           );
@@ -370,7 +385,7 @@ export function createRetrievalServices(deps: {
         // driver error surfacing as a 500, with no indication that the
         // provider, not the database, was at fault.
         if (!vector.every((n) => typeof n === "number" && Number.isFinite(n))) {
-          throw new ConflictError(
+          throw new BadGatewayError(
             `embedding provider returned a non-finite value at index ${j}`,
           );
         }
@@ -546,7 +561,19 @@ export function createRetrievalServices(deps: {
       }
       if (withVersion.status === "ACTIVE") return;
 
-      await db.reference.update({ where: { id: ref.id }, data: { status: "ACTIVE" } });
+      // The status flip is a compare-and-set on currentVersionId, like its
+      // siblings (canon supersede). If a version add committed between the
+      // read above and this write, the counted chunks belong to a version
+      // that is no longer current — publishing would make the reference
+      // ACTIVE on a chunkless version, invisible to search. Losing that race
+      // is a conflict, not a success.
+      const moved = await db.reference.updateMany({
+        where: { id: ref.id, currentVersionId: withVersion.currentVersionId },
+        data: { status: "ACTIVE" },
+      });
+      if (moved.count === 0) {
+        throw new ConflictError("reference changed during publish; publish it again");
+      }
       await audit.record({
         actorUserId: input.actorUserId,
         workspaceId: ref.workspaceId,
@@ -761,7 +788,7 @@ export function createRetrievalServices(deps: {
         );
       });
 
-      const chunkRows = await db.chunk.findMany({
+      let chunkRows = await db.chunk.findMany({
         where: { referenceVersionId: version.id },
         orderBy: { index: "asc" },
         select: { id: true, text: true },
@@ -769,12 +796,41 @@ export function createRetrievalServices(deps: {
 
       let embedded = 0;
       if (chunkRows.length > 0) {
-        embedded = await embedChunks(
-          input.actorUserId,
-          workspaceId,
-          chunkRows.map((c) => c.id),
-          chunkRows.map((c) => c.text),
-        );
+        // A concurrent re-ingest of the same version deletes these chunk ids
+        // and inserts fresh ones; an embed of ids a moment stale violates the
+        // embeddings→chunks FK (P2003). That race is a lost interleaving, not
+        // a broken request: re-read the ids and embed once more.
+        try {
+          embedded = await embedChunks(
+            input.actorUserId,
+            workspaceId,
+            chunkRows.map((c) => c.id),
+            chunkRows.map((c) => c.text),
+          );
+        } catch (error) {
+          // Retry ONLY the FK violation the race produces. A provider or
+          // validation fault thrown by embedChunks must propagate as-is —
+          // re-embedding cannot fix it and swallowing it would misreport
+          // the failure class. The driver adapter wraps the raw PG 23503
+          // in Prisma's P2010 ("raw query failed"), so both wrapper code
+          // and raw code are matched; message content is NOT matched.
+          const code = prismaCode(error);
+          if (code !== "P2003" && code !== "P2010" && code !== "23503") throw error;
+          chunkRows = await db.chunk.findMany({
+            where: { referenceVersionId: version.id },
+            orderBy: { index: "asc" },
+            select: { id: true, text: true },
+          });
+          if (chunkRows.length === 0) {
+            throw error;
+          }
+          embedded = await embedChunks(
+            input.actorUserId,
+            workspaceId,
+            chunkRows.map((c) => c.id),
+            chunkRows.map((c) => c.text),
+          );
+        }
       }
 
       await audit.record({
@@ -897,7 +953,7 @@ export function createRetrievalServices(deps: {
         const qv = embedded.vectors[0];
         embeddingGenerationId = embedded.generationId ?? undefined;
         if (!qv || qv.length !== EMBEDDING_DIMENSION) {
-          throw new ConflictError("embedding provider returned an unusable query vector");
+          throw new BadGatewayError("embedding provider returned an unusable query vector");
         }
         // The vector is stringified into a SQL literal below, so what the
         // provider returned must be finite numbers before that happens.
@@ -906,7 +962,7 @@ export function createRetrievalServices(deps: {
         // leg would report "the vector leg is unavailable" and send the
         // operator to debug the database.
         if (!qv.every((n) => typeof n === "number" && Number.isFinite(n))) {
-          throw new ConflictError("embedding provider returned a non-finite query vector");
+          throw new BadGatewayError("embedding provider returned a non-finite query vector");
         }
         const vectorParams: unknown[] = [input.workspaceId, `[${qv.join(",")}]`, embedded.model];
         if (mode === "READER") vectorParams.push(readerChapter ?? 0);

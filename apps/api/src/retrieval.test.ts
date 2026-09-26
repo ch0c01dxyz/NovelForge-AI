@@ -100,18 +100,28 @@ function fakeVector(text: string): number[] {
 let embedCalls = 0;
 /** When set, the fake embed returns this verbatim instead of a real vector. */
 let poisonVector: number[] | null = null;
+/**
+ * When set, called with the incoming texts BEFORE embedding. Used to inject
+ * a concurrent DB mutation at the exact moment the embed leg holds stale
+ * chunk ids — the interleaving a plain concurrent request cannot force.
+ */
+let embedHook: ((texts: string[]) => Promise<void> | void) | null = null;
 
 function fakeCreateGateway(rec: GatewayRecord): AIGateway {
+  // The model id carries the gateway name so two gateways expose DISTINCT
+  // model ids — mirroring real deployments, where different gateways serve
+  // different providers under different names.
+  const modelId = `fake-embed-${rec.name}`;
   return {
     id: rec.id,
     name: rec.name,
     async listModels() {
-      return [{ modelId: "fake-embed", capabilities: ["embedding"] }];
+      return [{ modelId, capabilities: ["embedding"] }];
     },
     async generate(): Promise<GenerateResult> {
       return {
         content: '{"summary":"ok"}',
-        model: "fake-embed",
+        model: modelId,
         inputTokens: 1,
         outputTokens: 1,
         finishReason: "stop",
@@ -122,9 +132,13 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
     },
     async embed(req) {
       embedCalls += 1;
+      if (embedHook) {
+        await embedHook(req.input);
+        embedHook = null;
+      }
       return {
         vectors: poisonVector ? req.input.map(() => poisonVector!) : req.input.map(fakeVector),
-        model: "fake-embed",
+        model: modelId,
         inputTokens: req.input.length,
       };
     },
@@ -165,6 +179,7 @@ afterAll(async () => {
 beforeEach(async () => {
   embedCalls = 0;
   poisonVector = null;
+  embedHook = null;
   // Self-heal before anything else: the all-legs-down test renames the
   // tsvector column to force a query failure, and a run killed between the
   // rename and its restore would fail every later suite with an unrelated
@@ -717,6 +732,105 @@ describe("reference ingestion", () => {
     expect((again.json() as { skipped?: boolean }).skipped).toBeUndefined();
   });
 
+  it("does not skip when two enabled models could both win the route", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+
+    // A second enabled gateway+model, also mapped to EMBEDDING. The router
+    // picks among enabled mappings by priority, so the model the vector leg
+    // filters on (`e.model = <what this query embedded with>`) can differ
+    // per request. The skip guard's modelsMatch compares ONE stored model
+    // against ONE resolved model — with two candidates that proof does not
+    // hold, and a skip would report "already done" for vectors some
+    // searches can never reach.
+    const platformAdmin = await seedUser("second-gw-admin@example.com", "SUPER_ADMIN");
+    const cookie = platformAdmin.cookie;
+    const gw = await app.inject({
+      method: "POST",
+      url: "/api/gateways",
+      headers: { cookie },
+      payload: { name: "phase5-gw-2", baseUrl: "http://localhost:20128", apiKey: "sk-secret" },
+    });
+    expect(gw.statusCode).toBe(201);
+    const gatewayId = (gw.json() as { id: string }).id;
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/gateways/${gatewayId}/sync-models`,
+          headers: { cookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const models = await app.inject({ method: "GET", url: "/api/models", headers: { cookie } });
+    const all = models.json() as Array<{ id: string }>;
+    const used = await db.modelProfileMapping.findMany({
+      where: { profile: "EMBEDDING" },
+      select: { modelRef: true },
+    });
+    const usedIds = new Set(used.map((m) => m.modelRef));
+    const second = all.find((m) => !usedIds.has(m.id))!;
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/api/model-profiles",
+          headers: { cookie },
+          payload: { profile: "EMBEDDING", modelId: second.id },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const { versionId } = await seedReference(owner.cookie, workspaceId, {
+      key: "lore",
+      content: OATH_TEXT.join("\n\n"),
+    });
+    // Fully ingested, but the guard must still refuse to skip: it cannot
+    // prove the stored model is the one a future search will embed with.
+    const again = await app.inject({
+      method: "POST",
+      url: `/api/reference-versions/${versionId}/ingest`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(again.statusCode).toBe(200);
+    expect((again.json() as { skipped?: boolean }).skipped).toBe(false);
+  });
+
+  it("reports an ingest-time provider fault as 502, not 409", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/references`,
+      headers: { cookie: owner.cookie },
+      payload: { key: "poison-ingest", title: "Poison Ingest", content: OATH_TEXT.join("\n\n") },
+    });
+    const { versionId } = created.json() as { versionId: string };
+
+    // The provider returns an unusable vector. The request and the content
+    // are both valid — the upstream is the fault — so the honest status is
+    // 502 BAD_GATEWAY. Reporting 409 would tell the author their content
+    // conflicted with something, which it did not.
+    const poison = new Array<number>(DIMENSION).fill(0);
+    poison[0] = Number.POSITIVE_INFINITY;
+    poisonVector = poison;
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/reference-versions/${versionId}/ingest`,
+        headers: { cookie: owner.cookie },
+        payload: {},
+      });
+      expect(res.statusCode).toBe(502);
+      expect(res.json()).toEqual({ error: "BAD_GATEWAY" });
+    } finally {
+      poisonVector = null;
+    }
+  });
+
   it("refuses to publish a reference that has no ingested chunks", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
@@ -735,6 +849,119 @@ describe("reference ingestion", () => {
       headers: { cookie: owner.cookie },
     });
     expect(pub.statusCode).toBe(409);
+  });
+
+  it("never leaves a published reference on a chunkless current version", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/references`,
+      headers: { cookie: owner.cookie },
+      payload: { key: "race-pub", title: "Race Pub", content: OATH_TEXT.join("\n\n") },
+    });
+    const { id, versionId } = created.json() as { id: string; versionId: string };
+    const ingest = await app.inject({
+      method: "POST",
+      url: `/api/reference-versions/${versionId}/ingest`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(ingest.statusCode).toBe(200);
+
+    // A publish reads the current version, counts its chunks, then updates
+    // the status. If a version append commits between that read and the
+    // update, the update re-activates the reference against the NEW version
+    // — which has no chunks, so an ACTIVE reference becomes invisible to
+    // search while reading ACTIVE. The append is injected right after the
+    // publish's read so the interleave is deterministic, not a lottery.
+    const origFindUniqueOrThrow = db.reference.findUniqueOrThrow.bind(db.reference);
+    let injected = false;
+    db.reference.findUniqueOrThrow = (async (
+      ...args: Parameters<typeof origFindUniqueOrThrow>
+    ) => {
+      const result = await origFindUniqueOrThrow(...args);
+      if (!injected && args[0]?.where && "id" in args[0].where && args[0].where.id === id) {
+        injected = true;
+        await app.inject({
+          method: "POST",
+          url: `/api/references/${id}/versions`,
+          headers: { cookie: owner.cookie },
+          payload: { content: "racing body" },
+        });
+      }
+      return result;
+    }) as unknown as typeof db.reference.findUniqueOrThrow;
+
+    let pub: Awaited<ReturnType<typeof app.inject>>;
+    try {
+      pub = await app.inject({
+        method: "POST",
+        url: `/api/references/${id}/publish`,
+        headers: { cookie: owner.cookie },
+      });
+    } finally {
+      db.reference.findUniqueOrThrow = origFindUniqueOrThrow;
+    }
+
+    // The publish raced a version add and lost: its chunk count described a
+    // version that is no longer current. It must fail loudly, never commit
+    // ACTIVE over the demoted pointer.
+    expect(pub.statusCode).toBe(409);
+    const ref = await db.reference.findUniqueOrThrow({
+      where: { id },
+      select: {
+        status: true,
+        currentVersion: { select: { _count: { select: { chunks: true } } } },
+      },
+    });
+    if (ref.status === "ACTIVE") {
+      expect(ref.currentVersion?._count.chunks).toBeGreaterThan(0);
+    }
+  });
+
+  it("repairs a stale embed whose chunk ids a concurrent re-ingest deleted", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedEmbeddingRoute();
+    const { versionId } = await seedReference(owner.cookie, workspaceId, {
+      key: "lore",
+      content: OATH_TEXT.join("\n\n"),
+    });
+
+    // Two re-ingests of the same version overlap: the second one's delete
+    // commits while the first holds chunk ids it read before the delete.
+    // The first's embedding upsert then violates the embeddings→chunks FK.
+    // That is a lost interleaving, not a broken request — it must resolve by
+    // re-reading the ids and embedding once more, never surface as a 500.
+    embedHook = async () => {
+      embedHook = null; // the inner re-ingest's own embed must not recurse
+      await app.inject({
+        method: "POST",
+        url: `/api/reference-versions/${versionId}/ingest`,
+        headers: { cookie: owner.cookie },
+        payload: { availableFromChapter: 3 }, // differs → forces delete+insert
+      });
+    };
+
+    const again = await app.inject({
+      method: "POST",
+      url: `/api/reference-versions/${versionId}/ingest`,
+      headers: { cookie: owner.cookie },
+      payload: { availableFromChapter: 2 },
+    });
+    expect(again.statusCode).toBe(200);
+    expect((again.json() as { skipped?: boolean }).skipped).toBe(false);
+
+    // The version ends fully embedded under the winning boundary, whatever
+    // the interleaving: every chunk carries a vector.
+    const chunks = await db.chunk.count({ where: { referenceVersionId: versionId } });
+    const vectors = await db.embedding.count({
+      where: { chunk: { is: { referenceVersionId: versionId } } },
+    });
+    expect(chunks).toBeGreaterThan(0);
+    expect(vectors).toBe(chunks);
   });
 
   it("keeps a DRAFT reference out of search until it is published", async () => {
@@ -933,10 +1160,11 @@ describe("tenant isolation", () => {
       headers: { cookie: owner.cookie },
       payload: searchBody("oath"),
     });
-    // 409 CONFLICT (the ConflictError mapping), not a 200 whose `retrievers`
-    // quietly omits VECTOR.
-    expect(res.statusCode).toBe(409);
-    expect(res.json()).toEqual({ error: "CONFLICT" });
+    // 502 BAD_GATEWAY (the BadGatewayError mapping), not a 200 whose
+    // `retrievers` quietly omits VECTOR, and not 409 — the request was
+    // valid, the upstream provider is the fault.
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toEqual({ error: "BAD_GATEWAY" });
   });
 
   it("hides another workspace's reference behind 404 and out of search", async () => {

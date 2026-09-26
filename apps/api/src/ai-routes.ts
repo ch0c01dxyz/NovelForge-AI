@@ -277,9 +277,19 @@ export function registerAiRoutes(
       const body = generateBody.safeParse(request.body);
       if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
 
+      // A client that disconnects must stop the upstream generation: the
+      // socket is gone, so no further delta has a reader, and letting the
+      // gateway stream on only burns provider tokens for nobody. The abort
+      // is wired to the RAW socket close — Fastify's own request lifecycle
+      // outlives the SSE writes.
+      const abort = new AbortController();
+      const onClose = () => abort.abort();
+      reply.raw.on("close", onClose);
+
       const { generationId, stream, status } = await services.generateStream({
         actorUserId: actor.userId,
         workspaceId: params.data.workspaceId,
+        signal: abort.signal,
         ...body.data,
       });
 

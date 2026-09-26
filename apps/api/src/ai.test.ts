@@ -17,13 +17,14 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
 import { generateSessionToken, hashSessionToken } from "@novelforge/auth";
 import {
   GatewayError,
   type AIGateway,
   type GatewayRecord,
+  type GenerateRequest,
   type GenerateResult,
 } from "@novelforge/ai-core";
 import pg from "pg";
@@ -77,9 +78,19 @@ const env: Env = {
  */
 type Behaviour = Record<
   string,
-  { ok: boolean; category?: string; partial?: boolean; content?: string }
+  {
+    ok: boolean;
+    category?: string;
+    partial?: boolean;
+    content?: string;
+    /** Gateway's generateStream never resolves — models a live upstream. */
+    hang?: boolean;
+  }
 >;
 let behaviour: Behaviour = {};
+
+/** Every `signal` the fake gateways' generateStream received, in order. */
+const seenSignals: Array<AbortSignal | null> = [];
 
 function fakeGateway(rec: GatewayRecord): AIGateway {
   const b = behaviour[rec.name] ?? { ok: true };
@@ -118,11 +129,23 @@ function fakeGateway(rec: GatewayRecord): AIGateway {
         finishReason: "stop",
       };
     },
-    async *generateStream() {
+    async *generateStream(req: GenerateRequest) {
+      // The route must hand its abort signal down so a client disconnect
+      // reaches the transport (withTimeout combines it with the timeout).
+      seenSignals.push(req.signal ?? null);
       if (!b.ok) {
         // Emit before failing so the manager/adapter see a partial stream.
         if (b.partial) yield { delta: "partial " };
         fail();
+      }
+      // A never-ending stream models a real upstream: it ends only if
+      // someone fires the signal, the way a transport's fetch abort does.
+      if (b.hang) {
+        await new Promise((_resolve, reject) => {
+          req.signal?.addEventListener("abort", () => reject(new Error("upstream aborted")), {
+            once: true,
+          });
+        });
       }
       yield { delta: "streamed " };
       yield { delta: "text" };
@@ -175,8 +198,15 @@ afterAll(async () => {
   await db?.$disconnect();
 });
 
+afterEach(async () => {
+  // The disconnect test listens on a real socket; close it so the next
+  // test's app instance doesn't hold the port.
+  if (app?.server.listening) await app.close();
+});
+
 beforeEach(async () => {
   behaviour = {};
+  seenSignals.length = 0;
   await db.generationAttempt.deleteMany();
   await db.generation.deleteMany();
   await db.modelProfileMapping.deleteMany();
@@ -842,5 +872,63 @@ describe("streamed generation (SSE)", () => {
     });
     // A validation failure is a normal 400, not a 200 SSE stream.
     expect(res.statusCode).toBe(400);
+  });
+
+  it("aborts the upstream stream when the client disconnects mid-response", async () => {
+    const admin = await seedUser("admin35@t.io", "SUPER_ADMIN");
+    const owner = await seedUser("owner35@t.io", null);
+    const ids = await seedWorkspace(owner.userId, "disconnect-ws");
+    const gwId = await createGateway(admin.cookie, "hanger");
+    await mapProfile(admin.cookie, gwId, "CREATIVE_WRITER");
+    // The gateway never finishes on its own; without the route's abort
+    // this request would hang forever.
+    behaviour = { hanger: { ok: true, hang: true } };
+
+    // A real socket, not app.inject: light-my-request's simulated request
+    // has no live connection, so nothing there can reproduce the
+    // mid-stream client disconnect this route must survive.
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const port = (app.server.address() as { port: number }).port;
+    const controller = new AbortController();
+    const resPromise = fetch(
+      `http://127.0.0.1:${port}/api/workspaces/${ids.workspaceId}/generations/stream`,
+      {
+        method: "POST",
+        headers: { cookie: owner.cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          task: "write",
+          profile: "CREATIVE_WRITER",
+          messages: [{ role: "user", content: "hi" }],
+        }),
+        signal: controller.signal,
+      },
+    );
+
+    // The route answers 200 (SSE) right away, then the gateway hangs.
+    const res = await resPromise;
+    expect(res.status).toBe(200);
+    await vi.waitFor(() => {
+      expect(seenSignals.length).toBeGreaterThan(0);
+    });
+
+    // Cut the client connection the way a closed tab would.
+    controller.abort();
+
+    // The stream broke before completion...
+    await expect(res.text()).rejects.toThrow();
+
+    // ...the route's abort reached the gateway's transport...
+    expect(seenSignals[0]).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(seenSignals[0]!.aborted).toBe(true);
+    });
+
+    // ...and the generation was settled as FAILED, not left IN_PROGRESS.
+    await vi.waitFor(async () => {
+      const gen = await db.generation.findFirstOrThrow({
+        where: { workspaceId: ids.workspaceId },
+      });
+      expect(gen.status).toBe("FAILED");
+    });
   });
 });

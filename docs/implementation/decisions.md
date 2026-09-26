@@ -148,6 +148,24 @@ recorded as ADR-NNNN files:
   the refutation step, not the finder step: of eight findings that read as
   serious, two were wrong on the code and saying so prevented two bad
   "fixes".
+- **2026-09-26 — Phase 5 audit fixes, each proven by a failing test.**
+  Publish's status flip is a compare-and-set on `currentVersionId` (a
+  version append racing the chunk count left an ACTIVE reference on a
+  chunkless version, invisible to search). Ingest retries exactly the
+  embeddings-FK violation a concurrent re-ingest produces (P2003/P2010/
+  23503 — the driver adapter wraps the raw code) and re-reads chunk ids
+  once. The skip guard's model resolution mirrors the router's candidate
+  set and refuses to skip when two enabled models could both win the route.
+  Provider faults (bad vector count/dimension/finiteness) surface as 502
+  `BadGatewayError`, not 409. The SSE route wires the raw socket's close to
+  an AbortController forwarded through the gateway (proven against a real
+  socket — light-my-request cannot simulate a mid-stream disconnect). Fuse
+  rejects an array `lists` and non-array legs as `FUSE_BAD_LISTS` instead of
+  silently fusing empty or throwing on `forEach`. The mode/readerChapter
+  rule is one shared `checkModePair` instead of two divergent copies. Body
+  limits cover the bytes-vs-characters gap (CJK 3x) so the advertised
+  character caps are reachable: references 24MB, manuscript save 3MB,
+  import 15MB.
 
 When a decision is made without a full ADR being warranted, record one
 line here with date and rationale, and promote it to an ADR if it later

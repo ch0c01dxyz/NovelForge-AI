@@ -519,6 +519,51 @@ capability and `canPlatform(SUPER_ADMIN, "canon:approve")` is false;
 NOT by EDITOR. The EDITOR asymmetry is the point — no generic loop covers
 it, so a future edit granting it would otherwise pass every test.
 
+Round 6 (Phase 5 audit) added seven tests across three suites; the
+interleave, FK and disconnect rows were each confirmed to FAIL with the fix
+reverted:
+
+`apps/api/src/retrieval.test.ts` (27 total) —
+
+- a **publish raced against a version append** never leaves the reference
+  ACTIVE with a chunkless current version (invisible to search while
+  reading ACTIVE). Interleave injected by patching
+  `db.reference.findUniqueOrThrow`; the loser now 409s on the
+  `currentVersionId` compare-and-set;
+- an **ingest whose embed references chunk ids a concurrent re-ingest
+  deleted** retries exactly the embeddings-FK violation (P2003/P2010/
+  23503) once, re-reading the ids — and still fails the request when a
+  *provider* fault produces the same code, which is why the retry is
+  category-scoped;
+- the **re-ingest skip guard refuses to skip when two enabled models
+  could both win the route** — its model resolution mirrors the router's
+  candidate set instead of assuming the single enabled model wins;
+- a **provider returning a wrong vector count/dimension** on ingest, and a
+  poisoned query vector, answer 502 `BAD_GATEWAY`, not 409 — they are
+  upstream failures, not caller mistakes;
+- the **search route shares canon-routes' `checkModePair`** (no new test;
+  the existing 400 assertions on both routes pin the identical behavior).
+
+`apps/api/src/ai.test.ts` (29 total) —
+
+- a **client disconnecting mid-SSE aborts the upstream stream**, proven
+  against a REAL socket (`app.listen` + `fetch` + abort):
+  light-my-request cannot fire a response `close` mid-stream, so an inject
+  harness would pass vacuously. Asserts the abort reached the gateway's
+  signal AND the generation settles FAILED. The fake gateway's generator
+  hangs until its `signal` fires, modeling a live upstream whose fetch was
+  aborted.
+
+`packages/retrieval/fuse.test.ts` (17 total) —
+
+- **`lists` as an array** fails closed with `FUSE_BAD_LISTS` —
+  `typeof [] === "object"` previously passed the guard, the per-retriever
+  lookups always missed, and the fusion silently returned empty;
+- a **non-array leg** (a string, a number, a hit-like object) fails closed
+  with `FUSE_BAD_LISTS` naming the retriever — it previously threw
+  `hits.forEach is not a function` from a function whose contract is that
+  failures are data.
+
 ## Phase 7+
 
 Rows added when each phase starts. Mandatory cross-cutting scenarios

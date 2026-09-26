@@ -1194,5 +1194,64 @@ never was. `apps/api` typecheck is clean; `packages/auth` is clean standalone
 (the recursive runner aborts before reaching it). `apps/web` still fails at
 `nuxt.config.ts:7` for the hoisted-vite reason recorded above.
 
+### Round 6 — Phase 5 audit: nine confirmed clusters, fixed with proofs
+
+The audit workflow completed but is **reported as degraded**: the
+`find:drift-incomplete` lens died mid-run; 22 verified findings deduped to
+9 code/doc clusters (1 doc-only). One finding stayed REFUTED
+(`input.generationId` — dead code, not a defect). Fixed, each named by the
+test that fails without it; revert-proofs were executed for clusters 1, 2,
+4, 5+8 (cluster 3's and 6's discrimination is logical, not executed):
+
+1. **Publish was not a compare-and-set** (`services/retrieval.ts`). A
+   version append committing between the chunk count and the status flip
+   left the reference ACTIVE on a chunkless current version — invisible to
+   search while reading ACTIVE. Now an `updateMany` predicated on
+   `currentVersionId`; losing the race is a 409. Test: "never leaves a
+   published reference on a chunkless current version" (interleave
+   injected via a patched `findUniqueOrThrow`).
+2. **Ingest died on a concurrent re-ingest's FK violation.** An embed of
+   chunk ids a moment stale is a lost interleaving, not a broken request:
+   retry exactly P2003/P2010/23503 (the driver adapter wraps PG 23503 in
+   P2010), re-read the ids once, never swallow provider faults. Test:
+   "repairs a stale embed whose chunk ids a concurrent re-ingest deleted".
+3. **The re-ingest skip guard could skip under a multi-model route.** Its
+   model resolution now mirrors the router's candidate set (mapping +
+   model + gateway all enabled) and refuses to skip when more than one
+   enabled model could win. Test: "does not skip when two enabled models
+   could both win the route".
+4. **The SSE route never aborted the upstream on client disconnect** —
+   generator went on burning provider tokens with no reader. AbortController
+   wired to the raw socket's close, forwarded through `generateStream`
+   (service and manager already plumbed `signal`). Proven against a REAL
+   socket (`app.listen` + `fetch` abort): light-my-request cannot simulate
+   a mid-stream disconnect. Test: "aborts the upstream stream when the
+   client disconnects mid-response" (also asserts FAILED settlement).
+5+8. **`fuse` crashed or lied on malformed lists** (`packages/retrieval`).
+   `typeof [] === "object"` let an array `lists` silently fuse to empty; a
+   non-array leg threw `hits.forEach is not a function`. Both are now
+   `FUSE_BAD_LISTS` structured failures. Tests: the two new "fails closed"
+   cases.
+6. **Provider faults reported as 409.** Wrong vector count/dimension/
+   finiteness (ingest and query legs) are upstream failures — 502
+   `BadGatewayError`, like the already-correct all-legs-down path. Tests:
+   "reports an ingest-time provider fault as 502, not 409", the poisoned
+   search-vector case.
+9. **Two divergent copies of the mode/readerChapter rule.** Retrieval
+   search now imports canon-routes' `checkModePair`; behavior identical,
+   one contract. (No new test — the existing 400 assertions on both routes
+   cover it.)
+10. **Body limits vs character caps, the CJK gap.** Fastify counts bytes,
+    Zod counts characters (3x for CJK). References 16MB→24MB so the
+    advertised 8M chars is reachable; manuscript save 2MB→3MB and import
+    8MB→15MB for the same latent mismatch (5M-char import 413'd at ~2.67M
+    CJK chars — the sibling defect the audit did not name).
+7. **Doc-only:** chunk.ts module header and `chunkText` docstrings claimed
+    spans "tile the source without gaps or overlap"; they are deliberately
+    non-contiguous with whitespace-only gaps, per `verifyChunks`.
+
+Checks run: `apps/api` typecheck clean; retrieval 27/27, ai 29/29, canon +
+manuscript (with retrieval: 98/98), fuse 17/17.
+
 ## Phase 7+
 

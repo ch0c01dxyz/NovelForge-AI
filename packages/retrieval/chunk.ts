@@ -3,8 +3,8 @@
  *
  * Pure, no IO. Chunking is the step that decides what a citation can point
  * at, so it must be deterministic and lossless in the sense that matters:
- * every chunk carries the character offsets it came from, and the offsets
- * of consecutive chunks tile the source without gaps or overlap. A
+ * every chunk carries the character offsets it came from, and consecutive
+ * chunks leave only whitespace between their spans — never prose. A
  * citation into a chunk can therefore be resolved back to an exact span of
  * the original document, which is what "evidence-bearing" requires
  * (docs/12-roadmap Phase 5: "retrieval is evidence-bearing").
@@ -197,9 +197,9 @@ function splitOversized(
  *
  * Offsets are into the ORIGINAL `text` (including any whitespace between
  * chunks), so `text.slice(chunk.start, chunk.end)` always equals
- * `chunk.text`. Leading/trailing whitespace of a chunk is excluded from
- * `text` but included in the span it covers, which is why the two are
- * tracked separately rather than derived from one another.
+ * `chunk.text`. Spans are not contiguous: a chunk covers only its own
+ * text, so the separator whitespace between two chunks belongs to neither
+ * span — `verifyChunks` proves no PROSE falls in those gaps.
  */
 export function chunkText(
   text: string,

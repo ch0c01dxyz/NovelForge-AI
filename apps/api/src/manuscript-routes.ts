@@ -35,9 +35,14 @@ const setStatusBody = z.object({
 
 // Fastify's default bodyLimit is 1 MB; the save and import routes accept
 // more, so without a per-route limit a valid payload 413s before Zod ever
-// runs. Headroom over each schema cap covers JSON string escaping.
-const SAVE_BODY_LIMIT = 2_000_000;
-const IMPORT_BODY_LIMIT = 8_000_000;
+// runs.
+//
+// The limits are UTF-8 BYTES; the schemas cap CHARACTERS (1M content, 5M
+// imported text). CJK costs 3 bytes per character and JSON escaping adds
+// more, so each limit is 3x its schema cap — the smallest values under
+// which the advertised character caps are actually reachable.
+const SAVE_BODY_LIMIT = 3_000_000;
+const IMPORT_BODY_LIMIT = 15_000_000;
 
 export interface ManuscriptRoutesOptions {
   auth: AuthService;

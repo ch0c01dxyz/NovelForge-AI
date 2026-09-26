@@ -57,6 +57,9 @@ model User {
   authoredSkillVers   SkillVersion[]   @relation("SkillVersionAuthor")
   createdWorkflows    Workflow[]       @relation("WorkflowCreator")
   authoredFlowVers    WorkflowVersion[] @relation("WorkflowVersionAuthor")
+  authoredSynopses    Synopsis[]        @relation("SynopsisCreator")
+  authoredSagas       Saga[]            @relation("SagaCreator")
+  authoredOutlineVers OutlineVersion[]  @relation("OutlineVersionCreator")
   triggeredRuns       WorkflowRun[]    @relation("WorkflowRunTrigger")
   createdReferences   Reference[]      @relation("ReferenceCreator")
   authoredRefVers     ReferenceVersion[] @relation("ReferenceVersionCreator")
@@ -140,6 +143,11 @@ model Novel {
   entities    StoryEntity[]
   canonFacts  CanonFact[]
   proposals   CanonProposal[]
+  synopses    Synopsis[]
+  sagas       Saga[]
+  outlineNodes OutlineNode[]
+  outlineVersions OutlineVersion[]
+  horizons    PlanningHorizon[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -210,6 +218,7 @@ model Chapter {
   updatedAt        DateTime         @updatedAt @map("updated_at")
   versions         ChapterVersion[] @relation("ChapterVersions")
   scenes           Scene[]
+  outlineNodes     OutlineNode[]
 
   @@unique([novelId, number])
   @@index([novelId, status])
@@ -255,6 +264,8 @@ model Scene {
   @@unique([chapterId, number])
   @@index([chapterId])
   @@map("scenes")
+
+  outlineNodes OutlineNode[]
 }
 
 // ==================== AI Infrastructure (Phase 3) ====================
@@ -1264,4 +1275,155 @@ model CanonProposal {
   @@index([proposedById])
   @@index([decidedById])
   @@map("canon_proposals")
+}
+
+// ==================== Planning (Phase 7, slice 1) ====================
+// Scope: the planning spine per docs/04-data/DATA-MODEL-BLUEPRINT.md
+// §Planning. Hierarchy: Novel Vision > Saga > Major Arc > Mini Arc >
+// Chapter Group > Chapter > Scene. The Saga/Arc tables self-nest through
+// parentId; outline_nodes are the leaf graph that references their planning
+// parent plus an optional chapter/scene. CLAUDE.md §4: the current APPROVED
+// outline outranks the synopsis for chapter-level planning — so the approved
+// outline version is unique per novel (partial index in the migration, like
+// canon_facts_live), and synopses carry no such uniqueness.
+
+enum SynopsisStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Synopsis {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId     String         @map("novel_id") @db.Uuid
+  novel       Novel          @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// High-level direction, not a chapter script (CLAUDE.md §2.3). Stored as
+  /// one bullet per line so plannerContext can diff bullets against the
+  /// approved outline; parsing stays in packages/planning, not in the schema.
+  content     String         @db.Text
+  status      SynopsisStatus @default(ACTIVE)
+  createdById String         @map("created_by_id") @db.Uuid
+  createdBy   User           @relation("SynopsisCreator", fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@index([novelId, status])
+  @@map("synopses")
+}
+
+enum PlanningKind {
+  SAGA
+  ARC
+  CHAPTER_GROUP
+}
+
+/// Shared shape of the self-nesting containers between Vision and Chapter:
+/// a Saga, a Major Arc, or a Mini Arc / Chapter Group. The `kind` column
+/// records which; nesting depth is validated by packages/planning, not
+/// trusted to the author UI. A chapter row itself lives in `chapters` —
+/// it hangs off an outline_node, not off this table.
+model Saga {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId     String       @map("novel_id") @db.Uuid
+  novel       Novel        @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  parentId    String?      @map("parent_id") @db.Uuid
+  parent      Saga?        @relation("SagaNest", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Saga[]       @relation("SagaNest")
+  kind        PlanningKind
+  title       String
+  /// Intent for this container (what it must accomplish). Direction, not
+  /// script — the outline versions hold the chapter-level plan.
+  intent      String?      @db.Text
+  createdById String       @map("created_by_id") @db.Uuid
+  createdBy   User         @relation("SagaCreator", fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  outlineNodes OutlineNode[]
+
+  @@index([novelId, kind])
+  @@index([parentId])
+  @@map("sagas")
+}
+
+enum OutlineNodeKind {
+  CHAPTER_GROUP
+  CHAPTER
+  SCENE
+}
+
+/// One node of the approved outline graph. Node nests under a Saga (which
+/// covers saga/major-arc/mini-arc/chapter-group levels via Saga.kind) and —
+/// at the leaf — points at the actual Chapter or Scene row it plans.
+/// `order` is position among siblings (unique per parent, like Chapter.number).
+model OutlineNode {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId      String          @map("novel_id") @db.Uuid
+  novel        Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  sagaId       String          @map("saga_id") @db.Uuid
+  saga         Saga            @relation(fields: [sagaId], references: [id], onDelete: Cascade)
+  kind         OutlineNodeKind
+  title        String
+  /// Beats/summary for this node. Direction, not prose.
+  summary      String?         @db.Text
+  order        Int
+  /// Leaf links. Null for CHAPTER_GROUP nodes; exactly one is set when kind
+  /// is CHAPTER/SCENE — enforced by a CHECK in the migration.
+  chapterId    String?         @map("chapter_id") @db.Uuid
+  chapter      Chapter?        @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  sceneId      String?         @map("scene_id") @db.Uuid
+  scene        Scene?          @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@unique([sagaId, order])
+  @@index([novelId])
+  @@index([chapterId])
+  @@index([sceneId])
+  @@map("outline_nodes")
+}
+
+enum OutlineVersionStatus {
+  DRAFT
+  APPROVED
+  SUPERSEDED
+}
+
+/// Append-only snapshot of the full outline (nodes + their order/links) as
+/// one versioned document. Rows are never mutated: superseding creates a new
+/// row and flips the old one to SUPERSEDED via the approval flow. At most one
+/// APPROVED version per novel — partial unique index "outline_versions_live"
+/// in migration 20261001_phase7_planning, on the canon_facts_live pattern.
+model OutlineVersion {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId     String              @map("novel_id") @db.Uuid
+  novel       Novel               @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// Monotonic per novel, enforced by (novelId, number) unique.
+  number      Int
+  status      OutlineVersionStatus @default(DRAFT)
+  /// The full node list of this version. JSONB on purpose: an outline
+  /// version is a frozen document read/written as a unit; structured
+  /// per-node truth lives in outline_nodes.
+  content     Json
+  note        String?
+  createdById String              @map("created_by_id") @db.Uuid
+  createdBy   User                @relation("OutlineVersionCreator", fields: [createdById], references: [id])
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  @@unique([novelId, number])
+  @@index([novelId, status])
+  @@map("outline_versions")
+}
+
+/// Per-novel Planning Horizon policy: detail level by narrative distance
+/// (CLAUDE.md §2.8). NOT universal constants — each novel carries its own
+/// JSONB policy (bands of distance -> detail), interpreted by
+/// horizonFor() in packages/planning.
+model PlanningHorizon {
+  novelId   String   @id @map("novel_id") @db.Uuid
+  novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// { bands: [{ maxDistance: number, detail: string }...] }, ascending;
+  /// shape validated by horizonFor, not trusted.
+  policy    Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("planning_horizons")
 }

@@ -6,7 +6,8 @@
 > [decisions.md](./decisions.md), test coverage in
 > [test-matrix.md](./test-matrix.md).
 
-Last updated: 2026-09-27 (Phase 6 slice 2 + Phase 7 slice 2).
+Last updated: 2026-09-28 (Phase 6 slice 2 + Phase 7 slice 2 + post-slice-2
+audit fix `38a00ae`).
 
 ## Phase 0 — Repository & Architecture Foundation
 
@@ -1350,4 +1351,33 @@ Slice 1 (schema + pure rules in `@novelforge/planning`) landed at
 Checks run: planning 8/8; typecheck clean in every workspace; lint 0;
 `pnpm -r build` complete; canon + manuscript regression 98/98;
 story-intelligence 63/63.
+
+### Post-slice-2 audit fix (`38a00ae`, 2026-09-28)
+
+42-agent deep audit over the Phase 6 slice 2 + Phase 7 slice 2 code:
+11 candidate findings, 7 confirmed, 4 refuted by adversarial
+verification. 4 root-cause fixes landed in `38a00ae`:
+
+- **`services/canon.ts` (brain)** — UNRESOLVED/PROMISES ledger:
+  reader-anchored `now` (`min(chapter frontier, readerAt)`), open
+  status re-derived from each row (no phantom `open` flag on
+  `DebtScore`), `BrainAnswer.status` widened to `string | null`,
+  READER mode returns `withheldCount: 0` (an existence oracle must
+  not leak counts) and masks open-row status to null. Verified debts:
+  READER@3 = 33/24 vs AUTHOR@40 = 196/144.
+- **`canon.test.ts`** — 4 seed payloads that contradicted the Prisma
+  schema (`workspaceId` on chapters; threads missing `kind`/creator)
+  replaced with schema-accurate seeds; boundary tests prove outline
+  draft content is 400 for absent AND null.
+- **`services/planning.ts`** — cross-tenant guards on
+  sagaId/chapterId/sceneId before outline-node create; `P2002`/`P2003`
+  from draft-number race, concurrent approve, and order collision all
+  mapped to 409 `ConflictError`, never 500.
+- **`planning-routes.ts`** — outline-draft `content` must be present
+  non-null (`z.unknown().refine`); planning list routes take
+  `take`/`skip` pagination (planning tables are the growth tables).
+
+Checks run since `38a00ae`: typecheck clean in every workspace,
+full recursive test suite green (apps/api 197/197,
+story-intelligence 63/63, planning 19/19), `pnpm -r build` complete.
 

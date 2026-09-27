@@ -208,6 +208,9 @@ importers:
       '@novelforge/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@novelforge/planning':
+        specifier: workspace:*
+        version: link:../../packages/planning
       '@novelforge/retrieval':
         specifier: workspace:*
         version: link:../../packages/retrieval

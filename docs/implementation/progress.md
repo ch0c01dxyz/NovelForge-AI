@@ -6,7 +6,7 @@
 > [decisions.md](./decisions.md), test coverage in
 > [test-matrix.md](./test-matrix.md).
 
-Last updated: 2026-09-26 (Phase 6 audit round 5).
+Last updated: 2026-09-27 (Phase 6 slice 2 + Phase 7 slice 2).
 
 ## Phase 0 — Repository & Architecture Foundation
 
@@ -1253,5 +1253,101 @@ test that fails without it; revert-proofs were executed for clusters 1, 2,
 Checks run: `apps/api` typecheck clean; retrieval 27/27, ai 29/29, canon +
 manuscript (with retrieval: 98/98), fuse 17/17.
 
+### Slice 2 — events, threads, promises, causality COMPLETE
+
+Shipped: migration `20260927_phase6_story_intelligence_slice2` adds six
+tables — `story_events`, `timeline_events`, `story_threads`,
+`story_thread_events` (thread↔event join), `story_promises`, `causal_edges`
+— with `ThreadKind`/`ThreadStatus`/`PromiseStatus`/`CausalConfidence`
+enums. Uniqueness is load-bearing: one causal edge per `(novel, cause,
+effect)` so the same "X because Y" claim cannot be asserted twice; one
+thread membership per `(thread, event)`; one timeline `order` per novel.
+`story_events.available_from_chapter` is indexed for the reader boundary.
+Generated with `prisma migrate diff`; drift-zero is the schema agreement
+proof. Slice 1's "deliberately not in slice 1" list names all four of
+these tables — they land here with the same rules that list promised.
+
+`@novelforge/story-intelligence/events.ts` carries the pure rules (no
+Prisma, no HTTP — same domain-package shape as canon.ts), 63/63:
+
+- Promise lifecycle is a closed transition table (`canPromiseTransition`):
+  forward moves only, no backwards, no no-op, terminal states
+  (`PAID_OFF`/`ABANDONED`/`INVALIDATED`) accept nothing. `isPromiseOpen`
+  and `isThreadUnresolved` (`DORMANT` is unresolved) pin what "open"
+  means.
+- `edgeRequiresApproval`: `EXPLICIT` edges are author-asserted truth;
+  `INFERRED`/`SPECULATIVE` are AI-derived candidates and map to
+  `SUGGESTION` basis until approved (CLAUDE.md §2.13).
+- `findCausalCycle` is an iterative DFS (no recursion limit) proven against
+  a 50k-edge chain; self-loops, two-cycles and exact-cycle members are
+  caught, a diamond is correctly not.
+- `narrativeDebt` ranks by importance × urgency × age, deterministic,
+  closed items score 0 but stay so the caller can render the full ledger.
+- `readerVisible` is inclusive at the boundary, and an unanchored row
+  (null `introducedAtChapter`) is never reader-visible; `isChronological`
+  is strict — ties are refused, not resolved.
+
+The four Brain legs that returned the not-implemented marker now answer
+from these tables (`services/canon.ts`):
+
+- **EVENT** — story_events with the READER boundary applied in the query
+  (`availableFromChapter: { not: null, lte: at }` — null means
+  unclassified and unclassified is withheld, never chapter 0). Readers
+  get no withheld count (existence oracle); authors get
+  `total − returned`.
+- **CAUSAL** — an edge is returned only when BOTH endpoints are visible:
+  an edge whose cause or effect is withheld would disclose the hidden
+  half's existence through the edge that names it. Basis weakens to
+  `SUGGESTION` when any returned edge requires approval, matching
+  `answerBasis`' mixed-list contract.
+- **UNRESOLVED / PROMISES** — the full ledger ranked by narrative debt,
+  computed at read time and never stored. `ageChapters` uses the novel's
+  chapter frontier because open threads carry no end stamp of their own.
+  Reader anchor is `introducedAtChapter`; the boundary is applied in the
+  view layer because null = unanchored = never visible is not a
+  `not: null, lte` predicate shape. UNRESOLVED shows open threads +
+  open promises; PROMISES filters to promise rows.
+
+`timeline_events` is schema-present with no service surface yet — Phase 11
+will decide whether it becomes a rebuildable projection or a first-class
+editor feature; the unique `(novel, order)` constraint is the only
+commitment made.
+
+Checks run: story-intelligence 63/63, `apps/api` full suite 196/196
+(canon legs included), typecheck clean in every workspace, lint 0,
+`pnpm -r build` complete.
+
 ## Phase 7+
+
+Slice 1 (schema + pure rules in `@novelforge/planning`) landed at
+`7761fa3`. Slice 2 ships the service, routes, and tests:
+
+- **`services/planning.ts`** — synopses, sagas, outline nodes, outline
+  versions, horizon; 13 methods. Every multi-step write is
+  compare-and-set or conflict-guarded:
+  `archiveSynopsis` uses `updateMany` with a status predicate (zero rows
+  updated → 409, not a silent no-op); `createSaga` writes a
+  `candidate:${randomUUID()}` derived key and maps `P2003` → 409;
+  `createOutlineNode` leaf-links with same-novel guards on both the
+  parent and the version, `P2002` → 409; `createOutlineDraft` takes the
+  next draft number inside a `$transaction` (max-read + 1);
+  `approveOutlineVersion` is a two-step transaction whose `P2002` reads
+  "another outline version was approved concurrently";
+  `putHorizon` probes `horizonFor(0, policy)` first and refuses policies
+  that cannot order a chapter, rather than storing an unusable policy.
+- **`gate()`** resolves membership and the novel server-side and answers
+  the SAME `NotFoundError("novel")` when either is missing — no
+  existence leak through a 403/404 difference.
+- **Capabilities** (`@novelforge/auth/authorization`): `canon:manage`
+  gates synopsis/saga/outline-node/draft/horizon writes, `canon:approve`
+  gates `approveOutlineVersion`/supersede, `canon:read` gates lists and
+  `getHorizon`. Not scattered `role === "ADMIN"` checks.
+- **`planning-routes.ts`** — zod validates every body; bad input is 400
+  `INVALID_INPUT`, missing actor 401 `UNAUTHENTICATED`. Query booleans
+  use `z.stringbool()`, not `z.coerce.boolean()` — `Boolean("false")`
+  is `true` and would have turned a pagination flag into a lie.
+
+Checks run: planning 8/8; typecheck clean in every workspace; lint 0;
+`pnpm -r build` complete; canon + manuscript regression 98/98;
+story-intelligence 63/63.
 

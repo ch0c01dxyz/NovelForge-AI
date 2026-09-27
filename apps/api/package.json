@@ -16,6 +16,7 @@
     "@novelforge/auth": "workspace:*",
     "@novelforge/config": "workspace:*",
     "@novelforge/database": "workspace:*",
+    "@novelforge/planning": "workspace:*",
     "@novelforge/retrieval": "workspace:*",
     "@novelforge/story-intelligence": "workspace:*",
     "@novelforge/validation": "workspace:*",

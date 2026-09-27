@@ -23,6 +23,8 @@ import { registerAiRoutes } from "./ai-routes.ts";
 import { registerDefinitionRoutes } from "./definition-routes.ts";
 import { registerRetrievalRoutes } from "./retrieval-routes.ts";
 import { registerCanonRoutes } from "./canon-routes.ts";import { createAuditService } from "./services/audit.ts";
+import { registerPlanningRoutes } from "./planning-routes.ts";
+import { createPlanningServices } from "./services/planning.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
 import { createAiServices } from "./services/ai.ts";
@@ -195,6 +197,13 @@ export async function buildApp(
         // constraint name it cannot carry is logged here instead.
         dbg: { error: (message, meta) => app.log.error(meta, message) },
       }),
+    });
+
+    // Planning (Phase 7): synopses, sagas, outline nodes, outline versions,
+    // horizon — pure rules from @novelforge/planning, service owns CAS + audit.
+    registerPlanningRoutes(app, {
+      auth,
+      services: createPlanningServices({ db: options.db, audit }),
     });
 
     registerDefinitionRoutes(app, {

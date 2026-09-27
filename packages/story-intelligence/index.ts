@@ -6,3 +6,4 @@
  * tested without a database.
  */
 export * from "./canon.ts";
+export * from "./events.ts";

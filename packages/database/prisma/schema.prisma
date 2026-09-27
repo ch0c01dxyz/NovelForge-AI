@@ -68,6 +68,12 @@ model User {
   createdFactSources  CanonFactSource[] @relation("CanonFactSourceCreator")
   proposedCanon       CanonProposal[]  @relation("CanonProposalAuthor")
   decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
+  storyEvents         StoryEvent[]     @relation("StoryEventCreator")
+  timelineEvents      TimelineEvent[]  @relation("TimelineEventCreator")
+  storyThreads        StoryThread[]    @relation("StoryThreadCreator")
+  storyThreadEvents   StoryThreadEvent[] @relation("StoryThreadEventCreator")
+  storyPromises       StoryPromise[]   @relation("StoryPromiseCreator")
+  approvedEdges       CausalEdge[]     @relation("CausalEdgeApprover")
 
   @@map("users")
 }
@@ -105,6 +111,11 @@ model Workspace {
   retrievals   RetrievalAudit[]
   canonFacts   CanonFact[]
   proposals    CanonProposal[]
+  storyEvents  StoryEvent[]
+  timelineEvents TimelineEvent[]
+  storyThreads StoryThread[]
+  storyPromises StoryPromise[]
+  causalEdges  CausalEdge[]
 
   @@map("workspaces")
 }
@@ -148,6 +159,11 @@ model Novel {
   outlineNodes OutlineNode[]
   outlineVersions OutlineVersion[]
   horizons    PlanningHorizon[]
+  storyEvents StoryEvent[]
+  timelineEvents TimelineEvent[]
+  threads     StoryThread[]
+  promises    StoryPromise[]
+  causalEdges CausalEdge[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -219,6 +235,7 @@ model Chapter {
   versions         ChapterVersion[] @relation("ChapterVersions")
   scenes           Scene[]
   outlineNodes     OutlineNode[]
+  storyEvents      StoryEvent[]
 
   @@unique([novelId, number])
   @@index([novelId, status])
@@ -1426,4 +1443,225 @@ model PlanningHorizon {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("planning_horizons")
+}
+
+// Phase 6 slice 2 — story events, timeline, threads, promises, causal graph
+// (DATA-MODEL-BLUEPRINT.md slice 2). Vocabulary below is pinned by
+// packages/story-intelligence events.test.ts — changing a member there
+// without the enum (or the reverse) must fail a test.
+
+enum ThreadKind {
+  MYSTERY
+  CONFLICT
+  QUESTION
+  OBJECTIVE
+  SUBPLOT
+}
+
+enum ThreadStatus {
+  ACTIVE
+  DORMANT
+  RESOLVED
+}
+
+enum PromiseStatus {
+  SETUP
+  DEVELOPING
+  READY_FOR_PAYOFF
+  PAID_OFF
+  ABANDONED
+  INVALIDATED
+}
+
+enum CausalConfidence {
+  EXPLICIT
+  INFERRED
+  SPECULATIVE
+}
+
+/// An event that happened in the story. Structured fact, not prose — prose
+/// lives in chapters; this is the record the causal graph and Story Brain
+/// reason over. AI-extracted events are candidate canon (CLAUDE.md §2.2,
+/// §2.13) until approved like any other canon mutation.
+model StoryEvent {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching Chunk (ADR-0007): a filtered
+  /// query never joins to enforce isolation.
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String    @map("novel_id") @db.Uuid
+  novel       Novel     @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// What happened, stated as a fact.
+  description String    @db.Text
+  /// Chapter whose prose established this event. RESTRICT, matching
+  /// CanonFactSource citations: deleting the prose that established canon
+  /// must not silently orphan the record.
+  chapterId   String?   @map("chapter_id") @db.Uuid
+  chapter     Chapter?  @relation(fields: [chapterId], references: [id], onDelete: Restrict)
+  /// Chapter at which this becomes reader-visible (CLAUDE.md section 10). The
+  /// identical column and null-means-not-visible semantics as
+  /// Chunk.availableFromChapter, so one predicate governs both.
+  availableFromChapter Int? @map("available_from_chapter")
+  createdById String    @map("created_by_id") @db.Uuid
+  createdBy   User      @relation("StoryEventCreator", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  causedEdges CausalEdge[]       @relation("CausalEdgeCause")
+  effectsFrom CausalEdge[]       @relation("CausalEdgeEffect")
+  threadLinks StoryThreadEvent[]
+
+  @@index([novelId])
+  @@index([chapterId])
+  @@index([availableFromChapter])
+  @@map("story_events")
+}
+
+/// In-story chronological position of an event. `order` is the timeline
+/// slot; the per-novel unique pair is the write-side enforcement of the
+/// strict ordering isChronological() checks on read — ties assert an order
+/// the data cannot support.
+model TimelineEvent {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching Chunk (ADR-0007): a filtered
+  /// query never joins to enforce isolation.
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String    @map("novel_id") @db.Uuid
+  novel       Novel     @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// What the timeline says happened, in-story time.
+  description String    @db.Text
+  /// Timeline slot, unique per novel (ties refuse via isChronological on
+  /// read; the unique index refuses them on write).
+  order       Int
+  /// Chapter at which this becomes reader-visible (CLAUDE.md section 10). The
+  /// identical column and null-means-not-visible semantics as
+  /// Chunk.availableFromChapter, so one predicate governs both.
+  availableFromChapter Int? @map("available_from_chapter")
+  createdById String    @map("created_by_id") @db.Uuid
+  createdBy   User      @relation("TimelineEventCreator", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@unique([novelId, order])
+  @@map("timeline_events")
+}
+
+/// An open narrative thread — mystery, conflict, question, objective or
+/// subplot (STORY-INTELLIGENCE.md). Importance is a debt INPUT; the debt
+/// score itself is derived by narrativeDebt(), never stored.
+model StoryThread {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching Chunk (ADR-0007): a filtered
+  /// query never joins to enforce isolation.
+  workspaceId String       @map("workspace_id") @db.Uuid
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String       @map("novel_id") @db.Uuid
+  novel       Novel        @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  kind        ThreadKind
+  title       String
+  /// What the thread is about and where it should go. Direction, not script.
+  description String?      @db.Text
+  status      ThreadStatus @default(ACTIVE)
+  /// Debt input, 1..5 (CHECK in the migration). Not a score.
+  importance  Int
+  /// Chapter where the thread was introduced. Doubles as the reader
+  /// anchor: readers at or past this chapter can see the thread exists.
+  introducedAtChapter Int? @map("introduced_at_chapter")
+  /// Chapter where the thread resolved. Null while open; set exactly when
+  /// status is RESOLVED (CHECK in the migration).
+  resolvedAtChapter Int?   @map("resolved_at_chapter")
+  /// Planned payoff direction (STORY-INTELLIGENCE.md). Soft guidance.
+  payoffIntent String?     @map("payoff_intent") @db.Text
+  createdById String       @map("created_by_id") @db.Uuid
+  createdBy   User         @relation("StoryThreadCreator", fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  threadEvents StoryThreadEvent[]
+
+  @@index([novelId, status])
+  @@index([novelId, kind])
+  @@map("story_threads")
+}
+
+/// Evidence link: a story event that develops, serves or pays off a thread.
+/// Debt reads these to distinguish a starving thread from a served one.
+model StoryThreadEvent {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  threadId    String       @map("thread_id") @db.Uuid
+  thread      StoryThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  eventId     String       @map("event_id") @db.Uuid
+  event       StoryEvent   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdById String       @map("created_by_id") @db.Uuid
+  createdBy   User         @relation("StoryThreadEventCreator", fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@unique([threadId, eventId])
+  @@index([eventId])
+  @@map("story_thread_events")
+}
+
+/// A promise made to the reader (STORY-INTELLIGENCE.md): SETUP → DEVELOPING
+/// → READY_FOR_PAYOFF → PAID_OFF, with ABANDONED/INVALIDATED exits.
+/// Forward-only — canPromiseTransition() is the domain rule; the CHECKs pin
+/// the reader-facing invariants on write.
+model StoryPromise {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching Chunk (ADR-0007): a filtered
+  /// query never joins to enforce isolation.
+  workspaceId String        @map("workspace_id") @db.Uuid
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String        @map("novel_id") @db.Uuid
+  novel       Novel         @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  title       String
+  /// What the promise is and what paying it off looks like.
+  description String?       @db.Text
+  status      PromiseStatus @default(SETUP)
+  /// Debt input, 1..5 (CHECK in the migration). Not a score.
+  importance  Int
+  /// Chapter where the promise was set up. Doubles as the reader anchor.
+  introducedAtChapter Int?  @map("introduced_at_chapter")
+  /// Chapter where the promise was paid off. Null until PAID_OFF (CHECK
+  /// in the migration).
+  payoffAtChapter Int?      @map("payoff_at_chapter")
+  /// Planned payoff direction. Soft guidance.
+  payoffIntent String?      @map("payoff_intent") @db.Text
+  createdById String        @map("created_by_id") @db.Uuid
+  createdBy   User          @relation("StoryPromiseCreator", fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@index([novelId, status])
+  @@map("story_promises")
+}
+
+/// Cause → effect between story events (STORY-INTELLIGENCE.md). EXPLICIT
+/// edges are grounded in prose; INFERRED and SPECULATIVE are AI-derived
+/// candidates (CLAUDE.md §2.13) and must carry an approving author
+/// (edgeRequiresApproval; CHECK in the migration). Rows are immutable —
+/// correct an edge by replacing it, not editing it.
+model CausalEdge {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching Chunk (ADR-0007): a filtered
+  /// query never joins to enforce isolation.
+  workspaceId  String           @map("workspace_id") @db.Uuid
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId      String           @map("novel_id") @db.Uuid
+  novel        Novel            @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  causeEventId String           @map("cause_event_id") @db.Uuid
+  causeEvent   StoryEvent       @relation("CausalEdgeCause", fields: [causeEventId], references: [id], onDelete: Cascade)
+  effectEventId String          @map("effect_event_id") @db.Uuid
+  effectEvent  StoryEvent       @relation("CausalEdgeEffect", fields: [effectEventId], references: [id], onDelete: Cascade)
+  confidence   CausalConfidence
+  /// Author who approved this edge. Required for INFERRED/SPECULATIVE, null
+  /// for EXPLICIT (CHECK in the migration). RESTRICT: deleting an approver
+  /// must not silently un-approve an AI-derived edge.
+  approvedById String?          @map("approved_by_id") @db.Uuid
+  approvedBy   User?            @relation("CausalEdgeApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  @@unique([novelId, causeEventId, effectEventId])
+  @@index([effectEventId])
+  @@map("causal_edges")
 }

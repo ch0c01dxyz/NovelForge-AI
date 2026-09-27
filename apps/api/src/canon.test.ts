@@ -1982,17 +1982,21 @@ describe("the Story Brain answers with evidence", () => {
     expect(later.body.basis).toBe("INFERENCE");
   });
 
-  it("returns an explicit not-implemented marker for the forms slice 2 owns", async () => {
+  // Slice 2 implemented these legs. The honest-empty contract replaces the
+  // NOT_IMPLEMENTED marker: an implemented leg answers `answered: true` even
+  // when nothing is stored — the ledger being empty is itself the finding
+  // (basis null + insufficient, so it can't be mistaken for "false"), while
+  // the marker said nothing at all about the world.
+  it("answers the event/debt legs with an honest empty ledger on a fresh novel", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
 
     for (const kind of ["EVENT", "CAUSAL", "UNRESOLVED", "PROMISES"] as const) {
       const res = await ask(owner.cookie, workspaceId, novelId, { kind }, { mode: "AUTHOR" });
       expect(res.statusCode, kind).toBe(200);
-      // An empty result would read as "nothing happened" — a different and
-      // false claim. The marker is the honest answer.
-      expect(res.body.answered, kind).toBe(false);
-      expect(res.body.reason, kind).toBe("NOT_IMPLEMENTED_IN_PHASE_6");
+      expect(res.body.answered, kind).toBe(true);
+      expect(res.body.insufficient, kind).toBe(true);
+      expect(res.body.basis, kind).toBe(null);
     }
   });
 

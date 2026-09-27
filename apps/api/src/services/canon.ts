@@ -29,12 +29,18 @@ import {
   canonBoundary,
   canonicalSubjectKey,
   classifyProposal,
+  edgeRequiresApproval,
+  isPromiseOpen,
+  isThreadUnresolved,
+  narrativeDebt,
+  readerVisible,
   resolveObject,
   sameObject,
   verifySpan,
   type ClaimBasis,
   type ClaimObject,
   type ConflictKind,
+  type DebtItem,
   type Evidence,
 } from "@novelforge/story-intelligence";
 import { canView, parseViewMode, type ViewMode } from "@novelforge/retrieval";
@@ -56,11 +62,11 @@ export type StoryEntityKindValue = (typeof STORY_ENTITY_KINDS)[number];
 /**
  * The question forms the Brain answers (STORY-INTELLIGENCE.md:5-8).
  *
- * EVENT / CAUSAL / UNRESOLVED / PROMISES are named here because the roadmap
- * names them, but they are NOT answerable in this slice: they need
- * story_events and causal_edges, which arrive in slice 2. They return an
- * explicit not-implemented marker rather than a fabricated answer — an
- * absent table must never read as "nothing happened".
+ * EVENT/CAUSAL answer "what happened and why" from story_events and
+ * causal_edges; UNRESOLVED/PROMISES answer "what still owes the reader"
+ * from story_threads and story_promises, ranked by narrative debt.
+ * All four boundaries follow the same deny-by-default rules as FACT/STATE:
+ * an unanchored or withheld row is absent, never visible.
  */
 export const QUESTION_KINDS = [
   "FACT",
@@ -73,8 +79,8 @@ export const QUESTION_KINDS = [
 ] as const;
 export type QuestionKind = (typeof QUESTION_KINDS)[number];
 
-/** Question kinds that answer in this slice. */
-export const ANSWERABLE_KINDS: readonly QuestionKind[] = ["FACT", "STATE", "RETRIEVAL"];
+/** Question kinds the Brain answers (all of them, since slice 2). */
+export const ANSWERABLE_KINDS: readonly QuestionKind[] = QUESTION_KINDS;
 
 /**
  * The fact shape every read path returns. One object, used by the plain list
@@ -167,7 +173,6 @@ export interface EvidenceView {
 }
 
 export type BrainAnswer =
-  | { kind: QuestionKind; answered: false; reason: "NOT_IMPLEMENTED_IN_PHASE_6" }
   | {
       kind: "FACT" | "STATE";
       answered: true;
@@ -205,6 +210,61 @@ export type BrainAnswer =
       insufficient: boolean;
       /** Which legs ran. A search that lost every leg 502s instead of answering. */
       retrievers: string[];
+      withheldCount: number;
+    }
+  | {
+      kind: "EVENT";
+      answered: true;
+      events: Array<{
+        eventId: string;
+        description: string;
+        chapterId: string | null;
+        /** Reader anchor: null means unanchored, i.e. never reader-visible. */
+        availableFromChapter: number | null;
+      }>;
+      basis: ClaimBasis | null;
+      insufficient: boolean;
+      /** Authors only: rows withheld from the current view. 0 in READER mode. */
+      withheldCount: number;
+    }
+  | {
+      kind: "CAUSAL";
+      answered: true;
+      edges: Array<{
+        edgeId: string;
+        cause: { eventId: string; description: string; availableFromChapter: number | null };
+        effect: { eventId: string; description: string; availableFromChapter: number | null };
+        confidence: "EXPLICIT" | "INFERRED" | "SPECULATIVE";
+      }>;
+      basis: ClaimBasis | null;
+      insufficient: boolean;
+      /** Authors only: edges hidden because a side of the chain is not visible. 0 in READER mode. */
+      withheldCount: number;
+    }
+  | {
+      kind: "UNRESOLVED" | "PROMISES";
+      answered: true;
+      /**
+       * Ranked by narrative debt (importance × urgency × age), descending.
+       * Closed items score 0 and sink but stay in the list so the caller can
+       * display the full ledger; filter on debt > 0 for the urgent view.
+       */
+      items: Array<{
+        id: string;
+        kind: "THREAD" | "PROMISE";
+        /** THREAD title / PROMISE description. */
+        title: string;
+        /** THREAD: ACTIVE/DORMANT/RESOLVED. PROMISE: SETUP..INVALIDATED. */
+        status: string;
+        importance: number;
+        /** Debt = importance × urgency × (10 + ageChapters); 0 when closed. */
+        debt: number;
+        introducedAtChapter: number | null;
+        resolvedOrPayoffAtChapter: number | null;
+      }>;
+      basis: ClaimBasis | null;
+      insufficient: boolean;
+      /** Authors only: rows hidden from the current view. 0 in READER mode. */
       withheldCount: number;
     };
 
@@ -1213,12 +1273,16 @@ export function createCanonServices(deps: {
       // access on the parameter.
       const kind = question.kind;
 
-      if (kind === "EVENT" || kind === "CAUSAL" ||
-          kind === "UNRESOLVED" || kind === "PROMISES") {
-        // Named by the roadmap, not answerable until slice 2. An empty
-        // result here would read as "nothing happened", which is a
-        // different and false claim.
-        return { kind, answered: false, reason: "NOT_IMPLEMENTED_IN_PHASE_6" };
+      if (kind === "EVENT") {
+        return await askEvent(db, workspaceId, novelId, at, viewMode);
+      }
+
+      if (kind === "CAUSAL") {
+        return await askCausal(db, workspaceId, novelId, at, viewMode);
+      }
+
+      if (kind === "UNRESOLVED" || kind === "PROMISES") {
+        return await askDebt(db, workspaceId, novelId, at, viewMode, kind);
       }
 
       if (kind === "RETRIEVAL") {
@@ -1271,8 +1335,8 @@ export function createCanonServices(deps: {
       //
       // Each positive branch is written out rather than reached by falling
       // through an early return: TypeScript cannot narrow a union member
-      // whose discriminant is itself a union, so the EVENT/CAUSAL/... check
-      // above does not narrow `question` here.
+      // whose discriminant is itself a union, so the EVENT/CAUSAL/PROMISES
+      // checks above do not narrow `question` here.
       if (kind === "FACT") {
         const row = await db.canonFact.findFirst({
           where: {
@@ -1490,6 +1554,217 @@ export function createCanonServices(deps: {
       };
     },
   };
+
+  /**
+   * EVENT — "what happened", from story_events.
+   *
+   * READER boundary in the query (listFacts rule, CLAUDE.md §10 / ADR-0007):
+   * `availableFromChapter: { not: null, lte: at }` — null means unclassified
+   * and an unclassified row is withheld, not chapter 0. Authors get the full
+   * list plus a withheld count; readers get no count (existence oracle).
+   */
+  async function askEvent(
+    db: NovelForgeDb,
+    workspaceId: string,
+    novelId: string,
+    at: number | null,
+    viewMode: ViewMode,
+  ): Promise<Extract<BrainAnswer, { kind: "EVENT" }>> {
+    const readerWhere =
+      at === null ? {} : { availableFromChapter: { not: null, lte: at } };
+    const rows = await db.storyEvent.findMany({
+      where: { novelId, workspaceId, ...readerWhere },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, description: true, chapterId: true, availableFromChapter: true },
+    });
+    const total = await db.storyEvent.count({ where: { novelId, workspaceId } });
+    return {
+      kind: "EVENT",
+      answered: true,
+      events: rows.map((r) => ({
+        eventId: r.id,
+        description: r.description,
+        chapterId: r.chapterId,
+        availableFromChapter: r.availableFromChapter,
+      })),
+      basis: rows.length > 0 ? "ESTABLISHED_FACT" : null,
+      insufficient: rows.length === 0,
+      withheldCount: viewMode === "READER" ? 0 : total - rows.length,
+    };
+  }
+
+  /**
+   * CAUSAL — "why did X happen", from causal_edges joined to both events.
+   *
+   * Both sides of the chain must be visible: an edge whose cause or effect is
+   * withheld would disclose the hidden half's existence. INFERRED/SPECULATIVE
+   * edges are AI-derived candidates (CLAUDE.md §2.13) — edgeRequiresApproval
+   * maps them to SUGGESTION, EXPLICIT stays ESTABLISHED_FACT.
+   */
+  async function askCausal(
+    db: NovelForgeDb,
+    workspaceId: string,
+    novelId: string,
+    at: number | null,
+    viewMode: ViewMode,
+  ): Promise<Extract<BrainAnswer, { kind: "CAUSAL" }>> {
+    const rows = await db.causalEdge.findMany({
+      where: { novelId, workspaceId },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        confidence: true,
+        causeEvent: { select: { id: true, description: true, availableFromChapter: true } },
+        effectEvent: { select: { id: true, description: true, availableFromChapter: true } },
+      },
+    });
+    const visible = rows.filter(
+      (r) =>
+        (r.causeEvent.availableFromChapter === null || at === null
+          ? at === null
+          : r.causeEvent.availableFromChapter <= at) &&
+        (r.effectEvent.availableFromChapter === null || at === null
+          ? at === null
+          : r.effectEvent.availableFromChapter <= at),
+    );
+    const edges = visible.map((r) => ({
+      edgeId: r.id,
+      cause: {
+        eventId: r.causeEvent.id,
+        description: r.causeEvent.description,
+        availableFromChapter: r.causeEvent.availableFromChapter,
+      },
+      effect: {
+        eventId: r.effectEvent.id,
+        description: r.effectEvent.description,
+        availableFromChapter: r.effectEvent.availableFromChapter,
+      },
+      confidence: r.confidence,
+    }));
+    // Provenance: an EXPLICIT edge is established; anything an author has to
+    // approve is a suggestion until then. Mixed lists weaken to the weakest
+    // member, matching answerBasis' contract.
+    const basis = edges.length === 0
+      ? { insufficient: true, basis: null as ClaimBasis | null }
+      : edges.some((e) => edgeRequiresApproval(e.confidence))
+        ? { insufficient: false, basis: "SUGGESTION" as ClaimBasis }
+        : { insufficient: false, basis: "ESTABLISHED_FACT" as ClaimBasis };
+    return {
+      kind: "CAUSAL",
+      answered: true,
+      edges,
+      basis: basis.insufficient ? null : basis.basis,
+      insufficient: basis.insufficient,
+      withheldCount: viewMode === "READER" ? 0 : rows.length - visible.length,
+    };
+  }
+
+  /**
+   * UNRESOLVED / PROMISES — "what still owes the reader", from story_threads
+   * and story_promises, ranked by narrative debt (importance × urgency × age).
+   * Debt is derived here, never stored. ageChapters uses the novel's current
+   * frontier — the highest chapter number — because threads/promises carry no
+   * end stamp of their own while open.
+   *
+   * Reader anchor is `introducedAtChapter` (schema docstring: "doubles as the
+   * reader anchor"); an unanchored row is never reader-visible per
+   * readerVisible().
+   */
+  async function askDebt(
+    db: NovelForgeDb,
+    workspaceId: string,
+    novelId: string,
+    at: number | null,
+    viewMode: ViewMode,
+    forKind: "UNRESOLVED" | "PROMISES",
+  ): Promise<Extract<BrainAnswer, { kind: "UNRESOLVED" | "PROMISES" }>> {
+    const frontier = await db.chapter.aggregate({
+      where: { novelId },
+      _max: { number: true },
+    });
+    const now = frontier._max?.number ?? 0;
+
+    const threads = await db.storyThread.findMany({
+      where: { novelId, workspaceId },
+      select: {
+        id: true, title: true, status: true, importance: true,
+        introducedAtChapter: true, resolvedAtChapter: true,
+      },
+    });
+    const promises = await db.storyPromise.findMany({
+      where: { novelId, workspaceId },
+      select: {
+        id: true, title: true, status: true, importance: true,
+        introducedAtChapter: true, payoffAtChapter: true,
+      },
+    });
+
+    const all: DebtItem[] = [
+      ...threads.map((t) => ({
+        id: t.id,
+        kind: "THREAD" as const,
+        open: isThreadUnresolved(t.status),
+        importance: t.importance,
+        ageChapters: Math.max(0, now - (t.introducedAtChapter ?? 0)),
+      })),
+      ...promises.map((p) => ({
+        id: p.id,
+        kind: "PROMISE" as const,
+        open: isPromiseOpen(p.status),
+        importance: p.importance,
+        ageChapters: Math.max(0, now - (p.introducedAtChapter ?? 0)),
+        readyForPayoff: p.status === "READY_FOR_PAYOFF",
+      })),
+    ];
+
+    // For PROMISES only promise rows are asked for; UNRESOLVED shows the full
+    // ledger (open threads + open promises are what "unresolved" means; closed
+    // items sink to score 0 but stay so the caller can render the full list).
+    const wanted =
+      forKind === "PROMISES"
+        ? all.filter((i) => i.kind === "PROMISE")
+        : all;
+    const ranked = narrativeDebt(wanted);
+
+    const rowFor = (id: string) =>
+      threads.find((t) => t.id === id) ??
+      promises.find((p) => p.id === id)!;
+
+    // Boundary rule applied at the view layer here because the anchor
+    // is a nullable column with "null = unanchored = never visible" semantics
+    // (readerVisible), not a `not: null, lte` predicate shape. Same effect as
+    // the listFacts where-clause: a reader never learns a hidden row exists.
+    const readerAt = at ?? 0;
+    const visibleRows = ranked.filter((i) => {
+      const row = rowFor(i.id);
+      return viewMode !== "READER" ||
+        readerVisible(row.introducedAtChapter, readerAt);
+    });
+
+    const items = visibleRows.map((i) => {
+      const row = rowFor(i.id);
+      const close =
+        "resolvedAtChapter" in row ? row.resolvedAtChapter : row.payoffAtChapter;
+      return {
+        id: i.id,
+        kind: i.kind,
+        title: row.title,
+        status: row.status,
+        importance: row.importance,
+        debt: i.score,
+        introducedAtChapter: row.introducedAtChapter,
+        resolvedOrPayoffAtChapter: close ?? null,
+      };
+    });
+    return {
+      kind: forKind,
+      answered: true,
+      items,
+      basis: items.length > 0 ? "ESTABLISHED_FACT" : null,
+      insufficient: items.length === 0,
+      withheldCount: viewMode === "READER" ? 0 : ranked.length - visibleRows.length,
+    };
+  }
 
   /**
    * Validate and normalise a piece of evidence before it is stored.

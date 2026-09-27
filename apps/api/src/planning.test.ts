@@ -427,6 +427,25 @@ describe("planning routes", () => {
     })).json() as { id: string; number: number };
     expect(v2.number).toBe(2);
 
+    // Boundary validation: content is the persisted draft blob, so absent or
+    // null is rejected at the route (400), not stored as an empty draft.
+    for (const bad of [{}, { content: null }]) {
+      const rejected = await app!.inject({
+        method: "POST",
+        url: base,
+        headers: { cookie: owner.cookie },
+        payload: bad,
+      });
+      expect(rejected.statusCode, JSON.stringify(bad)).toBe(400);
+      expect((rejected.json() as { error: string }).error).toBe("INVALID_INPUT");
+    }
+    const afterRejects = (await app!.inject({
+      method: "GET",
+      url: base,
+      headers: { cookie: owner.cookie },
+    })).json() as Array<{ id: string }>;
+    expect(afterRejects).toHaveLength(2);
+
     // List ordered number desc.
     let list = (await app!.inject({
       method: "GET",

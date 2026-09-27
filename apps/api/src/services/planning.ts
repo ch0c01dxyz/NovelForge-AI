@@ -312,6 +312,11 @@ export function createPlanningServices(deps: {
         if (code === "P2002") {
           throw new ConflictError(`order ${order} is already taken in this saga`);
         }
+        // FK on sagaId/chapterId/sceneId — a concurrent delete may have
+        // removed a linked row between the pre-check and the create.
+        if (code === "P2003") {
+          throw new ConflictError("linked saga, chapter or scene no longer exists");
+        }
         throw e;
       }
     },
@@ -342,17 +347,30 @@ export function createPlanningServices(deps: {
     async createOutlineDraft({ actorUserId, workspaceId, novelId, content, note }) {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
 
-      // number is monotonic per novel (@@unique([novelId, number])): max read inside the same transaction as the create, else concurrent drafts race on the same next number and one dies on P2002.
-      const created = await db.$transaction(async (tx) => {
-        const latest = await tx.outlineVersion.findFirst({
-          where: { novelId },
-          orderBy: { number: "desc" },
-          select: { number: true },
+      // number is monotonic per novel (@@unique([novelId, number])): the max
+      // read sits inside the same transaction as the create, but READ COMMITTED
+      // takes no lock on the read — the unique index is the actual backstop,
+      // and a concurrent draft surfaces here as P2002, mapped to a 409.
+      const created = await db
+        .$transaction(async (tx) => {
+          const latest = await tx.outlineVersion.findFirst({
+            where: { novelId },
+            orderBy: { number: "desc" },
+            select: { number: true },
+          });
+          return tx.outlineVersion.create({
+            data: { novelId, number: (latest?.number ?? 0) + 1, status: "DRAFT", content: content as InputJsonValue, note, createdById: actorUserId },
+          });
+        })
+        .catch((e: unknown) => {
+          // A concurrent create raced us to the same next number; the index
+          // rejected it — a conflict with the other draft, not a 500.
+          const code = (e as { code?: string })?.code;
+          if (code === "P2002") {
+            throw new ConflictError("another outline draft was created concurrently");
+          }
+          throw e;
         });
-        return tx.outlineVersion.create({
-          data: { novelId, number: (latest?.number ?? 0) + 1, status: "DRAFT", content: content as InputJsonValue, note, createdById: actorUserId },
-        });
-      });
       await audit.record({
         actorUserId,
         workspaceId,

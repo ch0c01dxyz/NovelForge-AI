@@ -44,7 +44,9 @@ const createOutlineNodeBody = z.object({
 });
 
 const createOutlineDraftBody = z.object({
-  content: z.unknown(),
+  // Absent or null would otherwise reach the service as an untyped blob and
+  // be persisted as an empty draft; the service stores content verbatim.
+  content: z.unknown().refine((v) => v !== undefined && v !== null),
   note: z.string().trim().max(2000).nullable().optional(),
 });
 

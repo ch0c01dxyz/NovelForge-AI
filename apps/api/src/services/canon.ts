@@ -254,8 +254,8 @@ export type BrainAnswer =
         kind: "THREAD" | "PROMISE";
         /** THREAD title / PROMISE description. */
         title: string;
-        /** THREAD: ACTIVE/DORMANT/RESOLVED. PROMISE: SETUP..INVALIDATED. */
-        status: string;
+        /** THREAD: ACTIVE/DORMANT/RESOLVED. PROMISE: SETUP..INVALIDATED. null for open rows in READER mode (a future status is itself spoiler). */
+        status: string | null;
         importance: number;
         /** Debt = importance × urgency × (10 + ageChapters); 0 when closed. */
         debt: number;
@@ -1682,7 +1682,14 @@ export function createCanonServices(deps: {
       where: { novelId },
       _max: { number: true },
     });
-    const now = frontier._max?.number ?? 0;
+    // READER mode anchors `now` to the reader's position: the real frontier
+    // would inflate ages (and could age future chapters' items) with numbers
+    // the reader is not allowed to know exist.
+    const readerAt = at ?? 0;
+    const now =
+      viewMode === "READER"
+        ? Math.min(frontier._max?.number ?? 0, readerAt)
+        : (frontier._max?.number ?? 0);
 
     const threads = await db.storyThread.findMany({
       where: { novelId, workspaceId },
@@ -1713,7 +1720,10 @@ export function createCanonServices(deps: {
         open: isPromiseOpen(p.status),
         importance: p.importance,
         ageChapters: Math.max(0, now - (p.introducedAtChapter ?? 0)),
-        readyForPayoff: p.status === "READY_FOR_PAYOFF",
+        // Zeroed in READER mode: READY_FOR_PAYOFF is a planner signal, and
+        // leaking it through the debt multiplier would let a reader infer
+        // upcoming structure from the ranking.
+        readyForPayoff: viewMode !== "READER" && p.status === "READY_FOR_PAYOFF",
       })),
     ];
 
@@ -1729,27 +1739,40 @@ export function createCanonServices(deps: {
     const rowFor = (id: string) =>
       threads.find((t) => t.id === id) ??
       promises.find((p) => p.id === id)!;
+    const closeFor = (row: (typeof threads)[number] | (typeof promises)[number]) =>
+      "resolvedAtChapter" in row ? row.resolvedAtChapter : row.payoffAtChapter;
 
     // Boundary rule applied at the view layer here because the anchor
     // is a nullable column with "null = unanchored = never visible" semantics
     // (readerVisible), not a `not: null, lte` predicate shape. Same effect as
     // the listFacts where-clause: a reader never learns a hidden row exists.
-    const readerAt = at ?? 0;
+    // An item that has already closed by the reader's position is visible as
+    // history (it happened at/before readerAt); one that closes later is not.
     const visibleRows = ranked.filter((i) => {
       const row = rowFor(i.id);
+      const close = closeFor(row);
       return viewMode !== "READER" ||
-        readerVisible(row.introducedAtChapter, readerAt);
+        (readerVisible(row.introducedAtChapter, readerAt) &&
+          (close === null || close <= readerAt));
     });
 
     const items = visibleRows.map((i) => {
       const row = rowFor(i.id);
-      const close =
-        "resolvedAtChapter" in row ? row.resolvedAtChapter : row.payoffAtChapter;
+      const close = closeFor(row);
+      // DebtScore drops DebtItem's open flag; re-derive it from the row —
+      // threads carry resolvedAtChapter, promises carry payoffAtChapter.
+      const open =
+        "resolvedAtChapter" in row
+          ? isThreadUnresolved(row.status)
+          : isPromiseOpen(row.status);
       return {
         id: i.id,
         kind: i.kind,
         title: row.title,
-        status: row.status,
+        // A reader sees a resolved row's status (it explains the history), but
+        // an open row's status is future information — RESOLVED soon, which
+        // chapter, what kind — so it is masked.
+        status: viewMode === "READER" && open ? null : row.status,
         importance: row.importance,
         debt: i.score,
         introducedAtChapter: row.introducedAtChapter,

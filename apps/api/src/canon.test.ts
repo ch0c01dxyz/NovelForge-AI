@@ -2000,6 +2000,72 @@ describe("the Story Brain answers with evidence", () => {
     }
   });
 
+  // The UNRESOLVED leg's "now" and boundary checks ran against the raw chapter
+  // frontier with no status filter, so DRAFT chapters (unpublished to readers)
+  // inflated ages, and a row that closes *after* the reader's position still
+  // showed its future status and close chapter. A reader at chapter 3 learned
+  // the story reaches chapter 40 and that a thread resolves at 87.
+  it("keeps the UNRESOLVED ledger on the reader's side of the spoiler boundary", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+
+    // 40 chapters whose status is DRAFT — deliberately, to prove the frontier
+    // read never lets draft numbering leak into a reader's view.
+    await db.chapter.createMany({
+      data: Array.from({ length: 40 }, (_, i) => ({
+        novelId, number: i + 1, title: `Chapter ${i + 1}`, status: "DRAFT", createdById: owner.userId,
+      })),
+    });
+    // Thread A: introduced at 2, still open — visible to a reader at 3.
+    const threadA = await db.storyThread.create({
+      data: { novelId, workspaceId, kind: "MYSTERY", title: "sword fragment", status: "ACTIVE", importance: 3, introducedAtChapter: 2, createdById: owner.userId },
+    });
+    // Thread B: resolved at 87 — far in the reader's future.
+    const threadB = await db.storyThread.create({
+      data: { novelId, workspaceId, kind: "MYSTERY", title: "future thread", status: "RESOLVED", importance: 1, introducedAtChapter: 1, resolvedAtChapter: 87, createdById: owner.userId },
+    });
+    // Promise C: READY_FOR_PAYOFF — the payoff marker must not steer a
+    // reader's ranking either.
+    const promiseC = await db.storyPromise.create({
+      data: { novelId, workspaceId, title: "tournament", status: "READY_FOR_PAYOFF", importance: 2, introducedAtChapter: 1, createdById: owner.userId },
+    });
+
+    const reader = await ask(
+      owner.cookie, workspaceId, novelId, { kind: "UNRESOLVED" },
+      { mode: "READER", readerChapter: "3" },
+    );
+    expect(reader.statusCode).toBe(200);
+    const readerItems = reader.body.items as Array<Record<string, unknown>>;
+    // Thread B (resolves at 87) is absent entirely — the reader never learns
+    // it exists, and withheldCount stays 0 (the count is an existence oracle).
+    expect(readerItems.map((i) => i.id)).toEqual([threadA.id, promiseC.id]);
+    // debt = importance × urgency × (10 + age): A = 3 × 1 × (10 + 1) = 33;
+    // C = 2 × 1 × (10 + 2) = 24 — urgency 2× zeroed, else READY_FOR_PAYOFF
+    // leaks through the ranking.
+    expect(readerItems[0]!.debt).toBe(33);
+    expect(readerItems[1]!.debt).toBe(24);
+    // An open row's status is future information (which chapter, which fate),
+    // so it is masked; a closed row's status is history.
+    expect(readerItems[0]!.status).toBeNull();
+    expect(readerItems[1]!.status).toBeNull();
+    expect(readerItems[0]!.resolvedOrPayoffAtChapter).toBeNull();
+    expect(reader.body.withheldCount).toBe(0);
+
+    // AUTHOR mode sees the real ledger: now = 40 (draft frontier included).
+    const author = await ask(owner.cookie, workspaceId, novelId, { kind: "UNRESOLVED" }, { mode: "AUTHOR" });
+    expect(author.statusCode).toBe(200);
+    const authorItems = author.body.items as Array<Record<string, unknown>>;
+    // A = 3 × 2 × (10 + 38) = 144; B closed → 0 with close chapter shown;
+    // C = 2 × 2 × (10 + 39) = 196. Ranked by debt, descending.
+    expect(authorItems.map((i) => i.id)).toEqual([promiseC.id, threadA.id, threadB.id]);
+    expect(authorItems[0]!.debt).toBe(196);
+    expect(authorItems[1]!.debt).toBe(144);
+    expect(authorItems[2]!.debt).toBe(0);
+    expect(authorItems[2]!.status).toBe("RESOLVED");
+    expect(authorItems[2]!.resolvedOrPayoffAtChapter).toBe(87);
+    expect(author.body.withheldCount).toBe(0);
+  });
+
   // The RETRIEVAL leg is the one answer path that reaches the search service,
   // and it had no assertion at all — the docs claimed the Brain answers
   // "FACT, STATE and RETRIEVAL with evidence" while nothing exercised the

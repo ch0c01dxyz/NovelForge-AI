@@ -1425,3 +1425,16 @@ included); apps/api 202/202; packages 324 passed / 1 skipped on vitest
 schema); `pnpm -r build` green including apps/web; revert-proof needle
 check 10/10 (409 assertions, run-survival, P2003/P2039 mapping, RESTRICT
 SQL, BRAIN tag, RETRIEVAL skip).
+
+Two adversarial verification runs (5 refute dimensions × 10 agents each)
+over the finished round. First run surfaced the deleteNovel defect —
+fixed as `fb315a3` with migration `20261002b` (canon_facts.novel_id →
+RESTRICT) plus a novel-delete test for each refusal path. Second run
+(independent, against the committed state) came back with all 4 gates
+green and only three minors, fixed as `88715da`: `deleteEntity` now
+skips the audit row when a concurrent caller already deleted (count 0 —
+same no-audit-for-no-op rule as the create-race join); the brain-audit
+test pins `retrievers.length === 1`; the entity-delete test asserts the
+citing fact row survives the 409 explicitly. Workflow-delete and
+brain-audit dimensions clean both runs (P2039 dead-OR and PLATFORM-gate
+notes recorded as intentional, not defects).

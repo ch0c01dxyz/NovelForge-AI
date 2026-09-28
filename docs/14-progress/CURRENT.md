@@ -104,9 +104,9 @@ is what closes the continuity half of that sentence.
 - An `AWAITING_APPROVAL` run stops but cannot yet be resumed. Its
   `completedAt` is deliberately null so a resume path can distinguish it
   from a finished run.
-- `WorkflowRun` -> `Workflow` is `onDelete: Cascade`, so deleting a
-  workflow would take its run history with it. Nothing deletes a workflow
-  today; move the FK to `Restrict` before a delete endpoint exists.
+- `WorkflowRun` -> `Workflow` is `onDelete: Restrict` (2026-10-02
+  migration): run history survives; a workflow with runs is refused with
+  a 409 by the delete route.
 - Routing strategy is deployment-wide (`AI_ROUTING_STRATEGY`); there is no
   per-workspace override and no operator UI to change it at runtime.
 - Scene CRUD is schema-only; no API until the editor needs scene editing.

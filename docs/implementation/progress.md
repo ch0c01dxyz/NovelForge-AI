@@ -935,32 +935,39 @@ Known limitations carried forward:
   swaps numbers in a transaction, so a reorder must recompute authored
   boundaries or the spoiler filter drifts. Inherited exposure (no reorder
   path ships here), now on tables that are explicitly story truth.
-- **The Brain's structured answers are not audited.** Corrected claim: the
-  `RETRIEVAL` leg writes a `RetrievalAudit` row (widening the unpruned
-  Phase 5 retention gap), but `FACT`, `STATE` and the not-implemented
-  responses never call `search` and so write nothing. An earlier note here
-  said "a row per ask", which was false — and the truth is worse, because a
-  deterministic answer about canon currently leaves no trace of what was
-  asked. Write a row for the structured paths (query = kind + predicate,
-  mode, readerChapter, returned/withheld counts) or delete the claim.
-- **Deleting a `StoryEntity` would cascade canon away, and no delete route
-  exists yet.** `canon_facts.entity_id` and `canon_facts.object_entity_id`
-  are `ON DELETE CASCADE` (`migration.sql:188, 191`), as is
-  `canon_proposals.entity_id` (`:218`), so removing one entity row would take
-  the facts about it, the facts naming it as their object, their
-  `canon_fact_sources` evidence, and every proposal for it. This is
-  deliberately NOT fixed yet: with no entity-delete route the cascade is
-  unreachable, so the choice between `RESTRICT` and a guarded delete belongs
-  to whoever builds that route. It is recorded as a real hazard rather than a
-  refuted finding because the same-shaped finding next to it — evidence
-  cascading from `chapter_versions` — *was* reachable and was fixed (both
-  evidence FKs are now `RESTRICT`). The moment an entity-delete route lands,
-  this becomes that bug. `object_entity_id` cannot become `SET NULL`: both
-  object columns NULL would violate `CanonFact_object_exactly_one`.
+- **The Brain's structured answers are not audited.** FIXED (2026-10-02):
+  every structured `ask` leg (FACT, STATE, EVENT, CAUSAL, UNRESOLVED,
+  PROMISES) now writes one `RetrievalAudit` row in `auditBrainAsk`
+  (services/canon.ts) — query is a `BRAIN:ASK` descriptor, `retrievers` is
+  tagged `BRAIN:<KIND>` so they are distinguishable from search rows, and the
+  row records mode, readerChapter, returned/withheld counts, ≤100 provenance
+  ids, and latency. The RETRIEVAL leg deliberately does not route through it
+  (search already writes its own row; double-writing would be the defect).
+  READER-mode rows record 0/0 with empty provenance so the audit table cannot
+  become the existence oracle the answers themselves refuse to be. The
+  Phase 5 unpruned-retention gap now widens to these rows too.
+- **Deleting a `StoryEntity` would cascade canon away.** FIXED (2026-10-02,
+  migration `20261002_phase7_delete_route_fk_hardening`): the entity-delete
+  route landed, so the FKs hardened first. `canon_facts.entity_id` and
+  `canon_facts.object_entity_id` are now `ON DELETE RESTRICT` (both
+  indexed), so `DELETE .../canon/entities/:entityId` (gate `canon:manage`)
+  is refused with a 409 naming canon facts while any fact references the
+  entity as subject or object. `canon_proposals` keeps CASCADE by decision:
+  a proposal is uncommitted candidate canon (CLAUDE.md §2.13) and dies with
+  its subject; the facts are what block. Note the block is PERMANENT —
+  retraction withdraws a claim but keeps the row (canon history is never
+  destructively overwritten, §9), so a fact-referenced entity is
+  undeletable; the route exists for unreferenced names. The same migration
+  made `workflow_runs.workflow_id` and `workflow_runs.workflow_version_id`
+  `RESTRICT` (both indexed): run history is the execution audit trail, so
+  `DELETE /api/workflows/:workflowId` is refused with a 409 once the
+  workflow has ever run.
 
-Verified after: lint 0, typecheck clean in every workspace except
-`apps/web` (see below), 435 passed / 1 skipped, migration drift 0, and the
-migration applies from empty through all ten migrations.
+Verified after: lint 0, typecheck clean in every workspace including
+`apps/web` (vitest 3→5 pins were behind its earlier nuxt failure), 202/202 in
+`apps/api` plus 324 passed / 1 skipped across the packages on vitest 5.0.2,
+migration drift 0, build green for all workspaces, and the migration applies
+from empty through all ten migrations.
 
 **Audit round 2 (same day).** A second adversarial pass over slice 1 — eight
 independent finder agents, then a refutation pass in which every finding had
@@ -1381,3 +1388,40 @@ Checks run since `38a00ae`: typecheck clean in every workspace,
 full recursive test suite green (apps/api 197/197,
 story-intelligence 63/63, planning 19/19), `pnpm -r build` complete.
 
+
+### Round 7 — vitest 5.0.2 pin + delete endpoints + Brain audit rows (2026-10-02)
+
+Three tasks in one round: the vitest 3→5 upgrade completed to exact
+`5.0.2` pins in all 12 package.json files; the two documented delete
+hazards got their routes; the Brain's structured asks became auditable.
+
+- **vitest 5.0.2 everywhere.** All `"^5.0.0"` ranges pinned exact. The
+  upgrade surfaced (and the pin fixed) the long-standing `apps/web`
+  typecheck failure — typecheck now clean in every workspace.
+- **Entity delete + FK hardening** (migration
+  `20261002_phase7_delete_route_fk_hardening`): `canon_facts.entity_id`,
+  `canon_facts.object_entity_id`, `workflow_runs.workflow_id`,
+  `workflow_runs.workflow_version_id` → `ON DELETE RESTRICT` (referencing
+  columns indexed — Postgres does not index them automatically;
+  steprun_fk_indexes precedent). `canon_proposals` FKs stay CASCADE by
+  decision: proposals are uncommitted candidate canon and die with their
+  subject. `DELETE .../canon/entities/:entityId` (gate `canon:manage`)
+  returns 409 while any fact cites the entity; the block is PERMANENT —
+  retraction withdraws a claim but keeps the row (§9), so the route is for
+  unreferenced names only and the 409 message promises no escape.
+- **Workflow delete**: `DELETE /api/workflows/:workflowId` deletes a
+  never-run workflow with its versions; a run history gives 409 because
+  run records are the execution audit trail and survive.
+- **Brain audit rows**: `auditBrainAsk` writes one `RetrievalAudit` row
+  per structured ask (query `BRAIN:ASK …`, retriever tag `BRAIN:<KIND>`,
+  mode, readerChapter, returned/withheld, ≤100 provenance ids, latency).
+  READER rows record 0/0 + empty provenance (the audit table must not
+  become the existence oracle). The RETRIEVAL leg does not route through
+  it — `search` already writes its own row.
+
+Verified after: lint 0; typecheck clean in every workspace (apps/web now
+included); apps/api 202/202; packages 324 passed / 1 skipped on vitest
+5.0.2; migration drift 0 (`prisma migrate diff` from migrations to
+schema); `pnpm -r build` green including apps/web; revert-proof needle
+check 10/10 (409 assertions, run-survival, P2003/P2039 mapping, RESTRICT
+SQL, BRAIN tag, RETRIEVAL skip).

@@ -67,14 +67,23 @@ is what closes the continuity half of that sentence.
   writes a `RetrievalAudit` row; `FACT`, `STATE` and the not-implemented
   responses never call `search`, so they write nothing. An earlier note said
   "a row per ask" — false, and the truth is worse.
-- **Deleting a `StoryEntity` would cascade canon away, and no delete route
-  exists yet.** `canon_facts.entity_id`, `canon_facts.object_entity_id` and
-  `canon_proposals.entity_id` are all `ON DELETE CASCADE`, so removing one
-  entity would take the facts about it, the facts naming it as their object,
-  their evidence, and every proposal for it. Unreachable today because no
-  entity-delete route ships; whoever adds one must choose `RESTRICT` or a
-  guarded delete. Recorded as a real hazard, not a refuted finding — the
-  same-shaped evidence cascade *was* reachable and is now `RESTRICT`.
+  FIXED (2026-10-02): every structured ask leg now writes one row via
+  `auditBrainAsk` (`BRAIN:ASK …` query, `BRAIN:<KIND>` retriever, per-leg
+  returned/withheld/provenance). READER rows record 0/0 + empty provenance so
+  the audit table stays a non-existence-oracle. The RETRIEVAL leg is untouched —
+  `search` already writes its own row.
+- **Entity delete + canon cascade.** FIXED (2026-10-02): the entity-delete
+  route landed with the FKs hardened first — `canon_facts.entity_id` and
+  `canon_facts.object_entity_id` are now `ON DELETE RESTRICT` (both indexed;
+  migration `20261002_phase7_delete_route_fk_hardening`), so `DELETE` returns
+  409 when any fact cites the entity and the canon row survives with its
+  citations. The block is PERMANENT: retraction withdraws a claim but keeps
+  the row (CLAUDE.md §9), so only unreferenced entities are deletable.
+  `canon_proposals` FKs stay CASCADE — proposals are uncommitted candidate
+  canon and correctly die with their subject. The same migration made
+  `workflow_runs.workflow_id` / `.workflow_version_id` RESTRICT, so run
+  history outlives definition deletion (a `workflow.delete` route with a 409
+  on run history landed alongside).
 
 - **No ANN index on embeddings.** Prisma 7.10 cannot declare HNSW or
   IVFFlat, so search is an exact scan over a workspace's vectors. Correct

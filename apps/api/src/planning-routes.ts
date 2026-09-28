@@ -142,6 +142,25 @@ export function registerPlanningRoutes(
     },
   );
 
+  app.delete(
+    "/api/workspaces/:workspaceId/novels/:novelId/planning/synopses/:synopsisId",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams
+        .extend({ synopsisId: uuid })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.deleteSynopsis({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        synopsisId: params.data.synopsisId,
+      });
+      return reply.code(204).send();
+    },
+  );
+
   // --- Sagas ---
 
   app.post("/api/workspaces/:workspaceId/novels/:novelId/planning/sagas", async (request, reply) => {
@@ -177,6 +196,25 @@ export function registerPlanningRoutes(
       skip: query.data.skip ?? 0,
     });
   });
+
+  app.delete(
+    "/api/workspaces/:workspaceId/novels/:novelId/planning/sagas/:sagaId",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams
+        .extend({ sagaId: uuid })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.deleteSaga({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        sagaId: params.data.sagaId,
+      });
+      return reply.code(204).send();
+    },
+  );
 
   // --- Outline nodes ---
 
@@ -217,6 +255,25 @@ export function registerPlanningRoutes(
       skip: query.data.skip ?? 0,
     });
   });
+
+  app.delete(
+    "/api/workspaces/:workspaceId/novels/:novelId/planning/outline-nodes/:outlineNodeId",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams
+        .extend({ outlineNodeId: uuid })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.deleteOutlineNode({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        outlineNodeId: params.data.outlineNodeId,
+      });
+      return reply.code(204).send();
+    },
+  );
 
   // --- Outline versions ---
 

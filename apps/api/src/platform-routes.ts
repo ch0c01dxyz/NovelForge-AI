@@ -229,4 +229,13 @@ export async function registerPlatformRoutes(
     if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
     return services.getNovel(actorUserId, params.data.workspaceId, params.data.novelId);
   });
+
+  app.delete("/api/workspaces/:workspaceId/novels/:novelId", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = novelParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    await services.deleteNovel({ actorUserId, ...params.data });
+    return { status: "ok" };
+  });
 }

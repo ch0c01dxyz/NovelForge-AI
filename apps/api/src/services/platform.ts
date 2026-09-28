@@ -89,6 +89,12 @@ export interface PlatformServices {
     slug: string;
   }): Promise<{ id: string }>;
 
+  deleteNovel(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+  }): Promise<void>;
+
   getNovel(actorUserId: string, workspaceId: string, novelId: string): Promise<NovelView>;
 
   /** Novels in every workspace the actor is a member of. */
@@ -379,6 +385,24 @@ export function createPlatformServices(deps: {
         payload: { slug },
       });
       return { id: novel.id };
+    },
+
+    async deleteNovel({ actorUserId, workspaceId, novelId }) {
+      await requireCapabilityIn(actorUserId, workspaceId, "novel:delete");
+      const novel = await requireNovelInWorkspace(novelId, workspaceId);
+      // ponytail: every child table of Novel cascades (schema-verified), so a
+      // plain delete is safe. Generation/WorkflowRun carry novelId without an
+      // FK — their rows orphan by design. If either gains an FK, this needs a
+      // P2003 → ConflictError catch like deleteChapter.
+      await db.novel.delete({ where: { id: novelId } });
+      await audit.record({
+        actorUserId,
+        workspaceId,
+        action: "novel.deleted",
+        entityType: "Novel",
+        entityId: novelId,
+        payload: { slug: novel.slug },
+      });
     },
 
     async getNovel(actorUserId, workspaceId, novelId) {

@@ -55,9 +55,13 @@ export interface PlanningServices {
 
   archiveSynopsis(input: Scope & { synopsisId: string }): Promise<void>;
 
+  deleteSynopsis(input: Scope & { synopsisId: string }): Promise<void>;
+
   createSaga(input: Scope & { kind: PlanningKind; title: string; parentId: string | null; intent: string | null }): Promise<SagaView>;
 
   listSagas(input: Scope & { take: number; skip: number }): Promise<SagaView[]>;
+
+  deleteSaga(input: Scope & { sagaId: string }): Promise<void>;
 
   createOutlineNode(input: Scope & {
     sagaId: string;
@@ -70,6 +74,8 @@ export interface PlanningServices {
   }): Promise<OutlineNodeView>;
 
   listOutlineNodes(input: Scope & { sagaId: string | null; take: number; skip: number }): Promise<OutlineNodeView[]>;
+
+  deleteOutlineNode(input: Scope & { outlineNodeId: string }): Promise<void>;
 
   createOutlineDraft(input: Scope & { content: unknown; note: string | null }): Promise<OutlineVersionView>;
 
@@ -178,6 +184,23 @@ export function createPlanningServices(deps: {
       });
     },
 
+    async deleteSynopsis({ actorUserId, workspaceId, novelId, synopsisId }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:manage");
+      // deleteMany with the novel-scoped predicate: count 0 = missing or lost
+      // a concurrent-delete race — both are the same 404 (and P2025 impossible).
+      const deleted = await db.synopsis.deleteMany({
+        where: { id: synopsisId, novelId },
+      });
+      if (deleted.count === 0) throw new NotFoundError("synopsis");
+      await audit.record({
+        actorUserId,
+        workspaceId,
+        action: "planning.synopsis-deleted",
+        entityType: "Synopsis",
+        entityId: synopsisId,
+      });
+    },
+
     // --- Sagas (hierarchy) ------------------------------------------------
 
     async createSaga({ actorUserId, workspaceId, novelId, kind, title, parentId, intent }) {
@@ -247,6 +270,30 @@ export function createPlanningServices(deps: {
         intent: r.intent,
         createdAt: r.createdAt,
       }));
+    },
+
+    async deleteSaga({ actorUserId, workspaceId, novelId, sagaId }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:manage");
+      const existing = await db.saga.findFirst({
+        where: { id: sagaId, novelId },
+        select: { kind: true, parentId: true },
+      });
+      if (!existing) throw new NotFoundError("saga");
+      // Child sagas and outline nodes cascade DB-side (self parentId Cascade +
+      // OutlineNode.sagaId Cascade); deleteMany keeps a concurrent delete a
+      // clean 404 instead of P2025 → 500.
+      const deleted = await db.saga.deleteMany({
+        where: { id: sagaId, novelId },
+      });
+      if (deleted.count === 0) throw new NotFoundError("saga");
+      await audit.record({
+        actorUserId,
+        workspaceId,
+        action: "planning.saga-deleted",
+        entityType: "Saga",
+        entityId: sagaId,
+        payload: { kind: existing.kind, parentId: existing.parentId },
+      });
     },
 
     // --- Outline nodes ----------------------------------------------------
@@ -340,6 +387,27 @@ export function createPlanningServices(deps: {
         chapterId: r.chapterId,
         sceneId: r.sceneId,
       }));
+    },
+
+    async deleteOutlineNode({ actorUserId, workspaceId, novelId, outlineNodeId }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:manage");
+      const existing = await db.outlineNode.findFirst({
+        where: { id: outlineNodeId, novelId },
+        select: { sagaId: true, order: true },
+      });
+      if (!existing) throw new NotFoundError("outline node");
+      const deleted = await db.outlineNode.deleteMany({
+        where: { id: outlineNodeId, novelId },
+      });
+      if (deleted.count === 0) throw new NotFoundError("outline node");
+      await audit.record({
+        actorUserId,
+        workspaceId,
+        action: "planning.outline-node-deleted",
+        entityType: "OutlineNode",
+        entityId: outlineNodeId,
+        payload: { sagaId: existing.sagaId, order: existing.order },
+      });
     },
 
     // --- Outline versions -------------------------------------------------

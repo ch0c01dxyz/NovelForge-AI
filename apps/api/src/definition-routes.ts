@@ -431,6 +431,21 @@ export function registerDefinitionRoutes(
     return { status: "ok" };
   });
 
+  // Run history is the execution audit trail: a workflow with runs is
+  // refused (409), never deleted with them (20261002 migration, RESTRICT).
+  app.delete("/api/workflows/:workflowId", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = workflowParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    await definitions.deleteWorkflow({
+      actorUserId: actor.userId,
+      actorPlatformRole: actor.platformRole,
+      workflowId: params.data.workflowId,
+    });
+    return { status: "ok" };
+  });
+
   // ==================== Runs ====================
 
   app.post(

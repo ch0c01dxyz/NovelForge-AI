@@ -524,6 +524,70 @@ describe("Phase 4 — definitions", () => {
     await makeAgent(other.cookie, b.workspaceId, "shared-key");
     expect(await db.agent.count({ where: { key: "shared-key" } })).toBe(2);
   });
+
+  it("deletes a workflow that never ran, but refuses one with run history", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "scene-planner");
+    await makeAgent(owner.cookie, workspaceId, "chapter-writer");
+    const neverRan = await makeWorkflow(owner.cookie, workspaceId, "draft-flow", {
+      steps: [{ key: "plan", kind: "AGENT", ref: "scene-planner", instruction: "Plan." }],
+      edges: [],
+      maxSteps: 5,
+    });
+    const hasRuns = await makeWorkflow(owner.cookie, workspaceId, "run-flow", {
+      steps: [
+        { key: "plan", kind: "AGENT", ref: "scene-planner", instruction: "Plan." },
+        { key: "write", kind: "AGENT", ref: "chapter-writer", instruction: "Write." },
+      ],
+      edges: [{ from: "plan", to: "write" }],
+      maxSteps: 5,
+    });
+
+    const run = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${hasRuns}/run`,
+      headers: { cookie: owner.cookie },
+      payload: { novelId, input: { premise: "a forge" } },
+    });
+    expect(run.statusCode, run.body).toBe(201);
+
+    // Run history is the execution audit trail (CLAUDE.md §2.11): RESTRICT,
+    // not CASCADE — the definition delete cannot take the record of what it
+    // did with it.
+    const blocked = await app.inject({
+      method: "DELETE",
+      url: `/api/workflows/${hasRuns}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(await db.workflowRun.count({ where: { workflowId: hasRuns } })).toBe(1);
+
+    // The sibling path: deleting the WORKFLOW VERSION a run cites is blocked
+    // by the same rule — but there is no version-delete route, so prove the
+    // FK at the database instead (the route would be the only way to reach
+    // it, and it does not exist).
+    const version = await db.workflowVersion.findFirstOrThrow({
+      where: { workflowId: hasRuns },
+      orderBy: { number: "desc" },
+    });
+    await expect(db.workflowVersion.delete({ where: { id: version.id } })).rejects.toThrow();
+
+    // A workflow that never ran deletes cleanly, versions and all.
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/workflows/${neverRan}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(await db.workflow.count({ where: { id: neverRan } })).toBe(0);
+    expect(await db.workflowVersion.count({ where: { workflowId: neverRan } })).toBe(0);
+
+    // The run-holding workflow still exists with its history intact.
+    expect(await db.workflow.count({ where: { id: hasRuns } })).toBe(1);
+    expect(await db.workflowRun.count({ where: { workflowId: hasRuns } })).toBe(1);
+  });
 });
 
 describe("Phase 4 — authorization", () => {

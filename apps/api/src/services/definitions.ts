@@ -210,6 +210,18 @@ export interface DefinitionServices {
     actorPlatformRole: PlatformRole;
     workflowId: string;
   }): Promise<WorkflowDetail>;
+
+  /**
+   * Delete a workflow. Both workflow_runs FKs are RESTRICT (see the
+   * 20261002 migration), so a workflow with any run history is refused with
+   * a 409: run history is the execution audit trail, and deleting the
+   * definition must not destroy the record of what it did.
+   */
+  deleteWorkflow(input: {
+    actorUserId: string;
+    actorPlatformRole: PlatformRole;
+    workflowId: string;
+  }): Promise<void>;
 }
 
 export function createDefinitionServices(deps: {
@@ -995,6 +1007,43 @@ export function createDefinitionServices(deps: {
         createdAt: workflow.createdAt,
         updatedAt: workflow.updatedAt,
       };
+    },
+
+    async deleteWorkflow(input) {
+      const workflow = await db.workflow.findUnique({
+        where: { id: input.workflowId },
+        select: { id: true, key: true, scope: true, workspaceId: true },
+      });
+      if (!workflow) throw new NotFoundError("workflow");
+      await gateExisting({
+        actorUserId: input.actorUserId,
+        actorPlatformRole: input.actorPlatformRole,
+        scope: workflow.scope,
+        workspaceId: workflow.workspaceId,
+        cap: "workflow:manage",
+      });
+      // Both workflow_runs FKs are ON DELETE RESTRICT (20261002 migration):
+      // run history is the execution audit trail (CLAUDE.md §2.11), so a
+      // workflow that has ever run is refused. The refusal must be legible —
+      // the same contract as deleteChapter and deleteEntity.
+      await db.workflow.delete({ where: { id: input.workflowId } }).catch((e: unknown) => {
+        const code = (e as { code?: string })?.code;
+        if (code === "P2003" || code === "P2039") {
+          throw new ConflictError(
+            "this workflow has run history — run records are kept even when their " +
+              "definition is deleted, so it cannot be deleted",
+          );
+        }
+        throw e;
+      });
+      await audit.record({
+        actorUserId: input.actorUserId,
+        workspaceId: workflow.workspaceId,
+        action: "workflow.deleted",
+        entityType: "Workflow",
+        entityId: workflow.id,
+        payload: { key: workflow.key, scope: workflow.scope },
+      });
     },
   };
 }

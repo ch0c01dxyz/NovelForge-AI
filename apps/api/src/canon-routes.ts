@@ -207,6 +207,28 @@ export function registerCanonRoutes(
     });
   });
 
+  // The entity-delete route the FK hardening anticipates: an entity cited by
+  // any canon fact is refused (409) rather than allowed to take the canon
+  // record with it — RESTRICT, not CASCADE (20261002 migration).
+  app.delete(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/entities/:entityId",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams
+        .extend({ entityId: uuid })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.deleteEntity({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        entityId: params.data.entityId,
+      });
+      return reply.code(204).send();
+    },
+  );
+
   // --- Facts ---
 
   app.post("/api/workspaces/:workspaceId/novels/:novelId/canon/facts", async (request, reply) => {

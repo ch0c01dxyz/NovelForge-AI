@@ -287,6 +287,20 @@ export interface CanonServices {
     Array<{ id: string; kind: string; key: string; name: string }>
   >;
 
+  /**
+   * Delete an entity. Both canon_facts entity FKs are RESTRICT (see the
+   * 20261002 migration), so an entity that appears in any fact — as subject
+   * or object, whatever the fact's status — is refused with a 409: canon
+   * history is never destructively overwritten (CLAUDE.md §9), and retraction
+   * keeps the row. This route deletes only unreferenced entities.
+   */
+  deleteEntity(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    entityId: string;
+  }): Promise<void>;
+
   createFact(input: {
     actorUserId: string;
     workspaceId: string;
@@ -484,7 +498,7 @@ export function createCanonServices(deps: {
   async function entityOr404(entityId: string, novelId: string, workspaceId: string) {
     const entity = await db.storyEntity.findFirst({
       where: { id: entityId, novelId, novel: { workspaceId } },
-      select: { id: true, key: true, name: true },
+      select: { id: true, key: true, name: true, kind: true },
     });
     if (!entity) throw new NotFoundError("entity");
     return entity;
@@ -635,6 +649,43 @@ export function createCanonServices(deps: {
         select: { id: true, kind: true, key: true, name: true },
       });
       return rows;
+    },
+
+    async deleteEntity({ actorUserId, workspaceId, novelId, entityId }) {
+      await gate(workspaceId, novelId, actorUserId, "canon:manage");
+      const entity = await entityOr404(entityId, novelId, workspaceId);
+      // canon_facts.entity_id and canon_facts.object_entity_id are ON DELETE
+      // RESTRICT (20261002 migration): the facts ARE the canon record, and
+      // cascading one away would take its citations with it. The block holds
+      // for every fact status — retraction withdraws a claim but keeps the
+      // row (canon history is never destructively overwritten, CLAUDE.md
+      // §9) — so an entity that appears in any fact is permanently
+      // undeletable. This delete route is for unreferenced entities: names
+      // created by mistake. Say that plainly instead of promising an escape
+      // hatch the schema cannot honour.
+      await db.storyEntity
+        .deleteMany({
+          where: { id: entityId, novelId, novel: { workspaceId } },
+        })
+        .catch((e: unknown) => {
+          const code = (e as { code?: string })?.code;
+          if (code === "P2003" || code === "P2039") {
+            dbg?.error?.("entity delete blocked by a canon fact", { err: e });
+            throw new ConflictError(
+              "this entity appears in a canon fact (as subject or object) — canon history is " +
+                "never deleted, so the entity cannot be deleted either",
+            );
+          }
+          throw e;
+        });
+      await audit.record({
+        actorUserId,
+        workspaceId,
+        action: "canon.entity-deleted",
+        entityType: "StoryEntity",
+        entityId,
+        payload: { novelId, kind: entity.kind, key: entity.key },
+      });
     },
 
     async createFact(input) {
@@ -1272,17 +1323,51 @@ export function createCanonServices(deps: {
       // union by it — `question.kind` alone does not narrow a property
       // access on the parameter.
       const kind = question.kind;
+      const startedAt = Date.now();
+      // The audit descriptor for the structured legs: the question kind plus
+      // whatever identified the claim. Kept in one place so every leg's row
+      // is queryable the same way (`retrievers` tags the kind).
+      const askQuery =
+        question.kind === "FACT" || question.kind === "STATE"
+          ? `BRAIN:ASK entity=${question.entityId} predicate=${question.predicate}`
+          : question.kind === "RETRIEVAL"
+            ? question.query
+            : `BRAIN:ASK kind=${question.kind}`;
 
       if (kind === "EVENT") {
-        return await askEvent(db, workspaceId, novelId, at, viewMode);
+        return await auditBrainAsk({
+          workspaceId,
+          novelId,
+          startedAt,
+          at,
+          viewMode,
+          query: askQuery,
+          answer: await askEvent(db, workspaceId, novelId, at, viewMode),
+        });
       }
 
       if (kind === "CAUSAL") {
-        return await askCausal(db, workspaceId, novelId, at, viewMode);
+        return await auditBrainAsk({
+          workspaceId,
+          novelId,
+          startedAt,
+          at,
+          viewMode,
+          query: askQuery,
+          answer: await askCausal(db, workspaceId, novelId, at, viewMode),
+        });
       }
 
       if (kind === "UNRESOLVED" || kind === "PROMISES") {
-        return await askDebt(db, workspaceId, novelId, at, viewMode, kind);
+        return await auditBrainAsk({
+          workspaceId,
+          novelId,
+          startedAt,
+          at,
+          viewMode,
+          query: askQuery,
+          answer: await askDebt(db, workspaceId, novelId, at, viewMode, kind),
+        });
       }
 
       if (kind === "RETRIEVAL") {
@@ -1338,80 +1423,92 @@ export function createCanonServices(deps: {
       // whose discriminant is itself a union, so the EVENT/CAUSAL/PROMISES
       // checks above do not narrow `question` here.
       if (kind === "FACT") {
-        const row = await db.canonFact.findFirst({
-          where: {
-            novelId,
-            workspaceId,
-            entityId: question.entityId,
-            predicate: question.predicate,
-            status: "ACTIVE",
-          },
-          select: {
-            id: true,
-            statement: true,
-            status: true,
-            validFromChapter: true,
-            validUntilChapter: true,
-            availableFromChapter: true,
-            objectText: true,
-            objectEntityId: true,
-            entity: { select: { key: true } },
-          },
+        return await auditBrainAsk({
+          workspaceId,
+          novelId,
+          startedAt,
+          at,
+          viewMode,
+          query: askQuery,
+          answer: await (async (): Promise<
+            Extract<BrainAnswer, { kind: "FACT" | "STATE" }>
+          > => {
+            const row = await db.canonFact.findFirst({
+              where: {
+                novelId,
+                workspaceId,
+                entityId: question.entityId,
+                predicate: question.predicate,
+                status: "ACTIVE",
+              },
+              select: {
+                id: true,
+                statement: true,
+                status: true,
+                validFromChapter: true,
+                validUntilChapter: true,
+                availableFromChapter: true,
+                objectText: true,
+                objectEntityId: true,
+                entity: { select: { key: true } },
+              },
+            });
+            if (!row) {
+              return {
+                kind: "FACT",
+                answered: true,
+                claim: null,
+                basis: null,
+                insufficient: true,
+                evidence: [],
+                notYetTrue: [],
+              };
+            }
+            if (!canView(canonBoundary(row.availableFromChapter), { mode: viewMode, readerChapter: at ?? undefined })) {
+              // Withheld, not absent: the caller must not be able to tell the
+              // difference between "no such fact" and "not yet visible".
+              return {
+                kind: "FACT",
+                answered: true,
+                claim: null,
+                basis: null,
+                insufficient: true,
+                evidence: [],
+                notYetTrue: [],
+              };
+            }
+            const evidence: Evidence[] = [
+              {
+                kind: "CANON_FACT",
+                factId: row.id,
+                status: "ACTIVE",
+                asOfReconstruction: false,
+              },
+            ];
+            const basis = answerBasis(evidence);
+            return {
+              kind: "FACT",
+              answered: true,
+              claim: {
+                factId: row.id,
+                statement: row.statement,
+                entityKey: row.entity.key,
+                predicate: question.predicate,
+                object:
+                  row.objectEntityId !== null
+                    ? { objectEntityId: row.objectEntityId }
+                    : { objectText: row.objectText ?? "" },
+                status: row.status,
+                validFromChapter: row.validFromChapter,
+                validUntilChapter: row.validUntilChapter,
+              },
+              basis: basis.insufficient ? null : basis.basis,
+              insufficient: basis.insufficient,
+              evidence: [{ kind: "CANON_FACT", factId: row.id, status: row.status }],
+              notYetTrue: [],
+            };
+          })(),
         });
-        if (!row) {
-          return {
-            kind: "FACT",
-            answered: true,
-            claim: null,
-            basis: null,
-            insufficient: true,
-            evidence: [],
-            notYetTrue: [],
-          };
-        }
-        if (!canView(canonBoundary(row.availableFromChapter), { mode: viewMode, readerChapter: at ?? undefined })) {
-          // Withheld, not absent: the caller must not be able to tell the
-          // difference between "no such fact" and "not yet visible".
-          return {
-            kind: "FACT",
-            answered: true,
-            claim: null,
-            basis: null,
-            insufficient: true,
-            evidence: [],
-            notYetTrue: [],
-          };
-        }
-        const evidence: Evidence[] = [
-          {
-            kind: "CANON_FACT",
-            factId: row.id,
-            status: "ACTIVE",
-            asOfReconstruction: false,
-          },
-        ];
-        const basis = answerBasis(evidence);
-        return {
-          kind: "FACT",
-          answered: true,
-          claim: {
-            factId: row.id,
-            statement: row.statement,
-            entityKey: row.entity.key,
-            predicate: question.predicate,
-            object:
-              row.objectEntityId !== null
-                ? { objectEntityId: row.objectEntityId }
-                : { objectText: row.objectText ?? "" },
-            status: row.status,
-            validFromChapter: row.validFromChapter,
-            validUntilChapter: row.validUntilChapter,
-          },
-          basis: basis.insufficient ? null : basis.basis,
-          insufficient: basis.insufficient,
-          evidence: [{ kind: "CANON_FACT", factId: row.id, status: row.status }],
-          notYetTrue: [],
-        };
       }
 
       // STATE — reconstruct what was true at a chapter.
@@ -1423,7 +1520,17 @@ export function createCanonServices(deps: {
       if (kind !== "STATE") {
         throw new ConflictError(`unsupported question kind: ${kind}`);
       }
-      const atChapter = question.atChapter;
+      return await auditBrainAsk({
+        workspaceId,
+        novelId,
+        startedAt,
+        at,
+        viewMode,
+        query: askQuery,
+        answer: await (async (): Promise<
+          Extract<BrainAnswer, { kind: "FACT" | "STATE" }>
+        > => {
+          const atChapter = question.atChapter;
       const chain = await db.canonFact.findMany({
         where: {
           novelId,
@@ -1552,6 +1659,8 @@ export function createCanonServices(deps: {
         ],
         notYetTrue,
       };
+        })(),
+      });
     },
   };
 
@@ -1787,6 +1896,86 @@ export function createCanonServices(deps: {
       insufficient: items.length === 0,
       withheldCount: viewMode === "READER" ? 0 : ranked.length - visibleRows.length,
     };
+  }
+
+  /**
+   * One audit row per structured Brain ask.
+   *
+   * The deterministic canon answers (FACT, STATE, EVENT, CAUSAL, UNRESOLVED,
+   * PROMISES) issue no model call and used to write nothing — an operator
+   * could not trace what was asked of canon, only what was searched. The row
+   * mirrors what RetrievalAudit records for search: the question, the mode
+   * that governed the boundary, what was returned and what was withheld.
+   * `retrievers` tags these rows "BRAIN:<KIND>" so they are distinguishable
+   * from search rows without a schema change.
+   *
+   * The RETRIEVAL leg writes its own row inside RetrievalServices.search and
+   * must not be routed here — it would double-write. Returns the answer
+   * unchanged so call sites can wrap their returns.
+   *
+   * ponytail: `results` carries at most 100 provenance ids per row (the
+   * EVENT/CAUSAL answers are unbounded lists today). Cap there; move to a
+   * sampled or paginated provenance if answers grow past it.
+   */
+  async function auditBrainAsk(input: {
+    workspaceId: string;
+    novelId: string;
+    startedAt: number;
+    at: number | null;
+    viewMode: ViewMode;
+    query: string;
+    answer: BrainAnswer;
+  }): Promise<BrainAnswer> {
+    const { answer } = input;
+    let returnedCount = 0;
+    let withheldCount = 0;
+    const provenance: Array<Record<string, string>> = [];
+    switch (answer.kind) {
+      case "FACT":
+      case "STATE":
+        // A withheld fact answers claim:null identically to an absent one,
+        // and the FACT branch reports no count (it would be an existence
+        // oracle) — so the row records 0/0 for both. The claim's factId is
+        // the provenance when there is one.
+        returnedCount = answer.claim !== null ? 1 : 0;
+        if (answer.claim !== null) provenance.push({ factId: answer.claim.factId });
+        break;
+      case "EVENT":
+        returnedCount = answer.events.length;
+        withheldCount = answer.withheldCount;
+        for (const e of answer.events.slice(0, 100)) provenance.push({ eventId: e.eventId });
+        break;
+      case "CAUSAL":
+        returnedCount = answer.edges.length;
+        withheldCount = answer.withheldCount;
+        for (const e of answer.edges.slice(0, 100)) provenance.push({ edgeId: e.edgeId });
+        break;
+      case "UNRESOLVED":
+      case "PROMISES":
+        returnedCount = answer.items.length;
+        withheldCount = answer.withheldCount;
+        for (const i of answer.items.slice(0, 100)) provenance.push({ id: i.id });
+        break;
+      default:
+        // Not a structured answer (RETRIEVAL): never routed here.
+        return answer;
+    }
+    await db.retrievalAudit.create({
+      data: {
+        workspaceId: input.workspaceId,
+        novelId: input.novelId,
+        query: input.query,
+        mode: input.viewMode as never,
+        readerChapter: input.at,
+        returnedCount,
+        withheldCount,
+        results: provenance as never,
+        retrievers: [`BRAIN:${answer.kind}`],
+        latencyMs: Date.now() - input.startedAt,
+      },
+      select: { id: true },
+    });
+    return answer;
   }
 
   /**

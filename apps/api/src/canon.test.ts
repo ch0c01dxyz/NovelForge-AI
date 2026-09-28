@@ -541,6 +541,63 @@ describe("canon facts and the one-live-value invariant", () => {
     expect(second).toBe(first);
     expect(await db.storyEntity.count({ where: { novelId } })).toBe(1);
   });
+
+  it("deletes an unused entity, but refuses one cited by a canon fact", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const unused = await createEntity(owner.cookie, workspaceId, novelId, "Bystander");
+    const subject = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+    const object = await createEntity(owner.cookie, workspaceId, novelId, "Wei Zhao");
+
+    const del = (entityId: string) =>
+      app.inject({
+        method: "DELETE",
+        url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/entities/${entityId}`,
+        headers: { cookie: owner.cookie },
+      });
+
+    // An entity with no facts deletes cleanly.
+    const free = await del(unused!);
+    expect(free.statusCode).toBe(204);
+    expect(await db.storyEntity.count({ where: { id: unused! } })).toBe(0);
+
+    // A fact about the entity blocks the delete (RESTRICT, not CASCADE) —
+    // the canon record must not vanish with its subject.
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId: subject,
+      predicate: "sect",
+      objectText: "Verdant Peak",
+    });
+    const blocked = await del(subject!);
+    expect(blocked.statusCode).toBe(409);
+
+    // An entity named as the OBJECT of a fact blocks too, though its own
+    // fact list is empty — the sibling path of the same hazard.
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId: subject,
+      predicate: "allied-with",
+      objectEntityId: object,
+    });
+    const blockedObject = await del(object!);
+    expect(blockedObject.statusCode).toBe(409);
+
+    // Retraction is NOT an escape hatch: it withdraws the claim but keeps
+    // the row (canon history is never destructively overwritten, CLAUDE.md
+    // §9), and the FK binds the row. A fact-referenced entity is permanently
+    // undeletable — this route exists for unreferenced names.
+    const facts = await db.canonFact.findMany({ where: { novelId } });
+    const objectFact = facts.find((f) => f.objectEntityId === object);
+    expect(objectFact).toBeDefined();
+    const retracted = await retract(owner.cookie, workspaceId, novelId, objectFact!.id, {});
+    expect(retracted.statusCode).toBe(204);
+    const stillBlocked = await del(object!);
+    expect(stillBlocked.statusCode).toBe(409);
+
+    // The subject still carries its own fact, so it stays blocked too.
+    const subjectBlocked = await del(subject!);
+    expect(subjectBlocked.statusCode).toBe(409);
+    expect(await db.storyEntity.count({ where: { novelId } })).toBe(2);
+  });
 });
 
 describe("candidate canon is not silently committed (TESTING.md mandatory scenario)", () => {
@@ -2458,5 +2515,128 @@ describe("tenant isolation and authorization", () => {
       payload: {},
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("every structured Brain ask leaves an audit row (progress.md audit gap)", () => {
+  it("writes one RetrievalAudit row per structured ask, tagged BRAIN:<KIND>", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const subject = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId: subject,
+      predicate: "sect",
+      objectText: "Verdant Peak",
+    });
+
+    await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "FACT", entityId: subject, predicate: "sect" },
+      { mode: "AUTHOR" },
+    );
+    await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "STATE", entityId: subject, predicate: "sect", atChapter: 1 },
+      { mode: "AUTHOR" },
+    );
+    await ask(owner.cookie, workspaceId, novelId, { kind: "EVENT" }, { mode: "AUTHOR" });
+    await ask(owner.cookie, workspaceId, novelId, { kind: "CAUSAL" }, { mode: "AUTHOR" });
+    await ask(owner.cookie, workspaceId, novelId, { kind: "UNRESOLVED" }, { mode: "AUTHOR" });
+    await ask(owner.cookie, workspaceId, novelId, { kind: "PROMISES" }, { mode: "AUTHOR" });
+
+    const rows = await db.retrievalAudit.findMany({
+      where: { workspaceId, novelId },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(rows.map((r) => r.retrievers[0]).sort()).toEqual([
+      "BRAIN:CAUSAL",
+      "BRAIN:EVENT",
+      "BRAIN:FACT",
+      "BRAIN:PROMISES",
+      "BRAIN:STATE",
+      "BRAIN:UNRESOLVED",
+    ]);
+    for (const row of rows) {
+      expect(row.mode).toBe("AUTHOR");
+      expect(row.latencyMs).toBeGreaterThanOrEqual(0);
+    }
+    // FACT row: the claim was returned, provenance names the fact.
+    const factRow = rows.find((r) => r.retrievers[0] === "BRAIN:FACT");
+    expect(factRow!.returnedCount).toBe(1);
+    expect(factRow!.withheldCount).toBe(0);
+    expect(
+      (factRow!.results as Array<{ factId: string }>).at(0)?.factId,
+    ).toBeDefined();
+    // Structured rows never store the RETRIEVAL descriptor shape.
+    expect(factRow!.query).toContain("BRAIN:ASK");
+    expect(factRow!.query).toContain(subject);
+  });
+
+  it("records withheld counts for authors but not for readers, and never leaks a reader oracle", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const subject = await createEntity(owner.cookie, workspaceId, novelId, "Hidden One");
+    // A fact visible to authors but unclassified for readers (no
+    // availableFromChapter => withheld from a reader).
+    await createFact(owner.cookie, workspaceId, novelId, {
+      entityId: subject,
+      predicate: "sect",
+      objectText: "Verdant Peak",
+    });
+
+    await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "FACT", entityId: subject, predicate: "sect" },
+      { mode: "AUTHOR" },
+    );
+    // The reader's FACT answer is claim:null — identical to absent — so the
+    // audit row must record 0/0 and carry NO provenance, or the audit table
+    // becomes the existence oracle the answer itself refuses to be.
+    await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "FACT", entityId: subject, predicate: "sect" },
+      { mode: "READER", readerChapter: "50" },
+    );
+
+    const rows = await db.retrievalAudit.findMany({
+      where: { workspaceId, novelId, retrievers: { has: "BRAIN:FACT" } },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.returnedCount).toBe(1);
+    expect(rows[1]!.mode).toBe("READER");
+    expect(rows[1]!.readerChapter).toBe(50);
+    expect(rows[1]!.returnedCount).toBe(0);
+    expect(rows[1]!.withheldCount).toBe(0);
+    expect(rows[1]!.results).toEqual([]);
+  });
+
+  it("writes exactly one row for a RETRIEVAL ask — search's own, not a second one", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    await seedEmbeddingRoute();
+    await ask(
+      owner.cookie,
+      workspaceId,
+      novelId,
+      { kind: "RETRIEVAL", query: "the mountain sect rules" },
+      { mode: "AUTHOR" },
+    );
+
+    const rows = await db.retrievalAudit.findMany({
+      where: { workspaceId, novelId },
+    });
+    expect(rows).toHaveLength(1);
+    // Search's row is not BRAIN-tagged: tagging it would break the
+    // distinction between asked-canon and searched-references.
+    expect(rows[0]!.retrievers).not.toContain("BRAIN:RETRIEVAL");
   });
 });

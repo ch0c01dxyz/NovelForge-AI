@@ -693,10 +693,13 @@ model WorkflowVersion {
 model WorkflowRun {
   id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workflowId        String            @map("workflow_id") @db.Uuid
-  workflow          Workflow          @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  workflow          Workflow          @relation(fields: [workflowId], references: [id], onDelete: Restrict)
   /// The exact version executed — the definitions may move on afterwards.
   workflowVersionId String            @map("workflow_version_id") @db.Uuid
-  workflowVersion   WorkflowVersion   @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
+  /// Both RESTRICT, not Cascade: run history is the execution audit trail —
+  /// deleting a definition must not silently destroy the record of what it
+  /// did (CLAUDE.md §2.11). deleteWorkflow maps the refusal to a 409.
+  workflowVersion   WorkflowVersion   @relation(fields: [workflowVersionId], references: [id], onDelete: Restrict)
   workflowVersionNumber Int             @map("workflow_version_number")
   workspaceId       String?           @map("workspace_id") @db.Uuid
   novelId           String?           @map("novel_id") @db.Uuid
@@ -715,6 +718,8 @@ model WorkflowRun {
   steps             WorkflowStepRun[]
 
   @@index([workflowId, startedAt])
+  // RESTRICT FK-check target: deleting a workflow version scans this column.
+  @@index([workflowVersionId])
   @@index([workspaceId, startedAt])
   // SetNull trigger column (see the note on WorkflowStepRun below).
   @@index([triggeredById])
@@ -1147,11 +1152,16 @@ model CanonFact {
   novelId              String          @map("novel_id") @db.Uuid
   novel                Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
   entityId             String          @map("entity_id") @db.Uuid
-  entity               StoryEntity     @relation("CanonFactSubject", fields: [entityId], references: [id], onDelete: Cascade)
+  /// RESTRICT, not Cascade: a fact is the canon record (CLAUDE.md §2.11) and
+  /// must not vanish because its subject row was deleted. deleteEntity maps
+  /// the refusal to a 409 naming the blocking facts. objectEntityId cannot be
+  /// SET NULL — both object columns NULL violates CanonFact_object_exactly_one.
+  entity               StoryEntity     @relation("CanonFactSubject", fields: [entityId], references: [id], onDelete: Restrict)
   predicate            String
   /// Entity-valued object (a relationship). Null when the object is text.
   objectEntityId       String?         @map("object_entity_id") @db.Uuid
-  objectEntity         StoryEntity?    @relation("CanonFactObjectEntity", fields: [objectEntityId], references: [id], onDelete: Cascade)
+  /// RESTRICT for the same reason: the fact survives its object too.
+  objectEntity         StoryEntity?    @relation("CanonFactObjectEntity", fields: [objectEntityId], references: [id], onDelete: Restrict)
   /// Literal object. Null when the object is an entity.
   objectText           String?         @map("object_text")
   /// Human-readable rendering of the claim, for display. The structured
@@ -1180,6 +1190,7 @@ model CanonFact {
   approvedProposal     CanonProposal?  @relation("CanonProposalFact")
 
   @@index([novelId, entityId, predicate])
+  @@index([entityId])
   @@index([novelId, status])
   @@index([novelId, validFromChapter])
   @@index([availableFromChapter])

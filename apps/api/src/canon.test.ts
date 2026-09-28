@@ -570,6 +570,9 @@ describe("canon facts and the one-live-value invariant", () => {
     });
     const blocked = await del(subject!);
     expect(blocked.statusCode).toBe(409);
+    // Explicit survival check: the 409 alone could come from any path — the
+    // fact row must actually still exist (RESTRICT, not a lucky guard).
+    expect(await db.canonFact.count({ where: { novelId } })).toBe(1);
 
     // An entity named as the OBJECT of a fact blocks too, though its own
     // fact list is empty — the sibling path of the same hazard.
@@ -2561,6 +2564,7 @@ describe("every structured Brain ask leaves an audit row (progress.md audit gap)
       "BRAIN:UNRESOLVED",
     ]);
     for (const row of rows) {
+      expect(row.retrievers).toHaveLength(1);
       expect(row.mode).toBe("AUTHOR");
       expect(row.latencyMs).toBeGreaterThanOrEqual(0);
     }

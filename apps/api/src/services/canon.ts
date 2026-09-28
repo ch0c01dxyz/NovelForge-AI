@@ -663,7 +663,10 @@ export function createCanonServices(deps: {
       // undeletable. This delete route is for unreferenced entities: names
       // created by mistake. Say that plainly instead of promising an escape
       // hatch the schema cannot honour.
-      await db.storyEntity
+      // No audit line for a no-op: a concurrent caller may have won the
+      // delete first (same principle as the create-race join above — never
+      // attribute another caller's action to this one).
+      const deleted = await db.storyEntity
         .deleteMany({
           where: { id: entityId, novelId, novel: { workspaceId } },
         })
@@ -678,6 +681,7 @@ export function createCanonServices(deps: {
           }
           throw e;
         });
+      if (deleted.count === 0) return;
       await audit.record({
         actorUserId,
         workspaceId,

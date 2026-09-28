@@ -1,133 +1,125 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: **Phase 6 slice 1 COMPLETE (2026-09-25)**. Phase 0
-(NF-0001..NF-0010), Phase 1 (auth, workspaces, memberships, novels,
-permissions, audit), Phase 2 (chapters, immutable versions, autosave,
-editor shell, import/export), Phase 3 (AIGateway/OmniRoute adapter,
-gateway + model registry, model profiles, logical requests/attempts,
-bounded retry/fallback, error classification, generation history,
-platform-admin authorization), Phase 4 (versioned agents, skills and
-workflows, fail-closed structured-output contracts, validated acyclic
-workflow graphs, deterministic multi-agent execution, run history),
-Phase 5 (references with append-only versions, citable chunk spans,
-pgvector embeddings, hybrid lexical+vector retrieval with RRF fusion,
-tenant and spoiler predicates in SQL, per-search provenance, `RETRIEVAL`
-workflow steps), and Phase 6 slice 1 (canon facts with a DB-enforced
-one-live-value-per-subject+predicate constraint, non-destructive supersede
-chain, candidate canon that cannot be silently committed, citable evidence
-spans, and a deterministic Story Brain answering FACT/STATE/RETRIEVAL with
-evidence) are implemented, tested, and verified. An independent
-audit of the committed Phase 4 code also found and fixed three live
-defects in Phase 5 (a prototype key reaching the prompt, a DRAFT
-WORKSPACE workflow being executable, and a prose bracket defeating
-`extractJson`); two other reported findings were probed and disproved
-(see `progress.md`). Full gate: lint 0, typecheck 0 in every workspace
-except `apps/web` (a pre-existing hoisted-vite plugin type mismatch,
-reproduced at HEAD with this phase's work stashed — see `progress.md`),
-435 passed / 1 skipped, 10 migrations applying from empty with zero drift.
+Implementation status: **Phase 7 COMPLETE (2026-10-02).** Phases 0–7 are
+implemented, tested, and verified:
 
-A second adversarial audit of Phase 6 slice 1 (eight finders, every finding
-refuted-or-confirmed by an independent verifier) then found and fixed ten
-defects behind that green gate — a supersede that destroyed history when
-the proposal carried no `validFromChapter`, three sibling read paths that
-bypassed the reader spoiler boundary, an existence oracle, an unmapped 500
-on backdated corrections, a cascade that could delete canon evidence, an
-unconstrained `object_entity_id`, a self-copy supersede, an unwritable
-`RETRACTED` state, and machine keys in user-facing statements. Two further
-findings were refuted on the code and deliberately not "fixed". Details in
-`progress.md` and `decisions.md`.
-See `docs/implementation/progress.md`,
-`docs/implementation/test-matrix.md`,
-[ADR-0007](../adr/ADR-0007-knowledge-retrieval.md) and
-[ADR-0008](../adr/ADR-0008-canon-authority.md).
+- **Phase 0** — monorepo, Docker Compose (Postgres+pgvector, Redis),
+  shared config, module boundaries, CI skeleton, Nuxt web shell, Fastify
+  API health, worker + BullMQ bootstrap.
+- **Phase 1** — auth, workspaces, memberships, novels, capability-based
+  permissions (ADR-0004), audit log.
+- **Phase 2** — chapters, immutable versions, autosave, editor shell,
+  import/export.
+- **Phase 3** — AIGateway/OmniRoute adapter, gateway + model registry,
+  model profiles, logical requests/attempts, bounded retry/fallback,
+  error classification, generation history, platform-admin authorization.
+- **Phase 4** — versioned agents, skills, workflows; fail-closed
+  structured-output contracts; validated acyclic graphs; deterministic
+  multi-agent execution; run history.
+- **Phase 5** — references with append-only versions, citable chunk spans,
+  pgvector embeddings, hybrid lexical+vector retrieval (RRF), tenant and
+  spoiler predicates in SQL, per-search provenance, `RETRIEVAL` workflow
+  steps.
+- **Phase 6** — canon facts with a DB-enforced one-live-value constraint,
+  non-destructive supersede chain, candidate canon that cannot be silently
+  committed, citable evidence spans; Story Brain answering FACT, STATE,
+  EVENT, CAUSAL, UNRESOLVED, PROMISES with evidence; reader spoiler
+  boundary on every read path. Independent adversarial audits found and
+  fixed ten defects behind a green gate (details in `progress.md`).
+- **Phase 7** — planning: synopses, sagas, outline nodes, outline versions,
+  planning horizon; delete routes (planning entities, novels, canon
+  entities, workflows) with FK hardening so refusals are legible 409s and
+  canon/run history is never silently destroyed.
+
+Latest gate: lint 0; typecheck clean in every workspace (including
+`apps/web` — the vitest 3→5 pin resolved its earlier failure); apps/api
+204/204; packages 324 passed / 1 skipped on vitest 5.0.2; 15 migrations
+applying from empty with zero drift; `pnpm -r build` green.
+
+See `docs/implementation/progress.md` (round-by-round record),
+`docs/implementation/test-matrix.md`, `docs/implementation/decisions.md`,
+and `docs/adr/`.
 
 ## Next milestone
 
-Phase 6 slice 2 --- story events, causal edges, threads and promises, then
-LLM fact extraction. The roadmap's Phase 6 exit ("Story Brain can answer
-core factual/continuity questions with evidence") is met for FACT and STATE
-with resolvable evidence; the continuity forms (EVENT/CAUSAL/UNRESOLVED/
-PROMISES) currently return an explicit not-implemented marker, so slice 2
-is what closes the continuity half of that sentence.
+**Phase 8 — AI Orchestrator**: the `ai.generate` orchestration lifecycle
+(authorization → task/agent/skill resolution → knowledge + reference
+retrieval → context assembly → prompt assembly → model profile selection →
+gateway selection → streaming → output validation → persistence), replacing
+the workflow-engine-internal paths that currently stand in for it. The
+Phase 6 leftover — **LLM fact extraction** (canon is author-authored only)
+— is the other candidate; it needs the orchestrator to exist first.
 
-## Known gaps carried into Phase 6 slice 2
+## Known gaps carried forward
+
+### Canon / knowledge
 
 - **Canon has no `revision_id` until Phase 11.** It participates in no
   checkpoint or branch; non-destructive correction relies on the supersede
   chain alone (ADR-0008 §4).
 - A canon fact's chapter citation is a historical pin — resolvable forever,
   but not "the current version" once the chapter is saved again.
-- Chapter prose is not searchable (no chapter tsvector, no chapter
-  chunks), so prose recall reaches reference material only. Add with the
-  first real consumer (extraction or a search UI).
+- **LLM fact extraction is not implemented.** Canon is author-authored only;
+  extraction would be candidate canon needing approval (§2.13).
+- Chapter prose is not searchable (no chapter tsvector, no chapter chunks),
+  so prose recall reaches reference material only.
 - `available_from_chapter` is a chapter number, so a chapter reorder must
   recompute authored boundaries or the spoiler filter drifts.
-- **The Brain's structured answers are not audited.** The `RETRIEVAL` leg
-  writes a `RetrievalAudit` row; `FACT`, `STATE` and the not-implemented
-  responses never call `search`, so they write nothing. An earlier note said
-  "a row per ask" — false, and the truth is worse.
-  FIXED (2026-10-02): every structured ask leg now writes one row via
-  `auditBrainAsk` (`BRAIN:ASK …` query, `BRAIN:<KIND>` retriever, per-leg
-  returned/withheld/provenance). READER rows record 0/0 + empty provenance so
-  the audit table stays a non-existence-oracle. The RETRIEVAL leg is untouched —
-  `search` already writes its own row.
-- **Entity delete + canon cascade.** FIXED (2026-10-02): the entity-delete
-  route landed with the FKs hardened first — `canon_facts.entity_id` and
-  `canon_facts.object_entity_id` are now `ON DELETE RESTRICT` (both indexed;
-  migration `20261002_phase7_delete_route_fk_hardening`), so `DELETE` returns
-  409 when any fact cites the entity and the canon row survives with its
-  citations. The block is PERMANENT: retraction withdraws a claim but keeps
-  the row (CLAUDE.md §9), so only unreferenced entities are deletable.
-  `canon_proposals` FKs stay CASCADE — proposals are uncommitted candidate
-  canon and correctly die with their subject. The same migration made
-  `workflow_runs.workflow_id` / `.workflow_version_id` RESTRICT, so run
-  history outlives definition deletion (a `workflow.delete` route with a 409
-  on run history landed alongside).
-
-- **No ANN index on embeddings.** Prisma 7.10 cannot declare HNSW or
-  IVFFlat, so search is an exact scan over a workspace's vectors. Correct
-  at current scale; revisit with a raw-SQL migration when it is
-  measurably slow (ADR-0007 §2).
+- **No ANN index on embeddings.** Exact scan over a workspace's vectors;
+  revisit with a raw-SQL migration when measurably slow (ADR-0007 §2).
 - Retrieval quality is bounded by the chunker's paragraph/line/sentence
-  heuristics. No semantic chunking, no overlap between chunks.
-- Ingestion is synchronous within the request. Embeddings should move to
-  the worker queue once a document is large enough to time out a request
-  (CLAUDE.md §24).
-- Only text ingestion exists: PDF/DOCX/TXT/Markdown extraction is not
-  implemented (CLAUDE.md §32). `ReferenceKind.IMPORTED` is reserved for it.
+  heuristics.
+- Ingestion is synchronous within the request; embeddings should move to
+  the worker queue when documents are large enough to time out (CLAUDE.md
+  §24).
+- Only text ingestion exists; PDF/DOCX/TXT/Markdown extraction is not
+  implemented (§32). `ReferenceKind.IMPORTED` is reserved for it.
+
+### Delete semantics (settled 2026-10-02, migrations 20261002 / 20261002b)
+
+- `canon_facts.entity_id`, `canon_facts.object_entity_id` and
+  `canon_facts.novel_id` are `ON DELETE RESTRICT`: a canon fact is the
+  record and survives every parent delete; the refusing route (entity or
+  novel delete) answers 409. The block is PERMANENT — retraction withdraws
+  a claim but keeps the row, so only unreferenced entities (and fact-free
+  novels) delete.
+- `workflow_runs.workflow_id` / `.workflow_version_id` are RESTRICT: run
+  history is the execution audit trail; a workflow with runs (or a novel
+  that has any) refuses with 409.
+- `canon_proposals` FKs stay CASCADE — proposals are uncommitted candidate
+  canon and die with their subject.
+- Delete routes live for planning entities, novels, canon entities, and
+  workflows; a novel-delete route test pins both refusal paths.
+
+### Workflows
+
 - A `RETRIEVAL` workflow step always searches in AUTHOR mode; the step
   contract has no `mode`/`readerChapter` field.
 - Workflow runs execute synchronously within the request. Moving them to
-  the worker queue is a later concern (Phase 13); the run record already
-  carries status and timing for it.
+  the worker queue is a later concern (Phase 13).
 - An `AWAITING_APPROVAL` run stops but cannot yet be resumed. Its
   `completedAt` is deliberately null so a resume path can distinguish it
   from a finished run.
-- `WorkflowRun` -> `Workflow` is `onDelete: Restrict` (2026-10-02
-  migration): run history survives; a workflow with runs is refused with
-  a 409 by the delete route.
-- Routing strategy is deployment-wide (`AI_ROUTING_STRATEGY`); there is no
-  per-workspace override and no operator UI to change it at runtime.
+- Routing strategy is deployment-wide (`AI_ROUTING_STRATEGY`); no
+  per-workspace override and no operator UI.
+
+### Ops / editor
+
+- **No retention or pruning on the audit tables.** `retrieval_audits`
+  (now wider — one row per Brain ask too) and `Generation` rows grow
+  unbounded. Needs a TTL, partition, or archive job before the tables are
+  large — Phase 13 concern.
 - Scene CRUD is schema-only; no API until the editor needs scene editing.
 - Chapter creation uses `prompt()`; replace with inline UI in a later
   editor chrome pass.
 - No automated E2E runner; browser flows are verified manually and
   recorded in `test-matrix.md`.
-- **No retention or pruning on the Phase 5 audit tables.** Every search
-  inserts a `retrieval_audits` row carrying the full JSONB provenance
-  array, and every embed call inserts a `Generation` row; neither is ever
-  deleted, and the worker is heartbeat-only. CLAUDE.md §22 requires
-  retention to be considered when prompts and outputs are stored, and
-  ADR-0007 §5 makes auditing mandatory without setting a ceiling. Needs a
-  TTL, partition, or archive job before the tables are large — a
-  Phase 13 (worker/ops) concern.
 
 ## Phase 0 task sequence (completed)
 
 1.  NF-0001 Initialize monorepo/workspaces.
-2.  NF-0002 Add Docker Compose baseline for PostgreSQL+pgvector and
-    Redis.
+2.  NF-0002 Add Docker Compose baseline for PostgreSQL+pgvector and Redis.
 3.  NF-0003 Establish shared config/env validation.
 4.  NF-0004 Create module-boundary conventions and contract package.
 5.  NF-0005 Add CI lint/typecheck/test skeleton.
@@ -135,8 +127,4 @@ is what closes the continuity half of that sentence.
 7.  NF-0007 Bootstrap Nuxt/Tailwind web shell.
 8.  NF-0008 Bootstrap Fastify API health/readiness.
 9.  NF-0009 Bootstrap worker health and BullMQ connection.
-10. NF-0010 Cross-platform clean-clone verification on Windows and
-    Ubuntu.
-
-Do not implement advanced story engines before Phase 0 conventions are
-stable.
+10. NF-0010 Cross-platform clean-clone verification on Windows and Ubuntu.

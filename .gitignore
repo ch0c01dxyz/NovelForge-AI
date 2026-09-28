@@ -21,3 +21,6 @@ review-receipts/
 .claude-flow/data/
 .claude-flow/logs/
 .claude-flow/sessions/
+
+# Local DB backups (pg_dump of the dev database; kept on disk, never committed)
+.local-backup-*.sql

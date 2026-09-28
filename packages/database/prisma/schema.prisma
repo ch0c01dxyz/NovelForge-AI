@@ -1150,7 +1150,12 @@ model CanonFact {
   workspaceId          String          @map("workspace_id") @db.Uuid
   workspace            Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   novelId              String          @map("novel_id") @db.Uuid
-  novel                Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// RESTRICT, not Cascade: the entity-level RESTRICTs below are satisfied
+  /// trivially when the facts are removed by their OWN novel cascade before
+  /// the entity cascade fires — so at novel-delete scope those rules would
+  /// not protect the canon record (verified against Postgres trigger order).
+  /// A novel carrying facts must refuse deletion, exactly like deleteEntity.
+  novel                Novel           @relation(fields: [novelId], references: [id], onDelete: Restrict)
   entityId             String          @map("entity_id") @db.Uuid
   /// RESTRICT, not Cascade: a fact is the canon record (CLAUDE.md §2.11) and
   /// must not vanish because its subject row was deleted. deleteEntity maps

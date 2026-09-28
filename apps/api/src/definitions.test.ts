@@ -1552,3 +1552,59 @@ describe("Phase 4 — workflow execution", () => {
     ).toBe(1);
   });
 });
+
+describe("novel delete refuses a novel with workflow run history", () => {
+  it("409s instead of cascading the runs away", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "scene-planner");
+    // The workflow must be NOVEL-scoped: workflows.novel_id is CASCADE, so
+    // only a novel's own workflows (with their runs, which have no novel
+    // cascade of their own) make workflow_runs.workflow_id RESTRICT fire
+    // mid-cascade. A WORKSPACE-scoped workflow is untouched by novel delete.
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/workflows",
+      headers: { cookie: owner.cookie },
+      payload: {
+        scope: "WORKSPACE",
+        workspaceId,
+        novelId,
+        key: "run-flow",
+        name: "run-flow",
+        graph: {
+          steps: [{ key: "plan", kind: "AGENT", ref: "scene-planner", instruction: "Plan." }],
+          edges: [],
+          maxSteps: 5,
+        },
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const workflow = (created.json() as { id: string }).id;
+    const pub = await app.inject({
+      method: "POST",
+      url: `/api/workflows/${workflow}/publish`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(pub.statusCode, pub.body).toBe(200);
+    const run = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflow}/run`,
+      headers: { cookie: owner.cookie },
+      payload: { novelId, input: { premise: "a forge" } },
+    });
+    expect(run.statusCode, run.body).toBe(201);
+
+    // A novel with run history must refuse (409), never 500 and never
+    // silent loss.
+    const blocked = await app.inject({
+      method: "DELETE",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(await db.novel.count({ where: { id: novelId } })).toBe(1);
+    expect(await db.workflowRun.count({ where: { novelId } })).toBe(1);
+  });
+});

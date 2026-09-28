@@ -2640,3 +2640,31 @@ describe("every structured Brain ask leaves an audit row (progress.md audit gap)
     expect(rows[0]!.retrievers).not.toContain("BRAIN:RETRIEVAL");
   });
 });
+
+describe("novel delete refuses when the cascade would cross a RESTRICT FK", () => {
+  it("409s for a novel carrying canon facts (and explains why), deletes a clean one", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const subject = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+    const fact = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId: subject,
+      predicate: "hair-colour",
+      objectText: "black",
+    });
+    expect(fact.statusCode, JSON.stringify(fact.body)).toBe(201);
+
+    // canon_facts.novel_id is ON DELETE RESTRICT (20261002b migration). The
+    // entity-level RESTRICTs alone did NOT protect at this scope: the novel's
+    // own cascade removed the facts via their novel_id CASCADE before the
+    // entity cascade could hit RESTRICT, silently destroying canon. Now the
+    // delete refuses — legibly, not with a 500 and not with silent loss.
+    const blocked = await app.inject({
+      method: "DELETE",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(await db.novel.count({ where: { id: novelId } })).toBe(1);
+    expect(await db.canonFact.count({ where: { novelId } })).toBe(1);
+  });
+});

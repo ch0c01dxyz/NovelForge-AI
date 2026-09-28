@@ -390,11 +390,25 @@ export function createPlatformServices(deps: {
     async deleteNovel({ actorUserId, workspaceId, novelId }) {
       await requireCapabilityIn(actorUserId, workspaceId, "novel:delete");
       const novel = await requireNovelInWorkspace(novelId, workspaceId);
-      // ponytail: every child table of Novel cascades (schema-verified), so a
-      // plain delete is safe. Generation/WorkflowRun carry novelId without an
-      // FK — their rows orphan by design. If either gains an FK, this needs a
-      // P2003 → ConflictError catch like deleteChapter.
-      await db.novel.delete({ where: { id: novelId } });
+      // Most child tables of Novel cascade (schema-verified). The ponytail
+      // note that used to live here said "if either gains an FK, this needs
+      // a P2003 → ConflictError catch like deleteChapter" — that condition
+      // fired: canon_facts.entity_id/object_entity_id and
+      // workflow_runs.workflow_id are ON DELETE RESTRICT (20261002
+      // migration), so a novel carrying canon facts or workflow run history
+      // refuses the cascade. The refusal must be legible, not a 500.
+      // Generation rows carry novelId without an FK and orphan by design.
+      await db.novel.delete({ where: { id: novelId } }).catch((e: unknown) => {
+        const code = (e as { code?: string })?.code;
+        if (code === "P2003" || code === "P2039") {
+          throw new ConflictError(
+            "this novel still has canon facts or workflow run history that the " +
+              "delete cannot remove — delete those workflows without runs and " +
+              "the entities cited by canon facts first, or keep the novel",
+          );
+        }
+        throw e;
+      });
       await audit.record({
         actorUserId,
         workspaceId,

@@ -3,6 +3,13 @@
 The roadmap is sequential for risk reduction, not a prohibition on
 parallel work after contracts stabilize.
 
+> **This file is the authority for phase names and numbers.** `CURRENT.md`
+> has used a "Phase N" label for a milestone rather than a roadmap phase:
+> "Phase 8 — AI Orchestrator" (2026-10-03) names work the roadmap
+> schedules across Phase 3 (AI infrastructure) and Phase 4 (agent/skill/
+> workflow platform). When the two disagree, the roadmap numbering wins
+> and `CURRENT.md` is corrected.
+
 ## Phase 0 --- Repository & Architecture Foundation
 
 Deliver: monorepo, TypeScript configs, lint/format/test, Docker Compose,

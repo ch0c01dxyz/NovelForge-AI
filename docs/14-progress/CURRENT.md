@@ -1,8 +1,11 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: **Phase 7 COMPLETE (2026-10-02).** Phases 0–7 are
-implemented, tested, and verified:
+Implementation status: **Roadmap phases 0–7 COMPLETE (2026-10-02)**, plus
+the **AI Orchestrator milestone (2026-10-03)** — the `ai.generate`
+lifecycle, which the roadmap schedules inside Phase 3/4 rather than as a
+phase of its own (see the numbering note in
+`docs/12-roadmap/IMPLEMENTATION-ROADMAP.md`).
 
 - **Phase 0** — monorepo, Docker Compose (Postgres+pgvector, Redis),
   shared config, module boundaries, CI skeleton, Nuxt web shell, Fastify
@@ -31,11 +34,19 @@ implemented, tested, and verified:
   planning horizon; delete routes (planning entities, novels, canon
   entities, workflows) with FK hardening so refusals are legible 409s and
   canon/run history is never silently destroyed.
+- **AI Orchestrator (milestone, 2026-10-03)** — one `ai.generate`
+  lifecycle entry point that resolves the agent/skill definitions the
+  workflow executor also resolves (shared `definition-resolution.ts`),
+  compiles context under a char budget with persisted provenance ids,
+  assembles the prompt, and runs the generation through the SAME Phase 3
+  path a direct request uses — plus fail-closed structured-output
+  contracts and an SSE route whose refusals are real status codes, not
+  error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web` — the vitest 3→5 pin resolved its earlier failure); apps/api
-204/204; packages 324 passed / 1 skipped on vitest 5.0.2; 15 migrations
-applying from empty with zero drift; `pnpm -r build` green.
+`apps/web`); apps/api 217/217; packages 324 passed / 1 skipped on vitest
+5.0.2; 15 migrations applying from empty with zero drift; `pnpm -r build`
+green.
 
 See `docs/implementation/progress.md` (round-by-round record),
 `docs/implementation/test-matrix.md`, `docs/implementation/decisions.md`,
@@ -43,13 +54,10 @@ and `docs/adr/`.
 
 ## Next milestone
 
-**Phase 8 — AI Orchestrator**: the `ai.generate` orchestration lifecycle
-(authorization → task/agent/skill resolution → knowledge + reference
-retrieval → context assembly → prompt assembly → model profile selection →
-gateway selection → streaming → output validation → persistence), replacing
-the workflow-engine-internal paths that currently stand in for it. The
-Phase 6 leftover — **LLM fact extraction** (canon is author-authored only)
-— is the other candidate; it needs the orchestrator to exist first.
+**Phase 8 — Character & Relationship Intelligence** per the roadmap, or
+the **Phase 6 leftover — LLM fact extraction** (canon is author-authored
+only), which the orchestrator now unblocks: extraction is a contracted
+agent whose output is candidate canon needing approval (§2.13).
 
 ## Known gaps carried forward
 

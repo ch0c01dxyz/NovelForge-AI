@@ -569,3 +569,54 @@ reverted:
 Rows added when each phase starts. Mandatory cross-cutting scenarios
 (streaming interruption, candidate canon, etc.) are listed in TESTING.md
 and become matrix rows in the phase that implements them.
+
+## AI Orchestrator milestone (2026-10-03)
+
+`apps/api/src/orchestrator.test.ts` (13 total) — dedicated
+`novelforge_test_orchestrator` database (ADR-0003 §8). Every test drives
+the real HTTP surface against a real migrated database and the REAL
+Phase 3 generation path — gateway routing, the generation ledger, and
+the audit trail all run for real. Only the transport is faked
+(`BuildAppOptions.createGateway`), so no test ever reaches a provider
+(CLAUDE.md §25).
+
+- **prompt assembly** — the `system` message holds ONLY instructions
+  (the agent's and the granted skill's); canon facts and reference
+  excerpts reach the model in the `user` message inside a `<context>`
+  fence, with their provenance ids inline and the author's instruction
+  unmodified. The test asserts the boundary from both sides: the system
+  turn must NOT contain `## Established canon`, `[fact:<id>]` or a
+  reference title. `task` is `agent:<key>`; `promptVersion` is
+  `agent:<key>@v<n>` and `contextSnapshot` carries the fact and
+  reference/chunk ids actually injected. Pinned on the `Generation`
+  row, not on the service's return value.
+- **agent settings reach the transport** — a `DEEP_PLANNER` agent with
+  `temperature: 0.2` / `maxTokens: 512` produces exactly those on the
+  gateway request, and the ledger row records the profile. Without this,
+  a dropped `temperature` is invisible: the generation still succeeds.
+- **retrieval leg** — a published, novel-scoped, ingested reference
+  whose text shares no terms with the instruction is still injected when
+  `contextQuery` names it, and is absent when it does not. `contextQuery`
+  being ignored is otherwise indistinguishable from "no hits".
+- **resolution gating** — a DRAFT or unknown agent is 409, a foreign
+  workspace 404, a VIEWER 403, a novel in another workspace 404, a bad
+  body 400; each asserts `generation.count() === 0`, so a refusal that
+  still burned a provider call fails the test. The foreign-novel case
+  uses an agent key that does not exist, so a resolution-first order
+  would answer 409 — the 404 proves the orchestrator's OWN novel guard
+  ran rather than being masked by the identical check downstream.
+- **contracts fail closed, both ways** — non-JSON output is 409, and
+  JSON that parses but violates the shape is 409. Both assert the row
+  was left `FAILED`/`DETERMINISTIC` with `promptVersion` null: a
+  rejected output must not leave a ledger row claiming success, and must
+  not be stamped as validated.
+- **streaming** — deltas arrive, the row settles `SUCCEEDED` and is
+  stamped; a stream that throws after emitting settles `INCOMPLETE` with
+  **no** provenance stamp and an empty `contextSnapshot`; a contracted
+  agent is refused with a real 409 and a non-SSE content type before any
+  bytes, so the refusal is not laundered into an error event.
+
+Note for anyone running this suite: `novelforge_test_orchestrator` is a
+single shared database, so two concurrent runs of this file collide
+(users_email_key violations, then cascading 401/500s that do not
+reproduce in isolation). Run it alone, or give each run its own copy.

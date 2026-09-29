@@ -1438,3 +1438,114 @@ test pins `retrievers.length === 1`; the entity-delete test asserts the
 citing fact row survives the 409 explicitly. Workflow-delete and
 brain-audit dimensions clean both runs (P2039 dead-OR and PLATFORM-gate
 notes recorded as intentional, not defects).
+
+### Round 8 — AI Orchestrator milestone (2026-10-03)
+
+The `ai.generate` lifecycle CLAUDE.md §7 and
+`docs/06-ai/AI-ORCHESTRATION.md` call for, built by **composing the
+phases that already exist** rather than reimplementing any of them. No
+migration: `Generation.promptVersion` and `Generation.contextSnapshot`
+already existed.
+
+- **`services/definition-resolution.ts`** — `resolveAgent` / `resolveSkill`
+  lifted verbatim out of `workflow-runs.ts` (which now imports them).
+  Both entry points must resolve the SAME published definition the same
+  way, or a workflow run and a direct generation could disagree about
+  which agent version executed. Rules kept: a workspace row shadows the
+  platform row of the same key (PostgreSQL orders the `DefinitionScope`
+  enum by declaration — PLATFORM then WORKSPACE — so `orderBy: { scope:
+  "desc" }` is what prefers the tenant's own definition), and only
+  PUBLISHED resolves (a DRAFT is mid-edit; pinning a run to an
+  unfinished definition makes the run unexplainable after the next edit).
+- **`services/orchestrator.ts`** — the four legs the orchestrator owns:
+  membership + `generation:create` gate (no platform-role bypass — a
+  super admin is not implicitly a workspace member, ADR-0005); novel
+  tenancy; prompt assembly; fail-closed contract validation. Context is
+  compiled under a char budget (`FACT_BUDGET_CHARS`/`REF_BUDGET_CHARS`
+  6 000, `REF_LIMIT` 8) with inline provenance — `- [fact:<id>]
+  <predicate>: <statement>` and `[n] <referenceTitle> (chars a-b)` — and
+  the ids used are persisted to `contextSnapshot`. Mode is fixed to
+  AUTHOR, exactly like the workflow `RETRIEVAL` step: the caller holds
+  workspace capabilities, so reader-facing generation needs its own
+  validated contract later, not a passthrough here. The `system` turn
+  holds ONLY instructions; every retrieved fact and reference excerpt
+  goes into the `user` turn inside a `<context>` fence, so reference text
+  cannot impersonate the orchestrator's own instructions (SECURITY.md;
+  the executor draws the same line).
+- **`orchestrator-routes.ts`** — `POST .../generate` and
+  `POST .../generate/stream`. The stream route attaches the abort
+  listener to the raw socket (`reply.raw.on("close", …)`) only AFTER
+  `generateStream` returns, because that call is where every fail-closed
+  refusal happens — registering first left a listener, a closure and an
+  `AbortController` on the socket of a request answered with a plain
+  403/404/409. Refusals therefore reach the caller as real status codes
+  rather than SSE error events. A contracted agent is refused up front
+  on the streaming route for the same reason: the contract check cannot
+  run after the bytes have left.
+- **`app.ts`** — registers the routes with the SAME `aiServices`,
+  `canonServices` and `retrievalServices` the direct routes use, so
+  gateway routing, retry, the generation ledger and the audit trail stay
+  in one place.
+- **`orchestrator.test.ts`** (13 tests) — dedicated
+  `novelforge_test_orchestrator` database (ADR-0003 §8); every test
+  drives the real HTTP surface against a real migrated database and the
+  real Phase 3 generation path. Only the transport is faked
+  (`BuildAppOptions.createGateway`), so no test reaches a provider
+  (CLAUDE.md §25). Covers prompt assembly with the system/user boundary
+  asserted from both sides and the provenance pin, agent settings
+  (profile, temperature, maxTokens) reaching the transport, the
+  reference/retrieval leg and the `contextQuery` override, resolution
+  gating (unpublished/unknown 409, foreign workspace 404, VIEWER 403,
+  foreign novel 404, body 400), contracts failing closed both ways, and
+  streaming (deltas + SUCCEEDED + provenance; a broken stream settles
+  INCOMPLETE with **no** provenance stamp; a contracted agent refused
+  before any bytes).
+
+Adversarial verification (5 refute dimensions, three agents) found three
+real defects behind the green gate, all fixed here:
+
+- **A contract-rejected generation stayed `SUCCEEDED` in the ledger.**
+  `ai.generate` settles the row SUCCEEDED on transport success, and the
+  orchestrator then threw its 409 without touching the row — so the
+  ledger claimed a generation that produced no usable result, with no
+  error category to find it by. The workflow executor marks its run
+  FAILED on the same rejection (`workflow-runs.ts`); the orchestrator
+  was the sibling path that did not. Now updated to FAILED /
+  DETERMINISTIC, and both contract tests assert it.
+- **Untrusted reference text was concatenated into the `system`
+  message.** A reference containing "## Established canon", or a
+  directive aimed at the model, was indistinguishable from the
+  orchestrator's own instructions — `SECURITY.md` states the intended
+  posture ("references are data, not system authority") and the workflow
+  executor already honoured it. `compile()` now keeps only instructions
+  in the system turn and moves every retrieved block into the fenced
+  user turn, and the prompt-assembly test asserts the boundary from both
+  sides.
+- **`orchestrator-routes.ts` did a per-request user round-trip whose
+  value nothing read.** `requireActor` awaited `platformRoleOf(userId)`
+  to build `{ userId, platformRole }`, and no handler ever dereferenced
+  `platformRole` — the orchestrator authorizes by workspace capability
+  only. The extra query is gone and `requireActor` returns the id.
+- **Abort listener leaked onto refusals.** Reported as a listener leak;
+  verified — the `reply.raw.on("close", …)` registration preceded the
+  `generateStream` call, so a request answered with a plain 409/404/403
+  still retained a listener, a closure and an `AbortController` for a
+  stream that never existed. Moved below the await.
+
+Two further gaps were found in the TESTS rather than the code, and closed
+by adding the assertion that fails if the behaviour regresses — a
+mutation to a no-op previously passed:
+
+- **The novel tenancy guard was untested.** `ensureNovelInWorkspace` was
+  redundant with an identical check inside `ai.generate`, so deleting it
+  left the suite green. Removing it would still strip a tenancy guard at
+  a trust boundary, so instead the foreign-novel test now sends an agent
+  key that does not exist: a resolution-first order answers 409, and the
+  404 proves the orchestrator's own guard ran.
+- **The reference/retrieval leg had zero coverage**, and neither did
+  `temperature`/`maxTokens` pass-through or the recorded model profile.
+  Both are now asserted.
+
+Checks run after the fixes: lint 0; typecheck clean in every workspace;
+`apps/api` 217/217 on vitest 5.0.2; packages 324 passed / 1 skipped;
+`pnpm -r build` green including `apps/web`.

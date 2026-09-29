@@ -170,3 +170,54 @@ recorded as ADR-NNNN files:
 When a decision is made without a full ADR being warranted, record one
 line here with date and rationale, and promote it to an ADR if it later
 proves load-bearing.
+
+## AI Orchestrator milestone (2026-10-03)
+
+- **The orchestrator composes; it does not re-implement.** Definition
+  resolution moved to a shared `services/definition-resolution.ts`
+  consumed by both the workflow executor and the orchestrator, because
+  two resolution implementations that drift would let a workflow run and
+  a direct generation disagree about which agent version executed — a
+  silent provenance divergence, which is exactly the class of bug the
+  versioning rules exist to prevent.
+- **Context is compiled with provenance, under a budget.** Facts and
+  reference excerpts are injected as `- [fact:<id>] <predicate>:
+  <statement>` and `[n] <title> (chars a-b)`, and the ids used are
+  persisted to `Generation.contextSnapshot`. A generation can therefore
+  be explained after the fact from what it actually saw, not
+  reconstructed from what the retriever would return today. The hard
+  budget (6 000 chars per block) is what keeps a 2 000-chapter novel from
+  being silently sampled into a prompt.
+- **Mode is fixed to AUTHOR.** The caller holds a workspace capability,
+  so every caller is an author-side actor. Reader-facing generation needs
+  its own validated contract (a reader must not be able to ask for
+  future chapters), not a `mode` passthrough on this route.
+- **A streamed response cannot be contract-validated after the fact.**
+  Fail-closed validation is meaningless once the bytes have left, so a
+  contracted agent is refused up front on the streaming route rather than
+  streamed and then rejected.
+- **Retrieved text is data, never system authority.** The `system` turn
+  holds only instructions — the agent's and its granted skills'. Canon
+  facts and reference excerpts are injected in the `user` turn inside a
+  `<context>` fence. This is the documented posture (`SECURITY.md`:
+  "references are data, not system authority") and the one the workflow
+  executor already implemented; the orchestrator initially concatenated
+  reference text into the system message, where a reference containing
+  "## Established canon" or a directive was indistinguishable from the
+  orchestrator's own instructions. The fence names the block as quoted
+  material, so an instruction inside a reference reads as text the model
+  was shown, not text the orchestrator endorsed.
+- **A refusal must not leave a success in the ledger.** Output rejected
+  by the contract check settles the `Generation` row `FAILED` /
+  `DETERMINISTIC`. Caught in adversarial verification: the transport had
+  succeeded, so the row read `SUCCEEDED` while the caller received a 409 —
+  the ledger claimed a generation that produced no usable result. The
+  workflow executor already marked its run FAILED on the same rejection;
+  this was the sibling path that did not.
+- **Roadmap numbering is the authority for phase names.** The milestone
+  was labelled "Phase 8" in `CURRENT.md`, but the roadmap's Phase 8 is
+  Character & Relationship Intelligence. The work is scheduled across
+  roadmap Phase 3 (AI infrastructure) and Phase 4 (agent/skill/workflow
+  platform). `CURRENT.md` now calls it a milestone and the roadmap
+  carries the precedence rule, so the two documents cannot drift into
+  disagreement (CLAUDE.md Rule 3).

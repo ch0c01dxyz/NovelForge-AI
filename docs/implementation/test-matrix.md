@@ -173,7 +173,7 @@ executed, not as CI coverage.
 | ---- | ---- | ----------- | -------- | --- | --------- |
 | AI schema (`packages/database`) | — | passing | — | — | passing (drift-free) |
 | `ai-core` transport + policy | passing (48) | — | — | — | — |
-| `ai-core` OmniRoute transport/SSE | passing (18) | — | — | — | — |
+| `ai-core` OmniRoute transport/SSE | passing (21) | — | — | — | — |
 | Gateway/model admin API | — | passing | — | — | — |
 | Generation path + history | — | passing (non-stream) | — | manual | — |
 | Generation streaming (SSE) | — | manual | — | manual | — |
@@ -187,8 +187,11 @@ open/close, per-gateway retry budget, manager retry/fallback, attempt
 recording, stream success, stream-not-restarted-after-partial, stream
 consumer-throw-not-attributed-to-gateway, health probes, and that
 caller-induced failures (INVALID_REQUEST/DETERMINISTIC) leave the breaker
-untouched. `omniroute.test.ts` (18) — transport/SSE behaviour listed under
-the audit follow-up in `progress.md`. `ai.test.ts` (28,
+untouched. `omniroute.test.ts` (21) — transport/SSE behaviour listed under
+the audit follow-up in `progress.md`, plus the two real-deployment
+normalizations (a capability MAP reduced to tags, and a completion body
+with a trailing `data: [DONE]` salvaged — with a truncated body still
+rejected) added in Round 9. `ai.test.ts` (28,
 `novelforge_test_ai`) — gateway CRUD with the credential absent from every
 response, encrypted-at-rest assertion, workspace OWNER denied (403) on
 gateway read/create, unauthenticated 401, duplicate-name 409, credential

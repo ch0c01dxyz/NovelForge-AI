@@ -334,6 +334,75 @@ describe("OmniRouteGateway timeout and health", () => {
     expect(models[1]!.capabilities).toEqual(["chat"]);
   });
 
+  it("recovers a completion body with a trailing SSE sentinel", async () => {
+    // Measured against a real deployment: some upstreams behind 9Router
+    // append `data: [DONE]` to a NON-streaming body. A bare res.json()
+    // threw, the throw classified INTERNAL, INTERNAL is not retryable,
+    // and the fallback chain stopped before its next model was tried.
+    const payload = {
+      choices: [{ message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+      model: "m-a",
+    };
+    const { fetch } = fakeFetch(
+      () =>
+        new Response(`${JSON.stringify(payload)}data: [DONE]\n\n`, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const gw = new OmniRouteGateway(CONFIG, fetch);
+    const result = await gw.generate({ model: "m-a", messages: [{ role: "user", content: "hi" }] });
+    expect(result.content).toBe("OK");
+  });
+
+  it("still rejects a genuinely malformed body", async () => {
+    // Salvage must not become "accept anything": a body that is not a
+    // complete JSON value has to keep failing.
+    const { fetch } = fakeFetch(
+      () =>
+        new Response('{"choices":[{"message":{"content":"trunc', {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const gw = new OmniRouteGateway(CONFIG, fetch);
+    await expect(
+      gw.generate({ model: "m-a", messages: [{ role: "user", content: "hi" }] }),
+    ).rejects.toBeInstanceOf(GatewayError);
+  });
+
+  it("normalizes a capability map to tags, dropping flags and thinkingFormat", async () => {    // 9Router sends `capabilities` as an object, not a tag list. Forwarding
+    // it verbatim reached Prisma's `String[]` column and failed the whole
+    // sync transaction with `Argument \`set\` is missing`. The tag-list
+    // case above passed throughout, which is why this shipped broken.
+    const { fetch } = fakeFetch(() =>
+      jsonResponse({
+        data: [
+          {
+            id: "map-model",
+            capabilities: {
+              vision: true,
+              tools: false,
+              reasoning: true,
+              thinkingFormat: "deepseek",
+              contextWindow: 1000000,
+            },
+          },
+          { id: "empty-map", capabilities: {} },
+          { id: "scalar", capabilities: "chat" },
+        ],
+      }),
+    );
+    const gw = new OmniRouteGateway(CONFIG, fetch);
+    const models = await gw.listModels();
+    // Truthy flags only: `tools: false` is dropped, and the two non-flag
+    // keys never become capabilities named after themselves.
+    expect(models[0]!.capabilities).toEqual(["vision", "reasoning"]);
+    // An unrecognized shape falls back rather than storing an empty array.
+    expect(models[1]!.capabilities).toEqual(["chat"]);
+    expect(models[2]!.capabilities).toEqual(["chat"]);
+  });
+
   it("never exposes the credential as an enumerable property", async () => {
     const gw = new OmniRouteGateway(CONFIG, fakeFetch(() => jsonResponse({})).fetch);
     // A #private field is invisible to JSON.stringify and structured

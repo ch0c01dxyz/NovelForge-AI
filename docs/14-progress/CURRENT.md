@@ -44,9 +44,19 @@ phase of its own (see the numbering note in
   error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web`); apps/api 218/218; packages 324 passed / 1 skipped on vitest
-5.0.2; 15 migrations applying from empty with zero drift; `pnpm -r build`
-green.
+`apps/web`); apps/api 218/218; packages + worker 326 passed / 1 skipped on
+vitest 5.0.2; 15 migrations applying from empty with zero drift;
+`pnpm -r build` green.
+
+First run against a **real 9Router deployment** (2026-09-30) is recorded in
+`progress.md` Round 9: gateway stored through the CRUD API (credential
+encrypted at rest), 1 957 models synced, and the three-model chain
+(`cbai/deepseek-v4.1-flash` → `…/DeepSeek-V4-Flash-0731` →
+`…/MiniMax-M2.7`) verified end to end by disabling each tier in turn. It
+found four defects the fixture-based suite could not: a start script that
+could not run the app, a capability map hitting a `String[]` column, a
+model sync outliving Prisma's transaction default, and an upstream SSE
+sentinel on a non-streaming body stopping the fallback chain.
 
 See `docs/implementation/progress.md` (round-by-round record),
 `docs/implementation/test-matrix.md`, `docs/implementation/decisions.md`,

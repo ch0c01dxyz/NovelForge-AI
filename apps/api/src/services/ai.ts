@@ -440,6 +440,15 @@ export function createAiServices(deps: {
       // One transaction: a failure part-way through the catalog upsert
       // must not leave the local model list half-updated, and the audit
       // record must describe exactly what committed (CLAUDE.md §12).
+      //
+      // The explicit timeout is load-bearing: Prisma's interactive
+      // default is 5s, and a real gateway catalogs thousands of models
+      // (9Router returns ~2 000), so the sequential upserts outlived the
+      // default and the sync failed with an expired-transaction error
+      // rather than a gateway one. A fake gateway with two models never
+      // reaches the limit, which is why the suite stayed green.
+      // ponytail: still a per-row upsert; move to one `createMany` +
+      // `updateMany` pair if a catalog this size makes the sync slow.
       let discovered = 0;
       await db.$transaction(async (tx) => {
         for (const m of models) {
@@ -472,7 +481,7 @@ export function createAiServices(deps: {
             payload: { discovered },
           },
         });
-      });
+      }, { timeout: 120_000 });
       return { discovered };
     },
 

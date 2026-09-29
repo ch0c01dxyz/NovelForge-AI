@@ -24,3 +24,7 @@ review-receipts/
 
 # Local DB backups (pg_dump of the dev database; kept on disk, never committed)
 .local-backup-*.sql
+
+# Local Orca/ruflo runtime state (regenerated, machine-specific)
+.claude-flow/policy/
+.swarm/

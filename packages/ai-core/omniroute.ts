@@ -61,7 +61,15 @@ interface OpenAIModelEntry {
   id?: string;
   name?: string;
   context_length?: number;
-  capabilities?: string[];
+  /**
+   * Providers disagree here: some send a tag list (`["chat","vision"]`),
+   * some a capability map (`{vision: true, tools: false}`). Typed as
+   * `unknown` because the declared shape was a lie that a cast hid —
+   * 9Router sends the map, which reached Prisma's `String[]` column
+   * verbatim and failed the whole sync transaction. Narrowed in
+   * `normalizeCapabilities`.
+   */
+  capabilities?: unknown;
 }
 
 interface OpenAIModelsResponse {
@@ -77,6 +85,70 @@ interface OpenAIEmbedResponse {
 /** Trim a trailing slash so `${base}/v1/...` never doubles up. */
 function normalizeBase(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
+}
+
+/**
+ * Parse a JSON body from a gateway response.
+ *
+ * Some OpenAI-compatible upstreams behind 9Router append an SSE sentinel
+ * (`data: [DONE]`) to a NON-streaming body — measured against a real
+ * deployment, not assumed. A bare `res.json()` throws on the trailing
+ * bytes, and the throw was classified INTERNAL, which is not retryable,
+ * so one malformed upstream ended the whole fallback chain before the
+ * next model was ever tried. The JSON object is still complete and
+ * usable; only the tail is noise, so parse the leading value and ignore
+ * what follows it.
+ */
+function parseJsonBody(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    // `JSON.parse` reports the offset it stopped at in its message. If
+    // that prefix is a complete value, the remainder is trailing junk
+    // rather than a truncated body — salvage the value, never guess at
+    // a partial one.
+    const at = /position (\d+)/.exec(err instanceof Error ? err.message : "")?.[1];
+    if (at !== undefined) {
+      const prefix = text.slice(0, Number(at)).trimEnd();
+      if (prefix.endsWith("}")) {
+        try {
+          return JSON.parse(prefix);
+        } catch {
+          // Fall through: a prefix that still will not parse is a
+          // genuinely malformed body.
+        }
+      }
+    }
+    throw err;
+  }
+}
+
+/**
+ * Reduce a provider's capability metadata to the tag list NovelForge
+ * stores (`ai_models.capabilities String[]`).
+ *
+ * Accepts a tag list as-is, and converts a capability map to the keys
+ * whose value is truthy. `thinkingFormat` carries a mode string rather
+ * than a flag, so a truthy check would store it as a capability named
+ * after itself — it is skipped. A missing or unrecognized shape yields
+ * `["chat"]`, the same default the catalog used before this was a map.
+ *
+ * ponytail: the map form keeps only truthy keys, so `vision: false` is
+ * dropped rather than stored as "no vision" — a tag list cannot express
+ * absence. Add a JSON column when a consumer needs the negatives.
+ */
+function normalizeCapabilities(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    const tags = raw.filter((t): t is string => typeof t === "string");
+    return tags.length > 0 ? tags : ["chat"];
+  }
+  if (raw && typeof raw === "object") {
+    const tags = Object.entries(raw)
+      .filter(([key, value]) => value === true && key !== "thinkingFormat")
+      .map(([key]) => key);
+    return tags.length > 0 ? tags : ["chat"];
+  }
+  return ["chat"];
 }
 
 export class OmniRouteGateway implements AIGateway {
@@ -162,7 +234,7 @@ export class OmniRouteGateway implements AIGateway {
         signal: t.signal,
       });
       if (!res.ok) await this.fail(res, "listModels");
-      const body = (await res.json()) as OpenAIModelsResponse;
+      const body = parseJsonBody(await res.text()) as OpenAIModelsResponse;
       return (body.data ?? [])
         .filter((m): m is OpenAIModelEntry & { id: string } =>
           typeof m.id === "string",
@@ -170,7 +242,7 @@ export class OmniRouteGateway implements AIGateway {
         .map((m) => ({
           modelId: m.id,
           displayName: m.name,
-          capabilities: m.capabilities ?? ["chat"],
+          capabilities: normalizeCapabilities(m.capabilities),
           contextWindow: m.context_length,
         }));
     } catch (err) {
@@ -192,7 +264,7 @@ export class OmniRouteGateway implements AIGateway {
         body: JSON.stringify(this.chatBody(req, false)),
       });
       if (!res.ok) await this.fail(res, "generate");
-      const body = (await res.json()) as OpenAIChatResponse;
+      const body = parseJsonBody(await res.text()) as OpenAIChatResponse;
       return {
         content: body.choices?.[0]?.message?.content ?? "",
         model: body.model ?? req.model,
@@ -323,7 +395,7 @@ export class OmniRouteGateway implements AIGateway {
         body: JSON.stringify({ model: req.model, input: req.input }),
       });
       if (!res.ok) await this.fail(res, "embed");
-      const body = (await res.json()) as OpenAIEmbedResponse;
+      const body = parseJsonBody(await res.text()) as OpenAIEmbedResponse;
       return {
         vectors: (body.data ?? []).map((d) => d.embedding ?? []),
         model: body.model ?? req.model,

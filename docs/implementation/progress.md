@@ -1557,3 +1557,94 @@ mutation to a no-op previously passed:
 Checks run after the fixes: lint 0; typecheck clean in every workspace;
 `apps/api` 218/218 on vitest 5.0.2; packages 324 passed / 1 skipped;
 `pnpm -r build` green including `apps/web`.
+
+### Round 9 — real 9Router deployment (2026-09-30)
+
+First run against a real gateway (`http://localhost:20127`, 9Router) with a
+real credential, a real 1 958-model catalog and real generations. Every
+defect below was invisible to a suite whose fake gateways return two
+models and never send a malformed body — the same "green gate covers the
+primary path" shape as rounds 2 and 7.
+
+- **`pnpm start` could not run the API at all.** Both entrypoints ran
+  `node src/server.ts`, which is Node's *strip-only* type stripping, and
+  it refuses non-erasable TypeScript syntax. The codebase uses parameter
+  properties (`constructor(readonly failures: …)`) in
+  `services/definitions.ts`, `ai-core/errors.ts`, `ai-core/manager.ts`
+  and `ai-core/manager.ts`'s `GatewayManager`, so the process died with
+  `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` before binding a port. Fixed with
+  `--experimental-transform-types` in `apps/api` and `apps/worker`. The
+  first attempt rewrote three constructors to assign in the body, which
+  fixes the reported file and leaves the class of failure intact for the
+  next one — the flag is one line and fixes all of them, so the edits were
+  reverted. `db:test:prepare` keeps `--experimental-strip-types`: it only
+  needs to run, and strip-only is the stricter mode.
+- **A capability map reached a `String[]` column.** 9Router returns
+  `capabilities` as an object (`{vision: true, tools: false,
+  thinkingFormat: "deepseek", …}`); `OpenAIModelEntry` declared
+  `capabilities?: string[]` and the cast at the `res.json()` boundary hid
+  the lie, so the object went to Prisma verbatim and every sync died on
+  `Argument \`set\` is missing`. The adapter is the boundary that parses
+  untrusted provider JSON, so `normalizeCapabilities` narrows there: a
+  tag list passes through, a map becomes its truthy keys minus
+  `thinkingFormat` (a mode string, not a flag), and anything unrecognized
+  yields `["chat"]` — the catalog's pre-existing default. The existing
+  test only fed the tag-list form, which is exactly why this shipped.
+- **Model sync outlived Prisma's 5 s interactive-transaction default.**
+  1 958 sequential upserts exceeded it and the sync failed with
+  `expired transaction` — an infrastructure error surfacing as a 500 on
+  an operator action, with the catalog half-applied. The transaction now
+  carries an explicit `timeout: 120_000`. A fake gateway with two models
+  never reaches 5 s, so the suite was green throughout. Still a per-row
+  upsert (`ponytail:` noted at the site); revisit with one
+  `createMany`+`updateMany` pair if the sync becomes slow.
+- **A trailing SSE sentinel on a NON-streaming body broke the fallback
+  chain.** One upstream behind 9Router appends `data: [DONE]` to a
+  `chat/completions` response. `await res.json()` threw on the trailing
+  bytes, `classifyThrown` returned INTERNAL, INTERNAL is not retryable,
+  and `shouldTryNext` stopped the loop — so the configured chain never
+  reached fallback #2, and a *healthy* model two priorities down was
+  never tried. `parseJsonBody` salvages the leading value when the parse
+  error names an offset whose prefix is already a complete value, and
+  still rethrows a genuinely truncated body. The classification is
+  defensible (unparseable upstream body); the bug was that one bad
+  upstream could end a chain that had somewhere else to go.
+
+Verified live, not just in tests:
+
+- Gateway inserted through `POST /api/gateways` (the credential is
+  encrypted at rest by `credentialCiphertext`; it appears in no response,
+  log line, URL or committed file), `baseUrl` stored as
+  `http://localhost:20127` — the adapter appends `/v1/...` itself, so
+  passing the user's `…/v1` would have doubled the segment.
+- `POST /api/gateways/:id/sync-models` → `{"discovered":1957}`.
+- The requested chain is expressed as three models mapped to the same
+  profile at priorities 10/20/30 (the router dedupes by gateway, then
+  appends same-gateway repeats, so a single-gateway chain is
+  `priority`-ordered). Mapped to all six text profiles, 18 rows.
+- All three tiers were exercised for real by disabling the one above:
+  primary `cbai/deepseek-v4.1-flash` → SUCCEEDED (`deepseek-v4.1-flash`,
+  3.1 s, 47/239 tokens); with it disabled,
+  `dahlinference/deepseek-ai/DeepSeek-V4-Flash-0731` → SUCCEEDED; with
+  that disabled too, `dahlinference/MiniMaxAI/MiniMax-M2.7` → SUCCEEDED.
+  Each attempt row names the model that served it. Both disabled models
+  were re-enabled afterwards.
+- The primary's earlier 503 (`ENOENT: getaddrinfo ENOENT
+  www.codebuddy.ai`) was transient upstream DNS — it served a real
+  completion on a later probe, so the chain as specified works and no
+  substitution was needed.
+- **`EMBEDDING` is deliberately unmapped.** The orchestrator's retrieval
+  leg degrades correctly without it (the vector leg is recorded as a
+  failed leg, the lexical leg answers, the generation proceeds — the
+  `embedding unavailable for the vector leg` log at error level is the
+  designed signal, not a fault). Mapping it was skipped because the
+  candidate models are `text-embedding-3-large` and
+  `sea-lion-modernbert-embedding-300m`, and the 1 536-dimension
+  requirement in `retrieval.ts` is unverified for both: a wrong width
+  fails at ingest with a 502, and `EMBEDDING_DIMENSION` is a schema
+  constraint, not a preference. Verify the width first.
+
+Checks run after the fixes: lint 0; typecheck clean in every workspace;
+`apps/api` 218/218; packages + worker 326 passed / 1 skipped on vitest
+5.0.2 (324 + the two adapter tests added here); `pnpm -r build` green
+including `apps/web`.

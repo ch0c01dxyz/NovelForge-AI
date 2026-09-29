@@ -229,3 +229,40 @@ proves load-bearing.
   platform). `CURRENT.md` now calls it a milestone and the roadmap
   carries the precedence rule, so the two documents cannot drift into
   disagreement (CLAUDE.md Rule 3).
+
+## Real 9Router deployment (2026-09-30)
+
+- **The gateway adapter parses provider JSON; nothing downstream may.**
+  9Router returns `capabilities` as an object, not the `string[]` the
+  interface declared, and the cast at the `res.json()` boundary made the
+  type a lie that the compiler could not catch. The same boundary also
+  has to survive a body that is valid JSON plus a trailing `data:
+  [DONE]`. Both are provider quirks normalized in `omniroute.ts` because
+  it is the only place that speaks HTTP to a provider — a caller doing
+  its own parsing would spread the quirk across every consumer.
+- **An unparseable upstream body must not end a fallback chain.** The
+  category is right (INTERNAL is not retryable *on the same target*),
+  but the chain exists precisely because another model may answer. One
+  upstream appending an SSE sentinel to a non-streaming body was enough
+  to stop the loop before a healthy model two priorities down was tried,
+  which defeats the feature the chain implements. Salvage the complete
+  leading value; rethrow a genuinely truncated one.
+- **A shipped start script that cannot start is a test-coverage
+  question, not a syntax question.** `node src/server.ts` under
+  strip-only type stripping rejected the codebase's parameter
+  properties, so `pnpm start` never bound a port — and no gate caught
+  it, because typecheck, lint and vitest all use different loaders.
+  `--experimental-transform-types` in both entrypoints. Fixing the one
+  reported constructor would have left the class intact for the next
+  one; the flag fixes all of them in one line, which is why the
+  constructor edits were reverted.
+- **A real catalog is an order of magnitude larger than a fixture.**
+  1 958 models exceeded Prisma's 5 s interactive-transaction default and
+  the sync failed with an infrastructure error on an operator action. A
+  two-model fake never approaches the limit. Explicit `timeout` at the
+  call site, with the ceiling and the upgrade path recorded there.
+- **The embedding route is left unmapped on purpose.** The retrieval leg
+  degrades by design without it, and mapping a model whose vector width
+  is unverified would fail at ingest against a dimension that is a
+  schema constraint. Not mapping it is the correct state until the width
+  is measured.

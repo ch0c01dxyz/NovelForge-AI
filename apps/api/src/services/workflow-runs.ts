@@ -35,6 +35,7 @@ import {
   EXECUTABLE_STEP_KINDS,
 } from "@novelforge/validation";
 import { BadGatewayError, ConflictError, NotFoundError } from "./platform.ts";
+import { resolveAgent, resolveSkill, type ResolvedAgent, type ResolvedSkill } from "./definition-resolution.ts";
 import type { AuditService } from "./audit.ts";
 
 /**
@@ -144,30 +145,6 @@ export interface WorkflowRunServices {
   }): Promise<RunView>;
 }
 
-/** A resolved definition pinned to the version the run will use. */
-interface ResolvedAgent {
-  id: string;
-  key: string;
-  versionId: string;
-  versionNumber: number;
-  instructions: string;
-  modelProfile: ModelProfile;
-  skillKeys: string[];
-  outputSchema: unknown;
-  temperature: number | null;
-  maxTokens: number | null;
-}
-
-interface ResolvedSkill {
-  id: string;
-  key: string;
-  versionId: string;
-  versionNumber: number;
-  instructions: string;
-  modelProfile: ModelProfile;
-  outputSchema: unknown;
-}
-
 /** Per-run state a later step can read through `$steps.<key>.*`. */
 interface StepOutcome {
   text: string | null;
@@ -205,80 +182,14 @@ export function createWorkflowRunServices(deps: {
 
   /**
    * Resolve a definition by key, preferring the workspace's own row over
-   * the shared platform catalog. A workspace row shadows a platform row of
-   * the same key — that is the point of a scoped catalog.
-   *
-   * Only PUBLISHED definitions may be executed: a DRAFT is mid-edit, and
-   * pinning a run to an unfinished definition would make the run
-   * unexplainable after the next edit.
+   * the shared platform catalog — the shared implementation lives in
+   * definition-resolution.ts so the orchestrator resolves identically.
    */
-  async function resolveAgent(
-    workspaceId: string,
-    key: string,
-  ): Promise<ResolvedAgent> {
-    const agent = await db.agent.findFirst({
-      where: {
-        key,
-        status: "PUBLISHED",
-        OR: [
-          { scope: "WORKSPACE", workspaceId },
-          { scope: "PLATFORM" },
-        ],
-      },
-      include: { currentVersion: true },
-      // WORKSPACE sorts AFTER PLATFORM in the DefinitionScope enum, so
-      // `desc` is what puts a tenant's own definition first. (PostgreSQL
-      // orders enums by declaration position: PLATFORM, WORKSPACE.)
-      orderBy: { scope: "desc" },
-    });
-    if (!agent) throw new ConflictError(`workflow references unpublished or unknown agent "${key}"`);
-    const v = agent.currentVersion;
-    if (!v) throw new ConflictError(`agent "${key}" has no version`);
-    return {
-      id: agent.id,
-      key: agent.key,
-      versionId: v.id,
-      versionNumber: v.number,
-      instructions: v.instructions,
-      modelProfile: v.modelProfile as ModelProfile,
-      skillKeys: v.skillKeys,
-      outputSchema: v.outputSchema,
-      temperature: v.temperature,
-      maxTokens: v.maxTokens,
-    };
-  }
+  const resolveAgentFor = (workspaceId: string, key: string) =>
+    resolveAgent(db, workspaceId, key);
+  const resolveSkillFor = (workspaceId: string, key: string) =>
+    resolveSkill(db, workspaceId, key);
 
-  async function resolveSkill(
-    workspaceId: string,
-    key: string,
-  ): Promise<ResolvedSkill> {
-    const skill = await db.skill.findFirst({
-      where: {
-        key,
-        status: "PUBLISHED",
-        OR: [
-          { scope: "WORKSPACE", workspaceId },
-          { scope: "PLATFORM" },
-        ],
-      },
-      include: { currentVersion: true },
-      // WORKSPACE sorts after PLATFORM in the enum; `desc` prefers the
-      // tenant's own definition (see resolveAgent).
-      orderBy: { scope: "desc" },
-    });
-    if (!skill) throw new ConflictError(`workflow references unpublished or unknown skill "${key}"`);
-    const v = skill.currentVersion;
-    if (!v) throw new ConflictError(`skill "${key}" has no version`);
-    return {
-      id: skill.id,
-      key: skill.key,
-      versionId: v.id,
-      versionNumber: v.number,
-      instructions: v.instructions,
-      modelProfile: v.modelProfile as ModelProfile,
-      outputSchema: v.outputSchema,
-    };
-  }
 
   /** Resolve one `$input.x` / `$steps.k.text` / `$steps.k.json` reference. */
   function resolveReference(
@@ -393,10 +304,10 @@ export function createWorkflowRunServices(deps: {
       const agents = new Map<string, ResolvedAgent>();
       const skills = new Map<string, ResolvedSkill>();
       for (const key of version.agentKeys) {
-        agents.set(key, await resolveAgent(input.workspaceId, key));
+        agents.set(key, await resolveAgentFor(input.workspaceId, key));
       }
       for (const key of version.skillKeys) {
-        skills.set(key, await resolveSkill(input.workspaceId, key));
+        skills.set(key, await resolveSkillFor(input.workspaceId, key));
       }
       // An agent's granted skills are resolved too, not just the ones a
       // step names directly: they are injected into that agent's prompt, so
@@ -405,7 +316,7 @@ export function createWorkflowRunServices(deps: {
       for (const agent of agents.values()) {
         for (const key of agent.skillKeys) {
           if (skills.has(key)) continue;
-          skills.set(key, await resolveSkill(input.workspaceId, key));
+          skills.set(key, await resolveSkillFor(input.workspaceId, key));
         }
       }
 

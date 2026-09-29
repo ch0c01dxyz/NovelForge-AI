@@ -22,7 +22,9 @@ import { registerManuscriptRoutes } from "./manuscript-routes.ts";
 import { registerAiRoutes } from "./ai-routes.ts";
 import { registerDefinitionRoutes } from "./definition-routes.ts";
 import { registerRetrievalRoutes } from "./retrieval-routes.ts";
-import { registerCanonRoutes } from "./canon-routes.ts";import { createAuditService } from "./services/audit.ts";
+import { registerCanonRoutes } from "./canon-routes.ts";
+import { registerOrchestratorRoutes } from "./orchestrator-routes.ts";
+import { createAuditService } from "./services/audit.ts";
 import { registerPlanningRoutes } from "./planning-routes.ts";
 import { createPlanningServices } from "./services/planning.ts";
 import { createPlatformServices } from "./services/platform.ts";
@@ -32,6 +34,7 @@ import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
 import { createRetrievalServices } from "./services/retrieval.ts";
 import { createCanonServices } from "./services/canon.ts";
+import { createOrchestratorServices } from "./services/orchestrator.ts";
 import { createGatewayRegistry } from "./ai-registry.ts";
 
 export type CheckState = "up" | "down";
@@ -187,15 +190,27 @@ export async function buildApp(
     // SAME retrieval service a direct search reads, so a Brain answer and a
     // search can never disagree about what the index contains — and both
     // pass through one spoiler predicate (CLAUDE.md §10).
-    registerCanonRoutes(app, {
+    const canonServices = createCanonServices({
+      db: options.db,
+      audit,
+      retrieval: retrievalServices,
+      // A constraint rejection reaches the client as a mapped 409; the
+      // constraint name it cannot carry is logged here instead.
+      dbg: { error: (message, meta) => app.log.error(meta, message) },
+    });
+    registerCanonRoutes(app, { auth, services: canonServices });
+
+    // AI Orchestrator (milestone): the caller names an agent + instruction and
+    // the orchestrator resolves definitions, compiles context, and runs the
+    // generation through the SAME aiServices path a direct request uses, so
+    // gateway routing, retry, ledger, and audit stay in one place.
+    registerOrchestratorRoutes(app, {
       auth,
-      services: createCanonServices({
+      services: createOrchestratorServices({
         db: options.db,
-        audit,
+        ai: aiServices,
+        canon: canonServices,
         retrieval: retrievalServices,
-        // A constraint rejection reaches the client as a mapped 409; the
-        // constraint name it cannot carry is logged here instead.
-        dbg: { error: (message, meta) => app.log.error(meta, message) },
       }),
     });
 

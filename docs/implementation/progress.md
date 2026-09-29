@@ -1486,7 +1486,7 @@ already existed.
   `canonServices` and `retrievalServices` the direct routes use, so
   gateway routing, retry, the generation ledger and the audit trail stay
   in one place.
-- **`orchestrator.test.ts`** (13 tests) — dedicated
+- **`orchestrator.test.ts`** (14 tests) — dedicated
   `novelforge_test_orchestrator` database (ADR-0003 §8); every test
   drives the real HTTP surface against a real migrated database and the
   real Phase 3 generation path. Only the transport is faked
@@ -1501,7 +1501,7 @@ already existed.
   INCOMPLETE with **no** provenance stamp; a contracted agent refused
   before any bytes).
 
-Adversarial verification (5 refute dimensions, three agents) found three
+Adversarial verification (5 refute dimensions, three agents) found four
 real defects behind the green gate, all fixed here:
 
 - **A contract-rejected generation stayed `SUCCEEDED` in the ledger.**
@@ -1531,6 +1531,14 @@ real defects behind the green gate, all fixed here:
   `generateStream` call, so a request answered with a plain 409/404/403
   still retained a listener, a closure and an `AbortController` for a
   stream that never existed. Moved below the await.
+- **The contract-validated value was discarded.** `enforceContract`'s
+  return was ignored and the caller got the raw model string, so the
+  contract acted as a gate every consumer would then re-open with its
+  own parser — and with streaming refusing contracted agents up front,
+  no endpoint returned a validated object at all. `generate` now returns
+  it as `output` (absent for prose agents), which is the handoff
+  `AI-ORCHESTRATION.md` orders between "schema validate" and "extract
+  candidate changes".
 
 Two further gaps were found in the TESTS rather than the code, and closed
 by adding the assertion that fails if the behaviour regresses — a
@@ -1547,5 +1555,5 @@ mutation to a no-op previously passed:
   Both are now asserted.
 
 Checks run after the fixes: lint 0; typecheck clean in every workspace;
-`apps/api` 217/217 on vitest 5.0.2; packages 324 passed / 1 skipped;
+`apps/api` 218/218 on vitest 5.0.2; packages 324 passed / 1 skipped;
 `pnpm -r build` green including `apps/web`.

@@ -75,6 +75,10 @@ export interface OrchestratorServices {
   }): Promise<{
     generationId: string;
     content: string;
+    /** The contract-validated output, when the agent declares one. Absent
+     *  for a prose agent. Callers must not re-parse `content` themselves —
+     *  that re-opens the boundary the contract exists to close. */
+    output?: unknown;
     model: string;
     agentVersionNumber: number;
   }>;
@@ -298,8 +302,9 @@ export function createOrchestratorServices(deps: {
         ...(agent.temperature != null ? { temperature: agent.temperature } : {}),
         ...(agent.maxTokens != null ? { maxTokens: agent.maxTokens } : {}),
       });
+      let output: unknown = null;
       try {
-        enforceContract(agent.key, agent.outputSchema, result.content);
+        output = enforceContract(agent.key, agent.outputSchema, result.content);
       } catch (err) {
         // The transport succeeded, so ai.generate already settled the row
         // SUCCEEDED — but the caller is about to get a 409 for output the
@@ -327,6 +332,10 @@ export function createOrchestratorServices(deps: {
       return {
         generationId: result.generationId,
         content: result.content,
+        // The validated value, not a re-parse of the raw text: the caller
+        // gets exactly what the contract approved (AI-ORCHESTRATION.md
+        // "schema validate" -> "extract candidate changes").
+        ...(output === null ? {} : { output }),
         model: result.model,
         agentVersionNumber: agent.versionNumber,
       };

@@ -817,6 +817,43 @@ describe("structured output contracts fail closed", () => {
     const gen = await db.generation.findFirstOrThrow({ where: { workspaceId } });
     expect(gen.status).toBe("FAILED");
   });
+
+  it("returns the contract-validated object, not a re-parse of the raw text", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "w1");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "extractor", {
+      modelProfile: "STRUCTURED_EXTRACTOR",
+      instructions: "Respond with JSON.",
+      outputSchema: {
+        type: "object",
+        properties: { summary: { type: "string" } },
+        required: ["summary"],
+        additionalProperties: false,
+      },
+    });
+    // Fenced JSON — valid, but NOT parseable by a bare JSON.parse. A caller
+    // re-parsing `content` itself would fail here; the orchestrator's own
+    // extractor handles it, which is the point of returning `output`.
+    generatedContent = '```json\n{"summary":"ok"}\n```';
+
+    const res = await generate(owner.cookie, workspaceId, {
+      agentKey: "extractor",
+      instruction: "Summarise.",
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    expect((res.json() as { output?: unknown }).output).toEqual({ summary: "ok" });
+
+    // A prose agent carries no `output` — the field means "the contract
+    // approved this", not "the model returned a string".
+    await makeAgent(owner.cookie, workspaceId, "chapter-writer");
+    const prose = await generate(owner.cookie, workspaceId, {
+      agentKey: "chapter-writer",
+      instruction: "Write.",
+    });
+    expect(prose.statusCode, prose.body).toBe(201);
+    expect(prose.json()).not.toHaveProperty("output");
+  });
 });
 
 describe("streamed orchestration", () => {

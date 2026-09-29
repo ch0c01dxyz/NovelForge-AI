@@ -207,6 +207,14 @@ proves load-bearing.
   orchestrator's own instructions. The fence names the block as quoted
   material, so an instruction inside a reference reads as text the model
   was shown, not text the orchestrator endorsed.
+- **A validated contract is a value, not just a gate.** `generate`
+  returns the object `enforceContract` approved as `output`, and a prose
+  agent returns no `output` key at all. Discarding the validated value
+  and handing the caller the raw model string would make the contract a
+  gate that every consumer then re-opens with its own parser —
+  `AI-ORCHESTRATION.md` orders the lifecycle "schema validate" → "extract
+  candidate changes", so the validated value IS the handoff to the next
+  step. Caught in adversarial verification.
 - **A refusal must not leave a success in the ledger.** Output rejected
   by the contract check settles the `Generation` row `FAILED` /
   `DETERMINISTIC`. Caught in adversarial verification: the transport had

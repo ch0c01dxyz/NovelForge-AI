@@ -572,7 +572,7 @@ and become matrix rows in the phase that implements them.
 
 ## AI Orchestrator milestone (2026-10-03)
 
-`apps/api/src/orchestrator.test.ts` (13 total) — dedicated
+`apps/api/src/orchestrator.test.ts` (14 total) — dedicated
 `novelforge_test_orchestrator` database (ADR-0003 §8). Every test drives
 the real HTTP surface against a real migrated database and the REAL
 Phase 3 generation path — gateway routing, the generation ledger, and
@@ -609,7 +609,13 @@ the audit trail all run for real. Only the transport is faked
   JSON that parses but violates the shape is 409. Both assert the row
   was left `FAILED`/`DETERMINISTIC` with `promptVersion` null: a
   rejected output must not leave a ledger row claiming success, and must
-  not be stamped as validated.
+  not be stamped as validated. A THIRD case asserts the positive half —
+  a contracted agent's response carries `output` (the value the contract
+  approved, extracted from fenced JSON a bare `JSON.parse` would
+  reject), and a prose agent's response carries no `output` key at all.
+  Without it, `enforceContract`'s return value could be discarded and
+  every caller would silently re-parse the raw text, re-opening the
+  boundary the contract exists to close.
 - **streaming** — deltas arrive, the row settles `SUCCEEDED` and is
   stamped; a stream that throws after emitting settles `INCOMPLETE` with
   **no** provenance stamp and an empty `contextSnapshot`; a contracted

@@ -44,7 +44,7 @@ phase of its own (see the numbering note in
   error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web`); apps/api 217/217; packages 324 passed / 1 skipped on vitest
+`apps/web`); apps/api 218/218; packages 324 passed / 1 skipped on vitest
 5.0.2; 15 migrations applying from empty with zero drift; `pnpm -r build`
 green.
 

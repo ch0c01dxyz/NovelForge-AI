@@ -1325,6 +1325,97 @@ Checks run: story-intelligence 63/63, `apps/api` full suite 196/196
 (canon legs included), typecheck clean in every workspace, lint 0,
 `pnpm -r build` complete.
 
+### Slice 3 — the write surface, and why slice 2 was not actually done (2026-09-30)
+
+Slice 2 shipped the **read** half. Its own record above says so without
+naming the consequence: `timeline_events` was called "schema-present with
+no service surface yet", and the four Brain legs were described as
+answering "from these tables" — which was true, and hid the fact that
+nothing outside a test could put a row in one.
+
+Discovery, before any code:
+
+```
+=== writes to slice-2 tables outside tests ===
+services/canon.ts:1688  db.storyEvent.findMany      (read)
+services/canon.ts:1693  db.storyEvent.count         (read)
+services/canon.ts:1724  db.causalEdge.findMany      (read)
+services/canon.ts:1807  db.storyThread.findMany     (read)
+services/canon.ts:1814  db.storyPromise.findMany    (read)
+```
+
+Five reads, zero writes. Repo-wide, the only `storyThread.create` /
+`storyPromise.create` calls were in `canon.test.ts` (~2080–2093), seeding
+raw rows past every API. The roadmap's exit criterion — "Story Brain can
+answer core factual/continuity questions with evidence" — therefore held
+**in tests only**. A green gate was covering a product gap.
+
+Three of the nine pure rules had **no production caller at all**:
+`canPromiseTransition`, `findCausalCycle`, `isChronological`. Tested,
+documented, dead. They police a write path that did not exist, which is
+the signature of a domain-first slice whose consumer never landed.
+
+Shipped: `apps/api/src/services/story.ts` + `apps/api/src/story-routes.ts`,
+wired in `app.ts`. Routes under
+`/api/workspaces/:ws/novels/:novelId/story/{events,timeline,threads,
+promises,causal-edges}`. `canon:read` for lists, `canon:manage` for writes;
+`INFERRED`/`SPECULATIVE` causal edges take `canon:approve` and store the
+approver, because an AI-derived claim is candidate canon (CLAUDE.md §2.13,
+§5) — an EDITOR is refused 403, asserted explicitly.
+
+Two rules now run on the request that would violate them
+(`canPromiseTransition`, `findCausalCycle`); the six migration CHECKs are
+the race backstop. `isChronological` took the other route — see below.
+
+**A test that was wrong, and what it revealed.** The first version of the
+timeline suite asserted a *read-side* `isChronological` throw: seed a
+duplicate slot raw, expect `listTimeline` to 409. It failed — the raw
+insert was rejected by `timeline_events_novel_id_order_key` before any read
+could happen. The read-side branch was unreachable code guarding an
+unrepresentable state. Removed the branch (and the now-dead import), kept
+the rule in the domain package where its unit test pins it, and replaced
+the test with one asserting the **actual** enforcement: the index refuses
+the duplicate. The migration's own comment had already named the index as
+"the write-side twin of isChronological()'s tie refusal"; the code had
+just not believed it.
+
+**A test removed rather than kept.** A concurrent-append test asserting
+`[201, 409]` passed as `[201, 201]`: Prisma serialises the injects on one
+connection, so the interleaving cannot be forced. Rather than weaken it
+into something that races only sometimes, it was deleted and the P2002
+branch in `appendTimelineEvent` is documented as race defence with no
+covering test. Stated plainly rather than implied by a green run.
+
+**Constraint probe.** Each of the six slice-2 CHECKs was confirmed
+load-bearing the Phase 8 way: dropped inside `BEGIN`/`ROLLBACK`, the exact
+refused statement retried, and `accepted` observed.
+
+```
+OK   StoryThread_importance_1_to_5          with=refused: 23514  without=accepted
+OK   StoryPromise_importance_1_to_5         with=refused: 23514  without=accepted
+OK   StoryThread_resolution_pair            with=refused: 23514  without=accepted
+OK   StoryPromise_payoff_pair               with=refused: 23514  without=accepted
+OK   CausalEdge_not_self                    with=refused: 23514  without=accepted
+OK   CausalEdge_approval_matches_confidence with=refused: 23514  without=accepted
+```
+
+The probe carried the two lessons from the Phase 8 run: a refused statement
+aborts the enclosing transaction (25P02), so each attempt needs its own
+`SAVEPOINT`; and `ADD CONSTRAINT` re-validates existing rows, so the
+probe's own row must never be present at restore time — hence `ROLLBACK`,
+never a cleanup `DELETE`.
+
+**Deliberate omission: no delete routes.** `causal_edges` cascade from
+`story_events`, so deleting an event would silently take its causal claims
+with it — the loss CLAUDE.md §9 forbids. A correction path needs a
+supersede chain of its own, as canon has, before a delete is safe. Until
+then the write surface is append-and-transition only.
+
+Checks run: `pnpm typecheck` 0 (every workspace), `pnpm lint` 0,
+`pnpm test` **31 files, 642 passed / 1 skipped** (622 before, +20 new),
+`pnpm -r build` 0, `prisma migrate diff` zero drift (no schema change —
+this slice is service and routes only).
+
 ## Phase 7+
 
 Slice 1 (schema + pure rules in `@novelforge/planning`) landed at

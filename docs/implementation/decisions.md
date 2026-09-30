@@ -319,3 +319,51 @@ proves load-bearing.
 - **`isExclusionViolation` is not `isUniqueViolation`.** An EXCLUDE
   violation is SQLSTATE **23P01**, not P2002. A caller that maps only
   unique violations surfaces an overlap as a 500 rather than a 409.
+
+## Phase 6 slice 3 — the story write surface (2026-09-30)
+
+- **A green gate can cover a product gap, and the gate is not evidence of
+  the feature.** Slice 2 shipped five tables, nine pure rules and a Brain
+  that read them, with zero production writes: repo-wide the only
+  `storyThread.create` / `storyPromise.create` calls were in
+  `canon.test.ts`. Every gate was green, because every gate asked whether
+  the reads worked. The roadmap's exit criterion held in tests only. The
+  discovery that found this was a single grep for writes, not a test run.
+  When a phase claims a capability, grep for the path that populates it.
+- **A pure rule with no production caller is a hypothesis, not a
+  guarantee.** `canPromiseTransition`, `findCausalCycle` and
+  `isChronological` were tested, documented, and called by nothing. A
+  domain-first slice can pass its own suite completely while the rule never
+  runs against real input. Counting callers of each exported rule is a
+  cheap completeness check on a slice like this.
+- **Three rules, two enforcement routes.** `canPromiseTransition` and
+  `findCausalCycle` run in the service on the request that would violate
+  them, with the migration CHECKs as the race backstop. `isChronological`
+  is enforced by the `(novel_id, order)` unique index instead — the
+  migration had already named the index as the rule's write-side twin.
+  Where the schema can make a bad state unrepresentable, a service check
+  for it is unreachable code. The rule still lives in the domain package
+  under its own unit test; the enforcement simply moved to the constraint.
+- **A test asserting an unreachable branch will fail, and the failure is
+  the finding.** The first timeline test asserted a read-side
+  `isChronological` throw and was rejected by the unique index before the
+  read. Deleting the branch was the fix; keeping the branch and weakening
+  the test would have preserved dead code behind a green check.
+- **A nondeterministic test is worse than a documented gap.** The
+  concurrent-append test could not force its interleaving (Prisma
+  serialises injects on one connection) and passed as `[201, 201]`. It was
+  deleted rather than kept, and the P2002 branch is marked as race defence
+  with no covering test — recorded in `progress.md` and `CURRENT.md` so
+  the absence is visible rather than implied by a green suite.
+- **No delete routes on the story tables.** `causal_edges` cascade from
+  `story_events`, so deleting an event silently takes its causal claims
+  with it — the loss CLAUDE.md §9 forbids. A correction path needs a
+  supersede chain of its own before a delete is safe. The surface is
+  append-and-transition only, deliberately.
+- **Approval is capability-gated, not confidence-flagged.**
+  `INFERRED`/`SPECULATIVE` causal edges require `canon:approve` and store
+  the approver; `EXPLICIT` needs only `canon:manage` and stores none. The
+  CHECK refuses an AI-derived edge that arrives without an approver, so
+  the rule holds at the table as well as at the route. An EDITOR is
+  refused 403 — asserted explicitly, because the generic capability loops
+  would not catch a future edit that granted it.

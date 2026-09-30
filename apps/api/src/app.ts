@@ -28,8 +28,10 @@ import { createAuditService } from "./services/audit.ts";
 import { registerPlanningRoutes } from "./planning-routes.ts";
 import { registerCharacterRoutes } from "./character-routes.ts";
 import { registerRelationshipRoutes } from "./relationship-routes.ts";
+import { registerStoryRoutes } from "./story-routes.ts";
 import { createCharacterServices } from "./services/characters.ts";
 import { createRelationshipServices } from "./services/relationships.ts";
+import { createStoryServices } from "./services/story.ts";
 import { createPlanningServices } from "./services/planning.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
@@ -235,6 +237,15 @@ export async function buildApp(
     registerRelationshipRoutes(app, {
       auth,
       services: createRelationshipServices({ db: options.db, audit }),
+    });
+
+    // Story Intelligence write surface (Phase 6 slice 2). The Brain already
+    // reads events, threads, promises and causal edges; this is what lets an
+    // author put rows there. Pure rules from @novelforge/story-intelligence,
+    // the migration CHECKs as backstop.
+    registerStoryRoutes(app, {
+      auth,
+      services: createStoryServices({ db: options.db, audit }),
     });
 
     registerDefinitionRoutes(app, {

@@ -697,3 +697,53 @@ The domain packages carry their own unit suites —
 `packages/character-intelligence/character.test.ts` (22) and
 `packages/relationship-intelligence/relationship.test.ts` (33) — which
 include the enum pins that catch drift against the Prisma enums.
+
+## Phase 6 slice 3 — the story write surface (2026-09-30)
+
+`apps/api/src/story.test.ts` (20 tests, dedicated `novelforge_test_story`
+db). Drives the real HTTP surface against a real migrated database, because
+the claim under test is that rows written through the API are what the
+**Brain** then answers with — a suite that only checked the write would
+pass while the Brain read a different table.
+
+- **Write → read through the Brain.** An event POSTed to
+  `story/events` appears in the `EVENT` answer. A promise POSTed to
+  `story/promises` is what `PROMISES` ranks, and importance × age orders
+  it correctly. These two are the tests that would have failed before this
+  slice: the Brain had no way to be fed.
+- **Spoiler boundary on authored data.** An event at
+  `availableFromChapter: 40` is absent from a `READER` ask at chapter 10
+  **and reports no withheld count** (the count is itself an existence
+  oracle), is present for the author, and appears for a reader at 40.
+- **`canPromiseTransition`.** Full forward walk SETUP → DEVELOPING →
+  READY_FOR_PAYOFF → PAID_OFF; a paid-off promise refuses to reopen (409);
+  a backward move and a same-state move are refused; `ABANDONED` is
+  reachable from an open state.
+- **`findCausalCycle`.** A → B accepted, B → A refused 409. Self-edge,
+  duplicate edge, and a cross-novel event all refused (409/409/404).
+- **Confidence splits authority.** `EXPLICIT` needs no approver and stores
+  none; `INFERRED` requires `canon:approve` — an EDITOR gets 403 — and
+  stores the approver's id. The Brain reports an `INFERRED`/`SPECULATIVE`
+  edge as basis `SUGGESTION`, never as established fact (CLAUDE.md §21).
+- **The resolution pairs.** `RESOLVED` without a chapter and a chapter
+  without `RESOLVED` are both 409; `DORMANT` is still unresolved, so it
+  appears in the `UNRESOLVED` ledger with a non-zero debt.
+- **`isChronological`, by index.** A raw insert of a colliding
+  `(novelId, order)` is rejected `P2002` — the rule is enforced by the
+  unique index, and an earlier read-side branch asserting it was removed
+  as unreachable.
+- **Tenancy and capability.** 401 unauthenticated; 403 for a VIEWER on
+  both read and write; 404 for a novel in another workspace **and** for a
+  nonexistent one (identical, no existence leak); 404 for a real thread id
+  reached through the wrong novel; 400 for `importance: 99`, an unknown
+  thread kind, and a blank description.
+
+**Not covered, and said so:** the concurrent-append `P2002` → 409 branch
+in `appendTimelineEvent`. Prisma serialises injects on one connection, so
+the interleaving cannot be forced; a test that races only sometimes was
+deleted rather than kept, and the branch is documented as race defence.
+
+**Constraint probe.** All six slice-2 CHECKs confirmed load-bearing by
+dropping each inside `BEGIN`/`ROLLBACK` and retrying the exact refused
+statement — `refused: 23514` with, `accepted` without. Probe deleted after
+use; results in `progress.md`.

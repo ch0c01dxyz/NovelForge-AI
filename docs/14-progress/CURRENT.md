@@ -30,6 +30,12 @@ phase of its own (see the numbering note in
   EVENT, CAUSAL, UNRESOLVED, PROMISES with evidence; reader spoiler
   boundary on every read path. Independent adversarial audits found and
   fixed ten defects behind a green gate (details in `progress.md`).
+  Slice 3 (2026-09-30) added the **write surface** the Brain had been
+  reading without: events, timeline, threads, promises and causal edges are
+  now authorable through the API, and the three pure rules that had no
+  production caller (`canPromiseTransition`, `findCausalCycle`,
+  `isChronological`) are enforced — two on the request, the third by the
+  `(novel, order)` unique index.
 - **Phase 7** — planning: synopses, sagas, outline nodes, outline versions,
   planning horizon; delete routes (planning entities, novels, canon
   entities, workflows) with FK hardening so refusals are legible 409s and
@@ -51,10 +57,11 @@ phase of its own (see the numbering note in
   error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web`); `pnpm test` 30 files, 622 passed / 1 skipped on vitest
+`apps/web`); `pnpm test` 31 files, 642 passed / 1 skipped on vitest
 5.0.2; 16 migrations applying from empty with zero drift;
 `pnpm -r build` green. Phase 8's eight new constraints were each
-confirmed load-bearing by a drop-and-retry probe.
+confirmed load-bearing by a drop-and-retry probe, and Phase 6 slice 3's
+six CHECKs were confirmed the same way.
 
 First run against a **real 9Router deployment** (2026-09-30) is recorded in
 `progress.md` Round 9: gateway stored through the CRUD API (credential
@@ -125,6 +132,31 @@ is candidate canon needing approval (§2.13).
   §24).
 - Only text ingestion exists; PDF/DOCX/TXT/Markdown extraction is not
   implemented (§32). `ReferenceKind.IMPORTED` is reserved for it.
+
+### Story intelligence (Phase 6 slice 3)
+
+- **No delete routes on any of the five tables.** `causal_edges` cascade
+  from `story_events`, so deleting an event would silently take its causal
+  claims with it (CLAUDE.md §9). A correction path needs a supersede chain
+  before a delete is safe; the surface is append-and-transition only.
+- **`story_thread_events` has no API.** The thread↔event join is
+  schema-present and unused; it earns a route when something needs to
+  render a thread's event history.
+- **No timeline reorder.** `appendTimelineEvent` assigns the next slot and
+  there is no way to move an entry — renumbering a timeline the reader has
+  already seen is a deliberate non-goal, but insert-in-the-middle will need
+  a design (likely explicit gaps, not renumbering).
+- **The concurrent-append 409 has no covering test.** Prisma serialises
+  injects on one connection, so the race cannot be forced deterministically;
+  the branch is documented race defence.
+- **No story-intelligence UI.** Events, threads, promises and causal edges
+  are API-only; the writer workspace still shows none of them.
+- **Timeline and story events are separate tables with no link.** A
+  `timeline_events` row carries no `chapter_id` and no relation to a
+  `story_event`; in-story time and reading order are not yet reconciled.
+- **The Brain's EVENT/CAUSAL legs are unbounded lists** (the audit row caps
+  provenance at 100). Pagination arrives when a novel's event count makes
+  it matter.
 
 ### Delete semantics (settled 2026-10-02, migrations 20261002 / 20261002b)
 

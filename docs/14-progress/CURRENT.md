@@ -1,7 +1,7 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: **Roadmap phases 0–8 COMPLETE (2026-09-30)**, plus
+Implementation status: **Roadmap phases 0–9 COMPLETE (2026-09-30)**, plus
 the **AI Orchestrator milestone (2026-10-03)** — the `ai.generate`
 lifecycle, which the roadmap schedules inside Phase 3/4 rather than as a
 phase of its own (see the numbering note in
@@ -47,6 +47,21 @@ phase of its own (see the numbering note in
   load-bearing by dropping it and retrying the refused statement. The
   roadmap exit criterion (monogamy/harem/polygamy and enemy-to-ally)
   is tested at the HTTP boundary in `apps/api/src/character.test.ts`.
+- **Phase 9** — narrative DNA, drama windows, cooldown, antagonist
+  lifecycle, pattern detection, scale appropriateness. The five rules are
+  pure (`packages/narrative-rhythm`); persistence is three tables
+  (migration `20261004_phase9_narrative_dna`); the surface is 12 routes in
+  `apps/api/src/narrative-routes.ts`. Only the cooldown is HARD; the rest
+  advise. Both roadmap exit halves are asserted at the HTTP boundary, and
+  "non-mechanical" is asserted at the **word** level — a guidance string
+  containing an imperative fails, because a state-only assertion would
+  stay green while the soft preference became a schedule. The three
+  hand-written CHECKs were each confirmed load-bearing by a drop-and-retry
+  probe. A deep adversarial audit of this surface (2026-09-30, two rounds)
+  found nine defects behind a green gate — six logic defects, three in the
+  cooldown path — plus seven coverage holes, all fixed with a regression
+  test each; three further findings were confirmed as already-recorded
+  accepted deviations rather than defects. Details in `progress.md`.
 - **AI Orchestrator (milestone, 2026-10-03)** — one `ai.generate`
   lifecycle entry point that resolves the agent/skill definitions the
   workflow executor also resolves (shared `definition-resolution.ts`),
@@ -57,11 +72,11 @@ phase of its own (see the numbering note in
   error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web`); `pnpm test` 31 files, 642 passed / 1 skipped on vitest
-5.0.2; 16 migrations applying from empty with zero drift;
-`pnpm -r build` green. Phase 8's eight new constraints were each
-confirmed load-bearing by a drop-and-retry probe, and Phase 6 slice 3's
-six CHECKs were confirmed the same way.
+`apps/web`); `pnpm test` 34 files, 737 passed / 1 skipped on vitest
+5.0.2; 17 migrations applying from empty with zero drift;
+`pnpm -r build` green. Phase 8's eight new constraints and Phase 9's three
+CHECKs were each confirmed load-bearing by a drop-and-retry probe, and
+Phase 6 slice 3's six CHECKs were confirmed the same way.
 
 First run against a **real 9Router deployment** (2026-09-30) is recorded in
 `progress.md` Round 9: gateway stored through the CRUD API (credential
@@ -79,12 +94,10 @@ and `docs/adr/`.
 
 ## Next milestone
 
-**Phase 9 — Narrative DNA & Rhythm** per
-`docs/12-roadmap/IMPLEMENTATION-ROADMAP.md`.
-
-Scaffolding is already present in `packages/narrative-rhythm`. Exit
-criterion: a low-frequency drama scenario remains non-mechanical and
-repetition warnings are evidence-backed.
+**Phase 10 — Story Simulation** per
+`docs/12-roadmap/IMPLEMENTATION-ROADMAP.md`. Exit criterion: a
+reincarnated-genius/civilization-building validation scenario remains
+causally coherent. Not started — nothing in the tree implements it.
 
 An earlier version of this file named "Phase 9 — Reader Platform". That
 matched no phase in this repo's roadmap — it came from a different
@@ -120,6 +133,32 @@ contracted agent whose output is candidate canon needing approval, §2.13).
   for.
 - **No retention or pruning** on any Phase 8 table; `meaningful_interactions`
   grows per recorded scene.
+
+### Narrative DNA & rhythm (Phase 9)
+
+- **`NarrativeDnaProfile.dna` has no field inventory.** The schema comment
+  says the shape is validated in `packages/narrative-rhythm`; that is true
+  of the POLICY payloads and aspirational for DNA. No rule consumes a DNA
+  field yet, so `putDna` accepts any JSON object. Pinning a list now would
+  make the service a second, drift-prone schema (ADR-0009).
+- **A `SCALE` policy is stored unvalidated.** `assessScaleAppropriateness`
+  takes the protagonist's standing, not the novel's preference, so no rule
+  can probe a scale payload. `DRAMA_GAP` and `COOLDOWN` are probed on write.
+- **No narrative UI.** The Phase 9 surface is API-only; the writer
+  workspace shows no DNA, policy, or antagonist state.
+- **`Antagonist` has no delete or correction path.** Append-and-advance
+  only, as Phase 6 slice 3's five tables are. (Policies do have one:
+  `DELETE .../policies/:kind`.)
+- **`Antagonist.workspaceId` is denormalised** as the tenant boundary,
+  alongside `novelId`. Nothing enforces the two agree; the service derives
+  both from the stored novel, so a mismatch would take a direct DB write.
+- **`advanceAntagonistStage` reconstructs the progression as
+  `[current, next]`.** The row keeps only the current stage, so there is no
+  stored history of how an antagonist got there — the pair is the honest
+  reconstruction, and a full lifecycle log would need its own table.
+- **The drama-window assessment is stateless.** `chaptersSinceDrama` is
+  supplied by the caller; nothing derives it from chapters or beats, so a
+  caller can pass any number.
 
 ### Canon / knowledge
 

@@ -29,9 +29,11 @@ import { registerPlanningRoutes } from "./planning-routes.ts";
 import { registerCharacterRoutes } from "./character-routes.ts";
 import { registerRelationshipRoutes } from "./relationship-routes.ts";
 import { registerStoryRoutes } from "./story-routes.ts";
+import { registerNarrativeRoutes } from "./narrative-routes.ts";
 import { createCharacterServices } from "./services/characters.ts";
 import { createRelationshipServices } from "./services/relationships.ts";
 import { createStoryServices } from "./services/story.ts";
+import { createNarrativeServices } from "./services/narrative.ts";
 import { createPlanningServices } from "./services/planning.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
@@ -246,6 +248,16 @@ export async function buildApp(
     registerStoryRoutes(app, {
       auth,
       services: createStoryServices({ db: options.db, audit }),
+    });
+
+    // Narrative DNA & Rhythm (Phase 9): the write surface behind
+    // @novelforge/narrative-rhythm. Three of the five pure rules refuse the
+    // request that would violate them; the other two are advisory and are
+    // returned rather than enforced (ADR-009 / ADR-012). The migration CHECKs
+    // stay the backstop.
+    registerNarrativeRoutes(app, {
+      auth,
+      services: createNarrativeServices({ db: options.db, audit }),
     });
 
     registerDefinitionRoutes(app, {

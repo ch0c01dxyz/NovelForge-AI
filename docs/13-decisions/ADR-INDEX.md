@@ -60,6 +60,22 @@ Initial accepted decisions:
     no proposer-authored claim kind (basis comes from evidence);
     workspace-scoped `canon:read`/`canon:manage`/`canon:approve`, none of
     them platform capabilities. Realises baseline ADR-007.
+-   [ADR-0009](../adr/ADR-0009-narrative-dna-soft-constraints.md):
+    Narrative DNA as soft constraints — rhythm preferences inform the
+    planner and never become a cron-like rule; hardness is per-concern and
+    a HARD policy must state its reason. Realises baseline ADR-009.
+-   [ADR-0010](../adr/ADR-0010-generic-narrative-primitives.md): Genre and
+    story features compose generic narrative primitives (drama windows,
+    cooldown, antagonist lifecycle, scale) rather than hard-coding a genre.
+    Realises baseline ADR-010.
+-   [ADR-0011](../adr/ADR-0011-planning-horizon-detail.md): Planning detail
+    decreases with narrative distance — the horizon policy is per-novel
+    JSONB, so distant chapters are not overplanned. Realises baseline
+    ADR-011.
+-   [ADR-0012](../adr/ADR-0012-evidence-backed-story-health.md): Story
+    health reports evidence-backed findings (rule, severity, evidence,
+    affected entities, status, remediation) and never a score. Realises
+    baseline ADR-012.
 
 New ADRs start from [ADR-TEMPLATE.md](../adr/ADR-TEMPLATE.md), use the
 next sequential `ADR-NNNN` number, are filed under `docs/adr/`, and are

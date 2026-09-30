@@ -747,3 +747,118 @@ deleted rather than kept, and the branch is documented as race defence.
 dropping each inside `BEGIN`/`ROLLBACK` and retrying the exact refused
 statement — `refused: 23514` with, `accepted` without. Probe deleted after
 use; results in `progress.md`.
+
+## Phase 9 — Narrative DNA & Rhythm (2026-09-30)
+
+`apps/api/src/narrative.test.ts` (46 tests, dedicated `novelforge_test_phase9`
+db). The two roadmap exit scenarios are driven through the real HTTP surface,
+because that is where the criterion lives — a domain-package test would prove
+the rules and not the wiring. No test here reaches a provider: the Phase 9
+routes issue no model call at all, and the gateway factory given to `buildApp`
+throws if one ever does.
+
+- **"non-mechanical" is asserted at the WORD level.** A drama window whose
+  guidance says "insert drama" has turned the ADR-009 soft preference into
+  the cron-like rule `NARRATIVE-RHYTHM.md:5` forbids, and a state-only
+  assertion would stay green while it did. `expectNoImperative` checks the
+  guidance string against `["should", "must", "insert", "add ", "need",
+  "consider", "time for", "now"]` for **both** the IN_GAP case (40 chapters
+  inside the authored 30-50 gap) and `BEYOND_EXTENDED_CALM` at 200 chapters
+  with `strictInterval: true`. `strict` is asserted to be echoed as **data**
+  and never as a command in the prose.
+- **No policy is never a default.** `POST /narrative/drama-window` with no
+  stored `DRAMA_GAP` policy is 409, not a default ladder (ADR-0011 §2). The
+  same holds for `POST /narrative/cooldown` with no `COOLDOWN` policy — it was
+  a silent `allowed: true` until the deep audit, which is the identical
+  substitution in the one rule that actually binds.
+- **A malformed policy is refused on write and stored nowhere** — a policy
+  with `extendedGap.max < typicalGap.max` is 409 and the list is still empty
+  afterwards.
+- **The cooldown is the one hard rhythm rule.** A same-type beat 5 chapters
+  back inside a 10-chapter window is `allowed: false` with
+  `conflictsWith.beatId` and `distance` named; a **different** type at the
+  same distance is `allowed: true` — the window protects a flavour, not drama.
+- **"evidence-backed" means concrete rows, never a score.** A sequence
+  repeated twice returns `occurrences: 2`, `severity: INFO`, and
+  `evidence` listing **all six** beat ids and chapters (`b1..b6`,
+  `10,11,12,40,41,42`). The suggestion is asserted to contain "vary" — a
+  variation, not a ban. A trope used once returns **null**, not a low-severity
+  finding — and asking for `minOccurrences: 1` is 400, because a "repeat" of
+  one is the result the rule itself calls not a pattern.
+- **The soft/hard split reaches the response.** A TEMPORARY antagonist with
+  no purpose is 409; the same role with a stated purpose is 201. One whose
+  span runs 30 chapters (past the doc's ~5-20) is **201 with an `advisory`
+  array naming `SPAN_OUT_OF_BOUNDS`** — the migration calls that bound "a
+  pacing note, not an unrepresentable row", so refusing it would be the
+  soft constraint acting as the schedule ADR-009 forbids.
+- **Antagonist lifecycle.** A backward move (CONFRONTATION → FRICTION) is 409
+  **and the stored stage is unchanged afterwards**; a repeated stage is 409;
+  a forward move records the outcome; a span ending before it starts is 409;
+  the same character cast twice in one novel is 409. **A later advance that
+  omits `outcome` leaves the recorded one in place** (the route used to coerce
+  it to null and wipe it), while an explicit `null` still clears it — omission
+  and null stay distinct.
+- **Hardness is per-policy (ADR-009).** `HARD` with no reason and with a
+  whitespace-only reason are both 409; `HARD` with a reason and `SOFT` with
+  none are both 200; a second PUT for the same kind **upserts** rather than
+  accumulating a row.
+- **A policy can be unset, not only overwritten.** `DELETE .../policies/:kind`
+  is 204, removes only that kind, and 404s for a kind never set (400 for an
+  unknown kind). One test asserts the delete is **real** rather than a soft
+  flag: after deleting the `DRAMA_GAP` policy the drama-window call returns to
+  409, because no policy must never read as a default ladder (ADR-0011 §2).
+  Authorization is checked on the delete path too, and the refusal is asserted
+  to have deleted nothing.
+- **Narrative DNA round-trips** and returns `null` before anything is
+  written — the novel exists (the gate would have thrown otherwise), so
+  "nothing written yet" is a real answer. A non-object payload is 400.
+- **Authorization and tenancy.** 401 without a session, 403 for a VIEWER on
+  write, 404 for a novel in another workspace, 404 for an antagonist id
+  reached through the wrong novel, and 404 for a **character** belonging to
+  another novel — the last one matters because `character_id` references
+  `characters(id)` with no novel predicate, so the FK alone would have
+  accepted it.
+- **The DB constraints are the subject, not the service guard in front of
+  them.** Five cases write through Prisma, past every guard: a TEMPORARY
+  antagonist with a null purpose, with a whitespace-only purpose, an inverted
+  span and a `fromChapter: 0`, a `HARD` policy with no reason — plus the
+  one-live-policy-per-kind unique index. Each is paired with the legal row
+  the constraint must still accept, proving it is not wider than it claims.
+- **The scale route is reachable and pinned.** `POST /narrative/scale` had
+  zero coverage anywhere — swapping `proposal` and `standing`, or dropping
+  the tenant gate, left every suite green. Four cases now drive it: a
+  proposal beyond reach (`reach: TOWN`, `gap: 4`), one inside reach, an
+  unknown scale as 400 at the boundary, and a cross-workspace novel as 404.
+- **The domain vocabulary is pinned against the generated Prisma enums, not
+  just against itself.** `rhythm.test.ts` pins the mirrors against
+  hand-copied literals, which catches an edit to `vocabulary.ts` but not
+  drift from `schema.prisma`. `apps/api` is the only package that may import
+  both, so one test there compares all five schema-backed Phase 9 enums
+  member-for-member (`NarrativePolicyKind`, `PolicyHardness`,
+  `AntagonistRole`, `AntagonistStage`, `AntagonistOutcome`). The four
+  domain-only vocabularies (`DRAMA_TYPES`, `DRAMA_DENSITIES`,
+  `NARRATIVE_SCALES`, `DRAMA_WINDOW_STATES`) have no schema counterpart and
+  keep the literal pin as their only guard.
+
+**Constraint probe.** `packages/database/test/narrative-constraints.integration.test.ts`
+(11 tests) is the companion and the load-bearing proof. It writes straight to
+the database with raw SQL, so it does not import `services/narrative.ts` — the
+point is what PostgreSQL does when the service layer is not in the path. Each
+of the three CHECKs is dropped inside a rolled-back transaction, the exact
+refused statement is retried, and it is confirmed to then be **accepted**;
+all three are load-bearing (`23514` with, `ACCEPTED` without). **Every
+refused shape is probed, not just one per constraint** — a sibling shape whose
+refusal came from some other mechanism (a `NOT NULL`, a second CHECK) would
+leave the CHECK under test inert for it and still pass a single-shape probe.
+A guard asserts all three constraints exist **before** probing, so a missing
+one cannot make "refused" a false pass. Two Phase 8 lessons carry over: a
+refused `INSERT` aborts the enclosing transaction (`25P02`, needs its own
+`SAVEPOINT`), and `ROLLBACK` — never a cleanup `DELETE` — both restores the
+dropped constraint and discards the probe row, because `ADD CONSTRAINT`
+re-validates existing rows.
+
+The domain package carries its own unit suite —
+`packages/narrative-rhythm/rhythm.test.ts` (38 tests), including the enum pins
+that catch an edit to `vocabulary.ts` and the branch coverage the HTTP surface
+cannot reach (a malformed stored window, an empty pattern sequence, a
+non-chapter `chaptersSinceDrama`).

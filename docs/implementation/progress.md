@@ -1867,3 +1867,233 @@ re-validates existing rows.
 - Constraint probe — 8/8 constraints confirmed load-bearing.
 
 Not run: `apps/web` browser flows (no automated E2E runner exists).
+
+## Phase 9 — Narrative DNA & Rhythm (2026-09-30)
+
+Roadmap exit criterion, verbatim: *"a low-frequency drama scenario remains
+non-mechanical and repetition warnings are evidence-backed."* Both halves are
+tested at the HTTP boundary in `apps/api/src/narrative.test.ts`.
+
+### Slice 1 — the domain package
+
+`packages/narrative-rhythm` was a stub (`export {};`). It now holds
+`vocabulary.ts` (enum-shaped unions mirroring `schema.prisma`, pinned by a
+test) and `rhythm.ts` (five pure rules, 23 tests). ADR-0001: no Prisma, no
+HTTP, no provider, no `node:` imports.
+
+The five rules split into three that refuse and two that advise:
+
+- `assessDramaWindow` — bands the story against the **novel's own** gap
+  policy (RECENT → IN_GAP → EXTENDED_CALM → BEYOND_EXTENDED_CALM). Its
+  `guidance` string is asserted at the **word level** to contain no
+  imperative under any policy, including `strictInterval: true`. That is the
+  ADR-009 soft-constraint rule made mechanical: a state-only assertion would
+  stay green while the guidance said "insert drama".
+- `checkCooldown` — the one HARD rule. Refuses a same-TYPE beat strictly
+  inside the window and never blocks a different type.
+- `validateAntagonistProgression` — forward-only lifecycle, explicit purpose
+  for TEMPORARY antagonists, bounded 5-20 chapter span.
+- `detectRepeatedSequence` — evidence-backed: every beat id and chapter, and
+  a suggestion to vary rather than a ban (ADR-012).
+- `assessScaleAppropriateness` — reports the gap between a conflict's scale
+  and the protagonist's reach. Carries a `ponytail:` comment: reputation is
+  evidence in the reason and is deliberately **not** scored, because the doc
+  gives no threshold and inventing one would make the number up.
+
+### Slice 2 — schema (migration `20261004_phase9_narrative_dna`)
+
+Three tables, five enums. `NarrativeDnaProfile` (PK = novelId, JSONB `dna`),
+`NarrativePolicy` (unique `[novelId, kind]`, `hardReason`), `Antagonist`
+(unique `[novelId, characterId]`, `workspaceId` denormalised as the tenant
+boundary, `fromChapter`/`toChapter`).
+
+**Three hand-written CHECKs**, each a rule the docs state and a route could
+forget: `Antagonist_temporary_needs_purpose`,
+`Antagonist_chapter_span_valid`, `NarrativePolicy_hard_requires_reason`.
+
+The purpose/span split is deliberate and recorded in the migration comment:
+the SPAN bound is "a pacing note, not an unrepresentable row", so it is not a
+CHECK; the PURPOSE is the hard half and is.
+
+### Slice 3 — services, routes, tests
+
+- **`services/narrative.ts`** (12 methods) and **`narrative-routes.ts`**
+  (12 routes), following the `services/story.ts` template: an inner `gate()`
+  resolves membership and the novel server-side and throws the SAME
+  `NotFoundError("novel")` for either miss (no existence leak through a
+  403/404 difference), then `requireCapability`; `audit.record` after every
+  successful mutation.
+- **Capabilities** are reused, not extended: `canon:read` / `canon:manage`,
+  as Phases 7 and 8 did. No `canon:approve` — nothing here is canon.
+- **The soft/hard split reaches the response, not just the code.** A
+  TEMPORARY antagonist with no purpose is refused (409); one whose span runs
+  30 chapters comes back **201 with an `advisory` array** naming
+  `SPAN_OUT_OF_BOUNDS`. A soft constraint that refuses has become the
+  schedule ADR-009 forbids, so the service splits
+  `validateAntagonistProgression`'s findings rather than acting on `ok`.
+- **No policy is never a default.** `assessWindow` refuses (409) when the
+  novel has no `DRAMA_GAP` policy, matching `getHorizon`'s posture
+  (ADR-0011 §2) — a default ladder would plan distant chapters at a rhythm
+  the author never chose.
+- **Malformed policies are refused on write.** `putPolicy` probes with the
+  rule that will consume the payload, so a rejected policy is stored nowhere.
+  `checkCooldown` has no problem channel (a bad window reads as "no cooldown
+  configured", a silent pass), so its shape is checked directly.
+- **`advanceAntagonistStage` reconstructs the progression as
+  `[current, next]`.** The row keeps only the current stage, so the pair is
+  the honest reconstruction — and it is exactly what makes a backward or
+  repeated move visible.
+- **Cross-tenant ids are checked, not merely FK'd.** `createAntagonist`
+  proves the character belongs to THIS novel; `character_id` references
+  `characters(id)` with no novel predicate, so the FK alone would have
+  accepted a foreign character.
+
+### Known gaps recorded, not papered over
+
+- **`NarrativeDnaProfile.dna` has no field inventory.** The schema comment
+  says "shape validated in packages/narrative-rhythm" — true of the POLICY
+  payloads, aspirational for DNA. No rule consumes a DNA field yet, and
+  pinning a list would make the service a second, drift-prone schema.
+- **The `SCALE` policy kind is stored unvalidated** for the same reason:
+  `assessScaleAppropriateness` takes the protagonist's standing, not the
+  novel's preference, so no rule can probe a scale policy.
+- **No narrative UI.** The Phase 9 surface is API-only.
+- **`Antagonist` has no delete or correction path.** Append-and-advance only,
+  as Phase 6 slice 3's five tables do.
+- **The takeover dropped two deliverables the Task D spec named, and one was
+  silently lost.** `updateAntagonist` (PATCH) became `advanceAntagonistStage`
+  (POST `.../stage`) — a narrower surface, recorded here. `deletePolicy` was
+  simply absent: `putPolicy` upserts, so a policy could be overwritten but
+  never unset, and a novel with a stale `DRAMA_GAP` could not return to "no
+  agreed pacing". Added after the takeover with four tests, one of which
+  asserts the delete is real (the drama-window call goes back to 409).
+  The lesson: a coordinator inheriting a dead worker's tree must diff the
+  landed surface against the spec, not only run the gate — the gate was
+  green while the deliverable was missing.
+
+### Deep audit round (2026-09-30) — six defects behind the green gate
+
+An eleven-dimension adversarial audit of the Phase 9 surface (finders →
+three-lens refutation per finding → completeness critic) plus independent
+reproduction of each candidate against the source. Six defects survived; all
+were fixed here with a regression test each. Every one of them was green
+before the fix.
+
+1. **`assessDramaWindow` labelled chapters the policy never described.**
+   `EXTENDED_CALM` starts at `typicalGap.max + 1`, but its guidance claimed the
+   story was "inside the authored extended calm of `eMin`-`eMax`" — false for
+   every `d` in `tMax+1 .. eMin-1`. With the repo's own 30-50 / 70-140 policy,
+   chapters 51-69 reported `EXTENDED_CALM` while the sentence said they were
+   inside 70-140. Validation never rejected `eMin > tMax`, so the documented
+   policy produced it. The guidance now states the band the state machine
+   actually uses; the test asserts the false clause is **absent** at 51.
+2. **`checkBeat` read a missing `COOLDOWN` policy as `{ windowChapters: 0 }`**
+   — a silent `allowed: true` for the one rule that actually binds, and the
+   exact substitution `assessWindow` refuses (ADR-0011 §2). Now 409, with a
+   test. The path was previously uncovered.
+3. **`ANTAGONIST_STAGE_RANK` and `NARRATIVE_SCALE_RANK` are object literals**,
+   so `RANK["constructor"]` reads back as a function. The `rank === undefined`
+   guard missed it, clobbering `previousRank` and letting a real
+   `BACKWARD_STAGE` pass. Both lookups now use `Object.hasOwn`. (Unreachable
+   over HTTP — Zod and the DB enum forbid it — but the domain functions are
+   exported and a planner assembling state from model output is a real caller.)
+4. **`assessScaleAppropriateness` returned `ok: true` for an unknown scale.**
+   `undefined > undefined` is false, so an out-of-reach proposal read as inside
+   reach. Now guarded like `UNKNOWN_STAGE`, for both `standing.scale` and
+   `proposal.scale`.
+5. **`advanceAntagonistStage` wiped a recorded outcome.** The route coerced an
+   omitted `outcome` to `null`, so advancing a stage without restating the
+   outcome erased it (trace only in `audit_log`). Omission and explicit null
+   are now distinct — omitted preserves, null clears.
+6. **`detectRepeatedSequence` could be driven below its own definition of a
+   pattern.** `minOccurrences: 1` (accepted by the route) emitted a
+   "repeats 1 times" finding the rule's own doc calls meaningless; 0 or
+   negative emitted a finding with **no evidence**, violating ADR-012. Clamped
+   in the pure rule and floored in the route from the domain constant.
+
+Also fixed: `PolicyHardness` and `NarrativePolicyKind` were hand-declared in
+`services/narrative.ts` while the route inlined a *third* copy as Zod literals,
+so the route file's own claim that "the mirrors are pinned by a test" did not
+hold for them. Both now live in `vocabulary.ts` and are pinned.
+
+One candidate was **refuted** by reading the source: a terminal-stage outcome
+was thought unrecordable because a same-stage advance is `REPEATED_STAGE`, but
+the outcome rides on the advance *into* the terminal stage, which is legal.
+
+### Second audit round (2026-09-30) — the coverage holes the first round left
+
+The first round fixed nine defects and proved the code was correct where it was
+read. This round asked the complementary question: **what is not read at all?**
+Seven candidates survived three-lens refutation; three were already-recorded
+accepted deviations and no code changed for them (see below). The other four
+are test-only, and each one was verified by grep before being written:
+
+1. **`POST /narrative/scale` and `assessScale` had zero coverage anywhere.** A
+   shipped, reachable endpoint: swapping `proposal` and `standing` in the route
+   wiring, or dropping the `gate(..., "canon:read")` call, left every suite
+   green. Four HTTP cases now pin it (beyond-reach with `gap: 4`, inside reach,
+   unknown scale as 400, cross-workspace as 404).
+2. **The enum pin could not detect the drift it claimed to prevent.**
+   `rhythm.test.ts` compares `vocabulary.ts` against hand-copied literals, so it
+   catches an edit to the vocabulary but not a schema change: add `MENTOR` to
+   `AntagonistRole` in `schema.prisma` and the route rejects it with 400 while
+   the database accepts it — pin still green. `apps/api` is the only package
+   allowed to import both sides, so the comparison now happens there, across
+   all five schema-backed Phase 9 enums.
+3. **`MISSING_SPAN` was never asserted in any suite.** `spanOf(from, null)` is
+   `null`, not `0`, so an open-ended TEMPORARY antagonist reports it — advisory,
+   since `HARD_ANTAGONIST_PROBLEMS` excludes it. Changing `spanOf` to return 0
+   would have silently turned an unknown span into a zero-chapter one with every
+   test green. Now pinned at both levels.
+4. **`checkCooldown`'s nearest-blocker selection was never exercised** — every
+   history in both suites held exactly one same-type beat, so `>` versus `<`
+   (nearest versus farthest) was indistinguishable. The back-fill test added in
+   round one covers the future-beat direction; a two-beat case now pins the
+   selection itself. Also added: the invalid-window branch (unreachable over
+   HTTP since `putPolicy` refuses a non-positive window), an empty pattern
+   sequence, a non-integer `chaptersSinceDrama`, the singular "step" wording,
+   and the `MISSING_SPAN` unit path.
+
+The constraint probe was also widened: it probed **one** violation shape per
+CHECK, so a sibling shape whose refusal came from a different mechanism would
+have left the CHECK inert for it undetected. It now loops over every refused
+shape.
+
+**Three findings were accepted deviations, not defects** — each was already
+recorded in `docs/14-progress/CURRENT.md`, and the audit confirmed the record
+matches the code:
+
+- `PUT .../policies` takes `kind` in the body while `DELETE .../policies/:kind`
+  takes it in the path. Internally split, but both are documented and pinned.
+- There is no `PATCH .../antagonists/:id`; the surface is append-and-advance
+  only, so a wrong `purpose` or span written at create time cannot be corrected
+  through the API. Recorded as a deliberate Phase 9 ceiling.
+- The repetition endpoint is `/narrative/patterns`, not the spec's
+  `/narrative/repetition`. The behaviour exists; only the name differs.
+
+### Checks run
+
+- `pnpm typecheck` — clean in every workspace, EXIT=0.
+- `pnpm lint` — EXIT=0.
+- `pnpm test` — **34 files, 737 passed / 1 skipped** (712 before the deep
+  audit round; +16 regression tests across both rounds). Vitest 5.0.2.
+- `prisma migrate diff` — zero drift; `migrate deploy` to an empty database
+  in both new suites — all 17 migrations applied, EXIT=0.
+- Constraint probe (`packages/database/test/narrative-constraints.integration.test.ts`)
+  — 11/11, all three CHECKs confirmed **load-bearing** by dropping each inside
+  a rolled-back transaction and retrying the exact refused statement, now for
+  **every** refused shape rather than one per constraint.
+
+Not run: `apps/web` browser flows (no automated E2E runner exists).
+
+### Round note — a dispatched worker thrashed and shipped nothing
+
+Task D (the API write surface above) was dispatched to an Orca worker and
+returned **zero files**. Its terminal showed `Autocompact is thrashing: the
+context refilled to the limit within 3 turns of the previous compact, 3 times
+in a row`, then a completed turn with no `worker_done`. The dispatch was
+fenced with `worker-stop` and the work done in the coordinator session
+instead. The lesson is the same one the recovery reference states: an
+`unverifiable` liveness verdict authorizes no action, and a *finished* turn
+with no report is evidence of failure, not of success.
+

@@ -76,6 +76,7 @@ model User {
   approvedEdges       CausalEdge[]     @relation("CausalEdgeApprover")
   createdCharacters   Character[]      @relation("CharacterCreator")
   createdBonds        Bond[]           @relation("BondCreator")
+  createdAntagonists  Antagonist[]     @relation("AntagonistCreator")
 
   @@map("users")
 }
@@ -122,6 +123,7 @@ model Workspace {
   stances      RelationshipStance[]
   bonds        Bond[]
   interactions MeaningfulInteraction[]
+  antagonists  Antagonist[]
 
   @@map("workspaces")
 }
@@ -172,6 +174,9 @@ model Novel {
   causalEdges CausalEdge[]
   characters  Character[]
   bonds       Bond[]
+  dnaProfile  NarrativeDnaProfile?
+  policies    NarrativePolicy[]
+  antagonists Antagonist[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1803,6 +1808,7 @@ model Character {
   stancesFrom     RelationshipStance[] @relation("StanceFrom")
   stancesTo       RelationshipStance[] @relation("StanceTo")
   bondMemberships BondMember[]
+  antagonists     Antagonist[]
 
   @@unique([novelId, key])
   @@map("characters")
@@ -2003,4 +2009,153 @@ model MeaningfulInteraction {
 
   @@index([bondId, chapter])
   @@map("meaningful_interactions")
+}
+
+// Phase 9 — Narrative DNA and antagonist persistence
+// (DATA-MODEL-BLUEPRINT.md `## Narrative DNA`; docs/03-domain/
+// NARRATIVE-DNA-AND-PLANNING.md and NARRATIVE-RHYTHM.md lines 23-37).
+//
+// The DNA profile is one JSONB row per novel, the same shape as
+// PlanningHorizon: open-ended author preferences, always read and written as
+// a unit. Policies are separate rows because ADR-009 needs *per-concern*
+// hardness — "the drama gap is soft, the ending tone is hard" is a fact about
+// one policy, not about the profile, and a hardness flag buried in free-form
+// JSONB is a convention nothing enforces.
+//
+// Vocabulary below is pinned by packages/narrative-rhythm — changing a member
+// there without the enum (or the reverse) must fail a test.
+
+enum NarrativePolicyKind {
+  DRAMA_GAP
+  COOLDOWN
+  SCALE
+}
+
+/// ADR-009 / NARRATIVE-DNA-AND-PLANNING.md: "Values are soft constraints
+/// unless explicitly marked hard." A column rather than a JSONB convention, so
+/// a reader can ask which policies actually bind without parsing payloads.
+enum PolicyHardness {
+  SOFT
+  HARD
+}
+
+/// NARRATIVE-RHYTHM.md line 23: "Roles include MAIN, ARC, TEMPORARY, RIVAL,
+/// IDEOLOGICAL, POLITICAL, PERSONAL, COMPETITOR."
+enum AntagonistRole {
+  MAIN
+  ARC
+  TEMPORARY
+  RIVAL
+  IDEOLOGICAL
+  POLITICAL
+  PERSONAL
+  COMPETITOR
+}
+
+/// The nine-step lifecycle, verbatim: introduction → motivation → friction →
+/// underestimation/conflict → escalation → confrontation → defeat/realization
+/// → consequence → resolution. The doc writes two steps with a slash; one
+/// member each is the faithful reading — the slash names one beat, not two.
+enum AntagonistStage {
+  INTRODUCTION
+  MOTIVATION
+  FRICTION
+  UNDERESTIMATION
+  ESCALATION
+  CONFRONTATION
+  DEFEAT
+  CONSEQUENCE
+  RESOLUTION
+}
+
+/// The twelve outcomes the doc lists, in its order. Nullable on the row: an
+/// antagonist still in play has no outcome yet.
+enum AntagonistOutcome {
+  REGRET
+  RESENTMENT
+  RETREAT
+  LOSS_OF_STATUS
+  EXILE
+  DEATH
+  NEUTRALITY
+  RESPECT
+  REDEMPTION
+  ALLIANCE
+  SUBORDINATION
+  FUTURE_REVENGE
+}
+
+/// Per-novel Narrative DNA: durable author preferences — genre/subgenre tags,
+/// progression pace, protagonist competence, drama density, typical and
+/// occasional extended drama gap, comedy/tragedy tolerance, romance structure,
+/// face-slapping frequency, enemy-to-ally preference, political complexity,
+/// technology realism, war frequency, ending tone, target length and whether
+/// that length is hard or soft. NOT universal constants — each novel carries
+/// its own JSONB, interpreted by packages/narrative-rhythm.
+model NarrativeDnaProfile {
+  novelId   String   @id @map("novel_id") @db.Uuid
+  novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// Shape validated in packages/narrative-rhythm, not by the database — the
+  /// same contract as PlanningHorizon.policy.
+  dna       Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("narrative_dna_profiles")
+}
+
+/// One named policy for one novel: DRAMA_GAP, COOLDOWN, SCALE. Split from the
+/// DNA profile because hardness is per-concern (ADR-009) — "values are soft
+/// constraints unless explicitly marked hard" binds one policy at a time.
+model NarrativePolicy {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId     String              @map("novel_id") @db.Uuid
+  novel       Novel               @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  kind        NarrativePolicyKind
+  hardness    PolicyHardness
+  /// Why this policy binds. Required when hardness = HARD (CHECK in the
+  /// migration): an override with no stated reason is the unauditable
+  /// free-form case the hardness column exists to avoid.
+  hardReason  String?             @db.Text @map("hard_reason")
+  /// Shape owned by packages/narrative-rhythm, interpreted per kind.
+  payload     Json
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  @@unique([novelId, kind])
+  @@map("narrative_policies")
+}
+
+/// An antagonist: a Character cast in an opposing role, tracked through the
+/// nine-step lifecycle with an explicit purpose and a chapter span. Linked to
+/// Character rather than duplicating name/summary — the antagonist *is* the
+/// character; this row records what the story does with them.
+model Antagonist {
+  id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching CanonFact and Phase 8 (ADR-0007):
+  /// a filtered query never joins to enforce isolation.
+  workspaceId String             @map("workspace_id") @db.Uuid
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String             @map("novel_id") @db.Uuid
+  novel       Novel              @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  characterId String             @map("character_id") @db.Uuid
+  character   Character          @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  role        AntagonistRole
+  stage       AntagonistStage    @default(INTRODUCTION)
+  /// Null until the arc closes.
+  outcome     AntagonistOutcome?
+  /// Why they oppose the protagonist. Required for TEMPORARY roles (CHECK in
+  /// the migration): "Temporary antagonists may exist for ~5-20 chapters when
+  /// appropriate. Their purpose must be explicit."
+  purpose     String?            @db.Text
+  /// Inclusive first chapter the antagonist is in play.
+  fromChapter Int                @map("from_chapter")
+  /// Inclusive last chapter; null = still in play.
+  toChapter   Int?               @map("to_chapter")
+  createdById String             @map("created_by_id") @db.Uuid
+  createdBy   User               @relation("AntagonistCreator", fields: [createdById], references: [id])
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@unique([novelId, characterId])
+  @@index([characterId])
+  @@map("antagonists")
 }

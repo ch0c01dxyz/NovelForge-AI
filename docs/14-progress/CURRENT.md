@@ -58,11 +58,16 @@ phase of its own (see the numbering note in
   containing an imperative fails, because a state-only assertion would
   stay green while the soft preference became a schedule. The three
   hand-written CHECKs were each confirmed load-bearing by a drop-and-retry
-  probe. A deep adversarial audit of this surface (2026-09-30, two rounds)
-  found nine defects behind a green gate — six logic defects, three in the
-  cooldown path — plus seven coverage holes, all fixed with a regression
+  probe. A deep adversarial audit of this surface (2026-09-30, four rounds)
+  found thirteen defects behind a green gate — six logic defects, three in the
+  cooldown path — plus a missing `bodyLimit` on two routes, a JSONB `null`
+  band and an unguarded `access` list that each threw a 500 where a 409
+  was owed, and a check-then-act race in the stage advance — with seven
+  coverage holes, all fixed with a regression
   test each; three further findings were confirmed as already-recorded
-  accepted deviations rather than defects. Details in `progress.md`.
+  accepted deviations rather than defects. Round four re-verified round
+  three's refutations and found two of them wrong, which is recorded in
+  `progress.md` rather than quietly dropped. Details in `progress.md`.
 - **AI Orchestrator (milestone, 2026-10-03)** — one `ai.generate`
   lifecycle entry point that resolves the agent/skill definitions the
   workflow executor also resolves (shared `definition-resolution.ts`),
@@ -73,7 +78,7 @@ phase of its own (see the numbering note in
   error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web`); `pnpm test` 35 files, 739 passed / 1 skipped on vitest
+`apps/web`); `pnpm test` 35 files, 746 passed / 1 skipped on vitest
 5.0.2; 18 migrations applying from empty (both test databases, 0 failed or
 rolled back);
 `pnpm -r build` green. Phase 8's eight new constraints and Phase 9's three
@@ -174,6 +179,17 @@ contracted agent whose output is candidate canon needing approval, §2.13).
 - **The drama-window assessment is stateless.** `chaptersSinceDrama` is
   supplied by the caller; nothing derives it from chapters or beats, so a
   caller can pass any number.
+- **The stage advance refuses a lost race rather than retrying it.** Two
+  concurrent advances are resolved by a `stage` predicate on the write; the
+  loser gets a 409 and must re-read. A retry-on-conflict loop was not added —
+  nothing drives this route concurrently yet, and a silent retry would hide
+  the fact that the caller's plan was built on a stale stage.
+- **`access` and the drama bands are guarded, not validated.** A `null` or
+  non-array `access` and a `null` band now produce a verdict instead of a
+  `TypeError`, but nothing pins the *shape* of a `SCALE` payload the way
+  `DRAMA_GAP` and `COOLDOWN` are pinned on write — see the `SCALE` entry
+  above. The guards keep the failure a 409/verdict instead of a 500; they do
+  not make an unvalidated payload valid.
 
 ### Canon / knowledge
 

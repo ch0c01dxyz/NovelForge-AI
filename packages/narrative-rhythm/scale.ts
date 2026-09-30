@@ -84,7 +84,12 @@ export function assessScaleAppropriateness(
   }
 
   let reachRank = ownRank;
-  for (const scale of standing.access) {
+  // `access` arrives from JSONB, so it can be null or hold non-scale members
+  // even though the route's Zod schema forbids both. Guarded rather than
+  // trusted: a TypeError out of a pure rule becomes a 500 on a request the
+  // caller could have been told about with a 409/400.
+  const access: readonly NarrativeScale[] = Array.isArray(standing.access) ? standing.access : [];
+  for (const scale of access) {
     const rank = rankOf(scale);
     if (rank !== undefined && rank > reachRank) reachRank = rank;
   }
@@ -93,7 +98,7 @@ export function assessScaleAppropriateness(
   const gap = proposalRank > reachRank ? proposalRank - reachRank : 0;
 
   const context = `own scale ${standing.scale}; access ${
-    standing.access.length > 0 ? standing.access.join(", ") : "none"
+    access.length > 0 ? access.join(", ") : "none"
   }; reputation ${standing.reputation}`;
 
   return {

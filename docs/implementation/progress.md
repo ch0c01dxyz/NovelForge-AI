@@ -2083,6 +2083,15 @@ matches the code:
 
 ### Third audit round (2026-09-30) — the CHECKs that did not check, and five refutations
 
+> **Correction (same day, fourth round).** Refutation 1 below — the missing
+> `bodyLimit` — was **wrong**, and the finding was real. It is left standing
+> here with this note rather than deleted, because the mistake is the useful
+> part: I measured the payload with short synthetic ids, got 0.79 MB, and
+> concluded the transport could carry anything the schema allowed. Measured at
+> the schema's *declared* maxima instead, `detectPatternBody` is 4.17 MB and
+> `checkBeatBody` is 1.18 MB — both past Fastify's 1 MB default. The fourth
+> round below records the fix.
+
 A third pass over the same surface, this time reproducing every candidate
 against a **live PostgreSQL** rather than reasoning about the code. Six
 candidates went in; one survived. The other five are recorded here because a
@@ -2128,13 +2137,13 @@ test carries 19 shapes, and the API test loops over 13.
 
 **Five candidates refuted — no code changed.**
 
-1. **"The narrative routes are missing `bodyLimit`, unlike their siblings."**
-   The sibling constant exists because those bodies are genuinely large
-   (`IMPORT_BODY_LIMIT` is 15 MB). The largest payload these schemas permit is
-   `detectPatternBody`: 10 000 beats at the declared field maxima is **0.79 MB**
-   measured, under Fastify's 1 MB default. The other routes are kilobytes.
-   Adding a constant would be scaffolding for a case the schema already
-   bounds. Refuted by measurement, not by opinion.
+1. ~~**"The narrative routes are missing `bodyLimit`, unlike their siblings."**~~
+   **WRONG — see the correction above.** The refutation rested on a 0.79 MB
+   measurement taken with short synthetic ids rather than at the schema's
+   declared maxima. At the declared maxima the payloads are 4.17 MB and
+   1.18 MB, both over the 1 MB default, so the routes really did 413 a
+   schema-valid body before Zod ran. Kept here as written, struck through,
+   because a refutation that was itself wrong is the more instructive record.
 2. **"`density` is read nowhere."** It is read — `assessDramaWindow` validates
    it against `DRAMA_DENSITIES` and returns `MALFORMED_POLICY` for anything
    else, which `putPolicy` turns into a 409. It carries no *behaviour*, which
@@ -2163,7 +2172,8 @@ left by earlier ad-hoc probing. All were untracked and unreferenced.
 - `pnpm typecheck` — clean in every workspace, EXIT=0.
 - `pnpm lint` — EXIT=0.
 - `pnpm test` — **35 files, 739 passed / 1 skipped** (737 before this round).
-  Vitest 5.0.2.
+  Vitest 5.0.2. Superseded by the fourth round below: **746 passed / 1
+  skipped**.
 - `apps/api/src/narrative.test.ts` — 48 passed (46 before; +2: the
   whole-blank-class purpose loop and the malformed DRAMA_GAP read path).
 - `packages/narrative-rhythm` — 38 passed.
@@ -2180,6 +2190,91 @@ left by earlier ad-hoc probing. All were untracked and unreferenced.
 
 
 Not run: `apps/web` browser flows (no automated E2E runner exists).
+
+### Fourth audit round (2026-09-30) — the refutations that were wrong, and three real defects
+
+The third round's findings were re-verified adversarially — each candidate
+handed to independent skeptics told to refute it. The result was not a
+cleaner list but a shorter one: **two of my own refutations were wrong**, and
+two further defects surfaced that no round had named. Three fixes.
+
+**Defect 1 — the missing `bodyLimit` (refutation 1 of round three, reversed).**
+
+The measurement that refuted this was taken with short ids (`beat-0`,
+`underestimation-of-the-protagonist`), which is not the payload the schema
+describes. At the declared maxima — `id`/`kind` 200 chars, `chapter` ≤ 100 000
+— and with 3-byte CJK ids as the worst case a string field admits:
+
+| route | declared maxima | ASCII | CJK |
+|---|---|---|---|
+| `POST /narrative/patterns` | 10 000 beats × 2 × 200 chars | 4 374 103 B | **12 382 103 B (11.81 MB)** |
+| `POST /narrative/cooldown` | 5 000 beats × 200 chars | 1 235 272 B | **3 235 672 B (3.09 MB)** |
+
+Fastify's default `bodyLimit` is 1 MB, and neither route overrode it, so a
+payload the schema explicitly permits was refused with a 413 by the transport
+**before Zod ever ran**. Fixed with `PATTERNS_BODY_LIMIT = 13_000_000` and
+`COOLDOWN_BODY_LIMIT = 3_500_000`, each just above its CJK measurement, with
+the measurement in the comment — the same shape `manifest-routes.ts` uses.
+Confirmed load-bearing by removing the options and watching both new tests
+flip 200 → 413.
+
+**Defect 2 — `validBand` let `null` through and threw.**
+
+`validBand` tested `band !== undefined`, which `null` satisfies. The payload
+column is JSONB with no CHECK, so `typicalGap: null` — a shape a seed or a
+direct write can store — reached `band.min` and threw a `TypeError` **out of a
+pure function**. The error handler reports that as `{"error":"INTERNAL"}` with
+a 500, on a request whose correct answer is a 409. Reproduced both in
+isolation and end-to-end over HTTP (`NULL BAND STATUS: 500`, and the same for
+the EXTENDED gap). Fixed by testing `typeof band === "object" && band !== null
+&& !Array.isArray(band)`; both paths now answer 409, and both are pinned by a
+test.
+
+**Defect 3 — `assessScaleAppropriateness` iterated `standing.access` unguarded.**
+
+Same 500 class, sibling path: `access` arrives from JSONB and can be `null` or
+hold non-scale members, and the `for...of` plus the `access.length` in the
+reason string both threw. The route's Zod schema forbids both shapes, which is
+exactly why this was easy to miss — the guard is for the writes that do not go
+through the route. Fixed with one `Array.isArray` narrowing reused for both
+the loop and the reason.
+
+**Defect 4 — `advanceAntagonistStage` was a check-then-act race.**
+
+It reads `current.stage`, validates `[current, next]` against that read, then
+writes with `where: { id }` — no stage predicate, no transaction. Two
+concurrent advances both read the same stage, both pass the forward-only
+check, and the loser's write lands on top of the winner's, **storing a
+backward transition the rule exists to reject**. Fixed by writing through
+`updateMany` with `stage: current.stage` pinned to the value the check
+actually ran against; a zero count is a 409.
+
+The regression test forces the interleaving rather than hoping for it: the
+first advance's write is intercepted and parked while a second request reads,
+validates and commits, then the parked write is released and must be a no-op.
+Confirmed discriminating — with the predicate removed the test fails on
+`expected 1 to be +0`, storing the backward stage. (The first attempt at this
+test ran two `Promise.all` injects and passed *without* the predicate: Prisma
+serialises them on one connection, so the race never happened. A concurrency
+test that cannot fail is not a test.)
+
+**Still refuted, re-checked.** `density` inertness, `hardness` inertness,
+`outcome` at any stage, and the ADR-0009/ADR-0012 text — each re-verified and
+each still not a defect. The three deferrals are recorded in `CURRENT.md`.
+
+### Fourth-round checks run
+
+- `pnpm lint` — EXIT=0.
+- `pnpm typecheck` — EXIT=0 in every workspace.
+- `pnpm test` — **35 files, 746 passed / 1 skipped** (739 before this round).
+  Vitest 5.0.2.
+- `apps/api/src/narrative.test.ts` — **53 passed** (48 before; +5: two
+  null-band 409s, the forced race, and two over-default body sizes).
+- `packages/narrative-rhythm` — **40 passed** (38 before; +2: null/array band,
+  null/non-array `access`).
+- Each of the four fixes was confirmed **load-bearing** by reverting it and
+  watching the matching test fail — the body limits (413), the stage
+  predicate (`expected 1 to be +0`), and the two guards (`TypeError`).
 
 ### Round note — a dispatched worker thrashed and shipped nothing
 

@@ -37,6 +37,21 @@ const antagonistParams = z.object({ workspaceId: uuid, novelId: uuid, antagonist
 
 const chapter = z.number().int().min(0).max(100_000);
 
+// Fastify's default bodyLimit is 1 MB, and both of these accept more, so
+// without a per-route limit a schema-valid payload 413s before Zod ever runs
+// — the same defect manifest-routes.ts guards against.
+//
+// The limits are UTF-8 BYTES; the schemas cap CHARACTERS. Measured at the
+// declared maxima with 3-byte CJK ids, which is the worst case a JSONB-ish
+// string field admits:
+//   patterns  10 000 beats x 2 x 200 chars  -> 12 382 103 B (11.81 MiB)
+//   cooldown   5 000 beats x 1 x 200 chars  ->  3 235 672 B ( 3.09 MiB)
+// The ASCII case is 4 374 103 B and 1 235 272 B. Each constant sits just
+// above the CJK measurement, so every payload the schema describes is
+// reachable rather than refused by the transport before validation.
+const PATTERNS_BODY_LIMIT = 13_000_000;
+const COOLDOWN_BODY_LIMIT = 3_500_000;
+
 const putDnaBody = z.object({
   // A record, not a field inventory: no rule consumes a DNA field yet, and
   // pinning a list here would make this file a second schema (see the
@@ -250,6 +265,7 @@ export function registerNarrativeRoutes(
 
   app.post(
     "/api/workspaces/:workspaceId/novels/:novelId/narrative/cooldown",
+    { bodyLimit: COOLDOWN_BODY_LIMIT },
     async (request, reply) => {
       const actorUserId = await requireActor(request, reply);
       if (!actorUserId) return;
@@ -269,6 +285,7 @@ export function registerNarrativeRoutes(
 
   app.post(
     "/api/workspaces/:workspaceId/novels/:novelId/narrative/patterns",
+    { bodyLimit: PATTERNS_BODY_LIMIT },
     async (request, reply) => {
       const actorUserId = await requireActor(request, reply);
       if (!actorUserId) return;

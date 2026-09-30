@@ -66,9 +66,20 @@ export interface DramaWindow {
 
 export type DramaWindowProblem = "MALFORMED_POLICY";
 
-function validBand(band: GapBand | undefined): band is GapBand {
+/**
+ * A band is two integers with min <= max.
+ *
+ * The `typeof band === "object"` arm is load-bearing, not defensive padding:
+ * `band !== undefined` alone lets `null` through (JSONB carries it happily),
+ * and `null.min` then throws a TypeError out of a pure function — which the
+ * HTTP layer surfaces as a 500 on a payload the route should answer with a
+ * 409. An array reaches the same place with `undefined` bounds.
+ */
+function validBand(band: GapBand | undefined | null): band is GapBand {
   return (
-    band !== undefined &&
+    typeof band === "object" &&
+    band !== null &&
+    !Array.isArray(band) &&
     Number.isInteger(band.min) &&
     Number.isInteger(band.max) &&
     band.min >= 0 &&

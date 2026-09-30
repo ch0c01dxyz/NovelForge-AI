@@ -492,6 +492,24 @@ describe("detectRepeatedSequence", () => {
     expect(detectRepeatedSequence(beats.slice(0, 4), SEQUENCE, -5)).toBeNull();
   });
 
+  it("reads a null or array band as malformed rather than throwing", () => {
+    // The payload column is JSONB: `typicalGap: null` reaches the rule even
+    // though the route's Zod schema forbids it. A TypeError out of a pure
+    // function becomes a 500 on a request the caller could be told about.
+    for (const band of [null, [], "10-20", 7, {}, { min: 10 }, { min: "10", max: 20 }]) {
+      const policy = {
+        density: "LOW",
+        typicalGap: band,
+        extendedGap: { min: 70, max: 140 },
+        strictInterval: false,
+      } as never;
+      expect(
+        assessDramaWindow({ policy, chaptersSinceDrama: 40 }),
+        JSON.stringify(band),
+      ).toEqual({ problem: "MALFORMED_POLICY" });
+    }
+  });
+
   it("has no pattern to find in an empty sequence", () => {
     // Unreachable over HTTP — the route forces sequence.min(1) — so this is
     // the only pin on the guard. Without it, `[]` matches at every position

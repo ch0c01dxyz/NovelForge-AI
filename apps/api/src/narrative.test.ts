@@ -27,7 +27,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AntagonistOutcome as SchemaAntagonistOutcome,
   AntagonistRole as SchemaAntagonistRole,
@@ -397,6 +397,51 @@ describe("a low-frequency drama policy stays non-mechanical (roadmap exit criter
     const res = await post(f, "/narrative/drama-window", { chaptersSinceDrama: 40 });
     expect(res.statusCode).toBe(409);
   });
+
+  it("answers a null band with 409, not a 500 out of the rule", async () => {
+    // `payload` is JSONB with no CHECK, so `typicalGap: null` is a shape a
+    // seed or a direct write can store. validBand used to test only
+    // `band !== undefined`, so null reached `band.min` and threw a TypeError
+    // out of a pure function — which the error handler reports as
+    // {"error":"INTERNAL"} 500. A malformed stored policy is a 409.
+    const f = await seed("nullband");
+    await db.narrativePolicy.create({
+      data: {
+        novelId: f.novelId,
+        kind: "DRAMA_GAP",
+        hardness: "SOFT",
+        payload: {
+          density: "LOW",
+          typicalGap: null,
+          extendedGap: { min: 70, max: 140 },
+          strictInterval: false,
+        },
+      },
+    });
+    const res = await post(f, "/narrative/drama-window", { chaptersSinceDrama: 40 });
+    expect(res.statusCode, JSON.stringify(res.body)).toBe(409);
+  });
+
+  it("answers a null band in the EXTENDED gap with 409 too, not a 500", async () => {
+    // The sibling path. A guard added only to typicalGap would leave this one
+    // throwing the same TypeError.
+    const f = await seed("nullband-ext");
+    await db.narrativePolicy.create({
+      data: {
+        novelId: f.novelId,
+        kind: "DRAMA_GAP",
+        hardness: "SOFT",
+        payload: {
+          density: "LOW",
+          typicalGap: { min: 10, max: 20 },
+          extendedGap: null,
+          strictInterval: false,
+        },
+      },
+    });
+    const res = await post(f, "/narrative/drama-window", { chaptersSinceDrama: 40 });
+    expect(res.statusCode, JSON.stringify(res.body)).toBe(409);
+  });
 });
 
 describe("the cooldown is the one hard rhythm rule", () => {
@@ -749,6 +794,68 @@ describe("antagonist lifecycle", () => {
       outcome: null,
     });
     expect((cleared.body["antagonist"] as { outcome: string | null }).outcome).toBeNull();
+  });
+
+
+  it("refuses a second advance that raced past the first, rather than overwriting it", async () => {
+    // advanceAntagonistStage reads current.stage, validates [current, next],
+    // then writes. Read and write are not atomic, so two requests can both
+    // read CONFRONTATION and both pass the forward-only check — and without a
+    // stage predicate on the write, the loser's stage lands on top of the
+    // winner's, storing a BACKWARD transition the rule exists to reject.
+    //
+    // The race is forced rather than hoped for: the FRICTION -> CONFRONTATION
+    // advance is held at its write while a second request reads the row,
+    // validates CONFRONTATION -> DEFEAT, and commits it. Releasing the parked
+    // write then asks it to move the row BACK to CONFRONTATION. The predicate
+    // makes that a no-op; without it, this test stores CONFRONTATION.
+    const f = await seed("race");
+    const characterId = await makeCharacter(f, "villain");
+    const created = await post(f, "/narrative/antagonists", {
+      characterId,
+      role: "MAIN",
+      stage: "FRICTION",
+      fromChapter: 1,
+    });
+    const antagonistId = (created.body["antagonist"] as { id: string }).id;
+
+    const realUpdateMany = db.antagonist.updateMany.bind(db.antagonist);
+    let staged: (() => Promise<{ count: number }>) | null = null;
+    const spy = vi.spyOn(db.antagonist, "updateMany").mockImplementationOnce(
+      // Prisma's updateMany is generic over its args; the spy only needs the
+      // one call it parks, so the signature is erased here rather than
+      // reconstructed.
+      (async (args: Parameters<typeof realUpdateMany>[0]) => {
+        staged = () => realUpdateMany(args);
+        return { count: 0 }; // the first caller parks here
+      }) as never,
+    );
+
+    try {
+      const first = post(f, `/narrative/antagonists/${antagonistId}/stage`, {
+        stage: "CONFRONTATION",
+      });
+      await vi.waitFor(() => expect(staged).not.toBeNull());
+
+      // Commits CONFRONTATION -> DEFEAT while the first request still
+      // believes the row is FRICTION.
+      const second = await post(f, `/narrative/antagonists/${antagonistId}/stage`, {
+        stage: "DEFEAT",
+      });
+      expect(second.statusCode, JSON.stringify(second.body)).toBe(200);
+
+      spy.mockRestore();
+      const parked = await staged!();
+      const stored = await db.antagonist.findUniqueOrThrow({ where: { id: antagonistId } });
+      // The stale writer's predicate no longer matches, so it changed nothing.
+      expect(parked.count).toBe(0);
+      expect(stored.stage).toBe("DEFEAT");
+
+      const firstRes = await first;
+      expect(firstRes.statusCode, JSON.stringify(firstRes.body)).toBe(409);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("refuses to cast the same character twice in one novel", async () => {
@@ -1141,5 +1248,46 @@ describe("the DB constraints are the subject, not the service guard in front of 
     };
     await db.narrativePolicy.create({ data: row });
     await expect(db.narrativePolicy.create({ data: row })).rejects.toThrow();
+  });
+});
+
+describe("a payload the schema permits is not refused by the transport", () => {
+  it("accepts a patterns body larger than Fastify's 1 MB default", async () => {
+    // The route's schema allows 10 000 beats of 200-char ids and kinds, which
+    // is ~4.4 MB of ASCII. Fastify's default bodyLimit is 1 MB and the route
+    // had no override, so a schema-valid payload 413'd before Zod ever ran.
+    const f = await seed("bigbody");
+    const beats = Array.from({ length: 3_000 }, (_, i) => ({
+      id: `beat-${i}`.padEnd(200, "x"),
+      kind: "underestimate".padEnd(200, "y"),
+      chapter: 1 + i,
+    }));
+    const res = await post(f, "/narrative/patterns", {
+      beats,
+      sequence: ["underestimate"],
+    });
+    expect(res.statusCode, JSON.stringify(res.body).slice(0, 200)).toBe(200);
+  });
+
+  it("accepts a cooldown body larger than the default too", async () => {
+    const f = await seed("bigbody-cool");
+    await put(f, "/narrative/policies", {
+      kind: "COOLDOWN",
+      hardness: "HARD",
+      hardReason: "the author asked for a strict window",
+      payload: { windowChapters: 10 },
+    });
+    // 5 000 x 200-char ids is ~1.3 MB — past the default, inside the schema
+    // (chapter caps at 100 000, so the chapters are wrapped, not raised).
+    const history = Array.from({ length: 5_000 }, (_, i) => ({
+      id: `b-${i}`.padEnd(200, "z"),
+      type: "MILITARY",
+      chapter: (i * 20) % 100_000,
+    }));
+    const res = await post(f, "/narrative/cooldown", {
+      candidate: { id: "cand", type: "MILITARY", chapter: 99_999 },
+      history,
+    });
+    expect(res.statusCode, JSON.stringify(res.body).slice(0, 200)).toBe(200);
   });
 });

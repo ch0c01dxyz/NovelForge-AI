@@ -215,7 +215,10 @@ export function createNarrativeServices(deps: {
   async function requireAntagonist(antagonistId: string, novelId: string, workspaceId: string) {
     const row = await db.antagonist.findFirst({
       where: { id: antagonistId, novelId, workspaceId },
-      select: { id: true, role: true, stage: true, purpose: true, fromChapter: true, toChapter: true },
+      select: {
+        id: true, novelId: true, characterId: true, role: true, stage: true,
+        outcome: true, purpose: true, fromChapter: true, toChapter: true,
+      },
     });
     if (!row) throw new NotFoundError("antagonist");
     return row;
@@ -528,12 +531,30 @@ export function createNarrativeServices(deps: {
       );
       if (hard.length > 0) throw new ConflictError(hard.map((e) => e.message).join("; "));
 
-      const updated = await db.antagonist.update({
-        where: { id: antagonistId },
+      // The stage guard is the concurrency control, not decoration. The read
+      // above and this write are not atomic, so two concurrent advances both
+      // see the same `current.stage` and both pass the forward-only check;
+      // without the predicate the loser's write lands on top of the winner's
+      // and stores a BACKWARD transition the rule exists to reject. Pinning
+      // `stage` to the value the check actually ran against makes the second
+      // writer a no-op, and its count says so.
+      const { count } = await db.antagonist.updateMany({
+        where: { id: antagonistId, novelId, workspaceId, stage: current.stage },
         // Only touch outcome when the caller said something about it: an
         // omitted field must not wipe an outcome already recorded.
         data: { stage, ...(outcome === undefined ? {} : { outcome }) },
       });
+      if (count === 0) {
+        throw new ConflictError(
+          `antagonist stage changed while this request was in flight; it is no longer ${current.stage}`,
+        );
+      }
+
+      const updated = {
+        ...current,
+        stage,
+        outcome: outcome === undefined ? current.outcome : outcome,
+      };
       await audit.record({
         actorUserId,
         workspaceId,

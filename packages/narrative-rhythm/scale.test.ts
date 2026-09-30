@@ -81,6 +81,21 @@ describe("assessScaleAppropriateness", () => {
     expect(assessment.ok).toBe(false);
   });
 
+  it("treats a null or non-array access as no access rather than throwing", () => {
+    // `access` comes from JSONB. The route's Zod schema forbids null and
+    // non-scale members, but a seed or direct write does not go through it,
+    // and a TypeError here surfaces as a 500 on an assessment that only
+    // needed to report the protagonist's reach.
+    for (const access of [null, undefined, "EMPIRE", 7, {}]) {
+      const assessment = assessScaleAppropriateness(
+        { id: "p8", scale: "EMPIRE", summary: null },
+        { scale: "VILLAGE", access: access as never, reputation: 5 },
+      );
+      expect(assessment.reach, JSON.stringify(access)).toBe("VILLAGE");
+      expect(assessment.ok).toBe(false);
+    }
+  });
+
   it("says 'step' for a one-step gap and 'steps' beyond it", () => {
     const assessment = assessScaleAppropriateness(
       { id: "p7", scale: "CITY", summary: null },

@@ -750,7 +750,7 @@ use; results in `progress.md`.
 
 ## Phase 9 — Narrative DNA & Rhythm (2026-09-30)
 
-`apps/api/src/narrative.test.ts` (48 tests, dedicated `novelforge_test_phase9`
+`apps/api/src/narrative.test.ts` (53 tests, dedicated `novelforge_test_phase9`
 db). The two roadmap exit scenarios are driven through the real HTTP surface,
 because that is where the criterion lives — a domain-package test would prove
 the rules and not the wiring. No test here reaches a provider: the Phase 9
@@ -818,6 +818,25 @@ throws if one ever does.
   another novel — the last one matters because `character_id` references
   `characters(id)` with no novel predicate, so the FK alone would have
   accepted it.
+- **A malformed STORED policy is a 409, not a 500.** `validBand` tested only
+  `band !== undefined`, so `typicalGap: null` — a shape the JSONB column can
+  hold, since only the route's Zod schema forbids it — reached `band.min` and
+  threw a `TypeError` out of a pure function, which the error handler reports
+  as `{"error":"INTERNAL"}` with a 500. Both the typical and the extended band
+  are now pinned at 409. The sibling path, `standing.access`, had the same
+  hole and the same fix.
+- **The antagonist stage write is guarded against its own race.** Two
+  advances that both read the same stage both pass the forward-only check;
+  without a `stage` predicate on the write the loser stores a **backward**
+  transition. The test forces that interleaving — the first write is parked
+  while a second request reads, validates and commits, then released — and
+  asserts it changed nothing. Removing the predicate makes it fail.
+- **A payload the schema permits is not refused by the transport.** Fastify's
+  default `bodyLimit` is 1 MB and the routes had no override, so a
+  schema-valid `patterns` body (up to 4.17 MB ASCII at the declared field
+  maxima) or `cooldown` body (1.18 MB) was 413'd before Zod ran. Both routes
+  carry a measured limit now, and each has a test that sends a body over the
+  default and expects 200.
 - **The DB constraints are the subject, not the service guard in front of
   them.** Five cases write through Prisma, past every guard: a TEMPORARY
   antagonist with a null purpose, with a whitespace-only purpose, an inverted

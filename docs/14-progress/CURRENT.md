@@ -79,10 +79,21 @@ and `docs/adr/`.
 
 ## Next milestone
 
-**Phase 9 — Reader Platform** per the roadmap, or the **Phase 6 leftover —
-LLM fact extraction** (canon is author-authored only), which the
-orchestrator now unblocks: extraction is a contracted agent whose output
-is candidate canon needing approval (§2.13).
+**Phase 9 — Narrative DNA & Rhythm** per
+`docs/12-roadmap/IMPLEMENTATION-ROADMAP.md`.
+
+Scaffolding is already present in `packages/narrative-rhythm`. Exit
+criterion: a low-frequency drama scenario remains non-mechanical and
+repetition warnings are evidence-backed.
+
+An earlier version of this file named "Phase 9 — Reader Platform". That
+matched no phase in this repo's roadmap — it came from a different
+numbering scheme — and has been corrected. Reader-facing access is tracked
+as an unphased gap below.
+
+Also available, and unblocked by the orchestrator: the **Phase 6 leftover —
+LLM fact extraction** (canon is author-authored only today; extraction is a
+contracted agent whose output is candidate canon needing approval, §2.13).
 
 ## Known gaps carried forward
 
@@ -132,6 +143,18 @@ is candidate canon needing approval (§2.13).
   §24).
 - Only text ingestion exists; PDF/DOCX/TXT/Markdown extraction is not
   implemented (§32). `ReferenceKind.IMPORTED` is reserved for it.
+
+### Reader-facing access (unphased)
+
+- **No roadmap phase owns reader-facing access.** `READER_MODE` and the
+  spoiler boundary exist (Phases 5/6) and are enforced on every read path,
+  but nothing in this repo's roadmap covers reader-facing publishing,
+  chapter access control for non-members, or a reader UI. An earlier
+  `CURRENT.md` called this "Phase 9 — Reader Platform"; the roadmap's
+  Phase 9 is Narrative DNA & Rhythm. The capability is real and partial —
+  the phase to finish it is not yet chosen.
+- `Chapter` has a publication state, but there is no route that serves a
+  published chapter to an unauthenticated reader, and no reader-facing UI.
 
 ### Story intelligence (Phase 6 slice 3)
 

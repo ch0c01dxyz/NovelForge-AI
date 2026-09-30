@@ -7,9 +7,10 @@
  * unit test pins the member sets. (The schema enums did not exist when this
  * file was written.)
  *
- * Split from rhythm.ts so both files stay under the 500-line limit
+ * Split from rhythm.ts so every file stays under the 500-line limit
  * (CLAUDE.md) — same shape as packages/story-intelligence (canon.ts +
- * events.ts).
+ * events.ts). rhythm.ts later grew past it and its scale rule moved to
+ * scale.ts for the same reason.
  *
  * See docs/03-domain/NARRATIVE-RHYTHM.md.
  */

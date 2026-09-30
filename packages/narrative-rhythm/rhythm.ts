@@ -28,14 +28,11 @@
 import {
   ANTAGONIST_STAGE_RANK,
   DRAMA_DENSITIES,
-  NARRATIVE_SCALES,
-  NARRATIVE_SCALE_RANK,
   type AntagonistRole,
   type AntagonistStage,
   type DramaDensity,
   type DramaType,
   type DramaWindowState,
-  type NarrativeScale,
 } from "./vocabulary.ts";
 
 // ---------------------------------------------------------------------------
@@ -428,97 +425,5 @@ export function detectRepeatedSequence(
     message: `the beat sequence ${sequence.join(" -> ")} repeats ${matches.length} times (chapters ${evidence.map((e) => e.chapter).join(", ")}).`,
     suggestion:
       "Vary at least one step — a different reaction, a different audience, or a private rather than public outcome. The trope is not the problem; the repetition is.",
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Scale appropriateness
-// ---------------------------------------------------------------------------
-
-export interface ConflictProposal {
-  id: string;
-  scale: NarrativeScale;
-  summary?: string | null;
-}
-
-export interface ProtagonistStanding {
-  /** The scale the protagonist's own story currently operates at. */
-  scale: NarrativeScale;
-  /** Scales actually reachable — travel, allies, office, delegated authority. */
-  access: readonly NarrativeScale[];
-  /** 0-100 standing with the powers that operate at those scales. */
-  reputation: number;
-}
-
-export interface ScaleAssessment {
-  ok: boolean;
-  /** Scale steps beyond the protagonist's reach; 0 when within. */
-  gap: number;
-  /** The highest scale the protagonist can currently reach. */
-  reach: NarrativeScale;
-  reason: string;
-}
-
-/**
- * Check a conflict proposal against the protagonist's current standing.
- *
- * Reach is the widest scale the protagonist can actually act at: their own
- * scale, or anything in `access`. A proposal inside reach is accepted; one
- * beyond it is flagged with the size of the gap, so the planner can decide
- * whether to grow the protagonist first.
- *
- * ponytail: `reputation` is carried into the reason as evidence and is
- * deliberately NOT scored — NARRATIVE-RHYTHM.md gives no threshold, and
- * inventing one would turn an author-visible rule out of a made-up number.
- * Upgrade path: give the novel a reputation-per-scale policy (the same
- * per-novel-JSONB shape as planning's HorizonPolicy) and gate `access` on
- * it; this signature does not change.
- */
-export function assessScaleAppropriateness(
-  proposal: ConflictProposal,
-  standing: ProtagonistStanding,
-): ScaleAssessment {
-  // Same guard the antagonist validator carries: an unknown scale has no
-  // rank, and every comparison against undefined is false — which would
-  // report an out-of-reach proposal as inside reach. hasOwn also closes the
-  // prototype-key hole ("constructor" ranks as a function otherwise).
-  const rankOf = (scale: NarrativeScale): number | undefined =>
-    Object.hasOwn(NARRATIVE_SCALE_RANK, scale) ? NARRATIVE_SCALE_RANK[scale] : undefined;
-
-  const ownRank = rankOf(standing.scale);
-  const proposalRank = rankOf(proposal.scale);
-  if (ownRank === undefined || proposalRank === undefined) {
-    const unknown = ownRank === undefined ? standing.scale : proposal.scale;
-    return {
-      ok: false,
-      gap: 0,
-      reach: standing.scale,
-      reason: `"${String(unknown)}" is not a narrative scale, so reach cannot be judged.`,
-    };
-  }
-
-  let reachRank = ownRank;
-  for (const scale of standing.access) {
-    const rank = rankOf(scale);
-    if (rank !== undefined && rank > reachRank) reachRank = rank;
-  }
-  const reach = NARRATIVE_SCALES[reachRank] ?? standing.scale;
-
-  const gap = proposalRank > reachRank ? proposalRank - reachRank : 0;
-
-  const context = `own scale ${standing.scale}; access ${
-    standing.access.length > 0 ? standing.access.join(", ") : "none"
-  }; reputation ${standing.reputation}`;
-
-  return {
-    ok: gap === 0,
-    gap,
-    reach,
-    reason:
-      gap === 0
-        ? `the proposal sits at ${proposal.scale}, inside the protagonist's reach of ${reach} (${context}).`
-        : `the proposal sits at ${proposal.scale}, ${gap} scale ${
-            gap === 1 ? "step" : "steps"
-          } beyond the protagonist's reach of ${reach} (${context}).`,
   };
 }

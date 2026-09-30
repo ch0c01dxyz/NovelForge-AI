@@ -858,7 +858,7 @@ dropped constraint and discards the probe row, because `ADD CONSTRAINT`
 re-validates existing rows.
 
 The domain package carries its own unit suite —
-`packages/narrative-rhythm/rhythm.test.ts` (38 tests), including the enum pins
+`packages/narrative-rhythm/rhythm.test.ts` + `scale.test.ts` (38 tests), including the enum pins
 that catch an edit to `vocabulary.ts` and the branch coverage the HTTP surface
 cannot reach (a malformed stored window, an empty pattern sequence, a
 non-chapter `chaptersSinceDrama`).

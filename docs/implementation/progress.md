@@ -2075,7 +2075,7 @@ matches the code:
 
 - `pnpm typecheck` — clean in every workspace, EXIT=0.
 - `pnpm lint` — EXIT=0.
-- `pnpm test` — **34 files, 737 passed / 1 skipped** (712 before the deep
+- `pnpm test` — **35 files, 737 passed / 1 skipped** (712 before the deep
   audit round; +16 regression tests across both rounds). Vitest 5.0.2.
 - `prisma migrate diff` — zero drift; `migrate deploy` to an empty database
   in both new suites — all 17 migrations applied, EXIT=0.

@@ -72,7 +72,7 @@ phase of its own (see the numbering note in
   error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web`); `pnpm test` 34 files, 737 passed / 1 skipped on vitest
+`apps/web`); `pnpm test` 35 files, 737 passed / 1 skipped on vitest
 5.0.2; 17 migrations applying from empty with zero drift;
 `pnpm -r build` green. Phase 8's eight new constraints and Phase 9's three
 CHECKs were each confirmed load-bearing by a drop-and-retry probe, and

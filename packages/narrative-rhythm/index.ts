@@ -7,3 +7,4 @@
  */
 export * from "./vocabulary.ts";
 export * from "./rhythm.ts";
+export * from "./scale.ts";

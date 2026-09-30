@@ -135,6 +135,13 @@ is candidate canon needing approval (§2.13).
 
 ### Story intelligence (Phase 6 slice 3)
 
+- **Hierarchical memory (L0–L6) is not materialised**, and this is the one
+  roadmap deliverable Phase 6 did not build. ADR-0008 rejects it for this
+  phase by name: summaries are rebuildable projections (§2.2), and
+  materialising them without a `built_from_revision` FK is the Phase 11
+  problem — a projection with no recorded source revision cannot be
+  invalidated when its canon changes (§2.14). The rule lives in
+  `docs/03-domain/STORY-INTELLIGENCE.md`; the tables wait for Phase 11.
 - **No delete routes on any of the five tables.** `causal_edges` cascade
   from `story_events`, so deleting an event would silently take its causal
   claims with it (CLAUDE.md §9). A correction path needs a supersede chain

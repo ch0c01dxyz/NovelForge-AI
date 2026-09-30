@@ -74,6 +74,8 @@ model User {
   storyThreadEvents   StoryThreadEvent[] @relation("StoryThreadEventCreator")
   storyPromises       StoryPromise[]   @relation("StoryPromiseCreator")
   approvedEdges       CausalEdge[]     @relation("CausalEdgeApprover")
+  createdCharacters   Character[]      @relation("CharacterCreator")
+  createdBonds        Bond[]           @relation("BondCreator")
 
   @@map("users")
 }
@@ -116,6 +118,10 @@ model Workspace {
   storyThreads StoryThread[]
   storyPromises StoryPromise[]
   causalEdges  CausalEdge[]
+  characters   Character[]
+  stances      RelationshipStance[]
+  bonds        Bond[]
+  interactions MeaningfulInteraction[]
 
   @@map("workspaces")
 }
@@ -164,6 +170,8 @@ model Novel {
   threads     StoryThread[]
   promises    StoryPromise[]
   causalEdges CausalEdge[]
+  characters  Character[]
+  bonds       Bond[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1193,6 +1201,7 @@ model CanonFact {
   sources              CanonFactSource[]
   conflictsWith        CanonProposal[] @relation("CanonProposalConflict")
   approvedProposal     CanonProposal?  @relation("CanonProposalFact")
+  knownBy              CharacterKnowledge[] @relation("KnowledgeOfFact")
 
   @@index([novelId, entityId, predicate])
   @@index([entityId])
@@ -1680,4 +1689,318 @@ model CausalEdge {
   @@unique([novelId, causeEventId, effectEventId])
   @@index([effectEventId])
   @@map("causal_edges")
+}
+
+// ============ Character & Relationship Intelligence (Phase 8) ============
+// Scope: the roadmap gates Phase 8 on two validation scenarios
+// (monogamy/harem/polygamy and enemy-to-ally) and the MVP cut line says
+// "basic character state". The tables below are exactly what
+// packages/character-intelligence and packages/relationship-intelligence
+// validate — nothing more. Deferred, deliberately (docs/implementation/
+// decisions.md): character_state_events, character_beliefs,
+// relationship_events, relationship_groups, relationship_group_members,
+// relationship_agreements, relationship_arcs, and structured reputation /
+// possessions / development-milestone columns. Each earns a table when a
+// consumer asks for one.
+//
+// Vocabulary below is pinned by packages/character-intelligence
+// character.test.ts and packages/relationship-intelligence
+// relationship.test.ts — changing a member there without the enum (or the
+// reverse) must fail a test.
+//
+// Overlap refusal is enforced by the DATABASE, not only by the domain
+// validator: the EXCLUDE constraints (btree_gist, migration
+// 20261003_phase8_character_relationship) make two windows claiming the
+// same chapter impossible to insert. A validator a route forgets to call
+// leaves the invariant true; the reverse is not the case.
+
+enum KnowledgeStance {
+  KNOWN
+  SUSPECTED
+  BELIEVED_FALSE
+  UNKNOWN
+}
+
+enum KnowledgeSource {
+  REMEMBERED
+  DERIVED
+  LEARNED_IN_WORLD
+  EXPERIMENTED
+  TAUGHT
+  RESEARCHED
+}
+
+enum ArcStatus {
+  ACTIVE
+  RESOLVED
+  ABANDONED
+}
+
+/// "Kind" suffix only because the model below owns the name
+/// RelationshipStance — Prisma keeps models and enums in one namespace.
+/// The vocabulary is unchanged.
+enum RelationshipStanceKind {
+  ALLY
+  FRIENDLY
+  NEUTRAL
+  WARY
+  HOSTILE
+  ENEMY
+}
+
+enum BondStructure {
+  MONOGAMY
+  POLYGAMY
+  POLYAMORY
+  HAREM
+  REVERSE_HAREM
+  POLITICAL_MARRIAGE
+  CUSTOM
+}
+
+enum BondStage {
+  ATTRACTION
+  COURTSHIP
+  COMMITMENT
+  MARRIAGE
+  LEGACY
+}
+
+enum BondTransitionKind {
+  ADVANCE
+  REGRESS
+  SEVER
+}
+
+/// A person in the story — the *agent* of it, as distinct from a
+/// StoryEntity, which is a thing canon makes claims about. Standalone
+/// rather than a StoryEntity of kind CHARACTER: nothing in Phase 8 reads
+/// an entity link, and requiring every character to be a canon subject
+/// would force a row the author never asked for. A link can be added when
+/// a consumer needs canon claims *about a character* (ADR-0008 §5's
+/// posture: wait for real data rather than guess a shape).
+model Character {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching CanonFact and Phase 6 slice 2
+  /// (ADR-0007): a filtered query never joins to enforce isolation.
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String    @map("novel_id") @db.Uuid
+  novel       Novel     @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// Stable machine key, unique within the novel (lowercase kebab), the
+  /// same contract as StoryEntity.key.
+  key         String
+  name        String
+  summary     String?   @db.Text
+  createdById String    @map("created_by_id") @db.Uuid
+  createdBy   User      @relation("CharacterCreator", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  states          CharacterState[]
+  knowledge       CharacterKnowledge[]
+  arcs            CharacterArc[]
+  stancesFrom     RelationshipStance[] @relation("StanceFrom")
+  stancesTo       RelationshipStance[] @relation("StanceTo")
+  bondMemberships BondMember[]
+
+  @@unique([novelId, key])
+  @@map("characters")
+}
+
+/// One span of a character's state. Half-open `[from, to)` — the chapter a
+/// state changes on belongs to the new state, matching a canon fact's
+/// validity window. Overlap is refused by the `character_states_no_overlap`
+/// EXCLUDE constraint, not only by validateStateHistory.
+model CharacterState {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  characterId String    @map("character_id") @db.Uuid
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  /// Inclusive first chapter the state holds.
+  fromChapter Int       @map("from_chapter")
+  /// Exclusive last chapter; null = still current.
+  toChapter   Int?      @map("to_chapter")
+  /// Free-text snapshot. Structured per-dimension columns (location, goals,
+  /// condition, ...) wait for a consumer that queries them by dimension;
+  /// no locations table exists yet either (Phase 10 owns settlements).
+  summary     String    @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([characterId])
+  @@map("character_states")
+}
+
+/// What one character holds about one canon fact, over a chapter window.
+/// The knowledge boundary the spec's dialogue/planning validators read
+/// (CHARACTER-RELATIONSHIP.md). An explicit UNKNOWN row records that the
+/// author checked — which is exactly when a validator must not read
+/// absence as permission.
+model CharacterKnowledge {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  characterId String          @map("character_id") @db.Uuid
+  character   Character       @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  /// RESTRICT: canon facts are append-only (ADR-0008 §2) and a correction
+  /// supersedes rather than deletes, so this costs nothing — and it stops a
+  /// future delete path from silently orphaning a belief.
+  factId      String          @map("fact_id") @db.Uuid
+  fact        CanonFact       @relation("KnowledgeOfFact", fields: [factId], references: [id], onDelete: Restrict)
+  stance      KnowledgeStance
+  source      KnowledgeSource
+  fromChapter Int             @map("from_chapter")
+  toChapter   Int?            @map("to_chapter")
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  @@index([characterId])
+  @@index([factId])
+  @@map("character_knowledge")
+}
+
+/// A character's development arc. RESOLVED-with-no-milestone is refused by
+/// validateArc, not by a CHECK: it is a cross-row condition.
+model CharacterArc {
+  id          String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  characterId String                  @map("character_id") @db.Uuid
+  character   Character               @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  status      ArcStatus               @default(ACTIVE)
+  title       String
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+  milestones  CharacterArcMilestone[]
+
+  @@index([characterId])
+  @@map("character_arcs")
+}
+
+/// Milestones must be strictly increasing in chapter — two on one chapter
+/// are one beat written twice, and an arc whose order is ambiguous cannot
+/// answer "where is this character now". The unique index pins the
+/// same-chapter half; the ordering half is validateArc's.
+model CharacterArcMilestone {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  arcId     String       @map("arc_id") @db.Uuid
+  arc       CharacterArc @relation(fields: [arcId], references: [id], onDelete: Cascade)
+  chapter   Int
+  summary   String       @db.Text
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  @@unique([arcId, chapter])
+  @@map("character_arc_milestones")
+}
+
+/// One span of how `fromCharacter` regards `toCharacter`.
+///
+/// Directional and deliberately not mirrored: a one-sided feud needs
+/// A→B ENEMY while B→A stays FRIENDLY. The enemy-to-ally turn is two spans,
+/// not an overwrite — the earlier stance is history, not a mistake.
+/// `character_stances_no_overlap` EXCLUDE refuses a second span for the
+/// same directed pair in the same chapter; from ≠ to is a CHECK.
+model RelationshipStance {
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId     String                 @map("workspace_id") @db.Uuid
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  fromCharacterId String                 @map("from_character_id") @db.Uuid
+  fromCharacter   Character              @relation("StanceFrom", fields: [fromCharacterId], references: [id], onDelete: Cascade)
+  toCharacterId   String                 @map("to_character_id") @db.Uuid
+  toCharacter     Character              @relation("StanceTo", fields: [toCharacterId], references: [id], onDelete: Cascade)
+  stance          RelationshipStanceKind
+  fromChapter     Int                    @map("from_chapter")
+  toChapter       Int?                   @map("to_chapter")
+  createdAt       DateTime               @default(now()) @map("created_at")
+
+  @@index([fromCharacterId])
+  @@index([toCharacterId])
+  @@map("relationship_stances")
+}
+
+/// A group of characters bound together — a marriage, a harem, a
+/// polyamorous web, a political alliance. This IS the spec's "relationship
+/// groups" and "agreements": one table serves both because the domain
+/// package models the whole shape as structure + members + window, and a
+/// separate groups table would be a second name for the same rows.
+///
+/// `structure` names the shape, never the membership cap. Only MONOGAMY is
+/// exclusive (EXCLUSIVE_STRUCTURES); a harem is uncapped because "harem"
+/// describes a shape, not an instruction that every character becomes a
+/// love interest. The exclusivity rule needs the sibling members of the
+/// same bond, so it stays in validateBondStructures — no CHECK can see it.
+model Bond {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId String        @map("workspace_id") @db.Uuid
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String        @map("novel_id") @db.Uuid
+  novel       Novel         @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  structure   BondStructure
+  fromChapter Int           @map("from_chapter")
+  toChapter   Int?          @map("to_chapter")
+  createdById String        @map("created_by_id") @db.Uuid
+  createdBy   User          @relation("BondCreator", fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  members      BondMember[]
+  transitions  BondTransition[]
+  interactions MeaningfulInteraction[]
+
+  @@index([novelId])
+  @@map("bonds")
+}
+
+/// Members are unordered — Bond.memberIds is "in no meaningful order", so
+/// there is no position column. The unique index catches DUPLICATE_MEMBER.
+model BondMember {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bondId      String    @map("bond_id") @db.Uuid
+  bond        Bond      @relation(fields: [bondId], references: [id], onDelete: Cascade)
+  characterId String    @map("character_id") @db.Uuid
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([bondId, characterId])
+  @@index([characterId])
+  @@map("bond_members")
+}
+
+/// A stage change on a bond: attraction → courtship → commitment →
+/// marriage → legacy. A transition that moves the stage backwards must say
+/// so (kind = REGRESS); the label check needs the previous row, so it is
+/// validateBondLifecycle's, not a CHECK. Forward jumps are unrestricted —
+/// a political marriage can go attraction → marriage in one chapter.
+model BondTransition {
+  id        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bondId    String             @map("bond_id") @db.Uuid
+  bond      Bond               @relation(fields: [bondId], references: [id], onDelete: Cascade)
+  chapter   Int
+  stage     BondStage
+  kind      BondTransitionKind
+  createdAt DateTime           @default(now()) @map("created_at")
+
+  @@unique([bondId, chapter])
+  @@map("bond_transitions")
+}
+
+/// Evidence that a bond actually moved, scored 0..1. Zero is a scene where
+/// both were present and nothing happened — the case the spec's "not
+/// simple chapter presence" rule is about, and why neglectReport reads
+/// weight rather than counting chapters.
+///
+/// No novelId: neglect is a per-bond question and the bond already carries
+/// the novel. workspaceId is here for the tenant filter (ADR-0007).
+model MeaningfulInteraction {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bondId      String    @map("bond_id") @db.Uuid
+  bond        Bond      @relation(fields: [bondId], references: [id], onDelete: Cascade)
+  chapter     Int
+  /// 0..1 (CHECK in the migration). Not a score to optimise — the input
+  /// MEANINGFUL_WEIGHT_FLOOR compares against.
+  weight      Float
+  summary     String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([bondId, chapter])
+  @@map("meaningful_interactions")
 }

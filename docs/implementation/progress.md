@@ -1648,3 +1648,131 @@ Checks run after the fixes: lint 0; typecheck clean in every workspace;
 `apps/api` 218/218; packages + worker 326 passed / 1 skipped on vitest
 5.0.2 (324 + the two adapter tests added here); `pnpm -r build` green
 including `apps/web`.
+
+## Phase 8 — Character & Relationship Intelligence (2026-09-30)
+
+Roadmap exit criterion, verbatim: *"monogamy/harem/polygamy and
+enemy-to-ally validation scenarios pass."* Both are tested at the HTTP
+boundary in `apps/api/src/character.test.ts`.
+
+### Slice 1 — domain packages
+
+`@novelforge/character-intelligence` (22 tests) and
+`@novelforge/relationship-intelligence` (33 tests). Pure rules, no
+Prisma, no HTTP (ADR-0001). Windows are half-open `[from, to)` so the
+chapter a state changes on belongs to the new state — the same
+convention a canon fact's validity window uses.
+
+Enum-shaped unions are declared locally as `as const` arrays with a test
+pinning the member set against a hardcoded literal. That pin is the only
+guard that catches schema drift: the Prisma enums must match those sets
+exactly, and the route modules validate bodies with `z.enum(MIRROR)`
+rather than the Prisma enum, so a drift fails a test instead of silently
+widening what a route accepts.
+
+### Slice 2 — schema (migration `20261003_phase8_character_relationship`)
+
+Ten tables, seven enums. Scope is exactly what the two packages validate
+and nothing more; the blueprint's other tables (`character_state_events`,
+`character_beliefs`, `relationship_events`, `relationship_groups`,
+`relationship_group_members`, `relationship_agreements`,
+`relationship_arcs`, plus structured reputation / possessions /
+development-milestone columns) are deferred **by name** in the schema
+docstring. Each earns a table when a consumer asks for one.
+
+Three sub-decisions, each recorded in the schema:
+
+- **`characters` is standalone**, not a `StoryEntity` of kind CHARACTER.
+  Nothing in Phase 8 reads an entity link, and requiring every character
+  to be a canon subject would force a row the author never asked for.
+  A link can be added when a consumer needs canon claims *about a
+  character* (ADR-0008 §5's posture: wait for real data).
+- **`Bond` is the spec's "relationship groups" and "agreements" in one
+  table**, because the domain package models the whole shape as structure
+  + members + window. A separate groups table would be a second name for
+  the same rows.
+- **`workspaceId` is denormalised on the four tenant-scoped parents**
+  (`characters`, `relationship_stances`, `bonds`,
+  `meaningful_interactions`); the six children reach the tenant through
+  their parent. Tenant isolation is therefore not uniform across the
+  codebase — `CanonFact` denormalises, Phase 6 slice 2 does on all five
+  tables, Phase 7 and `Scene` do not. Phase 8 follows the parents.
+
+**Overlap is refused by the database, not only by the validator.** The
+three EXCLUDE constraints (`character_states_no_overlap`,
+`character_knowledge_no_overlap`, `relationship_stances_no_overlap`) use
+`btree_gist`, verified *trusted* in `pgvector/pgvector:pg16` so
+`CREATE EXTENSION IF NOT EXISTS` needs no superuser. A validator only
+runs if a caller calls it, and the failure mode is silent: two rows
+claiming chapter 12 make "where was she in chapter 12" answerable two
+ways, and whichever the query returns becomes accidental canon.
+
+Bonds deliberately get **no** EXCLUDE. Overlapping bonds are the
+author's business — a monogamy bond and a political marriage may run
+concurrently — and refusing that would be the engine overruling the
+author (§2.13). The exclusivity rule needs the sibling *members* of a
+bond, which no CHECK can see, so it stays in `validateBondStructures`.
+
+### Slice 3 — services, routes, tests
+
+- **`services/characters.ts`** (14 methods) and
+  **`services/relationships.ts`** (13 methods), following the
+  `services/planning.ts` template: an inner `gate()` resolves membership
+  and the novel server-side and throws the SAME `NotFoundError("novel")`
+  for either miss (no existence leak through a 403/404 difference), then
+  `requireCapability`; `audit.record` after every successful mutation.
+- **Capabilities** are reused, not extended: `canon:read` /
+  `canon:manage` / `canon:approve`, as Phase 7 did.
+- **The baseline-diff discipline** in `addMilestone` and
+  `addTransition`. `validateArc` walks the array in the order given, so
+  appending the candidate and running it only checks the append case — an
+  insert in the middle slips through. The fix validates the whole set
+  with and without the candidate and acts on the set difference: a
+  pre-existing defect cannot block a correct write, and no error message
+  is parsed. The first attempt identified the failing record by splitting
+  `e.message` on spaces; that was replaced before it shipped.
+- **`isExclusionViolation`** (`services/platform.ts`) is separate from
+  `isUniqueViolation`: SQLSTATE **23P01**, not P2002. A caller mapping
+  only unique violations surfaces an overlap as a 500.
+- **Cross-tenant ids are checked, not merely FK'd.** `putKnowledge`
+  proves the fact belongs to THIS novel and `requireCharacters` proves
+  every named character does — the FK alone would have accepted a
+  foreign id.
+- **`stateAt` / `stanceAt` return null, not 404, for a chapter with no
+  recorded value.** The pair or character exists (an unknown one is
+  already 404'd by the gate), so "the author recorded nothing yet" is a
+  real answer and must stay distinguishable from "no such character".
+
+### The DB-constraint suite, and why it is separate
+
+Every refusal in the suites above arrives through the HTTP API, and the
+service validators all fire *before* the statement reaches the database.
+Those tests therefore stay green with a constraint dropped — they pin the
+validator, not the CHECK. `canon.test.ts` established the pattern; Phase
+8's last suite writes straight to the database, past every guard.
+
+**Each of the eight constraints was confirmed to fail with its
+constraint dropped, not merely to pass with it present.** A one-off probe
+dropped each constraint inside a rolled-back transaction, retried the
+exact statement the suite asserts is refused, and confirmed it then
+succeeded: all eight are load-bearing (three `23P01`, five `23514`).
+
+Two probe bugs were found and fixed along the way, both worth recording
+because either would have produced a confident false negative: a refused
+`INSERT` aborts the enclosing transaction (`25P02`), so each attempt
+needs its own `SAVEPOINT`; and dropping a constraint cannot be undone
+while the probe row is still present, because `ADD CONSTRAINT`
+re-validates existing rows.
+
+### Checks run
+
+- `pnpm typecheck` — clean in every workspace, EXIT=0.
+- `pnpm lint` — EXIT=0.
+- `pnpm test` — **30 files, 622 passed / 1 skipped** (600 before; +22
+  here). Vitest 5.0.2.
+- `prisma validate` — valid; `migrate diff` — zero drift;
+  `migrate deploy` to an empty database — all 16 migrations applied,
+  EXIT=0.
+- Constraint probe — 8/8 constraints confirmed load-bearing.
+
+Not run: `apps/web` browser flows (no automated E2E runner exists).

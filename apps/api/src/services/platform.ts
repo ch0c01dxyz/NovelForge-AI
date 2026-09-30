@@ -51,6 +51,20 @@ function isUniqueViolation(e: unknown): boolean {
   return (e as { code?: string })?.code === "P2002";
 }
 
+/**
+ * Exclusion-constraint violation (SQLSTATE 23P01) — the Phase 8 overlap
+ * EXCLUDEs (character_states_no_overlap, character_knowledge_no_overlap,
+ * relationship_stances_no_overlap). A DIFFERENT code from P2002, so a
+ * caller that maps only unique violations surfaces an overlap as a 500.
+ * Duck-typed on `code` like isUniqueViolation; the message check is the
+ * backstop for a driver that wraps the SQLSTATE.
+ */
+export function isExclusionViolation(e: unknown): boolean {
+  if ((e as { code?: string })?.code === "23P01") return true;
+  const message = (e as { message?: unknown })?.message;
+  return typeof message === "string" && /exclusion constraint/i.test(message);
+}
+
 export interface PlatformServices {
   createWorkspace(input: {
     actorUserId: string;

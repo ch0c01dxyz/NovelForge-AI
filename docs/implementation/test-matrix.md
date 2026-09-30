@@ -629,3 +629,71 @@ Note for anyone running this suite: `novelforge_test_orchestrator` is a
 single shared database, so two concurrent runs of this file collide
 (users_email_key violations, then cascading 401/500s that do not
 reproduce in isolation). Run it alone, or give each run its own copy.
+
+## Phase 8 — Character & Relationship Intelligence (2026-09-30)
+
+`apps/api/src/character.test.ts`, 22 tests, dedicated
+`novelforge_test_phase8` database. The two roadmap exit scenarios are
+driven through the real HTTP surface, because that is where the criterion
+lives — a domain-package test would prove the rules and not the wiring.
+No test in this file reaches a provider: the Phase 8 routes issue no
+model call at all, and the gateway factory given to `buildApp` throws if
+one ever does.
+
+- **enemy-to-ally** — an ENEMY span `[1,50)` followed by an ALLY span
+  `[50,∞)` reads back ENEMY at 49 and ALLY at 50 (half-open, so the
+  chapter the turn happens on belongs to the new stance), and
+  `/stances/since` reports `{stance: "ALLY", sinceChapter: 50}` — the
+  dated turn, which is the thing an author actually asks for. A third
+  span overlapping the first is 409 and **both original spans are still
+  present afterwards**: the turn is recorded by adding a span, never by
+  editing the old one. Self-stance is 409. A chapter with no recorded
+  stance is **200 with a null body**, not a 404 — the pair exists, so
+  "nothing recorded yet" must stay distinguishable from "no such
+  character".
+- **monogamy / harem / polygamy** — a second concurrent MONOGAMY bond
+  sharing a member is 409, and the same bond is 201 **after** the first
+  is deleted, proving the rule is about concurrency and not a lifetime
+  cap. A three-member MONOGAMY bond is 409. A HAREM of four, a
+  POLITICAL_MARRIAGE and a MONOGAMY bond all coexist (201 each, three
+  rows listed) — POLITICAL_MARRIAGE is deliberately not exclusive
+  because it names *why* a bond exists, not how many a character may
+  hold. A duplicated member is 409.
+- **bond lifecycle** — ATTRACTION → COURTSHIP → MARRIAGE reads back
+  COURTSHIP at ch 30 and MARRIAGE at ch 90; a stage that goes backwards
+  while labelled ADVANCE is 409 (MISLABELED_REGRESSION is the rule with
+  teeth — a quiet rewind is otherwise invisible).
+- **neglect is weighted, not counted** — a 0.9 interaction at ch 5 and a
+  0.05 scene at ch 40 report `lastMeaningfulChapter: 5` and
+  `neglected: true` at ch 50. A chapter-presence heuristic would report
+  the opposite, which is the case the spec's "not simple chapter
+  presence" rule is about.
+- **authorization and tenancy** — 401 without a session, 403 for a
+  VIEWER (who may read canon but not manage it), 404 for a novel in
+  another workspace, and 404 for a bond member belonging to another
+  novel. The FK alone would have accepted that last one, so the test
+  pins the service's own guard.
+- **the DB constraints are the subject, not the service guard in front
+  of them** — eight cases write straight to the database, past every
+  guard: overlapping character-state windows, an inverted/zero-length
+  window, overlapping knowledge windows for one (character, fact), two
+  overlapping stances in one direction, a self-stance, an interaction
+  weight outside 0..1, a milestone chapter below 1 and a duplicate
+  milestone chapter, and an inverted bond window. Adjacency is asserted
+  to be legal (`[1,50)` then `[50,∞)`), the reverse stance direction is
+  asserted to be unconstrained, and a second character is asserted to
+  hold the same fact over the same chapters — each proving the
+  constraint is not wider than it claims.
+- **Every one of the eight was confirmed to fail with its constraint
+  dropped**, by a one-off probe that dropped the constraint inside a
+  rolled-back transaction and retried the exact refused statement. All
+  eight are load-bearing (three `23P01`, five `23514`). Two probe bugs
+  were fixed en route and are recorded in `progress.md`: a refused
+  `INSERT` aborts the enclosing transaction (`25P02`, needs a
+  `SAVEPOINT` per attempt), and a constraint cannot be re-added while
+  the probe row is still present because `ADD CONSTRAINT` re-validates.
+
+The domain packages carry their own unit suites —
+`packages/character-intelligence/character.test.ts` (22) and
+`packages/relationship-intelligence/relationship.test.ts` (33) — which
+include the enum pins that catch drift against the Prisma enums.

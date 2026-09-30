@@ -1,7 +1,7 @@
 # Current Project State
 
 Architecture baseline: V2 handoff pack created.\
-Implementation status: **Roadmap phases 0–7 COMPLETE (2026-10-02)**, plus
+Implementation status: **Roadmap phases 0–8 COMPLETE (2026-09-30)**, plus
 the **AI Orchestrator milestone (2026-10-03)** — the `ai.generate`
 lifecycle, which the roadmap schedules inside Phase 3/4 rather than as a
 phase of its own (see the numbering note in
@@ -34,6 +34,13 @@ phase of its own (see the numbering note in
   planning horizon; delete routes (planning entities, novels, canon
   entities, workflows) with FK hardening so refusals are legible 409s and
   canon/run history is never silently destroyed.
+- **Phase 8** — character state, knowledge boundary, arcs, relationship
+  stances, bonds (groups/agreements), transitions, meaningful
+  interactions. Overlap is refused by three `btree_gist` EXCLUDE
+  constraints, not only by the domain validators — each confirmed
+  load-bearing by dropping it and retrying the refused statement. The
+  roadmap exit criterion (monogamy/harem/polygamy and enemy-to-ally)
+  is tested at the HTTP boundary in `apps/api/src/character.test.ts`.
 - **AI Orchestrator (milestone, 2026-10-03)** — one `ai.generate`
   lifecycle entry point that resolves the agent/skill definitions the
   workflow executor also resolves (shared `definition-resolution.ts`),
@@ -44,9 +51,10 @@ phase of its own (see the numbering note in
   error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web`); apps/api 218/218; packages + worker 326 passed / 1 skipped on
-vitest 5.0.2; 15 migrations applying from empty with zero drift;
-`pnpm -r build` green.
+`apps/web`); `pnpm test` 30 files, 622 passed / 1 skipped on vitest
+5.0.2; 16 migrations applying from empty with zero drift;
+`pnpm -r build` green. Phase 8's eight new constraints were each
+confirmed load-bearing by a drop-and-retry probe.
 
 First run against a **real 9Router deployment** (2026-09-30) is recorded in
 `progress.md` Round 9: gateway stored through the CRUD API (credential
@@ -64,12 +72,36 @@ and `docs/adr/`.
 
 ## Next milestone
 
-**Phase 8 — Character & Relationship Intelligence** per the roadmap, or
-the **Phase 6 leftover — LLM fact extraction** (canon is author-authored
-only), which the orchestrator now unblocks: extraction is a contracted
-agent whose output is candidate canon needing approval (§2.13).
+**Phase 9 — Reader Platform** per the roadmap, or the **Phase 6 leftover —
+LLM fact extraction** (canon is author-authored only), which the
+orchestrator now unblocks: extraction is a contracted agent whose output
+is candidate canon needing approval (§2.13).
 
 ## Known gaps carried forward
+
+### Character & relationship (Phase 8)
+
+- **The blueprint's other tables are deferred by name**, in the schema
+  docstring: `character_state_events`, `character_beliefs`,
+  `relationship_events`, `relationship_groups`,
+  `relationship_group_members`, `relationship_agreements`,
+  `relationship_arcs`, and structured reputation / possessions /
+  development-milestone columns. Each earns a table when a consumer asks
+  for one (ADR-0008 §5's posture).
+- **`characters` is standalone**, not a `StoryEntity` of kind CHARACTER.
+  A link can be added when a consumer needs canon claims *about a
+  character*; nothing in Phase 8 reads one.
+- **No character UI.** The Phase 8 surface is API-only; the writer
+  workspace still does not show character or relationship state.
+- **The overlap EXCLUDEs are per-table, not global.** A `character_states`
+  row and a `relationship_stances` row may name the same chapters — the
+  constraints govern each table's own windows.
+- **Stances are directional and unpaired.** `A→B ENEMY` with `B→A
+  FRIENDLY` is representable and correct; nothing derives a "mutual"
+  reading, because the one-sided feud is the case the direction exists
+  for.
+- **No retention or pruning** on any Phase 8 table; `meaningful_interactions`
+  grows per recorded scene.
 
 ### Canon / knowledge
 

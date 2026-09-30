@@ -26,6 +26,10 @@ import { registerCanonRoutes } from "./canon-routes.ts";
 import { registerOrchestratorRoutes } from "./orchestrator-routes.ts";
 import { createAuditService } from "./services/audit.ts";
 import { registerPlanningRoutes } from "./planning-routes.ts";
+import { registerCharacterRoutes } from "./character-routes.ts";
+import { registerRelationshipRoutes } from "./relationship-routes.ts";
+import { createCharacterServices } from "./services/characters.ts";
+import { createRelationshipServices } from "./services/relationships.ts";
 import { createPlanningServices } from "./services/planning.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
@@ -219,6 +223,18 @@ export async function buildApp(
     registerPlanningRoutes(app, {
       auth,
       services: createPlanningServices({ db: options.db, audit }),
+    });
+
+    // Character & Relationship Intelligence (Phase 8): pure rules from
+    // @novelforge/character-intelligence and @novelforge/relationship-intelligence;
+    // the services own tenancy + audit, the EXCLUDE constraints own overlap.
+    registerCharacterRoutes(app, {
+      auth,
+      services: createCharacterServices({ db: options.db, audit }),
+    });
+    registerRelationshipRoutes(app, {
+      auth,
+      services: createRelationshipServices({ db: options.db, audit }),
     });
 
     registerDefinitionRoutes(app, {

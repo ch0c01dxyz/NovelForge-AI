@@ -266,3 +266,56 @@ proves load-bearing.
   is unverified would fail at ingest against a dimension that is a
   schema constraint. Not mapping it is the correct state until the width
   is measured.
+
+## Phase 8 — Character & Relationship Intelligence (2026-09-30)
+
+- **The overlap refusals live in the database, and that is what makes
+  the test matrix's claim true.** The domain packages already refuse
+  overlapping windows (`validateStateHistory`, `validateStanceHistory`),
+  but a validator only runs if a caller calls it. The failure mode is
+  silent rather than loud: two rows claiming chapter 12 make "where was
+  she in chapter 12" answerable two ways, and whichever the query happens
+  to return becomes accidental canon. The three EXCLUDE constraints make
+  the row unrepresentable. A service-guard test would have stayed green
+  with them absent, so the suite that matters writes past every guard —
+  and each constraint was confirmed to fail with it dropped, because a
+  test that passes with the constraint present proves nothing about
+  whether the constraint is what refuses it.
+- **Bonds get no EXCLUDE on purpose.** Overlapping bonds are the author's
+  business: a monogamy bond and a political marriage may run
+  concurrently, and a harem is uncapped because "harem" describes a shape
+  rather than an instruction that every character becomes a love
+  interest. Only MONOGAMY is exclusive, and that rule needs the sibling
+  *members* of a bond — which no CHECK can see — so it stays in
+  `validateBondStructures` where the whole set is in hand. Refusing the
+  rest would be the engine overruling the author (§2.13).
+- **`characters` is standalone rather than a `StoryEntity` of kind
+  CHARACTER.** Nothing in Phase 8 reads an entity link, and requiring
+  every character to be a canon subject would force a row the author
+  never asked for. This follows ADR-0008 §5's posture — wait for real
+  data rather than guess a shape — and a link can be added when a
+  consumer needs canon claims *about a character*.
+- **`Bond` is the spec's "relationship groups" and "agreements" in one
+  table.** The domain package models the whole shape as structure +
+  members + window, so a separate groups table would be a second name for
+  the same rows. The blueprint's other Phase 8 tables are deferred by
+  name in the schema docstring; each earns a table when a consumer asks
+  for one.
+- **Enum vocabulary is pinned on both sides.** The domain packages declare
+  enum-shaped unions locally as `as const` arrays with a test asserting
+  the member set against a hardcoded literal, and the route modules
+  validate bodies with `z.enum(MIRROR)` rather than the Prisma enum. A
+  schema/vocabulary drift therefore fails a test instead of silently
+  widening what a route accepts. This is the one guard that catches drift
+  between the two representations.
+- **A pre-existing defect must not block a correct write.** `validateArc`
+  walks the milestone array in the order given, so appending a candidate
+  and validating checks only the append case — a middle insert slips
+  through. The service instead validates the whole set with and without
+  the candidate and acts on the set difference. The first attempt
+  identified the failing record by splitting an error message on spaces;
+  that was replaced before it shipped, because a message format is not a
+  contract.
+- **`isExclusionViolation` is not `isUniqueViolation`.** An EXCLUDE
+  violation is SQLSTATE **23P01**, not P2002. A caller that maps only
+  unique violations surfaces an overlap as a 500 rather than a 409.

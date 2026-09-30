@@ -371,6 +371,32 @@ describe("a low-frequency drama policy stays non-mechanical (roadmap exit criter
     const listed = await get(f, "/narrative/policies");
     expect(listed.body).toEqual([]);
   });
+
+  it("fails loud when the STORED drama policy is malformed, not silently", async () => {
+    // The read-path sibling of the cooldown test below. Written straight
+    // through Prisma, past putPolicy: the payload column is JSONB with no
+    // CHECK, so a seed or migration can put any shape here. The window is a
+    // SOFT rule, so there is no "fail open" danger as there is for the
+    // cooldown — but assessDramaWindow's malformed branch would otherwise
+    // never be reached in production, and a planner reading a default band
+    // is exactly the invented ladder ADR-0011 §2 forbids.
+    const f = await seed("badpolicy-read");
+    await db.narrativePolicy.create({
+      data: {
+        novelId: f.novelId,
+        kind: "DRAMA_GAP",
+        hardness: "SOFT",
+        payload: {
+          density: "LOW",
+          typicalGap: { min: 50, max: 30 },
+          extendedGap: { min: 70, max: 140 },
+          strictInterval: false,
+        },
+      },
+    });
+    const res = await post(f, "/narrative/drama-window", { chaptersSinceDrama: 40 });
+    expect(res.statusCode).toBe(409);
+  });
 });
 
 describe("the cooldown is the one hard rhythm rule", () => {
@@ -581,6 +607,25 @@ describe("antagonist lifecycle", () => {
     const antagonist = res.body["antagonist"] as { purpose: string; role: string };
     expect(antagonist.role).toBe("TEMPORARY");
     expect(antagonist.purpose).toBe("Force the sect to reveal its hand early");
+  });
+
+  it("refuses a whitespace-only purpose over HTTP, before the CHECK ever sees it", async () => {
+    // The write path trims with JS String.prototype.trim, which covers the
+    // full blank class (U+3000 included) — so the empty string reaches the
+    // validator as MISSING_PURPOSE rather than reaching the CHECK as a blank.
+    // Both layers refuse; this pins the outer one.
+    const f = await seed("temp-blank");
+    const characterId = await makeCharacter(f, "villain");
+    for (const purpose of ["\t", "\n", " ", "　", " \t "]) {
+      const res = await post(f, "/narrative/antagonists", {
+        characterId,
+        role: "TEMPORARY",
+        purpose,
+        fromChapter: 1,
+        toChapter: 12,
+      });
+      expect(res.statusCode, JSON.stringify(purpose)).toBe(409);
+    }
   });
 
   it("reports an out-of-bounds span as advice rather than refusing it", async () => {
@@ -1005,21 +1050,31 @@ describe("the DB constraints are the subject, not the service guard in front of 
   });
 
   it("Antagonist_temporary_needs_purpose refuses a whitespace-only purpose", async () => {
-    const s = await seedRaw("c2");
-    await expect(
-      db.antagonist.create({
-        data: {
-          workspaceId: s.workspaceId,
-          novelId: s.novelId,
-          characterId: s.characterId,
-          role: "TEMPORARY",
-          purpose: "   ",
-          fromChapter: 1,
-          toChapter: 12,
-          createdById: s.owner.userId,
-        },
-      }),
-    ).rejects.toThrow();
+    // The whole blank class, not just "   ": the first version of this test
+    // probed spaces alone, and PostgreSQL's single-arg btrim strips only
+    // spaces — so a tab/newline/NBSP purpose was stored, then flagged
+    // MISSING_PURPOSE (a HARD problem) on every later read, leaving the row
+    // un-advanceable. A direct write is the only path the CHECK guards; the
+    // HTTP path trims in Zod first.
+    const blanks = ["   ", "\t", "\n", "\r", "\v", "\f", "\u0085", " ", " ", " ", "﻿", "　", " \t  "];
+    for (const purpose of blanks) {
+      const s = await seedRaw(`c2-${blanks.indexOf(purpose)}`);
+      await expect(
+        db.antagonist.create({
+          data: {
+            workspaceId: s.workspaceId,
+            novelId: s.novelId,
+            characterId: s.characterId,
+            role: "TEMPORARY",
+            purpose,
+            fromChapter: 1,
+            toChapter: 12,
+            createdById: s.owner.userId,
+          },
+        }),
+        JSON.stringify(purpose),
+      ).rejects.toThrow();
+    }
   });
 
   it("Antagonist_chapter_span_valid refuses an inverted span", async () => {

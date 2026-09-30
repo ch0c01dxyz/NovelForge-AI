@@ -1958,6 +1958,16 @@ CHECK; the PURPOSE is the hard half and is.
   `assessScaleAppropriateness` takes the protagonist's standing, not the
   novel's preference, so no rule can probe a scale policy.
 - **No narrative UI.** The Phase 9 surface is API-only.
+- **`density` is validated but has no behaviour.** `assessDramaWindow`
+  refuses a value outside `DRAMA_DENSITIES`, but no rule varies its bands by
+  density — the author's `typicalGap` / `extendedGap` numbers are the whole
+  policy. Deliberate: a density→band mapping would be a universal default
+  ladder, which is what the doc's Principle forbids.
+- **`hardness` gates writes but no rule branches on it.** It is load-bearing
+  today (HARD requires a reason, per ADR-009), but nothing yet reads it to
+  decide whether a finding refuses or advises. The one rule that hard-refuses
+  (`checkCooldown`) does so unconditionally. A `hardness`-aware finding
+  channel is the natural next step if a SOFT cooldown is ever wanted.
 - **`Antagonist` has no delete or correction path.** Append-and-advance only,
   as Phase 6 slice 3's five tables do.
 - **The takeover dropped two deliverables the Task D spec named, and one was
@@ -2071,18 +2081,103 @@ matches the code:
 - The repetition endpoint is `/narrative/patterns`, not the spec's
   `/narrative/repetition`. The behaviour exists; only the name differs.
 
+### Third audit round (2026-09-30) — the CHECKs that did not check, and five refutations
+
+A third pass over the same surface, this time reproducing every candidate
+against a **live PostgreSQL** rather than reasoning about the code. Six
+candidates went in; one survived. The other five are recorded here because a
+refuted finding is evidence too — it is the reason no code changed for it.
+
+**The one confirmed defect — both hand-written CHECKs accepted a blank
+string (fixed in migration `20261005_phase9_blank_reason_fix`).**
+
+`Antagonist_temporary_needs_purpose` and `NarrativePolicy_hard_requires_reason`
+were written as `btrim("purpose") <> ''` / `btrim("hard_reason") <> ''`.
+PostgreSQL's **single-argument** `btrim` strips only the ASCII space
+(U+0020) — not tab, newline, CR, VT, FF, NBSP, ideographic space, BOM, NEL,
+figure space, or narrow NBSP. Probed against a live database, a purpose of
+`"\t"`, `"\n"`, `" "`, `"　"`, `"﻿"` or any mixture was
+**ACCEPTED** while `"   "` was refused. The migration comment calls such a
+row "unrepresentable here"; it was representable.
+
+The consequence was a real malfunction, not a cosmetic one: a TEMPORARY
+antagonist stored with a blank purpose is flagged `MISSING_PURPOSE` by
+`validateAntagonistProgression` on every later read, and `MISSING_PURPOSE`
+is in `HARD_ANTAGONIST_PROBLEMS` — so **the row could never be advanced
+through its lifecycle again**. Legal to write, illegal to use.
+
+Why it escaped: the constraint test's own cases were *named* "whitespace-only
+purpose" and *named* "whitespace-only hard_reason", but passed only `"   "`.
+The class was named and the class was not probed. That is the same failure
+mode round two recorded for `MISSING_SPAN` — a test whose name asserts more
+than its body does.
+
+The fix replaces both with a POSIX class negated over the full blank set
+`[[:space:]]` misses, keeping the `IS NOT NULL` arm (NULL satisfies a CHECK):
+`x ~ E'[^[:space:]   ﻿\u0085]'`. The form was verified
+against all 19 blank shapes and a set of non-blank controls before the
+migration was written. A `DO $$` pre-flight now raises a named error if a
+row already slipped in, so `ADD CONSTRAINT` cannot fail with a bare 23514
+that names no row (ADR-0011 §2). The HTTP path was already safe — Zod
+`.trim()` and JS `String.prototype.trim()` cover the same set plus U+3000 —
+so this restores the CHECK to the backstop its comment always claimed to be,
+for a direct write, a seed, or a migration.
+
+Both suites now probe the whole class: `BLANKS` in the constraint integration
+test carries 19 shapes, and the API test loops over 13.
+
+**Five candidates refuted — no code changed.**
+
+1. **"The narrative routes are missing `bodyLimit`, unlike their siblings."**
+   The sibling constant exists because those bodies are genuinely large
+   (`IMPORT_BODY_LIMIT` is 15 MB). The largest payload these schemas permit is
+   `detectPatternBody`: 10 000 beats at the declared field maxima is **0.79 MB**
+   measured, under Fastify's 1 MB default. The other routes are kilobytes.
+   Adding a constant would be scaffolding for a case the schema already
+   bounds. Refuted by measurement, not by opinion.
+2. **"`density` is read nowhere."** It is read — `assessDramaWindow` validates
+   it against `DRAMA_DENSITIES` and returns `MALFORMED_POLICY` for anything
+   else, which `putPolicy` turns into a 409. It carries no *behaviour*, which
+   is a different claim, and one the file comment already makes: no rule
+   consumes a density band, so no default is invented for it.
+3. **"`hardness` is inert."** It is load-bearing: HARD without a reason is
+   refused at the boundary and by the CHECK, and the column is what makes
+   ADR-009's soft-by-default rule auditable. No rule *branches* on it yet —
+   recorded below rather than fixed.
+4. **"The DRAMA_GAP read path has no malformed-payload test, unlike
+   COOLDOWN."** True, and now closed with one test — the sibling coverage
+   really was asymmetric. Not a code defect; the service already returns 409.
+5. **"`outcome` is accepted at any stage."** Refuted against the doc:
+   NARRATIVE-RHYTHM.md says "Possible outcomes: regret, resentment, …" with no
+   stage coupling, and the schema comment on `outcome` reads "Null until the
+   arc closes" — a description, not a constraint. Inventing a
+   `outcome`-requires-`DEFEAT` rule would be a HARD rule from a soft sentence,
+   which is what ADR-009 forbids.
+
+Also removed in this round: eight stray files at the repo root and two probe
+test files (`apps/api/src/zz-*.test.ts`, `packages/database/tmp_probe*.mjs`)
+left by earlier ad-hoc probing. All were untracked and unreferenced.
+
 ### Checks run
 
 - `pnpm typecheck` — clean in every workspace, EXIT=0.
 - `pnpm lint` — EXIT=0.
-- `pnpm test` — **35 files, 737 passed / 1 skipped** (712 before the deep
-  audit round; +16 regression tests across both rounds). Vitest 5.0.2.
-- `prisma migrate diff` — zero drift; `migrate deploy` to an empty database
-  in both new suites — all 17 migrations applied, EXIT=0.
+- `pnpm test` — **35 files, 739 passed / 1 skipped** (737 before this round).
+  Vitest 5.0.2.
+- `apps/api/src/narrative.test.ts` — 48 passed (46 before; +2: the
+  whole-blank-class purpose loop and the malformed DRAMA_GAP read path).
+- `packages/narrative-rhythm` — 38 passed.
 - Constraint probe (`packages/database/test/narrative-constraints.integration.test.ts`)
-  — 11/11, all three CHECKs confirmed **load-bearing** by dropping each inside
-  a rolled-back transaction and retrying the exact refused statement, now for
-  **every** refused shape rather than one per constraint.
+  — 11/11, with `BLANKS` now 19 shapes per constraint; the new migration was
+  confirmed applied to the test database before the probes ran.
+- `prisma migrate deploy` — the new migration applied cleanly to the dev
+  database and to both test databases: **18 migrations applied, 0 failed or
+  rolled back** in each, and `pg_get_constraintdef` confirms both CHECKs are
+  the new regex form. Both constraints are hand-written SQL and deliberately
+  absent from `schema.prisma`, so `migrate diff --from-migrations --to-schema`
+  is not a meaningful drift check for them (it reports them as drift by
+  design); the applied-migration ledger above is what was verified instead.
+
 
 Not run: `apps/web` browser flows (no automated E2E runner exists).
 

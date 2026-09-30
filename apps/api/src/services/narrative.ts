@@ -332,7 +332,9 @@ export function createNarrativeServices(deps: {
 
       // NarrativePolicy_hard_requires_reason, stated at the boundary so the
       // caller gets a sentence instead of a 23514. The CHECK stays as the
-      // backstop for a write that does not come through here.
+      // backstop for a write that does not come through here. JS trim covers
+      // the full blank set (incl. U+3000) that the CHECK's POSIX class does
+      // not, so the two agree wherever the CHECK is the looser of the pair.
       const reason = hardness === "HARD" ? hardReason?.trim() ?? "" : null;
       if (hardness === "HARD" && reason === "") {
         throw new ConflictError("a HARD narrative policy must state why it binds");

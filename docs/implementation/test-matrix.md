@@ -750,7 +750,7 @@ use; results in `progress.md`.
 
 ## Phase 9 — Narrative DNA & Rhythm (2026-09-30)
 
-`apps/api/src/narrative.test.ts` (46 tests, dedicated `novelforge_test_phase9`
+`apps/api/src/narrative.test.ts` (48 tests, dedicated `novelforge_test_phase9`
 db). The two roadmap exit scenarios are driven through the real HTTP surface,
 because that is where the criterion lives — a domain-package test would prove
 the rules and not the wiring. No test here reaches a provider: the Phase 9
@@ -856,6 +856,15 @@ refused `INSERT` aborts the enclosing transaction (`25P02`, needs its own
 `SAVEPOINT`), and `ROLLBACK` — never a cleanup `DELETE` — both restores the
 dropped constraint and discards the probe row, because `ADD CONSTRAINT`
 re-validates existing rows.
+
+The "whitespace-only" cases probe the **whole blank class** (`BLANKS`, 19
+shapes: space, tab, LF, CR, VT, FF, NEL, NBSP, ogham, en quad, figure space,
+hair space, LS, PS, narrow NBSP, medium mathematical space, ideographic space,
+BOM, and a mixture), not just spaces. The first version of this suite passed
+`"   "` alone while *naming* the case "whitespace-only" — and the constraint
+it was guarding, `btrim(x) <> ''`, strips only the ASCII space, so every other
+shape was accepted with the test green. A test whose name asserts more than
+its body does is the failure mode this widens away from.
 
 The domain package carries its own unit suite —
 `packages/narrative-rhythm/rhythm.test.ts` + `scale.test.ts` (38 tests), including the enum pins

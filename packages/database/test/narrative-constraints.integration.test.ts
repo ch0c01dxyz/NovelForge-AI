@@ -1,6 +1,7 @@
 /**
- * The three hand-written CHECKs from `20261004_phase9_narrative_dna` are the
- * last line of defence for rules the docs state and a route could forget.
+ * The three hand-written CHECKs from `20261004_phase9_narrative_dna` (as
+ * corrected by `20261005_phase9_blank_reason_fix`) are the last line of
+ * defence for rules the docs state and a route could forget.
  * `packages/narrative-rhythm` validates all three, but a validator only runs
  * if a caller calls it — these hold whether or not it does.
  *
@@ -218,6 +219,39 @@ const CONSTRAINTS = [
   "NarrativePolicy_hard_requires_reason",
 ];
 
+/**
+ * Every shape a "blank" value can take. The first version of this suite
+ * probed only "   " (spaces) for its "whitespace-only" cases, which is why
+ * the btrim defect survived: PostgreSQL's single-arg btrim strips ONLY the
+ * ASCII space, so all the others were accepted while the test stayed green.
+ * The class is named "whitespace", so it is probed as the whole class.
+ *
+ * U+0085 NEL, U+00A0 NBSP, U+2007 figure space, U+202F narrow NBSP and
+ * U+FEFF BOM are outside PostgreSQL's own [[:space:]], which is why the
+ * constraint spells them out.
+ */
+const BLANKS: [string, string][] = [
+  ["spaces", "   "],
+  ["tab", "\t"],
+  ["newline", "\n"],
+  ["carriage return", "\r"],
+  ["vertical tab", "\v"],
+  ["form feed", "\f"],
+  ["next line (NEL)", "\u0085"],
+  ["no-break space", " "],
+  ["ogham space mark", " "],
+  ["en quad", " "],
+  ["figure space", " "],
+  ["hair space", " "],
+  ["line separator", " "],
+  ["paragraph separator", " "],
+  ["narrow no-break space", " "],
+  ["medium mathematical space", " "],
+  ["ideographic space", "　"],
+  ["byte order mark", "﻿"],
+  ["mixed", " \t\n 　﻿ "],
+];
+
 beforeAll(async () => {
   const admin = new pg.Client({ connectionString: withDb(BASE_URL, "postgres") });
   await admin.connect();
@@ -256,7 +290,14 @@ describe("Phase 9 narrative constraints", () => {
     const NAME = "Antagonist_temporary_needs_purpose";
     const violations = [
       refusing("TEMPORARY with NULL purpose", "antagonists", NAME, antagonist({ role: "TEMPORARY", purpose: null, from: 1, to: null })),
-      refusing("TEMPORARY with whitespace-only purpose", "antagonists", NAME, antagonist({ role: "TEMPORARY", purpose: "   ", from: 1, to: null })),
+      ...BLANKS.map(([label, value]) =>
+        refusing(
+          `TEMPORARY with whitespace-only purpose (${label})`,
+          "antagonists",
+          NAME,
+          antagonist({ role: "TEMPORARY", purpose: value, from: 1, to: null }),
+        ),
+      ),
     ];
 
     it("refuses a TEMPORARY antagonist with no stated purpose", async () => {
@@ -340,7 +381,14 @@ describe("Phase 9 narrative constraints", () => {
     const NAME = "NarrativePolicy_hard_requires_reason";
     const violations = [
       refusing("HARD with NULL hard_reason", "narrative_policies", NAME, policy("HARD", null)),
-      refusing("HARD with whitespace-only hard_reason", "narrative_policies", NAME, policy("HARD", "  ")),
+      ...BLANKS.map(([label, value]) =>
+        refusing(
+          `HARD with whitespace-only hard_reason (${label})`,
+          "narrative_policies",
+          NAME,
+          policy("HARD", value),
+        ),
+      ),
     ];
 
     it("refuses a HARD policy with no stated reason", async () => {

@@ -50,7 +50,8 @@ phase of its own (see the numbering note in
 - **Phase 9** — narrative DNA, drama windows, cooldown, antagonist
   lifecycle, pattern detection, scale appropriateness. The five rules are
   pure (`packages/narrative-rhythm`); persistence is three tables
-  (migration `20261004_phase9_narrative_dna`); the surface is 12 routes in
+  (migrations `20261004_phase9_narrative_dna` + `20261005_phase9_blank_reason_fix`);
+  the surface is 12 routes in
   `apps/api/src/narrative-routes.ts`. Only the cooldown is HARD; the rest
   advise. Both roadmap exit halves are asserted at the HTTP boundary, and
   "non-mechanical" is asserted at the **word** level — a guidance string
@@ -72,11 +73,16 @@ phase of its own (see the numbering note in
   error events.
 
 Latest gate: lint 0; typecheck clean in every workspace (including
-`apps/web`); `pnpm test` 35 files, 737 passed / 1 skipped on vitest
-5.0.2; 17 migrations applying from empty with zero drift;
+`apps/web`); `pnpm test` 35 files, 739 passed / 1 skipped on vitest
+5.0.2; 18 migrations applying from empty (both test databases, 0 failed or
+rolled back);
 `pnpm -r build` green. Phase 8's eight new constraints and Phase 9's three
 CHECKs were each confirmed load-bearing by a drop-and-retry probe, and
-Phase 6 slice 3's six CHECKs were confirmed the same way.
+Phase 6 slice 3's six CHECKs were confirmed the same way. Two of Phase 9's
+CHECKs had been probed only with spaces while being *named*
+"whitespace-only"; `20261005_phase9_blank_reason_fix` replaced the
+space-only `btrim(x) <> ''` test with a POSIX class over the full blank set
+and both suites now probe all 19 shapes.
 
 First run against a **real 9Router deployment** (2026-09-30) is recorded in
 `progress.md` Round 9: gateway stored through the CRUD API (credential
@@ -146,6 +152,15 @@ contracted agent whose output is candidate canon needing approval, §2.13).
   can probe a scale payload. `DRAMA_GAP` and `COOLDOWN` are probed on write.
 - **No narrative UI.** The Phase 9 surface is API-only; the writer
   workspace shows no DNA, policy, or antagonist state.
+- **`density` is validated but has no behaviour.** A value outside
+  `DRAMA_DENSITIES` is refused, but no rule varies its bands by density —
+  the author's `typicalGap` / `extendedGap` numbers are the whole policy.
+  Deliberate: a density→band mapping would be the universal default ladder
+  the spec's Principle forbids.
+- **`hardness` gates writes but no rule branches on it.** HARD without a
+  reason is refused (ADR-009), so the column is load-bearing, but nothing
+  yet reads it to decide whether a finding refuses or advises. The one rule
+  that hard-refuses (`checkCooldown`) does so unconditionally.
 - **`Antagonist` has no delete or correction path.** Append-and-advance
   only, as Phase 6 slice 3's five tables are. (Policies do have one:
   `DELETE .../policies/:kind`.)

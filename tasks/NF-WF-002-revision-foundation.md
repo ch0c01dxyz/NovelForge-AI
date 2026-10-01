@@ -9,10 +9,10 @@ Implementer role / requested and resolved model: implementer /
 Reviewer role / requested and resolved model: reviewer / `glm-5.3-flash`
 requested; runtime availability unverified — record `REVIEW_PENDING` if it
 cannot be invoked (GAP-013).
-Baseline revision / local changes to preserve: record `git rev-parse HEAD` and
-the dirty-file set at dispatch; do not revert the M0 documentation changes.
-Engram checkpoint topic key / last confirmed observation reference: record at
-dispatch, e.g. `context/NF-WF-002/main/implementer`.
+Baseline revision / local changes to preserve: `5b5f139216dd1cf27077e342cfc2a23e55f743ae`,
+dirty-file set empty at dispatch. Do not revert the M0/M1 documentation set.
+Engram checkpoint topic key: `context/NF-WF-002/main/implementer`.
+Implementer brief: [NF-WF-002-dispatch-brief.md](NF-WF-002-dispatch-brief.md).
 
 ## Goal and reason
 

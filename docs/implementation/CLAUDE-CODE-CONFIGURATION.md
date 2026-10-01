@@ -93,6 +93,32 @@ an unrecognized model; reported context limits, token accounting and pricing
 must not be treated as verified provider metadata. GLM dispatch remains
 unverified; see GAP-013 in [ISSUES-AND-GAPS](ISSUES-AND-GAPS.md).
 
+## Model tier aliases and reviewer identity
+
+The `env` block maps each Claude tier to a gateway model id:
+
+| Tier variable | Gateway id |
+|---|---|
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `bansosmontera/deepseek-v4.1-flash` |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL` | `bansosmontera/glm-5.3-flash` |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `geraikita/deepseek-v4.1-flash-token` |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `bansoskenari/deepseek-v4-1-flash` |
+
+`ANTHROPIC_BASE_URL` is `http://localhost:20127/v1`; the credential is a
+`ANTHROPIC_AUTH_TOKEN` environment value and is never recorded here.
+
+A worker that reports its model by reading one of these variables is reporting
+**its tier alias**, not the model that served the tokens. This is why the two
+NF-WF-001 review rounds self-reported different ids (`deepseek-v4.1-flash` then
+`glm-5.3-flash`) for the same reviewer role — the dispatch tier differed. Treat
+such a report as a statement about configuration, never as backend proof.
+
+Both ids exist in the gateway catalog (`GET /v1/models` lists
+`bansosmontera/glm-5.3-flash`), so the requested reviewer model is
+dispatchable. Pass it explicitly with `worker-start --model` so the dispatch
+record carries the intended id rather than whatever the tier resolves to; that
+still proves only what was *requested*, not what served it.
+
 ## Activation and maintenance
 
 Save a meaningful Engram checkpoint, then restart Claude Code to reload

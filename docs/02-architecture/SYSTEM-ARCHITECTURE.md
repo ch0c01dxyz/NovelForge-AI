@@ -69,12 +69,22 @@ packages/
 ## Transaction boundaries
 
 Canonical mutation commands run through application services. A
-high-impact story mutation should be one logical Story Transaction: 1.
-authorize; 2. validate command; 3. calculate impact; 4. checkpoint if
-policy requires; 5. create revision/change-set; 6. mutate canonical
-entities atomically where possible; 7. enqueue derived-state
-invalidation/rebuild; 8. run post-commit validators; 9. surface
-warnings/conflicts.
+high-impact story mutation is one logical Story Transaction: authorize and
+validate the command; calculate impact; capture the required checkpoint at
+the expected source boundary; compare the current head/version; apply the
+approved mutations and revision/change set; run blocking validators; record
+projection invalidation and durable rebuild intent in the same database
+transaction; commit or abort. Workers then rebuild and run advisory checks.
+
+Checkpoint/head mismatch or a blocking validation failure prevents commit.
+An unavailable Redis queue does not lose work: committed rebuild intent is
+retried durably. A failed post-commit rebuild leaves explicit stale/failed
+derived state; it does not erase the canonical commit or fabricate success.
+Never hold a database transaction across an LLM call or human approval.
+
+Minimum revisions/checkpoints precede integrated chapter mutation and memory
+consolidation (ADR-0013). New domains must join the same transaction/recovery
+contract, not bypass it with a separate write path.
 
 ## Event model
 

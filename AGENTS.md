@@ -1,7 +1,13 @@
 # AGENTS.md --- NovelForge V2 Operating Constitution
 
 This file contains permanent implementation rules. Detailed
-specifications live under `docs/`.
+specifications live under `docs/`. Keep this constitution equivalent to
+`CLAUDE.md`; change both in the same task.
+
+Start at `START-HERE.md`. Use `docs/implementation/DELIVERY-PLAN.md` for
+execution order and `docs/14-progress/CURRENT.md` for evidence and gaps.
+The roadmap owns phase numbering, not proof of feature completion.
+`docs_compare/` is a historical requirements archive, not active instructions.
 
 ## 1. Mission
 
@@ -129,6 +135,13 @@ Narrative DNA/style -\> external references.
 
 Every retrieved fact should retain provenance where possible.
 
+Chapter generation must resolve the approved outline, story position, and
+source revision on the server. Pin relevant state and definition versions
+before the first model attempt. Direct chapter generation and chapter
+workflow steps must use the same context rules. Fetch bounded relevant
+records; do not fetch all facts and truncate by creation order. Mandatory
+task constraints must never disappear silently to satisfy a context budget.
+
 ## 8. Long-form consistency
 
 Support hierarchical memory: L0 current generation L1 current chapter L2
@@ -140,14 +153,24 @@ Never summarize away hard canon. Summaries are projections, not truth.
 
 Canon must never be destructively overwritten.
 
-High-impact mutation flow: Impact Analysis -\> Auto Checkpoint -\> Story
-Transaction -\> Apply -\> Validate -\> Invalidate/Rebuild Derived State
--\> Commit or Abort.
+High-impact mutation flow: Authorize -\> Impact Analysis -\> Required
+Checkpoint -\> Story Transaction -\> Apply -\> Blocking Validation -\>
+Record Derived Invalidation/Rebuild Intent -\> Commit or Abort -\>
+Asynchronous Rebuild and Advisory Checks.
+
+Canonical changes and durable rebuild intent commit atomically. Do not hold
+database transactions across LLM calls or human approval. If a required
+checkpoint cannot be created, refuse the mutation. A failed rebuild leaves
+an explicit stale/failed projection, never a false success.
 
 Restoring a checkpoint creates a new revision based on that checkpoint.
 Later history remains recoverable.
 
 Bulk AI rewrites require a pre-operation checkpoint.
+
+Minimum revision/checkpoint support precedes integrated chapter mutation
+and memory consolidation (ADR-0013). A canon supersede chain or manuscript
+version alone does not prove cross-domain recovery.
 
 ## 10. Development rules
 
@@ -163,6 +186,10 @@ Bulk AI rewrites require a pre-operation checkpoint.
 -   Update documentation and progress records when behavior changes.
 -   New architectural decisions require an ADR.
 -   Never weaken security to make a demo work.
+-   Write new specifications, task contracts, handoffs, and progress entries
+    in English unless the author explicitly requests another language.
+-   Preserve historical records; annotate superseded decisions instead of
+    silently rewriting history. No task may mark planned work as implemented.
 
 ## 11. Definition of Done
 
@@ -171,17 +198,79 @@ include: implementation, migration, authorization, validation, error
 handling, tests, documentation, observability, UI loading/empty/error
 states, rollback/versioning implications, and acceptance criteria.
 
+Track backend, workflow, UI, recovery, and end-to-end evidence separately.
+A component test or schema is not evidence of a usable author workflow.
+An approval node is not complete until authorized approve/reject and safe
+continuation are tested. Generation, text acceptance, canon approval, and
+publication have separate outcomes. Revalidate the final edited text; any
+later edit invalidates approvals/reviews tied to the previous version.
+
+Full platform delivery requires the capability ledger and release gates in
+`docs/implementation/DELIVERY-PLAN.md`; no silent scope reductions.
+
 ## 12. Multi-LLM orchestration protocol
 
-Each task contract must state: - task ID and goal; - required reading; -
-allowed paths; - forbidden paths; - inputs; - outputs; - invariants; -
-acceptance tests; - migration effects; - rollback implications.
+Each task contract must state: task ID and measurable goal; required reading;
+dependency evidence; allowed and forbidden paths; exact inputs/outputs;
+invariants; acceptance and negative tests; commands and prerequisites;
+migration and rollback effects; owner/reviewer; and handoff evidence.
+
+Follow `docs/06-ai/MULTI-LLM-ORCHESTRATION.md` and
+`tasks/templates/TASK-TEMPLATE.md`. The author-selected coding models are
+`deepseek-v4.1-flash` and `glm-5.3-flash`; verify runtime availability and
+capabilities rather than inventing identifiers or relying on model reputation.
+One bounded task and one writer per file at a time. Freeze shared contracts
+before dependent work; require a separate review of the exact submitted diff.
+Use existing authorization to continue ready tasks; do not add a permission
+gate for each routine step. Escalate unresolved requirement/architecture
+conflicts with evidence and a concrete recommendation.
 
 Agents must not broaden scope silently. If architecture conflicts are
 discovered, stop the affected change, document the conflict, and propose
 an ADR or follow-up task.
 
-## 13. Final principle
+## 13. Evidence, uncertainty and technical issues
+
+Follow `docs/06-ai/MODEL-EVIDENCE-POLICY.md`. Distinguish observed evidence,
+documented claims, inference, proposals and unknowns. Never invent test results,
+API behavior, citations, model dispatch, user approval or completion. Valid
+JSON and model agreement do not prove truth. Verify current sources/callers.
+
+When a claim is unsupported, stop the affected action, record/correct the
+claim, inspect downstream impact, obtain evidence, repair and revalidate.
+Do not bypass authorization, validation or recovery to continue. Creative
+story text is allowed; invented events do not become approved canon.
+
+Every model must record technical problems, confusion, unsupported claims,
+blockers and implementation gaps in the single file
+`docs/implementation/ISSUES-AND-GAPS.md` before a workaround or completion
+claim. Include evidence, owner task, impact, next action and closure check.
+Other docs reference issue IDs; do not create competing registers. Close only
+with resolution and verification evidence. Continue independent authorized
+work while a dependent path is blocked.
+
+## 14. Engram context persistence
+
+Use Engram MCP as mandatory durable working-context storage for coding agents.
+Follow the Engram checkpoint/recovery protocol in
+`docs/06-ai/MULTI-LLM-ORCHESTRATION.md`. Save decisions and verified discoveries
+as they occur; update a compact task/worktree/role checkpoint at meaningful
+boundaries, before handoff or planned context reset, and at the end of each
+substantive turn. Confirm save success before reporting a checkpoint saved.
+
+After `/clear`, compaction, or model replacement, recover only the relevant
+project/task memory, then verify the task contract, Git state, affected files
+and evidence before continuing the next unfinished step. Engram is a working
+context aid, not source-code truth, approval authority or NovelForge story canon.
+Never store secrets, entire transcripts or unnecessary manuscript content.
+
+Use the authoritative current session binding supplied by the runtime; never
+invent a session ID or reuse an old session's ID after a new session starts.
+If Engram is unavailable, report it, record the issue in ISSUES-AND-GAPS.md,
+and preserve a concise fallback handoff in the existing task/progress record.
+Do not claim automatic capture of `/clear` without a verified harness hook.
+
+## 15. Final principle
 
 > The LLM writes and reasons. NovelForge remembers, validates,
 > simulates, versions, and protects the story.

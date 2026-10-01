@@ -1,6 +1,11 @@
 # ADR-0008: Canon Authority & the Candidate Pipeline
 
 - **Status:** Accepted (2026-09-25)
+- **Partial supersession (2026-09-30):** ADR-0013 replaces §4's scheduling
+  deferral and the associated memory deferral with an early M1 revision/
+  checkpoint foundation and M3 consolidation. Canon supersede/authority
+  decisions remain accepted; historical implementation limitations below
+  remain accurate until the new runtime tasks are verified.
 - **Supersedes:** none
 - **Related:** ADR-0001 (module boundaries), ADR-0003 (database),
   ADR-0004 (authorization), ADR-0007 (knowledge & retrieval);

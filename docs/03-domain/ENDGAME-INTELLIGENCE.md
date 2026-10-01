@@ -1,5 +1,10 @@
 # Endgame Intelligence Specification
 
+Delivery: M7 after the integrated chapter/state/memory loop; depend on
+simulation only for modules the novel actually uses. Ending conditions and
+resolution decisions are versioned state. Surface their evidence and author
+controls; an LLM assessment alone cannot mark a critical promise resolved.
+
 ## Ending Vision vs Ending Script
 
 Store durable destination/tone, not a frozen final-chapter script.

@@ -2,6 +2,12 @@
 
 **Status:** Accepted (Phase 4)
 
+**Evolution note (2026-09-30):** The implementation-stage limitations below
+are historical. RETRIEVAL is now executable according to current code/status.
+ADR-0013 supersedes the deferral of durable execution and approval continuation:
+they are M2 acceptance requirements. They are still runtime gaps until their
+tasks pass; this note does not claim resume/worker implementation exists.
+
 ## Context
 
 Phase 4 introduces the three domain concepts CLAUDE.md §3 defines as

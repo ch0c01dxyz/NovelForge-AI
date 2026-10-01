@@ -5,6 +5,13 @@
 Rhythm preferences are soft constraints. Never implement "drama every N
 chapters" as a cron-like rule.
 
+Integration must honor the configured hardness of each consumed concern.
+An unconditional hard refusal is valid only for an explicit hard invariant
+or authorized hard policy; soft preferences remain evidence-backed advice.
+Derive story measurements from revision-linked events where available. A
+caller-supplied estimate must be labeled as such, not treated as observed
+chapter history. The author UI must expose policy and warning evidence.
+
 ## Drama policy
 
 Example author preference: - density: low; - typical gap: \~30--50

@@ -23,6 +23,19 @@ continuity, planning, or recovery to the model.
 -   Reach an earned ending with tracked resolution debt.
 -   Safely experiment, branch, checkpoint, compare, and restore story
     state.
+-   Publish explicit chapter versions and let non-member readers discover,
+    navigate and follow the released story without exposing drafts or spoilers.
+-   Import/export retained formats and manage AI definitions, routing,
+    references, usage and evaluation through usable author/admin surfaces.
+
+## Delivery success
+
+Prove the complete author loop: approved outline → generated/reviewed chapter
+→ author decisions → versioned manuscript and approved state → fresh memory
+for the next chapter. Prove recovery and the public reader journey separately.
+Backend phase completion alone does not establish these outcomes. Retained
+original requirements and release cuts are tracked in
+[DELIVERY-PLAN](../implementation/DELIVERY-PLAN.md).
 
 ## Product pillars
 

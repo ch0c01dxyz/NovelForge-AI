@@ -1,13 +1,48 @@
 # Implementation Progress
 
 > Durable record of phase/task status. Update after each substantial
-> change (CLAUDE.md section 35). Detailed architecture lives in
+> change (CLAUDE.md sections 10–13). Detailed architecture lives in
 > `docs/02-architecture/`, decisions in
 > [decisions.md](./decisions.md), test coverage in
 > [test-matrix.md](./test-matrix.md).
 
-Last updated: 2026-09-28 (Phase 6 slice 2 + Phase 7 slice 2 + post-slice-2
-audit fix `38a00ae`).
+Latest documentation update: 2026-10-01. Historical entries and their dates
+are preserved; current integration status lives in CURRENT and the delivery
+plan. New technical issues belong only in ISSUES-AND-GAPS.md.
+
+## Engram context persistence — 2026-10-01
+
+Subsequent authorized harness work is recorded in
+[Claude Code configuration](CLAUDE-CODE-CONFIGURATION.md): lean MCP registry,
+native Ruflo filtering, preserved Orca integration, repaired Windows Engram
+hooks and verified save-before-close behavior. Local MCP/status checks, hook
+failure tests and a live read-only Claude smoke passed. Interactive `/clear`
+and a long coding session remain untested; application delivery gates are
+unchanged. The paragraph below records the earlier documentation-only scope.
+
+Added mandatory compact coding-task checkpoints and scoped recovery after
+manual clear/compaction to the root constitutions, START-HERE, multi-model
+playbook and task template. Checkpoints preserve unfinished work and evidence;
+current repository files remain authoritative. Runtime session IDs must not
+be invented or carried into unrelated new sessions. Failed saves use the
+existing task/progress handoff and single issue register. No harness hook,
+automatic clear interception or real reset recovery has been implemented/tested.
+
+## Workflow documentation repair — 2026-09-30
+
+Applied the author's approved comparison recommendations in English:
+ADR-0013, corrected phase dependencies, early recovery foundation, complete
+chapter/review/approval/memory workflow, explicit reader/publishing scope,
+capability/task gates, and DeepSeek/GLM implementation/review protocol.
+Added mandatory model evidence/hallucination policy and one technical issues
+register. Root onboarding/constitutions and related domain/security/testing
+references are aligned. Historical broad completion labels now distinguish
+implemented slices from pending product integration.
+
+This is a documentation change. No runtime feature, model dispatch, database
+migration, application test or deployment is claimed. Documentation checks
+and remaining gaps must be recorded in test-matrix.md and ISSUES-AND-GAPS.md.
+Next task is NF-WF-001 (reviewed revision contract), not automatic Phase 10.
 
 ## Phase 0 — Repository & Architecture Foundation
 
@@ -2287,3 +2322,115 @@ instead. The lesson is the same one the recovery reference states: an
 `unverifiable` liveness verdict authorizes no action, and a *finished* turn
 with no report is evidence of failure, not of success.
 
+## M1 — NF-WF-001 revision contract (2026-10-01, documentation only)
+
+Design round for the minimum revision/checkpoint/restore contract. No runtime
+code, migration or package was created; NF-WF-001 is explicitly design-only.
+
+### Deliverable
+
+`docs/03-domain/STORY-VERSIONING.md` §Contract (C1–C11) with the architectural
+decision in ADR-0014, the follow-on task in
+`tasks/NF-WF-002-revision-foundation.md`, and the blueprint/index/plan
+consistency edits.
+
+### Review status — REVIEW_PENDING at the time, superseded below
+
+**Historical (as of this design round).** The reviewer role was dispatched to an
+Orca worker twice. Both attempts died on the inference gateway:
+`API Error: 500 status code (no body)`, 10/10 retries exhausted each time,
+terminal back at an idle prompt with no output. No independent review was
+performed, so the task was **not** VERIFIED and NF-WF-002 was not a reviewed
+dependency. Recorded in GAP-013 and GAP-016. The gateway later recovered and
+both reviews ran — see "Independent review rounds" below.
+
+### Coordinator self-review — five contract claims refuted against the schema
+
+Because no reviewer ran, the coordinator ran an adversarial pass over the
+artifacts against `schema.prisma` and the migration SQL. It refuted five
+claims, all corrected in place. Full table in GAP-016; the substance:
+
+1. **C1 did not classify `novels`.** 31 covered + 24 outside = 55, but the
+   schema has 56 tables. `novels` is now outside scope with a reason, and C1
+   classifies all 56 exactly once (verified by set-diff on `@@map` names).
+2. **C4 ordered the head `UPDATE` before `INSERT revision`.** `head_revision_id`
+   is a non-deferrable FK to `revisions(id)` (zero `DEFERRABLE` in the whole
+   migration set), so that order fails outright. Worse, insert-first collides
+   on `UNIQUE (branch_id, number)` and surfaces a Prisma `P2002` instead of the
+   promised 409. Corrected to lock the head `FOR UPDATE`, compare, insert, then
+   set the head — which also makes the number and the comparison atomic.
+3. **C7 deleted non-PUBLISHED `chapters` rows.** `chapter_versions.chapter_id`
+   is `ON DELETE CASCADE` (`20260924_phase2_manuscript/migration.sql:78`), so
+   that delete destroys the immutable version rows C1 promises to preserve —
+   and a PUBLISHED row exempted from the delete would still collide on
+   `UNIQUE (novel_id, number)`. C7 now exempts the manuscript pair entirely and
+   rewinds `chapters.currentVersionId` in place.
+4. **C7 named a "compatibility marker" that exists in no table.** Replaced with
+   the real behavior: the skipped PUBLISHED pointer is recorded in the change
+   set and surfaced to the author as a conflict.
+5. **Counts were wrong in four places.** C2 lists 8 tables and 5 enums, not the
+   "six tables, four enums" claimed in C8/C11 and NF-WF-002; C5 has 8 rows, not
+   "All six". Corrected everywhere.
+
+One question the pass could not answer was promoted to a contract rule rather
+than left as a placeholder: chapter identity when a later delete and re-create
+reuses a `chapters.number`. Restore has no correct move — re-inserting the
+snapshot row collides on `UNIQUE (novel_id, number)`, and updating in place
+attaches the pin to the wrong chapter — so C5/C7 now refuse it by name, and
+NF-WF-002 must implement preview detection plus the negative test.
+
+### Checks actually run
+
+- Set-diff of C1's covered and outside lists against `schema.prisma` `@@map`
+  names: 56/56 classified, no duplicate, no omission.
+- `grep -ric deferrable packages/database/prisma/migrations/` → 0 matches
+  (supports finding 2).
+- FK-action read of `20260924_phase2_manuscript/migration.sql:69–84` and the
+  `canon_facts`/`canon_fact_sources`/`outline_nodes`/`story_events` FK
+  constraints (supports finding 3).
+- Relative-link resolution over every changed file → all resolve.
+- C5 row enumeration → 8 data rows, matching the corrected text.
+
+Not run: any runtime test, migration, typecheck or build. NF-WF-001 is
+documentation-only and none of its acceptance criteria are runtime criteria.
+Zero selected tests is the correct result here and it does not pass G-01 —
+G-01 belongs to NF-WF-002.
+
+### Independent review rounds — both CHANGES_REQUESTED, not VERIFIED
+
+The gateway recovered later the same day (`POST /v1/messages` → 200 SSE;
+`/api/health` `ok:true`, `failedProviders:[]`), and two independent reviews ran.
+
+**Round 1** — dispatch `ctx_c4dcc5969164`, task `task_ccf5182daca8`, verdict
+CHANGES_REQUESTED: 3 P1, 3 P2, 3 P3. It confirmed C1 coverage (56/56), the C4
+CAS order, the C8 baseline split and C6 dedup as VERIFIED. All eight actionable
+findings were re-verified against source and corrected; the ninth needed no
+change.
+
+**Round 2** — dispatch `ctx_db14a16c6968`, task `task_ac1e018f9e8d`, ~3h43m,
+verdict CHANGES_REQUESTED. It **VERIFIED all eight round-1 corrections** and
+independently re-confirmed C1/C4/C8/C6, then raised five new findings: one P1
+(NF-WF-002 allowed paths omitted the four services owning C3's LOW operations,
+making the task invariant unimplementable as scoped), one P2 (C7 never stated
+that restore permanently discards post-boundary covered-row content, which
+`change_set_items` cannot recover — no before-image), and three P3 (an enum
+count, an overstated Prisma limitation, a stale test-matrix row). All five are
+corrected.
+
+The two rounds found **disjoint** defect sets — round 2 found nothing in the
+four areas round 1 had verified, and vice versa.
+
+Consequence: the round-2 corrections are themselves unreviewed. Per CLAUDE.md
+§11 an edit invalidates the review tied to the previous version, so the
+corrected diff owes a third review before NF-WF-002 is called VERIFIED. The
+contract remains **DESIGN_COMPLETE / REVIEWED, not VERIFIED**, and NF-WF-002
+stays gated.
+
+Reviewer identity is unresolved. Round 1 self-reported
+`bansosmontera/deepseek-v4.1-flash` from `ANTHROPIC_DEFAULT_HAIKU_MODEL`; round
+2 self-reported `glm-5.3-flash` from `ANTHROPIC_DEFAULT_FABLE_MODEL`. Two
+different names from two different environment variables, neither
+backend-proven, so the requested `glm-5.3-flash` is still UNKNOWN (GAP-013).
+
+Not run in either round: any runtime test, migration, typecheck or build. Both
+reviews were read-only source inspection.

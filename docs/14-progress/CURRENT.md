@@ -1,11 +1,29 @@
 # Current Project State
 
-Architecture baseline: V2 handoff pack created.\
-Implementation status: **Roadmap phases 0–9 COMPLETE (2026-09-30)**, plus
-the **AI Orchestrator milestone (2026-10-03)** — the `ai.generate`
-lifecycle, which the roadmap schedules inside Phase 3/4 rather than as a
-phase of its own (see the numbering note in
-`docs/12-roadmap/IMPLEMENTATION-ROADMAP.md`).
+Architecture baseline: V2 with workflow delivery repair accepted in ADR-0013.
+Implementation status: **backend/infrastructure slices across phases 0–9
+exist; integrated product delivery remains PARTIAL**. Historical phase/test
+results below describe their original scope, not completion of all retained
+requirements. The AI Orchestrator is a milestone within Phase 3/4.
+
+Current sequence: [DELIVERY-PLAN](../implementation/DELIVERY-PLAN.md).
+Next READY task: [NF-WF-002 revision foundation](../../tasks/NF-WF-002-revision-foundation.md).
+Its predecessor [NF-WF-001](../../tasks/NF-WF-001-revision-contract.md) is
+DESIGN_COMPLETE / REVIEWED: the contract is written and two independent reviews
+have run (`ctx_c4dcc5969164`, then `ctx_db14a16c6968`), both CHANGES_REQUESTED.
+Round 2 verified all eight round-1 corrections and raised five new findings;
+all five are now corrected. The corrected diff has not itself been re-reviewed,
+so NF-WF-002 must not be treated as VERIFIED. The reviewer role also never
+resolved to the requested `glm-5.3-flash` — both rounds self-reported a model
+from an environment variable, not from the backend (GAP-013). M1–M9 runtime
+gates are OPEN. This documentation repair implements
+no runtime features. Record all live technical issues, uncertainty and gaps in
+[ISSUES-AND-GAPS](../implementation/ISSUES-AND-GAPS.md). The sections below
+are the detailed baseline snapshot, not a competing issue queue.
+
+Historical entries include October-dated claims relative to the 2026-09-30
+review. Preserve dates pending receipt/commit attribution (GAP-014); they do
+not prove that checks were newly executed.
 
 - **Phase 0** — monorepo, Docker Compose (Postgres+pgvector, Redis),
   shared config, module boundaries, CI skeleton, Nuxt web shell, Fastify
@@ -77,7 +95,8 @@ phase of its own (see the numbering note in
   contracts and an SSE route whose refusals are real status codes, not
   error events.
 
-Latest gate: lint 0; typecheck clean in every workspace (including
+Historical reported gate (not rerun by this documentation repair): lint 0;
+typecheck clean in every workspace (including
 `apps/web`); `pnpm test` 35 files, 746 passed / 1 skipped on vitest
 5.0.2; 18 migrations applying from empty (both test databases, 0 failed or
 rolled back);
@@ -105,19 +124,19 @@ and `docs/adr/`.
 
 ## Next milestone
 
-**Phase 10 — Story Simulation** per
-`docs/12-roadmap/IMPLEMENTATION-ROADMAP.md`. Exit criterion: a
-reincarnated-genius/civilization-building validation scenario remains
-causally coherent. Not started — nothing in the tree implements it.
+**M1 — Revision and context foundation**, followed by M2 (complete author
+chapter loop) and M3 (state/memory for the next chapter). Pull forward the
+minimum Phase 11 slice before expanding optional Phase 10 simulation.
+The simulation validation scenario remains required for that later capability.
 
 An earlier version of this file named "Phase 9 — Reader Platform". That
 matched no phase in this repo's roadmap — it came from a different
 numbering scheme — and has been corrected. Reader-facing access is tracked
-as an unphased gap below.
+under Phase 13/M4–M5 below; its runtime gap remains open.
 
-Also available, and unblocked by the orchestrator: the **Phase 6 leftover —
-LLM fact extraction** (canon is author-authored only today; extraction is a
-contracted agent whose output is candidate canon needing approval, §2.13).
+LLM fact extraction remains open (NF-WF-008), with final-artifact, proposal,
+revision and approval dependencies. The orchestrator alone does not establish
+a safe automatic canonical application/consolidation path.
 
 ## Known gaps carried forward
 
@@ -193,9 +212,10 @@ contracted agent whose output is candidate canon needing approval, §2.13).
 
 ### Canon / knowledge
 
-- **Canon has no `revision_id` until Phase 11.** It participates in no
+- **Canon currently has no `revision_id`.** It participates in no
   checkpoint or branch; non-destructive correction relies on the supersede
-  chain alone (ADR-0008 §4).
+  chain alone. ADR-0013 supersedes ADR-0008 §4's scheduling deferral; the
+  runtime gap remains until NF-WF-002 passes.
 - A canon fact's chapter citation is a historical pin — resolvable forever,
   but not "the current version" once the chapter is saved again.
 - **LLM fact extraction is not implemented.** Canon is author-authored only;
@@ -214,27 +234,28 @@ contracted agent whose output is candidate canon needing approval, §2.13).
 - Only text ingestion exists; PDF/DOCX/TXT/Markdown extraction is not
   implemented (§32). `ReferenceKind.IMPORTED` is reserved for it.
 
-### Reader-facing access (unphased)
+### Reader-facing access (Phase 13, M4/M5; runtime gap remains)
 
-- **No roadmap phase owns reader-facing access.** `READER_MODE` and the
+- **Phase 13 now owns reader-facing delivery.** `READER_MODE` and the
   spoiler boundary exist (Phases 5/6) and are enforced on every read path,
-  but nothing in this repo's roadmap covers reader-facing publishing,
-  chapter access control for non-members, or a reader UI. An earlier
+  but reader-facing publishing, chapter access control for non-members and
+  a reader UI still require implementation. An earlier
   `CURRENT.md` called this "Phase 9 — Reader Platform"; the roadmap's
   Phase 9 is Narrative DNA & Rhythm. The capability is real and partial —
-  the phase to finish it is not yet chosen.
+  completion is assigned to NF-WF-012–014 and NF-WF-019.
 - `Chapter` has a publication state, but there is no route that serves a
   published chapter to an unauthenticated reader, and no reader-facing UI.
 
 ### Story intelligence (Phase 6 slice 3)
 
-- **Hierarchical memory (L0–L6) is not materialised**, and this is the one
-  roadmap deliverable Phase 6 did not build. ADR-0008 rejects it for this
+- **Hierarchical memory (L0–L6) is not materialised**, among the remaining
+  Phase 6 integration deliverables. ADR-0008 originally rejected it for this
   phase by name: summaries are rebuildable projections (§2.2), and
-  materialising them without a `built_from_revision` FK is the Phase 11
-  problem — a projection with no recorded source revision cannot be
+  materialising them without a `built_from_revision` FK was the original
+  reason for deferral — a projection with no recorded source revision cannot be
   invalidated when its canon changes (§2.14). The rule lives in
-  `docs/03-domain/STORY-INTELLIGENCE.md`; the tables wait for Phase 11.
+  `docs/03-domain/STORY-INTELLIGENCE.md`. ADR-0013 moves the revision
+  foundation to M1 and consolidation to M3; do not pre-create seven tables.
 - **No delete routes on any of the five tables.** `causal_edges` cascade
   from `story_events`, so deleting an event would silently take its causal
   claims with it (CLAUDE.md §9). A correction path needs a supersede chain
@@ -278,8 +299,8 @@ contracted agent whose output is candidate canon needing approval, §2.13).
 
 - A `RETRIEVAL` workflow step always searches in AUTHOR mode; the step
   contract has no `mode`/`readerChapter` field.
-- Workflow runs execute synchronously within the request. Moving them to
-  the worker queue is a later concern (Phase 13).
+- Workflow runs execute synchronously within the request. Durable execution
+  is now NF-WF-004/M2 work, not a late Phase 13 deferral.
 - An `AWAITING_APPROVAL` run stops but cannot yet be resumed. Its
   `completedAt` is deliberately null so a resume path can distinguish it
   from a finished run.

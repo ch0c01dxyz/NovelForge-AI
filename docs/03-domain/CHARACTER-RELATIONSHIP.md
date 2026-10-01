@@ -1,5 +1,13 @@
 # Character & Relationship Intelligence
 
+Integration gate (M3/M5): the chapter compiler resolves state at the target
+story position; final-text reviewers check knowledge/relationship constraints;
+the author can inspect evidence and propose corrections through the UI.
+API-only state storage is a partial slice. Establish explicit stable links
+to canon subjects and story events where consumers need them; never join
+identities by display name. Mutations participate in the revision/checkpoint
+contract from ADR-0013.
+
 ## Character state
 
 Track current and historical: location, goals, motivations, knowledge,

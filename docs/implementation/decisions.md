@@ -1,5 +1,33 @@
 # Decision Log
 
+## Engram context checkpoints — 2026-10-01
+
+The author requested mandatory Engram MCP working-context persistence because
+the agent harness is frequently cleared. Use bounded task/worktree/role
+checkpoints, proactive saves, a session summary before planned resets, and
+scoped recovery verified against current Git/files. Memory is a continuation
+aid, not canon, approval or fresh test evidence. Tool failure must be reported
+and captured in the single issue register with a fallback handoff in existing
+task/progress records. This is an execution convention, not a change to the
+product's story-memory architecture or installation of a harness hook.
+
+## Workflow delivery repair — 2026-09-30
+
+The author approved applying the comparison recommendations and required
+English documentation, explicit hallucination/evidence rules, correct phase
+dependencies and one technical gap register. Accepted
+[ADR-0013](../adr/ADR-0013-workflow-delivery-and-recovery-foundation.md)
+pulls minimum revisions/checkpoints ahead of integrated mutation/memory and
+advanced simulation. Phase numbering stays stable; delivery milestones own
+execution order. DeepSeek v4.1 Flash and GLM 5.3 Flash are requested coding
+implementer/reviewer identities, subject to runtime verification, not product
+model constants or capability claims. No runtime completion follows from
+this documentation decision.
+
+All live problems/confusion/gaps are recorded in
+[ISSUES-AND-GAPS](ISSUES-AND-GAPS.md); all consequential claims follow
+[MODEL-EVIDENCE-POLICY](../06-ai/MODEL-EVIDENCE-POLICY.md).
+
 > Quick log of significant architectural decisions. The full record —
 > Context/Decision/Alternatives/Consequences — lives in the ADR files.
 

@@ -5,6 +5,13 @@
 Represent persistent consequences without attempting a perfect
 real-world simulator. Modules are optional and activated per novel.
 
+Delivery dependency: complete the M1–M3 chapter/recovery/memory loop first,
+then the branch/recovery support required by each M6 module. Uncertain causal
+effects are proposals with evidence, not automatic canon. Use the shared
+Story Transaction and revision-derived projections; no separate unchecked
+simulation write path. What-If must remain isolated from main until an
+authorized, compatibility-checked merge.
+
 ## Generic primitives
 
 Entity, State, Event, Relationship, Knowledge, Resource, Rule,

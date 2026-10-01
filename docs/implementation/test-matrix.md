@@ -1,5 +1,60 @@
 # Test Matrix
 
+## Claude Code configuration — 2026-10-01
+
+Local harness checks passed: JSON/PowerShell parsing, credential preservation,
+backup hashes, MCP health, native Ruflo/Engram tool calls, mock hook failure and
+attribution tests, startup/compaction hook replays, and a live read-only Claude
+smoke with its automatic Engram handoff read back after session closure.
+Commands, counts and limits are in
+[the configuration receipt](CLAUDE-CODE-CONFIGURATION.md).
+No application tests, migrations, implementation dispatch, interactive clear
+or long-running coding session were performed for this configuration change.
+
+## Engram context protocol — 2026-10-01
+
+Documentation checks passed: `git diff --check` exit 0; inline static check
+of the seven edited instruction/progress documents verified 35 local links
+and anchors, balanced fences, equivalent AGENTS/CLAUDE rules and unique
+START-HERE section headings. Engram `mem_save` succeeded for checkpoint
+observation 10 (topic `context/workflow-docs/main/coordinator`); an actual
+`mem_get_observation` call returned the saved task/source/next-action content.
+This verifies save/read in the current session only. No manual clear,
+cross-session harness recovery or pre-clear hook was exercised/configured.
+No application tests, migrations or model dispatch were performed.
+
+## Workflow repair acceptance — 2026-09-30
+
+Runtime gates from TESTING.md G-01–G-12 are **pending**. Existing phase
+results below remain historical component evidence and do not pass the new
+integrated gates. Record failures/uncertainty only in ISSUES-AND-GAPS.md and
+link their IDs from task receipts.
+
+| Gate | Current status | Required owner evidence |
+|---|---|---|
+| G-01 Revision/recovery | design complete, runtime pending | NF-WF-001 contract written; first review ran (CHANGES_REQUESTED); corrected diff re-review owed (GAP-016); NF-WF-002 migration/restore/concurrency receipts still owed |
+| G-02 Chapter context | pending | NF-WF-003 source/selection/budget checks |
+| G-03 Durable approval | pending | NF-WF-004/005 restart/resume/duplicate/authorization checks |
+| G-04 Final artifact/UI apply | pending | NF-WF-006/007 edit/review/stream/conflict checks |
+| G-05 Canon and memory | pending | NF-WF-008/009 evidence/commit/rebuild/N→N+1 checks |
+| G-06 Narrative integration | pending | NF-WF-010 actual context/review/policy checks |
+| G-07 Author journey | pending | NF-WF-011 browser and recovery evidence |
+| G-08 Reader/release | pending | NF-WF-012–014 public access/version/spoiler checks |
+| G-09 Retained tools | pending | NF-WF-015–019 real UI/format/admin/social evidence |
+| G-10 Advanced domains | pending | NF-WF-020–022 branch/simulation/ending evidence |
+| G-11 Production release | pending | NF-WF-023 operational/load/accessibility receipts |
+| G-12 Model evidence policy | pending | Adversarial checks in each relevant AI task |
+
+Documentation-only verification: `git diff --check` exited 0. An inline
+Python static check over changed/new Markdown (excluding the untouched
+docs_compare archive) verified local file links, balanced fenced blocks,
+equivalent AGENTS/CLAUDE rules, mandatory policy/issue references, phase IDs
+0–14, capability IDs CAP-01–21 and task IDs NF-WF-001–024. It reported no
+errors. This is a self-review/check receipt, not an independent DeepSeek/GLM
+review. No application tests, model requests, migrations or deployments were
+run for this documentation change. GAP-009 remains VERIFY_PENDING for
+separate review; GAP-013 tracks requested-model availability.
+
 > Coverage tracking by phase. Test levels are defined in
 > [docs/10-testing/TESTING.md](../10-testing/TESTING.md): unit,
 > integration, contract, e2e, migration.

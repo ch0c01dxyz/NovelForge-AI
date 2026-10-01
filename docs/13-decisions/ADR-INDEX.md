@@ -2,6 +2,11 @@
 
 Initial accepted decisions:
 
+The short ADR-001..012 list is the historical V2 baseline, not the numbered
+implementation files. Cite it as “baseline ADR-00N” and link the matching
+ADR-NNNN file when one exists; bare ambiguous IDs must not drive a task.
+New decisions use only the sequential four-digit implementation namespace.
+
 -   ADR-001: PostgreSQL is canonical source of truth.
 -   ADR-002: Start as modular monolith + workers.
 -   ADR-003: pgvector/embeddings are derived retrieval infrastructure,
@@ -76,6 +81,21 @@ Initial accepted decisions:
     health reports evidence-backed findings (rule, severity, evidence,
     affected entities, status, remediation) and never a score. Realises
     baseline ADR-012.
+
+- [ADR-0013](../adr/ADR-0013-workflow-delivery-and-recovery-foundation.md):
+  Accepted workflow delivery repair — early minimum revisions/checkpoints,
+  shared chapter context, durable approval continuation, atomic derived-state
+  intent and explicit author/reader gates. Partially supersedes ADR-0008's
+  recovery/memory schedule and ADR-0006's queue/resume deferrals; runtime work
+  remains open until the delivery gates pass.
+- [ADR-0014](../adr/ADR-0014-revision-checkpoint-model.md): Revision,
+  checkpoint and rebuild-intent model — a per-novel branch head with
+  compare-and-set, relational state plus an index-only change log plus
+  reconstructable JSONB snapshots, an explicit 31-table coverage set with
+  named outside-scope refusal, snapshot capture inside the mutation
+  transaction, durable rebuild intent committed with the mutation, and
+  explicit nullable identity joins instead of name matching. Realises
+  ADR-0013 §1–§2/§6; produced by NF-WF-001, implemented by NF-WF-002.
 
 New ADRs start from [ADR-TEMPLATE.md](../adr/ADR-TEMPLATE.md), use the
 next sequential `ADR-NNNN` number, are filed under `docs/adr/`, and are

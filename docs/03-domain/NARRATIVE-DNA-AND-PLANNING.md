@@ -1,5 +1,11 @@
 # Narrative DNA & Planning
 
+Integration gate: approved outline and consumed DNA fields must reach the
+shared chapter compiler and final-text review, with source versions pinned.
+Stored JSON or pure rules alone do not prove planning behavior. Validate each
+consumed policy field; reject unsupported values instead of silently storing
+them as effective configuration. Revalidate output when the source plan changes.
+
 ## Narrative DNA
 
 Narrative DNA stores durable author preferences describing how the novel

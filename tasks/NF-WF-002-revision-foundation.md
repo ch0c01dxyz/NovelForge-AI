@@ -1,8 +1,8 @@
 # Task NF-WF-002: Minimum revision, checkpoint and restore foundation
 
-Status: READY (contract frozen by NF-WF-001; see
-[STORY-VERSIONING.md](../docs/03-domain/STORY-VERSIONING.md) §Contract and
-[ADR-0014](../docs/adr/ADR-0014-revision-checkpoint-model.md)).
+Status: READY (contract frozen by NF-WF-001 and **VERIFIED** over three review
+rounds — see [STORY-VERSIONING.md](../docs/03-domain/STORY-VERSIONING.md)
+§Contract and [ADR-0014](../docs/adr/ADR-0014-revision-checkpoint-model.md)).
 Milestone: M1. Capabilities: CAP-03, CAP-04, CAP-08.
 Implementer role / requested and resolved model: implementer /
 `deepseek-v4.1-flash` requested; resolved model recorded at execution.
@@ -76,6 +76,11 @@ Allowed paths:
   own a C3 operation: `story.ts` (events, timeline, threads, promises, causal
   edges), `characters.ts` and `relationships.ts` (character and relationship
   spans), `narrative.ts` (DNA/policy writes and antagonist advance).
+  **Scene CRUD is listed in C3 but has no production write path today** —
+  `manuscript.ts:4-6` records it as schema-only until a scene write path is
+  needed, `planning.ts:326` only reads, and the sole `scene.deleteMany` is test
+  cleanup. Do not invent one here; C3 names the operation class that will owe a
+  revision when that path lands (round-3 review observation).
 - `apps/api/src/services/platform.ts` — `createNovel` creates the `main`
   branch, its `BASELINE` revision and that revision's change set in the same
   transaction as the novel (C8). Without this no novel created after deploy can

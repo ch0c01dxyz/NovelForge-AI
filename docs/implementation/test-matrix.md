@@ -32,7 +32,7 @@ link their IDs from task receipts.
 
 | Gate | Current status | Required owner evidence |
 |---|---|---|
-| G-01 Revision/recovery | design complete, runtime pending | NF-WF-001 contract written; first review ran (CHANGES_REQUESTED); corrected diff re-review owed (GAP-016); NF-WF-002 migration/restore/concurrency receipts still owed |
+| G-01 Revision/recovery | design VERIFIED, runtime pending | NF-WF-001 contract VERIFIED over three review rounds (GAP-016); NF-WF-002 migration/restore/concurrency receipts still owed |
 | G-02 Chapter context | pending | NF-WF-003 source/selection/budget checks |
 | G-03 Durable approval | pending | NF-WF-004/005 restart/resume/duplicate/authorization checks |
 | G-04 Final artifact/UI apply | pending | NF-WF-006/007 edit/review/stream/conflict checks |

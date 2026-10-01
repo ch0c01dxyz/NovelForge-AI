@@ -80,7 +80,7 @@ model names are not evidence that those models performed this inspection.
 | GAP-013 Requested coding models not fully runtime-verified | OPEN / P2 | OBSERVED: read-only Claude smoke through configured `bansoskenari/deepseek-v4-1-flash` gateway alias called Engram/Ruflo successfully. Claude warns unrecognized model; backend identity/context/token metadata remain unverified. 2026-10-01: the reviewer worker's gateway (localhost:20127) returned HTTP 500 with no body on all 10 retries, twice, so no independent review ran. **Later the same day the gateway recovered** (`POST /v1/messages` → 200 SSE; `/api/health` `ok:true`, `failedProviders:[]`) and the review ran as dispatch `ctx_c4dcc5969164`. The worker self-reported `bansosmontera/deepseek-v4.1-flash` from `ANTHROPIC_DEFAULT_HAIKU_MODEL` — **not the `glm-5.3-flash` the contract requested**, so the reviewer role is still not the requested model and no backend identity is proven for either role. GLM runtime remains UNKNOWN. The round-2 re-review (`ctx_db14a16c6968`) self-reported `glm-5.3-flash` from `ANTHROPIC_DEFAULT_FABLE_MODEL` — a different env var, still a self-report, and still not proof that the requested model ran. **Root cause identified 2026-10-01:** those self-reports are the harness **tier aliases**, not the serving model. `~/.claude/settings.json` maps `ANTHROPIC_DEFAULT_HAIKU_MODEL` to `bansosmontera/deepseek-v4.1-flash` and `ANTHROPIC_DEFAULT_FABLE_MODEL` to `bansosmontera/glm-5.3-flash`, so each worker reported whichever alias its tier resolved to: the discrepancy was a tier change, not a model change, and neither reading proves which backend served the tokens. The requested id **is** dispatchable — `GET http://localhost:20127/v1/models` lists `bansosmontera/glm-5.3-flash`. Round 3 (`ctx_a28a8bb47dc7`, task `task_52d7a3338dbb`) therefore passed that id explicitly instead of relying on tier aliasing; whether inference is actually served by GLM still needs backend evidence, not an env read | Coordinator before each role dispatch; actual backend identity/tool/capability record for both roles, or explicit unavailable/alternative decision. See [harness receipt](CLAUDE-CODE-CONFIGURATION.md) |
 | GAP-014 Historical chronology needs attribution | OPEN / P2 | OBSERVED: progress/CURRENT contain October-dated claims relative to 2026-09-30 session. Preserve history; verify commit/receipt provenance before using chronology | Next evidence-maintenance task under M0; source attribution or explicit unresolved dates, not invented replacements |
 | GAP-015 Remaining retained capability gaps | OPEN / P2 | DOCUMENTED: formats, reader social/admin, advanced recovery/simulation/endgame/operations still need integration. CAP-12–20 enumerate scope | NF-WF-015–024; expand into specific entries when investigated and close only against capability receipts |
-| GAP-016 NF-WF-001 contract defects | RESOLVED_PENDING_REREVIEW / P1 | OBSERVED: two independent reviews ran (`ctx_c4dcc5969164`, then `ctx_db14a16c6968`), both verdict CHANGES_REQUESTED. Round 1 raised 3 P1 + 3 P2 + 3 P3; round 2 VERIFIED all eight round-1 corrections and re-confirmed C1/C4/C8/C6, then raised 1 P1 + 1 P2 + 3 P3 of its own. All five round-2 findings are corrected. The corrected diff has not been re-reviewed, so NF-WF-002 must not be called VERIFIED on it | NF-WF-001; re-review of the round-2-corrected diff, then NF-WF-002. See detail below |
+| GAP-016 NF-WF-001 contract defects | RESOLVED / P1 | OBSERVED: three independent reviews ran (`ctx_c4dcc5969164`, `ctx_db14a16c6968`, `ctx_a28a8bb47dc7`). Rounds 1 and 2 returned CHANGES_REQUESTED; round 3 returned **VERIFIED** — all five round-2 corrections correct, all regression checks pass (C1 56/56, C4 CAS order, C8 baseline split, C6 dedup, links, no placeholders). The contract is frozen and NF-WF-002 is unblocked. Reviewer backend identity stays unproven across all three (GAP-013) | NF-WF-002 implementation. See detail below |
 
 ## GAP-016 detail — NF-WF-001 contract defects
 
@@ -141,6 +141,32 @@ coordinator before the fix.
 Round-2 findings 10–14 are corrected. The same consequence applies one level
 down: those corrections are themselves unreviewed, so the contract remains
 **not VERIFIED** and NF-WF-002 stays gated.
+
+**Pass 4 — verification of the round-2 corrections**, dispatch
+`ctx_a28a8bb47dc7`, task `task_52d7a3338dbb`, ~1h9m, verdict **VERIFIED**.
+Scoped by design to the five round-2 findings plus a regression sweep, so that
+the regressive review loop would close rather than extend. Result: all five
+corrections VERIFIED, all regression checks pass.
+
+| # | Verified | Evidence |
+|---|---|---|
+| 10 | Scope now matches the invariant in both directions | `NF-WF-002:72-78` allows the seven services and names each one's C3 ownership; a residual sweep over `ai/orchestrator/definitions/definition-resolution/workflow-runs/retrieval/audit/platform` found **zero** covered-table writes — nothing missing, nothing added that owns none |
+| 11 | C7 states the loss accurately and nothing contradicts it | `STORY-VERSIONING.md:436-453`; `change_set_items` has no before-image (C2:174-177), confirmed in code — `canon.ts:781` payload holds only `{novelId, entityId, predicate}`, `characters.ts:271` records none. Line 446 explicitly qualifies "later history remains readable" as a claim about revisions; the removed-counts paragraph (400-404) closes the gap |
+| 12 | Enum arithmetic and prose agree | `RevisionOrigin` = 9 values; checkpoint list = 7; 9 − `RESTORE` − `BASELINE` = 7. ADR-0014 carries no competing count |
+| 13 | Rationale no longer overstates | `STORY-VERSIONING.md:214-223` states impossibility is not the reason and affirms a single-column closed set is expressible; `grep -c '^enum '` on `schema.prisma` = exactly 44 |
+| 14 | Row matches reality, no stale survivor | `test-matrix.md:35` updated. Remaining `reviewer gateway unavailable` text is the historical defect record itself (correct to keep); `progress.md:2337` is headed "superseded below"; the two `REVIEW_PENDING` occurrences in NF-WF-002 are forward-looking instructions, not state |
+
+Regressions re-checked and passing: C1 set-diff (31 covered + 25 outside = 56 =
+all `@@map` names, zero overlap/missing/phantom), C4 CAS order, C8 baseline
+split, C6 dedup, all relative links resolve, no placeholder tokens.
+
+One out-of-scope observation, recorded and not actioned: C3 lists "scene CRUD"
+as a LOW operation, but no production code path creates or updates `scenes` —
+`manuscript.ts:4-6` says so directly ("Scene CRUD is schema-only in Phase 2 (no
+API yet) ... YAGNI until then"), `planning.ts:326` only reads, and the sole
+writer is a test cleanup. C3 is correct as written — it names the operation
+class that will owe a revision when a write path lands — so no contract change.
+Noted in NF-WF-002 instead.
 
 ## Linked evidence
 

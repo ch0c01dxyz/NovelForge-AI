@@ -9,13 +9,14 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 Current sequence: [DELIVERY-PLAN](../implementation/DELIVERY-PLAN.md).
 Next READY task: [NF-WF-002 revision foundation](../../tasks/NF-WF-002-revision-foundation.md).
 Its predecessor [NF-WF-001](../../tasks/NF-WF-001-revision-contract.md) is
-DESIGN_COMPLETE / REVIEWED: the contract is written and two independent reviews
-have run (`ctx_c4dcc5969164`, then `ctx_db14a16c6968`), both CHANGES_REQUESTED.
-Round 2 verified all eight round-1 corrections and raised five new findings;
-all five are now corrected. The corrected diff has not itself been re-reviewed,
-so NF-WF-002 must not be treated as VERIFIED. The reviewer role also never
-resolved to the requested `glm-5.3-flash` — both rounds self-reported a model
-from an environment variable, not from the backend (GAP-013). M1–M9 runtime
+DESIGN_COMPLETE / **VERIFIED**: three independent reviews ran
+(`ctx_c4dcc5969164`, `ctx_db14a16c6968`, `ctx_a28a8bb47dc7`); rounds 1–2
+returned CHANGES_REQUESTED, round 3 returned VERIFIED with all five round-2
+corrections confirmed and every regression check passing. The contract is
+frozen and NF-WF-002 is unblocked. The reviewer role never resolved to a
+proven `glm-5.3-flash`: rounds 1–2 self-reported harness tier aliases, and
+round 3 correctly returned `MODEL_UNVERIFIED` despite being dispatched with
+the explicit id (GAP-013). M1–M9 runtime
 gates are OPEN. This documentation repair implements
 no runtime features. Record all live technical issues, uncertainty and gaps in
 [ISSUES-AND-GAPS](../implementation/ISSUES-AND-GAPS.md). The sections below

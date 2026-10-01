@@ -2420,17 +2420,49 @@ corrected.
 The two rounds found **disjoint** defect sets — round 2 found nothing in the
 four areas round 1 had verified, and vice versa.
 
-Consequence: the round-2 corrections are themselves unreviewed. Per CLAUDE.md
-§11 an edit invalidates the review tied to the previous version, so the
-corrected diff owes a third review before NF-WF-002 is called VERIFIED. The
-contract remains **DESIGN_COMPLETE / REVIEWED, not VERIFIED**, and NF-WF-002
-stays gated.
+**Round 3** — dispatch `ctx_a28a8bb47dc7`, task `task_52d7a3338dbb`, ~1h9m,
+verdict **VERIFIED**. Scoped by design to the five round-2 findings plus a
+regression sweep, so that the regressive review loop would close rather than
+extend. All five corrections VERIFIED; every regression check passed — C1
+set-diff (31 covered + 25 outside = 56 = all `@@map` names, zero
+overlap/missing/phantom), C4 CAS order, C8 baseline split, C6 dedup, all
+relative links resolve, no placeholder tokens.
+
+Round 3 correctly returned `MODEL_UNVERIFIED` for its own identity rather than
+asserting the requested model, and noted that `/v1/models` listing a `glm53`
+entry is not per-request backend proof. That is the right call; GAP-013 stands.
+
+### Verification revision and post-verification delta
+
+The VERIFIED verdict covers HEAD `45d2035`. Two later commits touch files, and
+the contract itself is unchanged by both:
+
+- `c78b3c5` — `CLAUDE-CODE-CONFIGURATION.md`, `ISSUES-AND-GAPS.md`,
+  `tasks/NF-WF-001-rereview-request.md` (the round-3 brief). None is a
+  contract artifact.
+- The commit recording this round — `test-matrix.md`, `ISSUES-AND-GAPS.md`,
+  this file, and one **additive note** in
+  `tasks/NF-WF-002-revision-foundation.md`.
+
+That note is the only post-verification change to a reviewed artifact. It
+records round 3's own out-of-scope observation (C3 lists "scene CRUD" but no
+production path writes `scenes`) and adds no contract content. Stated plainly
+rather than folded into the verdict: the verification covers `45d2035`, and
+NF-WF-002 differs from that revision by this note.
+
+### Consequence
+
+The contract is frozen and VERIFIED. NF-WF-002 is unblocked and is the next
+READY task. Reviewer backend identity remains unproven across all three rounds
+(GAP-013) — that is an evidence-quality caveat, not a defect in the contract.
 
 Reviewer identity is unresolved. Round 1 self-reported
 `bansosmontera/deepseek-v4.1-flash` from `ANTHROPIC_DEFAULT_HAIKU_MODEL`; round
-2 self-reported `glm-5.3-flash` from `ANTHROPIC_DEFAULT_FABLE_MODEL`. Two
-different names from two different environment variables, neither
-backend-proven, so the requested `glm-5.3-flash` is still UNKNOWN (GAP-013).
+2 self-reported `glm-5.3-flash` from `ANTHROPIC_DEFAULT_FABLE_MODEL`; round 3
+was dispatched with an explicit `--model bansosmontera/glm-5.3-flash` (present
+in the gateway catalog) and correctly returned `MODEL_UNVERIFIED`. The two
+self-reports are the harness tier aliases, not the serving model, so the
+requested `glm-5.3-flash` is still unproven (GAP-013).
 
 Not run in either round: any runtime test, migration, typecheck or build. Both
 reviews were read-only source inspection.

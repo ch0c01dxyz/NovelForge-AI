@@ -1,23 +1,26 @@
 # Task NF-WF-001: Specify the minimum consistent story revision contract
 
-Status: DESIGN_COMPLETE / REVIEWED — two independent reviews, both
-CHANGES_REQUESTED. Round 1 raised 3 P1, 3 P2, 3 P3; round 2
-(`ctx_db14a16c6968`) VERIFIED all eight round-1 corrections and re-confirmed
-C1/C4/C8/C6, then raised 1 P1, 1 P2, 3 P3 of its own. All five round-2 findings
-are corrected. The **corrected diff has not itself been re-reviewed**, so this
-is not VERIFIED. Not runtime implementation.
+Status: DESIGN_COMPLETE / **VERIFIED** — three independent review rounds.
+Round 1 raised 3 P1, 3 P2, 3 P3; round 2 (`ctx_db14a16c6968`) VERIFIED all eight
+round-1 corrections and re-confirmed C1/C4/C8/C6, then raised 1 P1, 1 P2, 3 P3
+of its own; round 3 (`ctx_a28a8bb47dc7`, task `task_52d7a3338dbb`) **VERIFIED
+all five round-2 corrections and every regression check**, verdict VERIFIED at
+HEAD `45d2035`. The reviewed artifact is frozen at that revision. Not runtime
+implementation.
 Milestone: M1. Capabilities: CAP-02, CAP-03, CAP-04, CAP-08.
 Requested implementer: deepseek-v4.1-flash. Requested reviewer: glm-5.3-flash.
 Resolved implementer: coordinator on `bansoskenari/deepseek-v4-1-flash`
 (harness alias; backend identity unverified, GAP-013). Resolved reviewer:
-`bansosmontera/deepseek-v4.1-flash` for round 1, then a worker self-reporting
-`glm-5.3-flash` from `ANTHROPIC_DEFAULT_FABLE_MODEL` for round 2 — **neither is
-proven to be the requested `glm-5.3-flash`**; both are environment self-reports,
-backend identity unverified (GAP-013). Repository revision at execution:
+`bansosmontera/deepseek-v4.1-flash` for round 1, a worker self-reporting
+`glm-5.3-flash` for round 2, and for round 3 the dispatch passed
+`--model bansosmontera/glm-5.3-flash` explicitly, which the gateway catalog
+lists. **Backend identity is still unproven for all three** — the env values
+are tier aliases, not per-request backend proof; round 3 correctly returned
+`MODEL_UNVERIFIED` (GAP-013). Repository revision at execution:
 `cfe762a5cfed6f44d80af16ad3c5fd008188ae95` + the M0 documentation set.
-Review dispatches: `ctx_c4dcc5969164` (round 1) and `ctx_db14a16c6968`
-(round 2) on `run_183a5c2db65c`, after two earlier dispatches died on a gateway
-HTTP 500 (GAP-013).
+Review dispatches: `ctx_c4dcc5969164` (round 1), `ctx_db14a16c6968` (round 2)
+and `ctx_a28a8bb47dc7` (round 3) on `run_183a5c2db65c`, after two earlier
+dispatches died on a gateway HTTP 500 (GAP-013).
 
 ## Goal
 

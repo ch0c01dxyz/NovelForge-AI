@@ -24,6 +24,8 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 import type { NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError, isExclusionViolation } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
+import { advanceForMutation, createWithRevision } from "./revisions.ts";
 
 // --- Views ---
 
@@ -150,6 +152,9 @@ export function createCharacterServices(deps: {
   audit: AuditService;
 }): CharacterServices {
   const { db, audit } = deps;
+  // Head CAS for every covered mutation (C3/C4). Bound once so each call site
+  // stays a five-argument call; the helper opens its own transaction.
+  const withRevision = createWithRevision(db);
 
   /** Tenant gate: membership + novel resolved server-side, missing either is the SAME 404 (no leak); capability granular (ADR-0004). */
   async function gate(
@@ -208,9 +213,15 @@ export function createCharacterServices(deps: {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
       let created;
       try {
-        created = await db.character.create({
+        created = await withRevision(
+  { workspaceId, novelId, actorUserId },
+  "character.write",
+  "Character",
+  ["characters"],
+  (tx) => tx.character.create({
           data: { workspaceId, novelId, key, name, summary, createdById: actorUserId },
-        });
+        }),
+);
       } catch (error) {
         // characters_novel_id_key_key. A duplicate key is an authoring
         // mistake, not a server fault.
@@ -261,10 +272,34 @@ export function createCharacterServices(deps: {
       // (schema), so this is the one delete that has to be deliberate: it
       // removes the character's whole history. The route requires the
       // caller to have read it first.
-      const deleted = await db.character.deleteMany({
-        where: { id: characterId, novelId, workspaceId },
+      // The count check is INSIDE the transaction, deliberately: a 404 thrown
+      // after the commit would leave a revision for a delete that deleted
+      // nothing (C4 — the revision and the mutation share one boundary).
+      await db.$transaction(async (tx) => {
+        const deleted = await tx.character.deleteMany({
+          where: { id: characterId, novelId, workspaceId },
+        });
+        if (deleted.count === 0) throw new NotFoundError("character");
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "character.write",
+          origin: "MANUAL",
+          actorUserId,
+          // The cascade reaches every table below, so all of them are
+          // invalidated — the intent is derived from what actually changed.
+          tables: [
+            "characters",
+            "character_states",
+            "character_knowledge",
+            "character_arcs",
+            "character_arc_milestones",
+            "relationship_stances",
+            "bond_members",
+          ],
+          items: [{ entityType: "Character", entityId: characterId, operation: "DELETE" }],
+        });
       });
-      if (deleted.count === 0) throw new NotFoundError("character");
       await audit.record({
         actorUserId,
         workspaceId,
@@ -300,9 +335,15 @@ export function createCharacterServices(deps: {
 
       let created;
       try {
-        created = await db.characterState.create({
+        created = await withRevision(
+  { workspaceId, novelId, actorUserId },
+  "character.write",
+  "CharacterState",
+  ["character_states"],
+  (tx) => tx.characterState.create({
           data: { characterId, fromChapter, toChapter, summary },
-        });
+        }),
+);
       } catch (error) {
         // The EXCLUDE, for a race the pre-check above did not see.
         if (isExclusionViolation(error)) {
@@ -392,9 +433,15 @@ export function createCharacterServices(deps: {
 
       let created;
       try {
-        created = await db.characterKnowledge.create({
+        created = await withRevision(
+  { workspaceId, novelId, actorUserId },
+  "character.write",
+  "CharacterKnowledge",
+  ["character_knowledge"],
+  (tx) => tx.characterKnowledge.create({
           data: { characterId, factId, stance, source, fromChapter, toChapter },
-        });
+        }),
+);
       } catch (error) {
         if (isExclusionViolation(error)) {
           throw new ConflictError(
@@ -469,9 +516,15 @@ export function createCharacterServices(deps: {
     async createArc({ actorUserId, workspaceId, novelId, characterId, title, status }) {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
       await requireCharacter(characterId, novelId, workspaceId);
-      const created = await db.characterArc.create({
+      const created = await withRevision(
+  { workspaceId, novelId, actorUserId },
+  "character.write",
+  "CharacterArc",
+  ["character_arcs"],
+  (tx) => tx.characterArc.create({
         data: { characterId, title, status },
-      });
+      }),
+);
       await audit.record({
         actorUserId,
         workspaceId,
@@ -544,9 +597,15 @@ export function createCharacterServices(deps: {
 
       let created;
       try {
-        created = await db.characterArcMilestone.create({
+        created = await withRevision(
+  { workspaceId, novelId, actorUserId },
+  "character.write",
+  "CharacterArcMilestone",
+  ["character_arc_milestones"],
+  (tx) => tx.characterArcMilestone.create({
           data: { arcId, chapter, summary },
-        });
+        }),
+);
       } catch (error) {
         if ((error as { code?: string })?.code === "P2002") {
           throw new ConflictError(`this arc already has a milestone at chapter ${chapter}`);

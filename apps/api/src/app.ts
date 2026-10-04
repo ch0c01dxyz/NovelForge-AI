@@ -30,6 +30,7 @@ import { registerCharacterRoutes } from "./character-routes.ts";
 import { registerRelationshipRoutes } from "./relationship-routes.ts";
 import { registerStoryRoutes } from "./story-routes.ts";
 import { registerNarrativeRoutes } from "./narrative-routes.ts";
+import { registerRevisionRoutes } from "./revision-routes.ts";
 import { createCharacterServices } from "./services/characters.ts";
 import { createRelationshipServices } from "./services/relationships.ts";
 import { createStoryServices } from "./services/story.ts";
@@ -37,6 +38,7 @@ import { createNarrativeServices } from "./services/narrative.ts";
 import { createPlanningServices } from "./services/planning.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
+import { createRevisionServices } from "./services/revisions.ts";
 import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
@@ -258,6 +260,14 @@ export async function buildApp(
     registerNarrativeRoutes(app, {
       auth,
       services: createNarrativeServices({ db: options.db, audit }),
+    });
+
+    // Story versioning (M1, NF-WF-002). The C3 services already take the head
+    // CAS themselves; this route module owns the operations that are a whole
+    // transaction of their own: checkpoint capture, restore preview and apply.
+    registerRevisionRoutes(app, {
+      auth,
+      services: createRevisionServices({ db: options.db, audit }),
     });
 
     registerDefinitionRoutes(app, {

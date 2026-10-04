@@ -90,6 +90,24 @@ close only with verified resolution, not a model assertion.
 integration evidence satisfy a runtime milestone. A design-only task satisfies
 its contract gate, not the runtime feature. Record self-review separately.
 
+## Review identity and bounded continuation
+
+Before review, freeze a small manifest of the submitted code, tests and
+contract artifacts: paths, base revision, byte hashes, line-ending/normalization
+policy and scope. Store it in the task/progress handoff or an existing review
+receipt. A dirty HEAD or combined diff hash alone is insufficient. The reviewer
+reproduces the identity before judging it. Do not hash a live register row that
+contains that same hash; append review/status receipts separately from frozen
+implementation artifacts.
+
+After a finding, review the changed portions plus named regression risks.
+Retain attributed unchanged reviews; do not reopen every historical question
+or run an unbounded swarm. A new discovery gets an issue and owner; it blocks
+only dependent acceptance. End a task with a disposition, confirmed checkpoint
+or fallback, exact next action and parent gate status. One approved child does
+not accept the parent or release. Context pressure is a checkpoint boundary,
+not permission to abandon running workers or launch duplicates.
+
 ## Shared-state discipline
 
 One writer per file; migrations, shared contracts, and capability vocabulary

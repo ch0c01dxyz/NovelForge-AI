@@ -32,6 +32,8 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 import type { NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError, isExclusionViolation } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
+import { advanceForMutation, createWithRevision } from "./revisions.ts";
 
 // --- Views ---
 
@@ -151,6 +153,8 @@ export function createRelationshipServices(deps: {
   audit: AuditService;
 }): RelationshipServices {
   const { db, audit } = deps;
+  // Bound once so each call site stays a five-argument call (see revisions.ts).
+  const withRevision = createWithRevision(db);
 
   /** Tenant gate: membership + novel resolved server-side, missing either is the SAME 404 (no leak); capability granular (ADR-0004). */
   async function gate(
@@ -239,9 +243,15 @@ export function createRelationshipServices(deps: {
 
       let created;
       try {
-        created = await db.relationshipStance.create({
-          data: { workspaceId, fromCharacterId, toCharacterId, stance, fromChapter, toChapter },
-        });
+        created = await withRevision(
+          { workspaceId, novelId, actorUserId },
+          "relationship.write",
+          "RelationshipStance",
+          ["relationship_stances"],
+          (tx) => tx.relationshipStance.create({
+            data: { workspaceId, fromCharacterId, toCharacterId, stance, fromChapter, toChapter },
+          }),
+        );
       } catch (error) {
         if (isExclusionViolation(error)) {
           throw new ConflictError(
@@ -371,21 +381,27 @@ export function createRelationshipServices(deps: {
         throw new ConflictError(failures.map((f) => f.message).join("; "));
       }
 
-      const created = await db.bond.create({
-        data: {
-          workspaceId,
-          novelId,
-          structure,
-          fromChapter,
-          toChapter,
-          createdById: actorUserId,
-          members: { create: [...new Set(memberIds)].map((characterId) => ({ characterId })) },
-        },
-        select: {
-          id: true, novelId: true, structure: true, fromChapter: true, toChapter: true,
-          members: { select: { characterId: true } },
-        },
-      });
+      const created = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "relationship.write",
+        "Bond",
+        ["bonds", "bond_members"],
+        (tx) => tx.bond.create({
+          data: {
+            workspaceId,
+            novelId,
+            structure,
+            fromChapter,
+            toChapter,
+            createdById: actorUserId,
+            members: { create: [...new Set(memberIds)].map((characterId) => ({ characterId })) },
+          },
+          select: {
+            id: true, novelId: true, structure: true, fromChapter: true, toChapter: true,
+            members: { select: { characterId: true } },
+          },
+        }),
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -417,8 +433,30 @@ export function createRelationshipServices(deps: {
       // Members, transitions and interactions all cascade. Deleting a bond
       // removes its recorded history; the route requires the caller to have
       // read it first.
-      const deleted = await db.bond.deleteMany({ where: { id: bondId, novelId, workspaceId } });
-      if (deleted.count === 0) throw new NotFoundError("bond");
+      // The count check is INSIDE the transaction, deliberately: a 404 thrown
+      // after the commit would leave a revision for a delete that deleted
+      // nothing (C4 — the revision and the mutation share one boundary).
+      await db.$transaction(async (tx) => {
+        const deleted = await tx.bond.deleteMany({ where: { id: bondId, novelId, workspaceId } });
+        if (deleted.count === 0) throw new NotFoundError("bond");
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "relationship.write",
+          origin: "MANUAL",
+          actorUserId,
+          // Members, transitions and interactions all cascade from the bond,
+          // so every one of them is invalidated — the intent is derived from
+          // what actually changed.
+          tables: [
+            "bonds",
+            "bond_members",
+            "bond_transitions",
+            "meaningful_interactions",
+          ],
+          items: [{ entityType: "Bond", entityId: bondId, operation: "DELETE" }],
+        });
+      });
       await audit.record({
         actorUserId,
         workspaceId,
@@ -469,9 +507,15 @@ export function createRelationshipServices(deps: {
 
       let created;
       try {
-        created = await db.bondTransition.create({
-          data: { bondId, chapter, stage, kind },
-        });
+        created = await withRevision(
+          { workspaceId, novelId, actorUserId },
+          "relationship.write",
+          "BondTransition",
+          ["bond_transitions"],
+          (tx) => tx.bondTransition.create({
+            data: { bondId, chapter, stage, kind },
+          }),
+        );
       } catch (error) {
         if ((error as { code?: string })?.code === "P2002") {
           throw new ConflictError(`this bond already has a transition at chapter ${chapter}`);
@@ -550,9 +594,15 @@ export function createRelationshipServices(deps: {
       if (!Number.isFinite(weight) || weight < 0 || weight > 1) {
         throw new ConflictError(`weight ${weight} is outside 0..1`);
       }
-      const created = await db.meaningfulInteraction.create({
-        data: { workspaceId, bondId, chapter, weight, summary },
-      });
+      const created = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "relationship.write",
+        "MeaningfulInteraction",
+        ["meaningful_interactions"],
+        (tx) => tx.meaningfulInteraction.create({
+          data: { workspaceId, bondId, chapter, weight, summary },
+        }),
+      );
       await audit.record({
         actorUserId,
         workspaceId,

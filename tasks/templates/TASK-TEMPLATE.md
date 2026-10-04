@@ -4,6 +4,8 @@ Status: PLANNED | READY | IN_PROGRESS | REVIEW_PENDING | CHANGES_REQUESTED | BLO
 Milestone / capability IDs:
 Implementer role / requested and resolved model:
 Reviewer role / requested and resolved model:
+Readiness evidence / unresolved decisions / parent acceptance owner:
+Frozen review manifest / exact artifact paths and identity:
 Baseline revision / local changes to preserve:
 Engram checkpoint topic key / last confirmed observation reference:
 
@@ -33,6 +35,9 @@ Allowed paths: exact existing or proposed files/directories.
 Forbidden paths: everything else, including unrelated migrations/features.
 Inputs: exact type/schema/function/source versions; distinguish new contracts.
 Outputs: exact type/schema/function/artifact and its consumer.
+Name diagnostic/error and verification paths explicitly; "affected tests" is
+not an allowed-path contract. Distinguish task readiness, reviewer verdict,
+issue state and parent acceptance. A review manifest must not hash itself.
 Out of scope: exclusions with a follow-up owner for retained requirements.
 
 ## Behavior and invariants

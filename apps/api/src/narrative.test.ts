@@ -50,6 +50,8 @@ import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
+import { createAuditService } from "./services/audit.ts";
+import { createPlatformServices } from "./services/platform.ts";
 import type { AIGateway } from "@novelforge/ai-core";
 
 const TEST_DB = "novelforge_test_phase9";
@@ -184,8 +186,14 @@ async function seedWorkspace(ownerId: string, slug: string) {
   await db.membership.create({
     data: { workspaceId: ws.id, userId: ownerId, role: "OWNER" },
   });
-  const novel = await db.novel.create({
-    data: { workspaceId: ws.id, title: `Novel ${slug}`, slug, createdById: ownerId },
+  // Through the production path, not a raw row: `createNovel` is where C8's
+  // baseline branch/revision lives, so a raw insert would seed a novel the
+  // product cannot produce (no head) and every covered mutation would 409.
+  const novel = await createPlatformServices({ db, audit: createAuditService(db) }).createNovel({
+    actorUserId: ownerId,
+    workspaceId: ws.id,
+    title: `Novel ${slug}`,
+    slug,
   });
   return { workspaceId: ws.id, novelId: novel.id };
 }
@@ -805,10 +813,11 @@ describe("antagonist lifecycle", () => {
     // winner's, storing a BACKWARD transition the rule exists to reject.
     //
     // The race is forced rather than hoped for: the FRICTION -> CONFRONTATION
-    // advance is held at its write while a second request reads the row,
-    // validates CONFRONTATION -> DEFEAT, and commits it. Releasing the parked
-    // write then asks it to move the row BACK to CONFRONTATION. The predicate
-    // makes that a no-op; without it, this test stores CONFRONTATION.
+    // advance is held *before* its write lands, while a second request reads
+    // the still-FRICTION row, validates FRICTION -> DEFEAT and commits it.
+    // Releasing the parked write then asks it to move the row BACK to
+    // CONFRONTATION on the strength of its stale read. The predicate makes
+    // that a no-op; without it, this test stores CONFRONTATION.
     const f = await seed("race");
     const characterId = await makeCharacter(f, "villain");
     const created = await post(f, "/narrative/antagonists", {
@@ -819,23 +828,49 @@ describe("antagonist lifecycle", () => {
     });
     const antagonistId = (created.body["antagonist"] as { id: string }).id;
 
-    const realUpdateMany = db.antagonist.updateMany.bind(db.antagonist);
-    let staged: (() => Promise<{ count: number }>) | null = null;
-    const spy = vi.spyOn(db.antagonist, "updateMany").mockImplementationOnce(
-      // Prisma's updateMany is generic over its args; the spy only needs the
-      // one call it parks, so the signature is erased here rather than
+    // NF-WF-002 moved this write inside `db.$transaction`, so the service
+    // calls the transaction's delegate, not the root client's — the two are
+    // distinct objects with distinct `updateMany` functions. Parking the root
+    // delegate would park nothing. Wrap the transaction instead and hold its
+    // write open, so the first request is still inside its own transaction
+    // when the second one commits past it.
+    //
+    // The held-open transaction spans a second HTTP round trip, so the default
+    // 5s interactive-transaction timeout is raised: on a slow box that timeout
+    // would abort the parked transaction and surface as a Prisma timeout
+    // instead of the assertion under test. The row is NOT locked while parked
+    // (the write has not run), so the second request is genuinely concurrent
+    // rather than queued behind it.
+    const realTransaction = db.$transaction.bind(db);
+    let release: (() => void) | null = null;
+    let parked: Promise<{ count: number }> | null = null;
+    const spy = vi.spyOn(db, "$transaction").mockImplementationOnce(
+      // Prisma's transaction signature is generic over its callback; the spy
+      // only needs the one call it parks, so it is erased here rather than
       // reconstructed.
-      (async (args: Parameters<typeof realUpdateMany>[0]) => {
-        staged = () => realUpdateMany(args);
-        return { count: 0 }; // the first caller parks here
-      }) as never,
+      ((fn: (tx: unknown) => unknown, opts?: unknown) =>
+        realTransaction(
+          async (tx: { antagonist: { updateMany: unknown } }) => {
+            const real = (
+              tx.antagonist.updateMany as (a: unknown) => Promise<{ count: number }>
+            ).bind(tx.antagonist);
+            tx.antagonist.updateMany = async (args: unknown) => {
+              parked = new Promise<{ count: number }>((resolve) => {
+                release = () => resolve(real(args));
+              });
+              return parked;
+            };
+            return fn(tx);
+          },
+          { timeout: 30_000, ...(opts as object) } as never,
+        )) as never,
     );
 
     try {
       const first = post(f, `/narrative/antagonists/${antagonistId}/stage`, {
         stage: "CONFRONTATION",
       });
-      await vi.waitFor(() => expect(staged).not.toBeNull());
+      await vi.waitFor(() => expect(parked).not.toBeNull());
 
       // Commits CONFRONTATION -> DEFEAT while the first request still
       // believes the row is FRICTION.
@@ -845,10 +880,11 @@ describe("antagonist lifecycle", () => {
       expect(second.statusCode, JSON.stringify(second.body)).toBe(200);
 
       spy.mockRestore();
-      const parked = await staged!();
+      release!();
+      const parkedResult = await parked!;
       const stored = await db.antagonist.findUniqueOrThrow({ where: { id: antagonistId } });
       // The stale writer's predicate no longer matches, so it changed nothing.
-      expect(parked.count).toBe(0);
+      expect(parkedResult.count).toBe(0);
       expect(stored.stage).toBe("DEFEAT");
 
       const firstRes = await first;

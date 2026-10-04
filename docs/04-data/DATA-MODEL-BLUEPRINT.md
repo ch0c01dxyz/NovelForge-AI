@@ -77,6 +77,18 @@ coverage membership, baseline migration, head CAS and restore semantics are in
 [STORY-VERSIONING.md](../03-domain/STORY-VERSIONING.md) §Contract and
 [ADR-0014](../adr/ADR-0014-revision-checkpoint-model.md).
 
+`snapshots.revision_id` is `@unique`: a snapshot belongs to exactly one revision,
+and a checkpoint hangs off the revision whose state it captured, never off the
+revision its capture created. Two checkpoints may therefore share one snapshot —
+the reuse is required by that constraint, not an optimization. Which revision a
+checkpoint pins depends on the capture path; see
+[STORY-VERSIONING.md](../03-domain/STORY-VERSIONING.md) §C12.3.
+
+`domain_outbox` is named below and **does not exist** in `schema.prisma`. No
+domain event producer or consumer exists in the repository either; the
+`revisionId` field in `packages/contracts/events.ts` is a future requirement,
+not wired behavior. See §C12.4 and GAP-023.
+
 ## AI
 
 agents, agent_versions, skills, skill_versions, workflows,

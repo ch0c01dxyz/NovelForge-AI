@@ -31,9 +31,17 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**First task:** [NF-WF-001 — recovery and revision contract](tasks/NF-WF-001-revision-contract.md).
-It is a design/contract task; its completion does not implement recovery.
-After it passes review, expand NF-WF-002 into an executable task contract.
+**Current next task:** resolve the open scope decision in the drafted
+[NF-WF-003 — chapter context compiler](tasks/NF-WF-003-chapter-context-compiler.md)
+contract (**PLANNED**, not dispatchable), then review it before any coding.
+001 design and children 002A–D have recorded reviews; do not restart them.
+[002F — foundation acceptance](tasks/NF-WF-002F-foundation-acceptance.md)
+returned **VERIFIED 2026-10-04 for the evidenced M1 foundation scope only**:
+that is self-verification by the implementing model, not an independent review,
+so GAP-013 stays OPEN, and full cross-domain recovery stays OPEN under GAP-004.
+002E stays PLANNED until a consumer is designed; do not create an outbox
+speculatively. Read CURRENT and the single issue register for
+evidence/limitations; queue pointers are not test receipts.
 
 ## Reference reading order
 

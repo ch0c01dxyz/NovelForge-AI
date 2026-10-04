@@ -25,8 +25,18 @@ export class NotFoundError extends Error {
 
 export class ConflictError extends Error {
   readonly code = "CONFLICT" as const;
-  constructor(message: string) {
+  /**
+   * The head observed at a head-expectation refusal (GAP-022), so the caller
+   * can re-read instead of silently retrying a plan built on a stale head
+   * (C4). `null` is a real observation — "no head exists yet" — so presence is
+   * signalled by the property being set at all, never by its truthiness.
+   * Absent on every other conflict: a generic 409 must not carry a head the
+   * refusal never observed, and authorization gates run before disclosure.
+   */
+  readonly currentHeadRevisionId?: string | null;
+  constructor(message: string, head?: { currentHeadRevisionId: string | null }) {
     super(message);
+    if (head) this.currentHeadRevisionId = head.currentHeadRevisionId;
   }
 }
 
@@ -378,18 +388,55 @@ export function createPlatformServices(deps: {
       });
       if (existing) throw new ConflictError("novel slug already exists in workspace");
 
+      // One transaction, not three sequential writes (C8). A novel is never
+      // observable without a head: the first covered mutation's
+      // `SELECT … FOR UPDATE` on the branch row would find nothing and
+      // surface as a 404 or 500 instead of the promised CAS. Lazy
+      // create-if-absent init would put that race on the hot mutation path,
+      // so the branch, its BASELINE revision and that revision's change set
+      // are created here, with the novel.
       let novel;
       try {
-        novel = await db.novel.create({
-          data: { workspaceId, title, slug, createdById: actorUserId },
+        novel = await db.$transaction(async (tx) => {
+          const created = await tx.novel.create({
+            data: { workspaceId, title, slug, createdById: actorUserId },
+          });
+          await tx.novelSettings.create({
+            data: { novelId: created.id, settings: {} },
+          });
+          // The head pointer is a non-deferrable FK to revisions(id), so the
+          // branch starts with a NULL head and is pointed at the revision
+          // last — the same order the M1 migration's backfill uses.
+          const branch = await tx.novelBranch.create({
+            data: { workspaceId, novelId: created.id, name: "main" },
+          });
+          const revision = await tx.revision.create({
+            data: {
+              workspaceId,
+              novelId: created.id,
+              branchId: branch.id,
+              parentRevisionId: null,
+              number: 1,
+              origin: "BASELINE",
+              message: "baseline created with the novel",
+              createdById: actorUserId,
+            },
+          });
+          await tx.novelBranch.update({
+            where: { id: branch.id },
+            data: { headRevisionId: revision.id },
+          });
+          // Empty change set, no snapshot: the labeled baseline *checkpoint*
+          // is an explicit authorized operation (C8).
+          await tx.changeSet.create({
+            data: { revisionId: revision.id, workspaceId, novelId: created.id },
+          });
+          return created;
         });
       } catch (e) {
         if (isUniqueViolation(e)) throw new ConflictError("novel slug already exists in workspace");
         throw e;
       }
-      await db.novelSettings.create({
-        data: { novelId: novel.id, settings: {} },
-      });
       await audit.record({
         actorUserId,
         workspaceId,

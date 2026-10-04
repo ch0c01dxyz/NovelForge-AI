@@ -1,6 +1,23 @@
 # Task NF-WF-002: Minimum revision, checkpoint and restore foundation
 
-Status: READY (contract frozen by NF-WF-001 and **VERIFIED** over three review
+Status: IMPLEMENTED_WITH_GAPS; its children are landing. NF-WF-002A is
+REVIEWED/APPROVE. NF-WF-002B delivered the GAP-019 clarification and, in doing
+so, found **GAP-024** (a real defect: four HIGH call sites capture their
+`PRE_MUTATION` snapshot after the mutation's writes) plus **GAP-022** (no
+mutation route accepts a client head expectation) and **GAP-023** (no domain
+event producer). NF-WF-002C executed the GAP-024 production fix on 2026-10-02 and it is
+**complete**: all four sites now advance before their first covered-table
+write, each gained the payload-content assertion that would have caught the
+defect, each was proven to fail against the old ordering and pass against the
+new, and the independent re-review returned APPROVE with no findings.
+**GAP-024 is CLOSED.** G-01 parent acceptance is therefore **not** a
+formality: it
+must either close GAP-022 or record it as an accepted limitation (GAP-024 is closed).
+Current next action is [002D](NF-WF-002D-mutation-head-expectation.md), then
+[002F](NF-WF-002F-foundation-acceptance.md) for integrated parent acceptance.
+002E remains consumer-design-gated. Historical child receipts follow in
+progress; no parent or full-M1 acceptance is implied by the child status.
+The original dispatch was READY (contract frozen by NF-WF-001 and **VERIFIED** over three review
 rounds — see [STORY-VERSIONING.md](../docs/03-domain/STORY-VERSIONING.md)
 §Contract and [ADR-0014](../docs/adr/ADR-0014-revision-checkpoint-model.md)).
 Milestone: M1. Capabilities: CAP-03, CAP-04, CAP-08.
@@ -13,6 +30,19 @@ Baseline revision / local changes to preserve: `5b5f139216dd1cf27077e342cfc2a23e
 dirty-file set empty at dispatch. Do not revert the M0/M1 documentation set.
 Engram checkpoint topic key: `context/NF-WF-002/main/implementer`.
 Implementer brief: [NF-WF-002-dispatch-brief.md](NF-WF-002-dispatch-brief.md).
+
+## Current follow-up scope — 2026-10-02
+
+[NF-WF-002A](NF-WF-002A-fixture-compatibility.md) explicitly extends only the
+fixture setup/cleanup scope to its ten named API test files. This removes
+GAP-017's former path-authorization blocker without authorizing production
+changes, lazy branch initialization or weakened assertions. The original
+implementation scope below remains the historical dispatch boundary.
+[NF-WF-002B](NF-WF-002B-contract-clarification.md) follows its passing receipt
+and review to resolve GAP-019 and assess the full submitted implementation.
+No code fix or new runtime verification is claimed here; parent acceptance
+and NF-WF-003 remain gated. Current baseline/local changes must be recorded
+anew before either child task, not copied from the original clean dispatch.
 
 ## Goal and reason
 

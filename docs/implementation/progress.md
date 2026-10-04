@@ -6,9 +6,137 @@
 > [decisions.md](./decisions.md), test coverage in
 > [test-matrix.md](./test-matrix.md).
 
-Latest documentation update: 2026-10-01. Historical entries and their dates
+Latest documentation update: 2026-10-03. Historical entries and their dates
 are preserved; current integration status lives in CURRENT and the delivery
 plan. New technical issues belong only in ISSUES-AND-GAPS.md.
+
+## Task workflow analysis and preparation — 2026-10-03
+
+Availability follow-up: the author confirms only DeepSeek is active and GLM is
+inactive. Updated D/F ownership notes, CURRENT and decisions: D implementation
+and checks continue without waiting for GLM; separate review stays pending and
+F/parent acceptance remain gated. Earlier GLM assignment is a requested role,
+not a dispatched actor. No application changes, runtime checks or agent dispatch
+were performed for this follow-up. Engram attribution remains unavailable
+(GAP-021); this entry is the fallback checkpoint, with no MCP save claimed.
+
+Observed status from current task/source records: 001 design and 002A–C have
+attributed independent reviews; D is READY on the recorded author decision;
+E is consumer-design-blocked; parent 002 is IMPLEMENTED_WITH_GAPS. These are
+existing receipts, not runtime results rerun by this task.
+
+Source-backed findings (GAP-025): D's scope omitted revision error throw sites
+needed for typed 409 metadata and exact test/doc paths; its proposal-shape note
+reopened an already resolved four-route decision; pre-check rationale confused
+transaction work with committed partial state; rollback promised 400 without
+strict schemas. E proposed dropping pending outbox intents on rollback. The
+queue also called D PLANNED, and final parent acceptance had no bounded owner.
+
+Corrected the task contracts, preserved accepted decisions and protected CAS/
+snapshot ordering; added PLANNED NF-WF-002F for integrated verification after
+reviewed D. Aligned START-HERE, CURRENT and DELIVERY-PLAN to D → F → bounded
+003/004 contract preparation. Assigned E's activation investigation to 004's
+real consumer design. Added review-manifest and changed-scope continuation
+rules to the playbook/template. Old hashes still identify original artifacts;
+this amended D needs review at its next submission, not invented approval.
+
+Verification: inline checks passed across the first eleven edited/new Markdown
+files (80 local links, fences, 25 unique issue IDs/valid states, equivalent
+unchanged constitutions), and git diff --check exited 0. Application-tree digest
+before/after matched `f9569cff…`: apps/packages unchanged. Runtime tests,
+databases, migrations, agents and configuration were not modified or dispatched.
+No independent approval of this documentation amendment is claimed.
+Final check after owner/handoff clarification passed for 13 Markdown files
+and 86 local links, issue/queue/owner checks, unchanged application digest
+and git diff --check. Next action remains current-session 002D execution,
+followed by separate review and planned 002F acceptance.
+
+**Fallback checkpoint / GAP-021:** current runtime has no authoritative session
+binding. Historical successful binding 5ff5313c… must not be reused; no MCP save
+or summary was attempted. HEAD `811e7e68debdd7550b5516df96637d227d10fdf6` with
+existing dirty implementation preserved. Next actor: the author's current DeepSeek-selected Claude session (owner
+confirmed by the supplied waiting response); request a separate GLM reviewer
+at submission, without a duplicate implementation writer.
+inspect current ownership/artifacts, verify current runtime binding or fallback,
+execute amended D, then F verifier decides parent scope-specific acceptance.
+The earlier Engram decision checkpoint predates these amendments; its role,
+LOW/partial-write/rollback rationales and inventory must be refreshed from
+current source under that session's own confirmed binding.
+E and later tasks remain pending. GAP-025 is VERIFY_PENDING for independent
+contract review; actual readiness does not close GAP-022.
+
+## NF-WF-002 follow-up documentation and fallback handoff — 2026-10-02
+
+The author requested Markdown preparation for another DeepSeek/GLM worker.
+Added READY NF-WF-002A (ten existing test files, fixture-only C8 repair) and
+PLANNED NF-WF-002B (GAP-019 clarification plus integrated review). Updated
+START-HERE, CURRENT, DELIVERY-PLAN, parent task and issue/test records to
+point at these children. Parent remains IMPLEMENTED_WITH_GAPS; no dependent
+feature is accepted or advanced by this amendment.
+
+Corrected test-versus-suite terminology, API/root baseline attribution and
+fixture inventory (12 valid creation sites plus one intentional negative);
+normalized GAP-016 to CLOSED and indexed GAP-020. Preserved failure and review
+history. No application source, fixtures, database, model dispatch or harness
+configuration was changed.
+
+Documentation checks: inline static validation passed for the ten amended/new
+Markdown files, 65 local links, balanced fences, 21 unique issue IDs with valid
+states, task ordering and the 12-valid/one-negative source inventory.
+`git -c core.excludesFile=NUL diff --check` exited 0. Constitutions are unchanged
+and equivalent after normalizing their expected filename/header references;
+an initial strict byte-comparison rejected only those expected differences.
+No runtime tests or migrations were rerun; independent review of this Markdown
+amendment is not claimed.
+
+**Engram fallback (GAP-021):** the runtime reports no confirmed session identity,
+so no agent-attributed checkpoint or session summary was attempted/claimed.
+Observed HEAD `811e7e68debdd7550b5516df96637d227d10fdf6`; preserve the dirty
+NF-WF-002 implementation. Next action: host confirms a new runtime binding,
+then the assigned worker checks file ownership/current diff and executes 002A.
+Record selected/full test results, review disposition and a confirmed scoped
+checkpoint before 002B. Prior memory is navigation only, never completion proof.
+
+## NF-WF-002 — minimum revision/checkpoint/restore foundation — 2026-10-02
+
+**Status: IMPLEMENTED_WITH_GAPS.** Baseline `5b5f139`. One bounded writer
+(this task); no other agent wrote to these paths.
+
+Delivered the frozen C1–C11 contract: eight Prisma models, five enums, two
+nullable FK columns and the additive migration with the hand-written partial
+unique index plus the C8/C9 baseline backfill
+(`packages/database/prisma/migrations/20261006_m1_story_versioning/`); the
+pure `@novelforge/story-versioning` package (`impact.ts`, `snapshot.ts`);
+`apps/api/src/services/revisions.ts` and `revision-routes.ts`; and the head
+CAS routed through every C3 mutation in the seven allowed service files.
+
+Receipts (all at this diff, scratch PostgreSQL on `127.0.0.1:5433` — GAP-020):
+
+- `pnpm --filter @novelforge/story-versioning test` → 17 passed (17), exit 0
+- `pnpm --filter @novelforge/api exec vitest run src/revision.test.ts` → 25
+  passed (25), exit 0
+- `pnpm --filter @novelforge/database exec vitest run
+  test/revision-constraints.integration.test.ts` → 8 passed (8), exit 0
+- `pnpm lint` → exit 0; `pnpm typecheck` → exit 0; `pnpm -r build` → exit 0
+- `db:test:prepare` → all 19 migrations applied from empty, exit 0
+- populated-dump upgrade check (scratch restore, never a live DB) → exit 0,
+  C8/C9 end state verified
+- **`pnpm test` → exit 1: 123 failed | 673 passed | 1 skipped (797).** All
+  123 are tests in pre-existing API suites whose seeds create a novel with no
+  `novel_branches` row, so the C8 head CAS refuses them by design — **GAP-017**.
+  Separate API-only baseline run with the diff stashed: 313 passed (313);
+  this is not a root `pnpm test` baseline receipt.
+
+Both candidate repairs are blocked by the task's own constraints (lazy branch
+creation is forbidden by C8; editing the seed helpers is outside the allowed
+paths), so the suites are left red and reported rather than silently
+weakened. The coordinator scope ask `msg_352e8c279405` was not answered.
+
+New gaps recorded: GAP-017 (head CAS vs pre-existing seeds, P1), GAP-018
+(pre-existing dev-dump migration drift, P2), GAP-019 (five C1–C11 contract
+questions, P2), GAP-020 (host port 5432 shadowed, P2). G-01 in
+`test-matrix.md` carries the full receipt table. Independent review of this
+exact diff is still owed.
 
 ## Engram context persistence — 2026-10-01
 
@@ -2466,3 +2594,911 @@ requested `glm-5.3-flash` is still unproven (GAP-013).
 
 Not run in either round: any runtime test, migration, typecheck or build. Both
 reviews were read-only source inspection.
+
+## M1 — NF-WF-002A fixture compatibility (2026-10-02)
+
+### Deliverable
+
+The ten API test files NF-WF-002A's contract authorizes now seed their novels
+through the production path instead of a raw `db.novel.create`:
+
+```text
+createPlatformServices({ db, audit: createAuditService(db) }).createNovel({
+  actorUserId, workspaceId, title, slug,
+})
+```
+
+Twelve sites: one seed helper each in `canon`, `character`, `manuscript`,
+`narrative`, `planning`, `story`, `orchestrator`, `ai`, `definitions`,
+`retrieval` (10), plus the additional-novel sites in `definitions.test.ts`
+("refuses to run a workflow bound to a different novel") and
+`retrieval.test.ts` ("keeps a novel-scoped reference out of a query for a
+different novel"). The inventory in GAP-017 was reconfirmed by source search
+before editing and matched: 12 valid + 1 deliberate negative.
+
+Exact-diff identity (final, post-review-fix): `sha256
+d775ad1fd867098b60072e359449c780175b6b8add26582387d51acb8f65edd8`, 439 diff
+lines over 10 files. The pre-review identity was `sha256
+885dabaa56abd381302d8dc89bb829ea37f97b91e9204a1c58de31c8cfbf2467` (417 lines);
+the two narrative.test.ts review fixes below account for the difference. No
+production service, route, schema, migration, lockfile or root constitution was
+touched. `revision.test.ts` is unmodified.
+
+### Why the fixture had to change
+
+NF-WF-002 added C8's create-time baseline to `createNovel`: a novel now always
+has exactly one `main` branch whose non-null head is the first `BASELINE`
+revision, with an empty change set and no snapshot. A raw `db.novel.create`
+therefore seeds a state the product cannot produce, and the first covered
+mutation's head CAS refuses it by name with 409. The repair is the contract
+working as specified; the seeds were asserting the pre-C8 world. Lazy
+branch creation in `advanceHead` was refused (C8 names and forbids it), and no
+test was skipped, deleted or weakened.
+
+### Two edits beyond the seed swap
+
+Both are fixture-internal and both are called out rather than buried, because
+one of them is the only place this patch could have concealed a regression:
+
+1. `manuscript.test.ts` audit-trail test — the expected action array is now
+   `["chapter.created", "chapter.deleted", "chapter.saved", "novel.created"]`.
+   `createNovel` writes its own `novel.created` row as setup. The exact-equality
+   shape was kept rather than loosened, and the `actorUserId` loop over every
+   row still holds. The three chapter rows are the behavior under test.
+
+2. `narrative.test.ts` concurrency race test — NF-WF-002 moved the guarded
+   `antagonist.updateMany` inside `db.$transaction`, so the service calls the
+   transaction's delegate (a different object with a different `updateMany`
+   function) and the old `vi.spyOn(db.antagonist, "updateMany")` parked nothing
+   (`staged` stayed null — the test failed on `expected null not to be null`,
+   not on a lost assertion). The spy now wraps `db.$transaction`, swaps
+   `tx.antagonist.updateMany` for a version that holds its promise open, and
+   runs the real write on release. Assertions are unchanged: parked `count 0`,
+   stored stage `DEFEAT`, first request 409.
+
+### Checks run
+
+On the preserved NF-WF-002 diff at HEAD `811e7e68debdd7550b5516df96637d227d10fdf6`,
+scratch PostgreSQL `127.0.0.1:5433` (GAP-020), repo `.env` unmodified:
+
+```text
+canon.test.ts before repair          exit 1  44 failed | 12 passed (56)
+db:test:prepare                      exit 0  all migrations applied from empty
+ten-suite targeted run               exit 0  10 files passed, 288 passed (288)
+revision.test.ts                     exit 0  1 file passed, 25 passed (25)
+full API suite                       exit 0  15 files passed, 338 passed (338)
+pnpm lint                            exit 0  no output
+pnpm typecheck                       exit 0  every package Done
+pnpm test (root)                     exit 0  38 files passed, 796 passed | 1 skipped (797)
+```
+
+The single root skip is the pre-existing
+`describe.skipIf(!process.env.WORKER_IT_REDIS_URL)` case at
+`apps/worker/src/worker.test.ts:257`; this task added none. The API count is
+338, equal to the pre-existing inventory — not the older 313, which was the
+pre-diff baseline and is not a target to shrink back to.
+
+### Environment note (GAP-020, re-verified)
+
+`127.0.0.1:5432` refused the connection with nothing listening, and
+`docker compose up -d postgres` still failed with `Bind for 0.0.0.0:5432
+failed: port is already allocated` on an endpoint created 13 hours earlier.
+The workaround was again an isolated `nf-pg-5433` container on `-p 5433:5432`
+mounting the repo's own `novelforge-ai_postgres_data` volume. Repo credentials
+failed against 5432 (`28P01`) and succeeded against 5433.
+
+### Review status — APPROVE, two findings fixed
+
+Two independent reviewer workers reviewed the exact fixture diff and both
+returned **VERDICT: APPROVE**.
+
+- `nf-wf-002a-reviewer` (first dispatch) — APPROVE. It independently read the
+  Prisma 7.10 runtime source and confirmed that model delegates are proxies
+  whose `get` trap returns written keys before descriptors, so
+  `db.antagonist !== itx.antagonist`; this is why the pre-repair
+  `vi.spyOn(db.antagonist, "updateMany")` never fired. It could not execute the
+  suites (no database in its environment) and said so. It also noted
+  `packages/database/test/platform.integration.test.ts:114` still raw-creates a
+  novel, but that test only exercises the workspace-delete cascade and is
+  outside this task's scope.
+- `nf002a-review-2` (second dispatch; the first hit a context limit) — APPROVE
+  with two non-blocking findings, both fixed in `narrative.test.ts`:
+  1. The race test's header comment misstated the intermediate state. The
+     parked write has not executed, so the row is still `FRICTION` and the
+     second request commits `FRICTION → DEFEAT`. Comment corrected.
+  2. The held-open Prisma interactive transaction spans a second HTTP round
+     trip, so the 5 s default transaction timeout could abort it on a slow
+     machine and surface as a Prisma timeout rather than the assertion under
+     test. Fixed by passing `{ timeout: 30_000, ...opts }` to the real
+     transaction, with a comment noting the row is not locked while parked.
+
+Reviewer routing: the requested reviewer identity was `glm-5.3-flash`. Neither
+reviewer's backend model identity could be proven from inside the session, so
+this remains GAP-013 — recorded honestly, not asserted. No fabricated model
+receipt is claimed.
+
+Q6 (the race test is load-bearing, not decorative) was proved empirically, not
+argued: removing `stage: current.stage` from the guarded `where` in
+`apps/api/src/services/narrative.ts` made the suite fail
+`AssertionError: expected 1 to be +0` (`1 failed | 52 passed (53)`); restoring
+the predicate returned it to `53 passed (53)`. The production file was restored
+and verified at line 592; `git diff --stat` over it is unchanged from NF-WF-002.
+
+GAP-017 stays VERIFY_PENDING, not CLOSED: this child's review is complete, but
+NF-WF-002 / G-01 parent acceptance is unchanged and belongs to NF-WF-002B.
+
+### Handoff to NF-WF-002B
+
+NF-WF-002B should treat the ten fixture files as settled inputs and review the
+NF-WF-002 implementation diff itself, resolving GAP-019's five contract
+questions. NF-WF-003 stays gated by parent acceptance.
+
+### Checkpoint state — Engram unavailable, fallback handoff (GAP-021)
+
+The SessionStart/resume hook reported that no authoritative registered runtime
+identity is available, and that agent-attributed memory writes must stop until
+the host re-registers the runtime session. Per the constitution's Engram rule
+and GAP-021, **no Engram checkpoint was written for this task boundary**, and no
+session ID was invented, derived or reused. The previously used session ID is
+deliberately not reproduced here.
+
+This progress entry plus the NF-WF-002A task contract are the fallback handoff.
+They carry everything NF-WF-002B needs: the final diff identity, the exact
+commands and their selected counts, the two reviewer findings and their fixes,
+and the untouched negative fixtures. GAP-021 remains open; close it once the
+host hook re-registers a runtime identity and the checkpoint can be written
+under it.
+
+## M1 — NF-WF-002B contract clarification and integrated review (2026-10-02)
+
+Baseline: HEAD `811e7e68debdd7550b5516df96637d227d10fdf6`, working tree carrying
+the complete NF-WF-002 + NF-WF-002A diff. Documentation-only task; no production
+service, route, schema, migration, lockfile, `.env` or root constitution was
+touched. The whole NF-WF-002B diff is three Markdown files:
+
+```text
+docs/03-domain/STORY-VERSIONING.md     | 260 +++++++-
+docs/04-data/DATA-MODEL-BLUEPRINT.md   |  12 ++
+docs/implementation/ISSUES-AND-GAPS.md | 269 +++++++-
+```
+
+Exact-diff identity (**post-correction**, after the review's four findings were
+applied): `sha256
+fd7ae2911a0aab9cfcf63c2b30fe38f06eeaf39a7c19434e5bbd14683e079760`, 648 diff
+lines over those three files (`git diff --no-color -- <the three paths>`).
+`STORY-VERSIONING.md` is `sha256
+fd72c4490265e8f4bbb85acf93cba273f68dd8eb313619856538fb1dbf0e2076` and
+`ISSUES-AND-GAPS.md` `sha256
+3f6d14043f353b1655dafd68e29823948dd59094d05f252be9db3de5aa00decc`.
+`DATA-MODEL-BLUEPRINT.md` is unchanged at `sha256
+e21e268ab8d20cabe8ee2f73b95687842bd437062c28a64ae081bad33fa2546b` — the
+review found nothing in it. The pre-correction identity was `a3ae218c…`
+(607 lines); the 32 added lines are the corrections described below plus the
+review-history section in NF-WF-002C.
+
+**Honest note on review hygiene.** The reviewer was dispatched against
+`c9fc357e…` (599 lines) and the tree then moved twice under it: first
+`ade1cc1f…` (599 lines, owner/closure-column clauses for the three new gap
+rows), then the final `a3ae218c…` (607 lines, the execution-priority split).
+Reviewing a moving diff is a real hazard and it was avoidable — the three
+corrections were all mine and all discoverable before dispatch. Each superseded
+identity and the exact delta were sent to the reviewer rather than left as a
+silent mismatch, and no file in the diff is edited again while the review runs.
+Nothing in C12.1–C12.6, the substantive deliverable, changed after dispatch.
+
+### What was produced
+
+`docs/03-domain/STORY-VERSIONING.md` gains **§C12 — Clarifications resolved
+after implementation**, six subsections disposing of GAP-019's five questions,
+plus two edits inside the frozen contract body:
+
+- **C3's HIGH row** now names `checkpoint.create` and points at C12.2.
+- **C4** gains a paragraph explaining why the `INSERT snapshot` line's position
+  is load-bearing, pointing at C12.6 and GAP-024.
+- **C11** gains a "Correction (NF-WF-002B)" note withdrawing the unobserved
+  "always `null`" claim; the original text is kept because the error is part of
+  the record.
+
+`docs/04-data/DATA-MODEL-BLUEPRINT.md` gains the `snapshots.revision_id`
+uniqueness / checkpoint-pin rule and the "`domain_outbox` is named and does not
+exist" statement.
+
+`docs/implementation/ISSUES-AND-GAPS.md` gains the GAP-019 disposition, three
+new rows — **GAP-022** (no mutation route accepts a client head expectation),
+**GAP-023** (`domainEventSchema.revisionId` has no producer or consumer),
+**GAP-024** (HIGH `PRE_MUTATION` snapshots capture the post-mutation image) —
+and a `GAP-024 detail` section.
+
+### Dispositions of GAP-019
+
+1. **`expectedHeadRevisionId` tri-state** — documented as contract (C12.1):
+   omitted asserts nothing, `null` asserts "no head exists", a uuid compares;
+   the `SELECT … FOR UPDATE` runs in all three cases, so the CAS is never
+   optional. Verified against `advanceHead` and the route's
+   `=== undefined ? {} : {…}` spread. **Newly named, previously unowned:** no
+   C3 *mutation* route accepts a client head expectation, so C4's
+   "the caller re-reads rather than silently retrying" is unreachable for a
+   mutation → **GAP-022**.
+2. **`checkpoint.create` is HIGH** (C12.2). The earlier LOW-with-checkpoint
+   reading argued from *invalidation*; C3's class decides *capture*, and the
+   operation whose entire purpose is to capture a snapshot is the clearest
+   member of the capturing class. `impact.ts` already classified it HIGH and
+   `story-versioning.test.ts` already asserted it — **this corrects the prose,
+   not the code**, and it is therefore not a new architectural decision and
+   needs no new ADR.
+3. **Pinning** (C12.3): explicit capture pins `NEW`; a HIGH mutation's mandatory
+   capture pins `PREVIOUS`; the snapshot attaches to the pinned revision;
+   `snapshots.revision_id`'s `@unique` makes reuse of an existing snapshot
+   mandatory rather than optional. Worked example R42–R47 added.
+4. **Events** (C12.4): the "always `null`" claim is **withdrawn** as an
+   inference from nullability. Inspection finds no producer and no consumer of
+   `domainEventSchema`, and `domain_outbox` absent from the schema. No
+   integration claimed in either direction → **GAP-023**. `events.ts` was not
+   edited.
+5. **Test naming** (C12.5): confirmed consistent with the repository convention
+   (`rhythm.test.ts`, `scale.test.ts`, `canon.test.ts`, `events.test.ts`,
+   `chunk.test.ts`; no `index.test.ts` anywhere). Closed.
+
+### The defect this review found — GAP-024 (P1)
+
+C4's statement order puts the snapshot insert before the mutation's own writes,
+and `advanceHead`'s doc comment states it "MUST be called inside the caller's
+transaction, before the caller's own writes". Four HIGH call sites violate it:
+`proposal.approve` (`canon.ts`), `outlineVersion.approve` and
+`outline.supersede` (`planning.ts`), and `chapters.import` (`manuscript.ts`) —
+each writes first and calls `advanceForMutation` afterwards. `captureSnapshot`
+reads the live tables when it runs, so their `PRE_MUTATION` snapshot is a
+**post**-mutation image. `applyRestore` has the same ordering.
+
+Measured by probe against the running system, not inferred from the contract:
+
+```text
+FACTS BEFORE APPROVE: [{"predicate":"is-alpha","objectText":"true","status":"ACTIVE"}]
+FACTS AFTER APPROVE:  [{"predicate":"is-alpha",...},{"predicate":"wields","objectText":"the crown","status":"ACTIVE"}]
+SNAPSHOT canon_facts: [["is-alpha","true","ACTIVE"],["wields","the crown","ACTIVE"]]
+PRE_MUTATION snapshot row count: 2 | live after: 2 | live before: 1
+PROBE2 preview canon_facts counts: {"added":0,"removed":0,"retained":2}
+PROBE2 facts AFTER restoring the PRE_MUTATION checkpoint: both ACTIVE
+PROBE2 VERDICT: the approval was NOT UNDONE (defect)
+```
+
+The existing suite cannot catch this: `revision.test.ts`'s one `PRE_MUTATION`
+assertion checks the pin (`revisionId`), `snapshot.revisionId`,
+`formatVersion` and `byteSize > 0` — the metadata is *correct*, and only the
+payload is wrong. The missing assertion is a payload-content check.
+
+**Not fixed here** — NF-WF-002B's scope forbids production code changes. A
+bounded follow-up contract was created: `tasks/NF-WF-002C-premutation-ordering.md`.
+All probe files were removed; `apps/api/src/revision.test.ts` is byte-identical
+to its pre-probe backup (`cmp -s`), and no production file differs from
+NF-WF-002's reviewed state.
+
+### Gates
+
+No gate was rerun for NF-WF-002B itself: the diff is three Markdown files, and
+the implementation under review is unchanged from the state whose gates were
+already green. The receipts on the reviewed implementation, run immediately
+before this task's documentation edits, are recorded under G-01 and in the
+NF-WF-002A entry above: full API `15 passed (15)` files / `338 passed (338)`
+tests exit 0; root `pnpm test` `38 passed (38)` files / `796 passed | 1 skipped
+(797)` exit 0; `pnpm lint` exit 0; `pnpm typecheck` exit 0. Markdown-only checks
+run here: balanced fences, resolvable relative links from the three edited
+files, and `git diff --check` clean.
+
+### Review status
+
+Independent review of the exact 002B documentation diff was dispatched to a
+reviewer worker, scoped to falsify each of the seven substantive claims against
+source rather than to check the prose — in particular that all four HIGH call
+sites named in C12.6 really do write before advancing, and that the C3 HIGH row
+count is right. Requested reviewer identity `glm-5.3-flash`; the backend model
+identity is not provable from inside the session (GAP-013), and the reviewer was
+asked to report `MODEL_UNVERIFIED` rather than assert it. **Verdict returned: CHANGES_REQUESTED**, with four findings, all confirmed
+against source and all accepted — none disputed. The reviewer verified all four
+HIGH call sites by reading them in statement order (C12.6's table is correct on
+every row) and confirmed C12.1, C12.2, C12.3's pin logic, C12.4 and the "eight
+C3 HIGH rows" count with no finding. The four findings, and what they changed:
+
+1. **The fix instruction was wrong, and wrong in the direction that hides the
+   defect.** §C12.6 said the required order was "check the CAS first, then
+   advance, then write". But the CAS *is* a covered write:
+   `canonProposal.updateMany` (`canon.ts:1213`) writes `canon_proposals` and
+   `outlineVersion.updateMany` (`planning.ts:586`) writes `outline_versions`,
+   both in `COVERED_TABLE_NAMES` (`snapshot.ts:76`, `:94`). That order yields a
+   snapshot pre-mutation for `canon_facts` and **post**-mutation for
+   `canon_proposals` — and the `canon_facts`-only assertion the same paragraph
+   prescribed would have passed it. The race justification for the old wording
+   was also unnecessary: a losing CAS throws inside the transaction, so rollback
+   removes the checkpoint, revision, head move and snapshot together. Corrected
+   in §C12.6 and in NF-WF-002C's invariant 2, and the assertion requirement now
+   covers every table the operation touches.
+2. **`applyRestore` is not affected, and both §C12.6 and NF-WF-002C claimed it
+   was.** `advanceHead` is at `revisions.ts:1070`, before the DELETEs at `:1095`
+   and re-inserts at `:1104`; the code's own comment states the intent. A READY
+   contract naming a correct site as violating is how a correct path gets
+   broken, so the false claim is recorded as corrected rather than deleted.
+3. **§C12.3's worked example had the reuse step unreachable.** It inserted a LOW
+   revision (`R44 proposal created`) between the explicit checkpoint and the HIGH
+   mutation — but LOW operations advance the head too (C3: "both classes cross
+   the mutation boundary"), so the `PREVIOUS` pin would land on a revision with
+   no snapshot. The example now matches the shape `revision.test.ts:1127`
+   actually exercises.
+4. **NF-WF-002D omitted the existing precedent.** `applyRestore` already carries
+   a server-pinned `expectedHeadRevisionId` (`revisions.ts:1014-1019`, `:1073`);
+   the task now cites it.
+
+The shape of this review is worth recording: **a correct diagnosis with an
+incorrect remedy.** The defect GAP-024 is real and the four-site table is right,
+but the fix as first written would have produced a partial repair that a
+passing test endorsed. Had the contract been dispatched un-reviewed, the
+implementer would have implemented the wrong half correctly. That is the case
+for the reviewer inspecting the exact diff rather than a summary — and for
+verifying a finding against source before acting on it, which is why all four
+were re-read here before being accepted.
+
+### Round 2 — re-review of the corrected diff: APPROVE
+
+The same reviewer re-reviewed the corrected §C12.3/§C12.6 and the three
+follow-up contracts. Verdict **APPROVE**, against the current tree:
+`STORY-VERSIONING.md` `fd72c4490265e8f4bbb85acf93cba273f68dd8eb313619856538fb1dbf0e2076`,
+`NF-WF-002C` `87d88cb98832627a4f7485647fe6f72b619536ef4c05a75e17c08e98f26ec890`,
+combined diff `fd7ae2911a0aab9cfcf63c2b30fe38f06eeaf39a7c19434e5bbd14683e079760`
+(648 lines). Round-2 findings 6 (the C12.3 off-by-one) and 7 (invariant 5
+under-specified) are resolved; round 3 raised none.
+
+It verified three claims rather than accepting them, and one of the three
+changed the artifact:
+
+- **The `R42…R46` arithmetic is sound.** `createNovel` writes the baseline with
+  `number: 1` explicitly (`platform.ts:405-416`, `origin: "BASELINE"`,
+  `parentRevisionId: null`) and sets the head to it in the same transaction, so
+  five operations after the baseline really do land at the fifth revision. The
+  `R42` label is the conventional "novel N at head" framing C10 already uses
+  (`STORY-VERSIONING.md:618`), and nothing in the example asserts the baseline's
+  number is 42.
+- **GAP-024 cannot change *which* revision a reused snapshot attaches to.**
+  `captureSnapshot` is called only inside the `else` branch at
+  `revisions.ts:391`, i.e. only when the `findUnique({ revisionId: pinnedRevisionId })`
+  lookup at `:384` returns nothing. Reuse therefore skips the capture entirely —
+  the defect corrupts the *image* of a newly created snapshot, never the pin.
+  That is why the reuse test at `revision.test.ts:1127` is green and will stay
+  green. This is a genuine limit on GAP-024's blast radius and it is now stated
+  in §C12.6.
+- **Option 2 of invariant 5 does not need a new export.** `changeSetId` is
+  already public on `AdvanceHeadResult` (`revisions.ts:118`, returned at `:437`;
+  `advanceForMutation` returns the same type at `:453`), so the append is a
+  second `tx.changeSetItem.createMany({ …, changeSetId: head.changeSetId })`.
+  The contract's "new export or a small second write" overstated the cost and is
+  corrected to the second write alone — an implementer sent looking for an export
+  to add would have found none and improvised.
+
+It also confirmed with no finding: `gate`/`gateProposal` are read-only and run
+before `db.$transaction`, so no uncovered write precedes the advance; and all
+four sites pass `expectedHeadRevisionId: undefined`, so moving the advance
+changes no CAS comparison and cannot alter the refusal behaviour asserted by the
+lost-race negative.
+
+**Reviewer identity is MODEL_UNVERIFIED.** The reviewer reports that its
+environment names `bansoskenari/deepseek-v4-1-flash` and that this is a tier
+alias rather than backend proof. No GLM receipt is claimed and **GAP-013 stays
+open**; the review is recorded as an independent review by a harness worker of
+unverified backend identity.
+
+**The final APPROVE, and its limit.** The re-review of the caveat delta returned
+**APPROVE** with no overreach: `:391` is inside the `else` gated by the `:384`
+`findUnique`, and the "never *which* revision" claim holds **globally**, not just
+on the reuse path, because `pinnedRevisionId` is fixed at `:375-376` *before* the
+capture and is both the lookup key (`:385`) and the value written by
+`tx.snapshot.create` (`:399`) — so GAP-024 shifts *when* the capture runs, never
+the id the snapshot is filed under. The reviewer added one honesty boundary of its
+own: it confirmed the *mechanism* that keeps the reuse test green but **did not
+re-run the test**, so the greenness is this session's receipt (API `338 passed
+(338)`, run immediately before the docs work), not the reviewer's. That receipt is
+what licenses the sentence; the reviewer's contribution is the reason it is true.
+
+**Three post-approval edits to `ISSUES-AND-GAPS.md`, re-reviewed and corrected.** The final APPROVE covered `ISSUES-AND-GAPS.md` at `3f6d1404…`. After it, and
+in this order, the file gained: (1) the GAP-019 status cell flipped
+`CLARIFIED / REVIEW_PENDING` → `CLARIFIED / APPROVED` (two occurrences), the
+transition the row's own "next owner" field routes to "NF-WF-002B's own review";
+(2) a "Review closed 2026-10-02" clause in the GAP-019 detail cell recording the
+CHANGES_REQUESTED → APPROVE verdicts, the reviewed artifacts' hashes and the MODEL_UNVERIFIED
+reviewer; (3) the GAP-021 row's re-observation boundaries extended from "002A and
+002B" to include the 002C-preparation boundary. Current content hash
+`d3282c35…`.
+
+These were submitted for review rather than waved through, and the reviewer
+returned **CHANGES_REQUESTED** on one clause — correctly. Edit 2 had pinned the
+approval to "the frozen identity `c60fef9c…`", which is false twice over: that
+hash is no longer derivable from the tree, and worse, it is **self-referential**.
+`ISSUES-AND-GAPS.md` is itself one of the three files in the diff whose hash the
+row cites, so citing the combined hash changes it — including the edit that would
+correct it. There is no fixed point, and any value written there is stale the
+moment it is written. The row now pins the **reviewed artifacts** instead — and the re-review showed
+one artifact was still too few: three of the four findings' corrections landed
+outside `STORY-VERSIONING.md` (findings 1 and 2 also in `002C` invariants 2 and 4,
+finding 4 in `002D` only), so a reader recomputing only `73e3c9f5…` would not
+detect a later edit to `002C` invariant 2, which carries the load-bearing
+correction. The row now names all three:
+`docs/03-domain/STORY-VERSIONING.md` `sha256 73e3c9f5…`,
+`tasks/NF-WF-002C-premutation-ordering.md` `sha256 8fd083eb…` (labelled an
+"as reviewed" receipt, since 002C is READY and its review-history section is
+appended on execution) and `tasks/NF-WF-002D-mutation-head-expectation.md`
+`sha256 640f9698…`. None is a register file, so none moves when the register
+does. The reviewer also tightened
+"review of the §C12 diff" to "the §C12 diff and the follow-up task
+contracts", because finding 4 was in `NF-WF-002D`, not §C12.
+
+Edit 3 had a different defect: it extended the GAP-021 **row** to three
+boundaries while the GAP-021 **detail** section at `:436` still named only 002A,
+so row and detail disagreed. The detail now matches, and it carries an explicit
+scope note — the 002A/002B/002C boundary history is asserted from this session's
+hook output and progress entries, **not** from an independent receipt, and the
+reviewer was right that it could verify only the current session's hook.
+
+Edit 1 (the status flip) the reviewer accepted as accurate and above threshold,
+since a status flip asserts a verdict and the reviewer is that verdict's evidence.
+Its threshold ruling is recorded here as the reviewer stated it: **a claim that
+asserts an independent review verdict, or that a reader would use to verify one,
+needs review** — which is why the status flip and the hash pin earned reads;
+**pure bookkeeping does not** — a boundary list, or a status the row's own
+next-owner field prescribes — and the boundary edit crossed the line only because
+it desynced from its own detail section. With the three-artifact pin applied, the
+reviewer's instruction is explicit: mechanical re-pins, milestone labels and
+register bookkeeping go in without it, and it should be asked again only for a new
+semantic claim about the code or a new verdict. That threshold is recorded so the
+next session inherits the rule rather than re-deriving it from a review loop.
+
+Final identity after the corrections: `89edc9b9…`, 654 lines (the three
+corrections added 3 net lines over the 651). `STORY-VERSIONING.md`
+`73e3c9f5…` and `DATA-MODEL-BLUEPRINT.md` `e21e268a…` remain untouched
+throughout.
+
+**The APPROVE's scope, stated by the reviewer rather than inferred.** Asked
+whether its verdict applied to the current diff or to the stale tree it had
+partly read, it answered: the verdict applies to the current diff, **scoped to
+"changed regions re-read in the current tree; unchanged regions unchanged by
+hash."** In the round-2 pass it re-read the two changed regions — §C12.3's
+corrected example and invariant 5's new options — plus `revisions.ts:354-367`,
+`AdvanceHeadResult`
+and the `canon_facts.id` default; it did **not** re-read all 648 lines, relying
+instead on the unchanged regions' file hashes matching the passes that did read
+them. That is an honest and precise boundary, and it is recorded because a
+verdict's scope is part of the verdict: "APPROVE" without it would have been
+read here as line-by-line coverage of the whole artifact.
+
+**The delta, and its re-review.** Acting on that same verdict's note that the
+§C12.6 reuse caveat "is accurate and worth keeping", the caveat was strengthened
+with the mechanism the reviewer verified — `captureSnapshot` runs only in the
+`else` at `revisions.ts:391`, guarded by the `findUnique` at `:384`, so the defect
+corrupts a snapshot's image and never its pin. That hunk is 3 removed / 6 added (an earlier note here
+said "three lines replaced", which undercounted the added side), taking the diff
+to `c60fef9c8244f2d66b5489de2c1259d7595c6862453336ca3fdf1b8b0990ac18` (651
+lines = 326 + 23 + 302). A bounded re-review of exactly that delta returned
+**APPROVE**; at that moment the combined identity was `c60fef9c…` / 651 lines and
+`fd7ae291…` was superseded. (Both are historical now — see the register edits
+below, which move it again, and which is why the durable receipt cited in the
+register is the artifact hash rather than a combined one.)
+
+The two files the reviewer did not re-read are provably unchanged across the
+delta, and the proof is the reviewer's own two computations rather than my
+assertion: it reported `DATA-MODEL-BLUEPRINT.md` `e21e268a…` and
+`ISSUES-AND-GAPS.md` `3f6d1404…` in the approved pass against `fd7ae291…`, and
+reported the **same** two values again against `c60fef9c…`. A hash computed at
+both ends of the interval and matching is the evidence. The reviewer's caution
+that it could not prove this from the tree alone was right in principle — an
+uncommitted working-tree state leaves no git object — and the proof here rests on
+its own earlier message rather than on the tree. Only `STORY-VERSIONING.md` moved
+(`fd72c449…` → `73e3c9f5…`).
+
+**Two review-hygiene lapses are recorded, not omitted.** The reviewer was
+dispatched against `sha256 a3ae218c…` (607 lines) and the diff was then edited
+again, ending at `fd7ae291…` (648 lines) — every superseded hash was disclosed to
+the reviewer, but the round-2 pass began against a tree that had moved. And the
+reviewer's round-2 message carried a stale hash pair in its first half and the
+current pair in its second; the mismatch was raised and it confirmed the current
+values. Neither lapse changed a finding, and the APPROVE was re-issued against
+the then-current `fd7ae291…` identity. The lesson is procedural: freeze the diff before
+dispatching, and re-dispatch after every edit, rather than editing under an open
+review and reconciling afterwards.
+
+### Checkpoint state — Engram unavailable, fallback handoff (GAP-021, re-observed)
+
+The SessionStart/compact hook again reported that no authoritative registered
+runtime identity is available and that agent-attributed memory writes must stop
+until the host re-registers. Per the constitution's Engram rule and GAP-021,
+**no Engram checkpoint was written at this boundary** and no session ID was
+invented, derived or reused. This entry plus the NF-WF-002B task contract are
+the fallback handoff; they carry the diff identity, the five dispositions, the
+GAP-024 evidence and the remaining issue IDs (GAP-013, 017, 018, 020, 021, 022,
+023, 024).
+
+## NF-WF-002C — HIGH `PRE_MUTATION` ordering fix (GAP-024)
+
+Executed 2026-10-02. Contract:
+[`tasks/NF-WF-002C-premutation-ordering.md`](../../tasks/NF-WF-002C-premutation-ordering.md).
+Scope: the four HIGH call sites whose `advanceForMutation` ran *after* their
+first covered-table write, so `captureSnapshot` — which reads the live tables
+when it runs, inside the caller's transaction — filed a **post**-mutation image
+under a `PRE_MUTATION` label and the undo was a no-op.
+
+### The change
+
+`advanceForMutation` now precedes the first covered-table write at every site.
+No service signature, route, schema, migration or lockfile changed.
+
+| Site | File | Advance | First covered write |
+|---|---|---|---|
+| `proposal.approve` | `apps/api/src/services/canon.ts` | `:1149` | `:1226` supersede, `:1238` create, `:1273` status CAS |
+| `outlineVersion.approve` | `apps/api/src/services/planning.ts` | `:589` | `:602` / `:608` |
+| `outline.supersede` | `apps/api/src/services/planning.ts` | `:656` | `:667` |
+| `chapters.import` | `apps/api/src/services/manuscript.ts` | `:492` | `:511` (loop's first `tx.chapter.create`) |
+
+**Dependency resolution at `canon.ts` (the one non-mechanical edit).** The
+approve path minted the new fact's id in the database and used it to link the
+supersede afterwards, so moving the advance ahead of the insert would have left
+`advanceForMutation`'s `items` without the id it needs. Rather than reorder
+supersede → insert → link (which would have changed the mutation's semantics),
+the id is now minted client-side: `const factId = randomUUID();` (`:1130`), the
+supersede target captured as `const supersededFactId: string | null =
+priorLive?.id ?? null;` (`:1135`), and `id: factId` passed first in the create's
+`data`. The supersede → insert → link → decide order is unchanged; only the
+source of the id moved. `canon_facts.id` is `@default(dbgenerated(...))`, so an
+explicit id is legal and Prisma's generated create input already types it
+`id?: string`.
+
+`outline.supersede` and `chapters.import` name the novelId in `items` — a
+supersede with no approved version supersedes nothing, and the import takes a
+single advance for the whole loop rather than one per chapter.
+
+### Two-direction proof (the acceptance criterion)
+
+C12.6 asked for a payload-content assertion, not a metadata one. Each site got
+one, and each was proven to **fail against the old ordering** and **pass against
+the new**. The old-ordering receipts were produced by temporarily reordering the
+real production file, running the test, and restoring it — not by a synthetic
+harness:
+
+| Site | Test | Old-ordering failure |
+|---|---|---|
+| `proposal.approve` | `revision.test.ts:550` | `expected [ …(2) ] to deeply equal [ Array(1) ]` — `canon_facts` held 2 rows, not 1 |
+| `outlineVersion.approve` | `planning.test.ts:499` | `"…:APPROVED"` where the pre-image requires `"…:DRAFT"` |
+| `outline.supersede` | `planning.test.ts:516` | `"…:SUPERSEDED"` where the pre-image requires `"…:APPROVED"` |
+| `chapters.import` | `manuscript.test.ts:425` | `payload["chapters"]` was 2 rows, expected `[]` |
+
+The `revision.test.ts` fixture was also made to genuinely supersede *and* mint
+(same subject/predicate, different object, `validFromChapter` supplied), so both
+covered tables change in the operation and the assertion cannot pass on an
+unchanged payload. The parked-lock test's mutation was raised from LOW to HIGH,
+because a LOW advance captures no checkpoint and "the loser records no
+checkpoint" would then have been true for a reason unrelated to the CAS.
+
+`planning.test.ts` additionally applies a restore (not only a preview) — the row
+identities are unchanged by the approve, so preview counts would be zero either
+way and prove nothing about the image.
+
+### Gates (all green, each run with `DATABASE_URL` inline; `.env` untouched)
+
+- `revision.test.ts` — 25 passed (25), 1 file
+- `planning.test.ts` — 8 passed (8), 1 file
+- `manuscript.test.ts` — 21 passed (21), 1 file
+- API suite — 15 passed (15) files, 338 passed (338) tests
+- root `pnpm test` — 38 passed (38) files, 796 passed | 1 skipped (797)
+- `pnpm lint` — exit 0
+- `pnpm typecheck` — exit 0 (all workspaces Done)
+
+### Diff identity
+
+Frozen before dispatch. **An earlier version of this entry recorded
+`sha256 b91e5287…` / 1039 lines / "exactly six files", and that figure does not
+reproduce — it was a misrecording, corrected here after the independent reviewer
+blocked on it.** The command named six paths, but
+`apps/api/src/revision.test.ts` is **untracked** (`?? `), and plain `git diff`
+silently omits untracked files, so the artifact that command produced contained
+**five** files, not six. Two identities, both reproduced:
+
+| Artifact | Command | Lines | sha256 |
+|---|---|---|---|
+| 5-file (what the command actually yielded) | `git diff -- <the 5 tracked paths>` | 1037 | `dcba80edc9ecab1eac3304e3d0c70bf056257ec574c3c70ee060fe3f47457f0b` |
+| 6-file (the intended scope) | `git add -N apps/api/src/revision.test.ts` first, then the same diff | 2295 | `d66c0aea140737f0e5c54df9802488ad49c5745e465db6003cab13b55a83ec35` |
+
+The 5-file artifact is the one that was hashed and cited as "six files"; it
+omits `revision.test.ts`, which carries the load-bearing payload assertions for
+`proposal.approve`. Review must be run against the 6-file identity, and the diff
+command must `git add -N` untracked test files or they are invisible to both the
+hash and the reviewer.
+
+**The 2295-line identity above is itself superseded by the review round.** The
+reviewer's finding C (an overstated comment in `revision.test.ts`) was
+confirmed by a partial-fix probe and fixed, so the current tree's six-file diff
+is **2301 lines, `sha256
+653a769dff4a3dbf3161ddb158f8f03844d863eb8c25fd852f9a4608afbf3eff`**. This is the
+identity the re-review must run against. Post-edit content hashes
+(sha256, first 16): `canon.ts 1658101e7d9ee050`, `planning.ts aad03c6563173b17`,
+`manuscript.ts 5ff4e50b24b36ea6`, `planning.test.ts 57a6c97b200da99d`,
+`manuscript.test.ts 22585f1cb1b8af78`, `revision.test.ts 6c739d79e90bcea4`
+(the finding-C comment correction; `e843ee196aa72634` before it).
+`revisions.ts` is `b0b25225fb71f0ba` — **unchanged**, correctly not touched
+(`applyRestore` already ordered its advance at `:1070` before its DELETEs at
+`:1095` and re-inserts at `:1104`; it was never a GAP-024 site).
+
+### Review status
+
+An independent reviewer was dispatched against the frozen hash with seven
+numbered falsification items (advance-before-write at all four sites; no fifth
+violating HIGH site and `restore.apply` intact; supersede → insert → link
+preserved and the client-minted id legal; each assertion load-bearing rather
+than tautological; the lost-race negative non-vacuous; nothing outside the six
+allowed files changed; no new correctness/security/data-loss problem). **Round-1 verdict: CHANGES_REQUESTED**, with three findings. The reviewer
+crashed mid-report (gateway `insufficient_balance`), so finding C was recovered
+from its truncated message and verified independently; the falsification items
+it had already completed are recorded in the task file. Dispositions:
+
+- **A (blocker) — frozen artifact does not reproduce: CONFIRMED and fixed.** The
+  recorded `b91e5287…` was a misrecording of a five-file diff the command was
+  never going to produce as six files. The records now carry both reproduced
+  identities and the superseding post-review identity (`653a769d…`, 2301 lines).
+- **B — the "eight C3 HIGH rows" enumeration omits `checkpoint.create`:
+  REFUTED.** The doc's own text at `STORY-VERSIONING.md:760-764` distinguishes
+  the nine-entry HIGH set from "the eight mutation operations already in that
+  class" and says `checkpoint.create` "is not one of them: it writes no covered
+  table". "Eight" names the mutation operations, not the set size, and the
+  reviewer's own grep confirmed `checkpoint.create` has zero covered writes.
+- **C — the `revision.test.ts` comment overstates the proposals assertion:
+  CONFIRMED by probe and fixed.** Moving the advance to just before the CAS
+  (after the supersede and the mint) left the `canon_proposals` pair green —
+  the CAS only writes `canon_proposals` after the advance in that shape — and
+  the failure surfaced at the `canon_facts` pair and the `removed` count. The
+  comment at `revision.test.ts:552` now says exactly that.
+
+The reviewer's alias is reported separately from backend evidence;
+`MODEL_UNVERIFIED` both rounds (each environment self-reports a routing
+alias), so GAP-013 remains open.
+
+**Round-2 verdict: APPROVE, no findings.** The re-review of the corrected tree
+(`653a769d…`, 2301 lines, six files) reproduced the identity exactly and
+CONFIRMED all eight falsification items: advance-before-first-covered-write at
+all four sites; no fifth violating HIGH site and `restore.apply` intact
+(`revisions.ts` unchanged); supersede → insert → link preserved with the
+client-minted id legal; every new assertion load-bearing; the lost-race
+negative non-vacuous (count assertions, the timer only proving the loser is
+parked); exactly six files; and every losing-CAS throw inside its transaction
+so rollback removes checkpoint, revision, head move and snapshot together.
+**GAP-024 CLOSED 2026-10-02.**
+
+### Limitation — historical checkpoints are not rewritten
+
+`PRE_MUTATION` checkpoints written before this fix keep their post-mutation
+images. They are deliberately **not** rewritten: rewriting a historical snapshot
+is a destructive act against the record it preserves. Treat any checkpoint
+created before 2026-10-02 as unusable for undo. Recorded in C12.6 and in the
+GAP-024 detail section.
+
+### Checkpoint state — Engram unavailable, fallback handoff (GAP-021, re-observed)
+
+The SessionStart/compact hook again reported no authoritative registered runtime
+identity and that agent-attributed memory writes must stop until the host
+re-registers. Per the constitution's Engram rule and GAP-021, **no Engram
+checkpoint was written at this boundary** and no session ID was invented,
+derived or reused. This entry and the NF-WF-002C task contract are the fallback
+handoff; they carry the diff identity, the four two-direction receipts, the
+design decision at `canon.ts`, the gate counts and the review status.
+
+## NF-WF-002D mutation head expectation — implementation record 2026-10-03
+
+Executed in the author's current [CC] session as the `deepseek-v4.1-flash`
+implementer (the requested/configured alias, not backend proof). Baseline
+`811e7e6`; working tree dirty with the 002A–002D changes. `DATABASE_URL`
+pointed at the scratch PostgreSQL `127.0.0.1:5433` (GAP-020); the repo `.env`
+was not modified.
+
+### What changed
+
+- **Request surface.** The four HIGH mutation routes accept
+  `expectedHeadRevisionId: uuid.nullable().optional()` in the body —
+  `proposal.approve` (`canon-routes.ts`), `outlineVersion.approve` and
+  `outline.supersede` (`planning-routes.ts`), `chapters.import`
+  (`manuscript-routes.ts`). Approval/supersede parse `request.body ?? {}` so an
+  empty-body caller is unchanged; import keeps its required `text`/`format`;
+  supersede still returns 204.
+- **Service input.** Each of `approveProposal`, `approveOutlineVersion`,
+  `supersedeApprovedOutline`, `importChapters` gained the optional field and
+  passes it to `advanceForMutation`; the `??`-collapse the contract warns about
+  is not used anywhere on the path.
+- **Two-part mechanism.** A new `assertHeadExpectation(db, …)` in
+  `services/revisions.ts` is the unlocked advisory pre-check; it is called after
+  the tenant/authorization gate and before any write on each route, so a stale
+  plan does no work and opens no transaction. The locked CAS inside `advanceHead`
+  is the authoritative comparison and is unchanged.
+- **Error metadata.** `ConflictError` gained an optional, presence-signalled
+  `currentHeadRevisionId?: string | null`; the app-wide handler in
+  `platform-routes.ts` spreads it into the 409 body only when the property is
+  set. `null` is a real observation ("no head exists yet"), so presence — not
+  truthiness — is the signal. Generic slug/status, missing-baseline,
+  unsupported-scope and chapter-version conflicts keep `{ error: "CONFLICT" }`.
+  `applyRestore`'s inline pre-check now goes through `assertHeadExpectation`
+  (same 409 semantics, now typed); its server-pinned comparison is otherwise
+  untouched.
+- **Tests.** `revision.test.ts` grew 25 → 52 cases: four HIGH-route groups
+  (match-commits, omitted-commits, stale-409 + no-partial-write + named head,
+  explicit-null-409, malformed-400), a per-route locked-CAS probe (four total),
+  an authorization suite, and the HIGH coverage inventory.
+
+### Receipts
+
+Targeted five suites `145 passed (145)`; `@novelforge/story-versioning`
+`17 passed (17)`; full API `365 passed (365)`; root `pnpm test`
+`823 passed | 1 skipped (824)`; `pnpm lint` and `pnpm typecheck` exit 0.
+
+### The locked CAS, proven load-bearing
+
+The probe parks a second connection holding an uncommitted head move, waits on
+`pg_stat_activity` until the request's transaction is actually parked on a lock,
+then releases and asserts the 409. Run against a build with `advanceHead`'s
+locked comparison disabled (`if (false && …)`), each of the four failed with its
+own route's success payload (200/200/204/201) — the pre-check passed and the
+mutation committed. Restored, all four pass. A suite that only exercises the
+pre-check would have been green here while the race stayed open.
+
+### Independent review — 2026-10-04
+
+Dispatched by the author's instruction, since GLM became reachable through the
+9Router gateway. `POST http://localhost:20127/v1/messages` with
+`"model":"bansosmontera/glm-5.3-flash"`; the response echoed `glm-5.3-flash`, so
+the requested id is proven and the serving backend is not (GAP-013).
+
+**Production diff: APPROVE.** The reviewer traced authorization to precede every
+head disclosure on all four routes, confirmed `ConflictError` carries
+`currentHeadRevisionId` only when the second constructor argument is passed (so
+every generic conflict stays bare and no message-parsing path exists), and
+confirmed the tri-state survives Zod `.nullable().optional()`, the `...body.data`
+spreads and the `!== undefined` guards without `null` collapsing into
+`undefined`.
+
+Its first pass also raised a MAJOR on `canon-routes.ts`/`manuscript-routes.ts`
+claiming the field "may be silently dropped" because the diff showed only a
+schema hunk. **Refuted against the tree** — both handlers already spread
+`...body.data` into the service call, so the schema hunk is the whole change.
+Recorded because the finding was an artifact of reviewing a diff without its
+unchanged context.
+
+**One MAJOR test-fidelity defect, confirmed and fixed.** `parkHeadMove`'s
+`waitForBlocked` matched *any* backend with `wait_event_type = 'Lock'` in the
+test database, so a lock waiter belonging to a different transaction could
+satisfy the guard and `release()` could fire before the request had parked.
+Fixed by recording the parking backend's pid inside its own transaction
+(`SELECT pg_backend_pid()`) and requiring `pg_blocking_pids(pid)` to contain it;
+the poll window was tightened 5s → 3s, deliberately under the request
+transaction's Prisma default, so a non-parking request fails as
+`blocked === false` rather than as a 500 from an expired transaction.
+Re-falsified after the fix: all four probes still fail against the pre-check-only
+build (200/200/204/201) and pass restored. Re-review: **APPROVE**.
+
+**Two MINOR test findings were not actioned, deliberately** — the coverage
+inventory cannot detect a newly added HIGH route, and its "has a route" premise
+is asserted by comment rather than checked; making the pin load-bearing needs a
+route-registry walk. Both are recorded in the test's own comment as known limits.
+
+**Verdict scope:** the reviewer read the submitted diff and the excerpts supplied
+with it, not the whole tree line by line; it did not run the suite and did not
+review the docs changes. One reviewer, one model, unverified backend.
+
+**Transport note.** The gateway returned `upstream_error` ("All upstream
+attempts routed by Mortera Cloud failed") on several attempts *after* emitting
+25–35k characters of reasoning and before any content. A silent empty answer
+from this gateway means "retry", not "no findings". `glm-cn/glm-5.3-flash` and
+`cl/z-ai/glm-5.3-flash` both returned HTTP 503 `429 ... balance/credit
+exhausted`, so only the `bansosmontera` route is usable.
+
+### Status and handoff
+
+**IMPLEMENTED / REVIEWED.** GAP-022 is closed for implementation and review;
+GAP-013 stays open because the reviewer's backend is MODEL_UNVERIFIED. The
+exact-diff handoff (per-file `sha256` and the full-tree patch receipt) is in the
+task file's Submission section. NF-WF-002F is now READY: it must verify against
+the tree rather than accept this verdict as the acceptance itself.
+
+*(Superseded 2026-10-04: 002F ran and returned **VERIFIED for the evidenced M1
+foundation scope only** — see the NF-WF-002F entry below. It is
+self-verification by the implementing model, not an independent review, so
+GAP-013 stays OPEN and full cross-domain recovery stays OPEN under GAP-004.
+This paragraph is preserved as the 002D-boundary record.)*
+
+### Checkpoint state — Engram written (GAP-021, per-boundary)
+
+The SessionStart/compact hook at this boundary confirmed an authoritative
+runtime identity, `0238856e-21de-4b68-8644-f604cad2d10f`, distinct from the
+`5ff5313c…` binding recorded at the earlier 002D-preparation boundary. The 002D
+implementation checkpoint was written through MCP under the confirmed current
+identity; the old ID was not reused. GAP-021 remains a **per-boundary**
+observation: the binding must be re-checked at each boundary rather than assumed
+present or absent.
+
+## NF-WF-002F integrated foundation acceptance — 2026-10-04
+
+Task: [`tasks/NF-WF-002F-foundation-acceptance.md`](../../tasks/NF-WF-002F-foundation-acceptance.md).
+Documentation + verification task; **no production code was changed**. The
+verdict is appended to that task file and is **VERIFIED for the evidenced M1
+foundation scope only**.
+
+**Verifier is not a reviewer.** `deepseek-v4.1-flash` ran the checks and wrote
+the verdict — self-verification. The one independent verdict that exists is
+002D's (`glm-5.3-flash`, APPROVE, backend MODEL_UNVERIFIED per GAP-013); it was
+not re-run and does not transfer to this scope.
+
+**Environment.** Scratch PostgreSQL 16.15, container `nf-pg-5433`
+(`pgvector/pgvector:pg16`) on its own fresh named volume, published
+`127.0.0.1:5433->5432` — not the repo's compose volume, so no live/dev data was
+reachable. `DATABASE_URL` passed per command; the repo `.env` was not modified.
+GAP-020 re-observed: `docker port novelforge-ai-postgres-1` is empty (the
+compose container publishes nothing) and the host `:5432` listeners belong to
+`com.docker.backend`/`wslrelay`; repo credentials there fail `28P01`.
+
+**Gates, all green this session against the NF-WF-002 tree (HEAD `811e7e6`, 42
+modified + 14 untracked paths):**
+
+| Gate | Result |
+| --- | --- |
+| `@novelforge/story-versioning` | 17/17 |
+| `revision-constraints.integration.test.ts` | 8/8 |
+| Targeted API (revision/canon/planning/manuscript) | 137/137 |
+| Full API | 15 files, 365/365 |
+| Root `pnpm test` | 38 files, 823 passed \| 1 skipped |
+| lint / typecheck / build | exit 0 |
+
+Every suite reported a non-zero file and test count; no zero-selected run.
+
+**Empty upgrade.** `db:test:prepare` dropped/recreated `novelforge_test` and
+applied **all 20 migrations from empty**, exit 0.
+
+**Populated upgrade.** `.local-backup-novelforge-dev-20261002.sql` restored into
+a separate scratch DB and deployed: reproduced GAP-018 exactly
+(`P3018: relation "canon_proposals_object_entity_id_idx" already exists`), then
+the documented `migrate resolve --applied 20260930_phase6_evidence_fk_hardening`
+let the remaining 7 migrations apply including `20261006_m1_story_versioning`.
+C8 backfill on the real data is correct: 2 novels → 2 `main` branches, 2
+BASELINE revisions, 0 headless branches, 0 change-set-less baselines.
+
+**GAP-018 corrected — the failure is PARTIALLY APPLIED, and the workaround is
+what strips the constraints.** Measured on a fresh restore (`nf_dump_raw`),
+reading the `canon_fact_sources` FK set *before* and *after* the failing deploy:
+raw dump = **4** FKs including both `RESTRICT` ones; after the failed deploy =
+**2** — `chapter_version_id` and `reference_version_id` are gone. The
+migration's two leading `DROP CONSTRAINT` statements commit, then `CREATE INDEX`
+fails, Prisma records the migration as failed (`finished_at` NULL) with the
+drops left in place, and `migrate resolve --applied` then permanently skips the
+re-`ADD`. Behavioural proof: on the workaround-built DB a `DELETE FROM
+chapter_versions` for a cited version **succeeds** and orphans the citation
+(`ORPHAN_SOURCES=1`); on the from-empty DB the same DELETE is **refused** by
+`canon_fact_sources_chapter_version_id_fkey`. GAP-018's original cause statement
+is therefore **correct**; an earlier draft of this verdict refuted it, which was
+wrong (it had read the FK set only after deploy, when the drops had already
+committed). Corrected before recording. Scope is pre-existing and outside
+NF-WF-002: all nine M1 objects are present and identical in both databases.
+Follow-up requirement added: make the migration's `CREATE INDEX` re-runnable
+(`IF NOT EXISTS`) so a failed deploy cannot leave a half-applied database.
+
+**Accepted / not accepted.** Accepted: revision, snapshot, checkpoint,
+non-destructive restore, rebuild intent, tenant isolation, the C3
+`PRE_MUTATION` payload at all four HIGH sites, the 002D tri-state with
+authorization before head disclosure, atomicity, and the M1 constraints probed
+(not merely declared). Not accepted: full cross-domain recovery (GAP-004 stays
+OPEN at P1 for the remaining scope). GAP-011 stays OPEN (nullable-FK existence
+is not a join; `timeline_events.story_event_id` gets no backfill by design).
+GAP-013 stays OPEN (single unverified-backend reviewer). GAP-017 and GAP-025
+CLOSED with this verdict; GAP-022/GAP-024 confirmed CLOSED; GAP-023 stays OPEN
+and is not a G-01 dependency (no G-01 path consumes a domain event, so no
+speculative producer/outbox).
+
+**Limitations carried, not waived.** Self-check is not review; two MINOR 002D
+test-fidelity findings left unactioned deliberately; the populated-upgrade
+receipt is not schema-equivalent to fresh (M1 portion valid).
+
+**Checkpoint.** Written through MCP under the runtime-bound identity registered
+at this boundary, `fae4b412-db3a-4ddc-a052-cfda214cfa9d`, distinct from the
+`0238856e…` binding recorded at the 002D boundary. No old ID was reused and none
+was invented. GAP-021 remains **per-boundary**.
+
+**Next.** NF-WF-003 (shared chapter context compiler) is the next contract to
+prepare and is **not** dispatched; NF-WF-004 stays gated on frozen shared
+interfaces and disjoint ownership. Neither is a swarm. Queue rows are not test
+receipts.

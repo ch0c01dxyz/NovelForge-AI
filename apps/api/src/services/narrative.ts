@@ -62,6 +62,8 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 import type { InputJsonValue, NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
+import { advanceForMutation, createWithRevision } from "./revisions.ts";
 
 // --- Views ---
 
@@ -192,6 +194,8 @@ export function createNarrativeServices(deps: {
   audit: AuditService;
 }): NarrativeServices {
   const { db, audit } = deps;
+  // Bound once so each call site stays a five-argument call (see revisions.ts).
+  const withRevision = createWithRevision(db);
 
   /** Tenant gate: membership + novel resolved server-side, missing either is the SAME 404 (no leak); capability granular (ADR-0004). */
   async function gate(
@@ -295,11 +299,21 @@ export function createNarrativeServices(deps: {
       if (dna === null || typeof dna !== "object" || Array.isArray(dna)) {
         throw new ConflictError("narrative DNA must be a JSON object");
       }
-      const row = await db.narrativeDnaProfile.upsert({
-        where: { novelId },
-        update: { dna: dna as InputJsonValue },
-        create: { novelId, dna: dna as InputJsonValue },
-      });
+      // The profile is a per-novel singleton with no `id` column, so the
+      // change-log entity id is the novelId and the item is UPDATE (the C2
+      // vocabulary has no UPSERT; every caller after the first is an update).
+      const row = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "dna.write",
+        "NarrativeDnaProfile",
+        ["narrative_dna_profiles"],
+        (tx) => tx.narrativeDnaProfile.upsert({
+          where: { novelId },
+          update: { dna: dna as InputJsonValue },
+          create: { novelId, dna: dna as InputJsonValue },
+        }),
+        { entityId: novelId, itemOperation: "UPDATE" },
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -361,11 +375,20 @@ export function createNarrativeServices(deps: {
       }
       // SCALE: stored unvalidated — see the file comment.
 
-      const row = await db.narrativePolicy.upsert({
-        where: { novelId_kind: { novelId, kind } },
-        update: { hardness, hardReason: reason, payload: payload as InputJsonValue },
-        create: { novelId, kind, hardness, hardReason: reason, payload: payload as InputJsonValue },
-      });
+      // Upsert, so the change-log item is UPDATE rather than CREATE (the C2
+      // vocabulary has no UPSERT); see the note in putDna.
+      const row = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "policy.write",
+        "NarrativePolicy",
+        ["narrative_policies"],
+        (tx) => tx.narrativePolicy.upsert({
+          where: { novelId_kind: { novelId, kind } },
+          update: { hardness, hardReason: reason, payload: payload as InputJsonValue },
+          create: { novelId, kind, hardness, hardReason: reason, payload: payload as InputJsonValue },
+        }),
+        { itemOperation: "UPDATE" },
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -396,8 +419,25 @@ export function createNarrativeServices(deps: {
       if (!existing) throw new NotFoundError("narrative policy");
       // deleteMany with the novel-scoped predicate: count 0 = lost a
       // concurrent-delete race, which is the same 404 (and P2025 impossible).
-      const deleted = await db.narrativePolicy.deleteMany({ where: { id: existing.id, novelId } });
-      if (deleted.count === 0) throw new NotFoundError("narrative policy");
+      // The count check is INSIDE the transaction: a 404 thrown after the
+      // commit would leave a revision for a delete that deleted nothing (C4).
+      await db.$transaction(async (tx) => {
+        const deleted = await tx.narrativePolicy.deleteMany({
+          where: { id: existing.id, novelId },
+        });
+        if (deleted.count === 0) throw new NotFoundError("narrative policy");
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "policy.write",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["narrative_policies"],
+          items: [
+            { entityType: "NarrativePolicy", entityId: existing.id, operation: "DELETE" },
+          ],
+        });
+      });
       await audit.record({
         actorUserId,
         workspaceId,
@@ -475,13 +515,19 @@ export function createNarrativeServices(deps: {
 
       let created;
       try {
-        created = await db.antagonist.create({
-          data: {
-            workspaceId, novelId, characterId, role, stage, outcome,
-            purpose: purpose?.trim() || null, fromChapter, toChapter,
-            createdById: actorUserId,
-          },
-        });
+        created = await withRevision(
+          { workspaceId, novelId, actorUserId },
+          "antagonist.create",
+          "Antagonist",
+          ["antagonists"],
+          (tx) => tx.antagonist.create({
+            data: {
+              workspaceId, novelId, characterId, role, stage, outcome,
+              purpose: purpose?.trim() || null, fromChapter, toChapter,
+              createdById: actorUserId,
+            },
+          }),
+        );
       } catch (error) {
         // antagonists_novel_id_character_id_key.
         if ((error as { code?: string })?.code === "P2002") {
@@ -538,17 +584,31 @@ export function createNarrativeServices(deps: {
       // and stores a BACKWARD transition the rule exists to reject. Pinning
       // `stage` to the value the check actually ran against makes the second
       // writer a no-op, and its count says so.
-      const { count } = await db.antagonist.updateMany({
-        where: { id: antagonistId, novelId, workspaceId, stage: current.stage },
-        // Only touch outcome when the caller said something about it: an
-        // omitted field must not wipe an outcome already recorded.
-        data: { stage, ...(outcome === undefined ? {} : { outcome }) },
+      // The stage guard and the revision share ONE transaction: the revision
+      // must not commit for an advance the guard refused, and the guard must
+      // not pass while the revision it describes rolls back (C4).
+      await db.$transaction(async (tx) => {
+        const { count } = await tx.antagonist.updateMany({
+          where: { id: antagonistId, novelId, workspaceId, stage: current.stage },
+          // Only touch outcome when the caller said something about it: an
+          // omitted field must not wipe an outcome already recorded.
+          data: { stage, ...(outcome === undefined ? {} : { outcome }) },
+        });
+        if (count === 0) {
+          throw new ConflictError(
+            `antagonist stage changed while this request was in flight; it is no longer ${current.stage}`,
+          );
+        }
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "antagonist.advance",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["antagonists"],
+          items: [{ entityType: "Antagonist", entityId: antagonistId, operation: "UPDATE" }],
+        });
       });
-      if (count === 0) {
-        throw new ConflictError(
-          `antagonist stage changed while this request was in flight; it is no longer ${current.stage}`,
-        );
-      }
 
       const updated = {
         ...current,

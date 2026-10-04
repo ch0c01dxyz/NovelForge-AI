@@ -1,5 +1,79 @@
 # Test Matrix
 
+## NF-WF-002F integrated foundation acceptance — 2026-10-04
+
+Executed against the NF-WF-002 tree at HEAD `811e7e6` (42 modified + 14
+untracked paths), scratch PostgreSQL 16.15 on container `nf-pg-5433` at
+`127.0.0.1:5433`, `DATABASE_URL` passed per command. **Self-verification by
+`deepseek-v4.1-flash`; not an independent review** (GAP-013 stays OPEN).
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Package | `pnpm --filter @novelforge/story-versioning test` | 1 file, **17/17** |
+| Constraints | `vitest run test/revision-constraints.integration.test.ts` (database pkg) | 1 file, **8/8** |
+| Targeted API | `vitest run src/revision.test.ts src/canon.test.ts src/planning.test.ts src/manuscript.test.ts` | 4 files, **137/137** |
+| Full API | `pnpm --filter @novelforge/api exec vitest run` | 15 files, **365/365** |
+| Root | `pnpm test` | 38 files, **823 passed \| 1 skipped (824)** |
+| Lint | `pnpm lint` | exit 0 |
+| Typecheck | `pnpm typecheck` | exit 0 |
+| Build | `pnpm -r build` | exit 0 |
+
+Empty upgrade: `db:test:prepare` dropped/recreated `novelforge_test` and applied
+**all 20 migrations from empty**, exit 0. Populated upgrade: dev dump restored
+into a separate scratch DB, `migrate deploy` failed `P3018` exactly as GAP-018
+records, and the documented `migrate resolve --applied` workaround let the
+remaining 7 migrations apply including `20261006_m1_story_versioning`. C8
+backfill on the real data: 2 novels → 2 `main` branches, 2 BASELINE revisions,
+0 headless branches, 0 change-set-less baselines.
+
+GAP-018 was then narrowed by measurement (fresh restore `nf_dump_raw`, FK set
+read before/after the failing deploy): raw dump 4 `canon_fact_sources` FKs,
+post-failure 2 — the two leading `DROP CONSTRAINT`s commit before `CREATE INDEX`
+fails, so the workaround is what strips both RESTRICT FKs. Behavioural proof on
+the same `BEGIN … ROLLBACK` probe: the workaround-built DB accepts
+`DELETE FROM chapter_versions` for a cited version and orphans the citation
+(`ORPHAN_SOURCES=1`); the from-empty DB refuses it by
+`canon_fact_sources_chapter_version_id_fkey`.
+
+Every suite reported a non-zero file and test count; no zero-selected run, and
+no gate was inferred from a queue row. These counts are a **different
+inventory** from the 002A-era API 313/338 and root 797 receipts above and must
+not be reconciled against them. GAP-018 is corrected, **not** closed; the
+populated-upgrade receipt is valid for the M1 migrations but is not a faithful
+post-deploy schema.
+
+## Task-workflow documentation verification — 2026-10-03
+
+New owner NF-WF-002F will evaluate the final parent foundation after reviewed
+002D. Existing child green receipts do not automatically pass that acceptance.
+This turn changed only Markdown contracts and queue/evidence guidance. Inline
+checks passed: first eleven amended/new files, 80 local file links, balanced
+fences, 25 unique issue IDs with canonical states and equivalent unchanged
+constitutions. Application-tree hashes matched before/after; git diff --check
+exited 0. No new API, root, migration or reviewer result is claimed. GAP-025
+tracks the amended contract's review requirement; GAP-021 holds the runtime
+identity fallback. Required future checks are in 002D and 002F.
+Final amended set: 13 Markdown files and 86 local links verified, including
+resolved implementation ownership, queue dependencies and unchanged code digest.
+
+
+## Follow-up verification contract — 2026-10-02
+
+NF-WF-002A is the next fixture-only repair; NF-WF-002B provides semantic
+clarification and integrated review. Their commands and acceptance checks are
+future requirements, not executed results. Preserve original tests and the new
+revision tests: API 313 (before) and 338 (applied), root 797 (applied) are
+different inventories. Do not close GAP-017 by matching the old API count.
+The baseline/root command attribution in receipt 8 is corrected below from
+the explicit API command in GAP-017; no historical root baseline is invented.
+This Markdown amendment runs only document checks, not runtime/migration gates.
+Inline validation passed: ten edited/new Markdown files, 65 local links,
+balanced fences, 21 unique issue IDs/valid states, task ordering and fixture
+inventory. Constitution content equivalence passed with their own filename
+references normalized. `git -c core.excludesFile=NUL diff --check` exited 0.
+No independent review or new product test result is claimed.
+
+
 ## Claude Code configuration — 2026-10-01
 
 Local harness checks passed: JSON/PowerShell parsing, credential preservation,
@@ -32,7 +106,7 @@ link their IDs from task receipts.
 
 | Gate | Current status | Required owner evidence |
 |---|---|---|
-| G-01 Revision/recovery | design VERIFIED, runtime pending | NF-WF-001 contract VERIFIED over three review rounds (GAP-016); NF-WF-002 migration/restore/concurrency receipts still owed |
+| G-01 Revision/recovery | **IMPLEMENTED_WITH_GAPS** — receipts below; the former red gate command is green, 002B's review found one real recovery defect (**GAP-024**, since CLOSED), and parent acceptance returned **VERIFIED 2026-10-04 for the evidenced M1 foundation scope only** | NF-WF-001 contract VERIFIED over three review rounds (GAP-016). NF-WF-002 delivered the migration, package, service, routes and 25-case HTTP suite. **The historical red `pnpm test` receipt (123 pre-existing API tests, GAP-017) is repaired by NF-WF-002A: API `338 passed (338)` and root `796 passed \| 1 skipped (797)`.** Independent exact-diff review of the fixture repair returned **APPROVE** (two non-blocking findings, both fixed). NF-WF-002B clarified GAP-019 in `STORY-VERSIONING.md` §C12 and, reviewing the integrated implementation, found that four HIGH call sites capture their `PRE_MUTATION` snapshot **after** the mutation's writes, so the checkpoint an author restores from is not the pre-mutation state — **GAP-024**, with measured probe evidence, handed to NF-WF-002C. Its own independent review returned **CHANGES_REQUESTED** with four findings (all confirmed against source and corrected): the prescribed fix was wrong because the status CAS is itself a covered write, `applyRestore` was falsely named as violating when it is ordered correctly, C12.3's worked example had an unreachable reuse step, and NF-WF-002D omitted the `applyRestore` head-expectation precedent. The re-review of the corrected artifact returned **APPROVE** against the frozen diff `fd7ae2911a0aab9cfcf63c2b30fe38f06eeaf39a7c19434e5bbd14683e079760` (648 lines), scoped by the reviewer to "changed regions re-read in the current tree; unchanged regions unchanged by hash" — not line-by-line coverage of the whole artifact. Reviewer backend is **MODEL_UNVERIFIED** (GAP-013). A 3-removed/6-added hunk of the §C12.6 reuse caveat was then strengthened with the mechanism that verdict verified, and the bounded re-review of that delta returned **APPROVE** with no overreach. Three post-approval `ISSUES-AND-GAPS.md` edits were then reviewed too, returning **CHANGES_REQUESTED** on a self-referential hash pin (a register row cannot cite a combined-diff hash that includes that row — no fixed point), now corrected. The durable receipt is the reviewed **artifacts** — `docs/03-domain/STORY-VERSIONING.md` `sha256 73e3c9f5…`, `tasks/NF-WF-002C-premutation-ordering.md` `sha256 8fd083eb…` (as reviewed; appended on execution) and `tasks/NF-WF-002D-mutation-head-expectation.md` `sha256 640f9698…`, three not one because three of the four corrections landed outside `STORY-VERSIONING.md`; combined-diff hashes in this row's history are milestones, not current identities. **NF-WF-002C executed the GAP-024 production fix on 2026-10-02:** `advanceForMutation` now precedes the first covered-table write at all four HIGH sites (`canon.ts:1149` before `:1226`/`:1238`/`:1273`; `planning.ts:589` before `:602`/`:608` and `:656` before `:667`; `manuscript.ts:492` before `:511`), the `canon.ts` id dependency resolved by minting the uuid client-side (`randomUUID()` at `:1130`, `id: factId` on the create) so the supersede → insert → link order is unchanged, and each site gained the payload-content assertion C12.6 demanded. Each assertion was proven to **fail against the old ordering and pass against the new** — four two-direction receipts in `progress.md`. Gates re-run green: `revision.test.ts` 25/25, `planning.test.ts` 8/8, `manuscript.test.ts` 21/21, API 338/338, root `pnpm test` 796 passed \| 1 skipped (797), `pnpm lint` and `pnpm typecheck` exit 0. `revisions.ts` unchanged (hash `b0b25225…`), so `applyRestore`'s already-correct ordering was not touched. Round-1 independent review returned **CHANGES_REQUESTED**: finding A (the recorded frozen hash `b91e5287…` did not reproduce — the command silently omitted the untracked `revision.test.ts` and hashed a five-file diff) was CONFIRMED and corrected in the records; finding B (the "eight C3 HIGH rows" enumeration omits `checkpoint.create`) was REFUTED against `STORY-VERSIONING.md:760-764`, which deliberately distinguishes the nine-entry HIGH set from the eight mutation operations; finding C (a `revision.test.ts` comment overstates the `canon_proposals` assertion) was CONFIRMED by a partial-fix probe and the comment corrected. The reviewer crashed mid-report (gateway `insufficient_balance`); the reconstructed finding C was verified independently. The round-2 re-review of the corrected tree `sha256 653a769dff4a3dbf3161ddb158f8f03844d863eb8c25fd852f9a4608afbf3eff` (2301 lines, six files — `git add -N` first, or the untracked test is invisible) returned **APPROVE with no findings**: the identity reproduced exactly (2301 lines, same hash), all eight falsification items CONFIRMED, `revisions.ts` verified unchanged (`b0b25225…`). **GAP-024 is CLOSED 2026-10-02.** **Parent acceptance is owed and is not a formality: it must close or explicitly accept GAP-022 and GAP-024.** **NF-WF-002D implemented the GAP-022 fix on 2026-10-03** (four HIGH routes accept `expectedHeadRevisionId`, 409 carries `currentHeadRevisionId`, both pre-check and locked CAS; see the receipts section below). GAP-022 is closed for implementation with per-route negative receipts. **The separate review ran on 2026-10-04** (APPROVE on the production change; one MAJOR test-fidelity defect in the lock-waiter probe found, fixed, re-falsified and re-reviewed to APPROVE — see the review section below). The row stays **IMPLEMENTED_WITH_GAPS** because that verdict covers the frozen diff, not the whole tree. **NF-WF-002F ran the parent acceptance on 2026-10-04 and returned VERIFIED for the evidenced M1 foundation scope only** — all gates green on the tree (story-versioning 17/17, constraints 8/8, targeted API 137/137, full API 15 files/365, root 38 files/823 passed \| 1 skipped, lint/typecheck/build 0), empty upgrade applying all 20 migrations, populated upgrade reproduced and narrowed GAP-018 to a partial apply, and C8 baseline/snapshot/refusal/non-destructive-restore/tenant-isolation plus the four `PRE_MUTATION` payload assertions verified through tests (see the acceptance section at the top of this file). It is **self-verification, not an independent review**, so GAP-013 stays OPEN and full cross-domain recovery stays OPEN under GAP-004. The row therefore stays IMPLEMENTED_WITH_GAPS. |
 | G-02 Chapter context | pending | NF-WF-003 source/selection/budget checks |
 | G-03 Durable approval | pending | NF-WF-004/005 restart/resume/duplicate/authorization checks |
 | G-04 Final artifact/UI apply | pending | NF-WF-006/007 edit/review/stream/conflict checks |
@@ -54,6 +128,179 @@ errors. This is a self-review/check receipt, not an independent DeepSeek/GLM
 review. No application tests, model requests, migrations or deployments were
 run for this documentation change. GAP-009 remains VERIFY_PENDING for
 separate review; GAP-013 tracks requested-model availability.
+
+## NF-WF-002D mutation-head-expectation receipts — 2026-10-03
+
+Executed at HEAD `811e7e6` on `main` with the working tree dirty (002A–002D
+changes uncommitted). `DATABASE_URL` pointed at the scratch PostgreSQL on
+`127.0.0.1:5433` (GAP-020); the repo `.env` was not modified and no live
+database was touched. No schema migration was added by this task.
+
+| # | Command | Actual result |
+|---|---|---|
+| 1 | `pnpm --filter @novelforge/api exec vitest run src/canon.test.ts src/planning.test.ts src/manuscript.test.ts src/revision.test.ts src/services/platform.integration.test.ts` | **exit 0** — `Test Files 5 passed (5)`, `Tests 145 passed (145)` |
+| 2 | `pnpm --filter @novelforge/story-versioning test` | **exit 0** — `Test Files 1 passed (1)`, `Tests 17 passed (17)` |
+| 3 | `pnpm --filter @novelforge/api exec vitest run` | **exit 0** — `Test Files 15 passed (15)`, `Tests 365 passed (365)` |
+| 4 | `pnpm lint` | **exit 0** — `$ eslint .`, no output |
+| 5 | `pnpm typecheck` | **exit 0** — every workspace `Done`, including `apps/api typecheck: Done` |
+| 6 | `pnpm test` | **exit 0** — `Test Files 38 passed (38)`, `Tests 823 passed \| 1 skipped (824)` |
+
+`revision.test.ts` grew from 25 to 52 cases: four HIGH-route case groups
+(match-commits / omitted-commits / stale-409 / explicit-null-409 /
+malformed-400), a **per-route** locked-CAS probe (one per HIGH route, four
+total), an authorization suite (outsider 404, viewer 403), and the HIGH
+coverage inventory.
+
+### Two-direction receipt — the locked CAS is load-bearing
+
+The four per-route probes were run against a build with `advanceHead`'s locked
+comparison disabled (`if (false && …)`). Each failed with its own route's
+success payload — the pre-check passed and the mutation committed:
+
+```text
+AssertionError: {"canonFactId":…,"supersededFactId":…}: expected 200 to be 409   (proposal.approve)
+AssertionError: {"id":…,"status":"APPROVED",…}: expected 200 to be 409           (outlineVersion.approve)
+AssertionError: null: expected 204 to be 409                                     (outline.supersede)
+AssertionError: {"created":1}: expected 201 to be 409                            (chapters.import)
+```
+
+A pre-check-only implementation **passes its own pre-check and commits the
+mutation** on every route; only the locked CAS refuses. With the comparison
+restored all four pass (`Tests 52 passed (52)`). This is the two-direction proof
+the contract asked for, per route, not a one-direction green on a representative
+route. Each probe also asserts unchanged covered state, revision/checkpoint/
+snapshot counts and winner-attributed rebuild intents.
+
+### Independent review — 2026-10-04
+
+Dispatched by direct `POST http://localhost:20127/v1/messages` with
+`"model":"bansosmontera/glm-5.3-flash"`. The response echoed `glm-5.3-flash`, so
+the **requested** id is proven; the **serving backend** is not (GAP-013).
+
+**Production diff: APPROVE.** Authorization was traced to precede every head
+disclosure on all four routes; `ConflictError` carries `currentHeadRevisionId`
+only when the second constructor argument is passed, so every generic conflict
+stays bare and no message-parsing path exists; and the tri-state survives Zod
+`.nullable().optional()`, the `...body.data` spreads and the `!== undefined`
+guards without `null` collapsing into `undefined`.
+
+**One MAJOR test-fidelity defect, found and fixed.** `parkHeadMove`'s
+`waitForBlocked` matched *any* backend with `wait_event_type = 'Lock'` in the
+test database, so a lock waiter belonging to another transaction could satisfy
+the guard and release the probe before the request had parked. Fixed by
+recording the parking backend's pid inside its own transaction
+(`SELECT pg_backend_pid()`) and requiring `pg_blocking_pids(pid)` to contain it;
+the poll window was also tightened from 5s to 3s so a non-parking request fails
+as `blocked === false` rather than as a 500 from an expired transaction.
+Re-falsified after the fix: all four probes still fail against the pre-check-only
+build (200/200/204/201) and pass restored. Re-review: **APPROVE**.
+
+**Two MINOR test findings were not actioned, deliberately** — the coverage
+inventory cannot detect a *newly added* HIGH route, and its "has a route"
+premise is asserted by comment rather than checked. Making the pin load-bearing
+needs a route-registry walk. Recorded in the test's own comment as a known
+limit, not silently dropped.
+
+**Scope of the verdict:** the reviewer read the submitted diff and the excerpts
+supplied with it, not the whole tree line by line; it did not run the suite and
+did not review the docs changes.
+
+**Status: IMPLEMENTED / REVIEWED.** GAP-022 is closed for implementation and
+review; GAP-013 stays open because the reviewer's backend is MODEL_UNVERIFIED.
+NF-WF-002F was the next step and must verify against the tree rather than accept
+this verdict as the acceptance itself. *(Superseded 2026-10-04: 002F ran and
+returned VERIFIED for the evidenced M1 foundation scope only — self-verification
+by the implementing model, not an independent review; see the acceptance section
+at the top of this file. This paragraph is preserved as the 002D-boundary record.)*
+
+## NF-WF-002 runtime receipts — 2026-10-02
+
+Every command below was executed at the NF-WF-002 diff on `main` (baseline
+`5b5f139`, working tree dirty with the task's own changes). `DATABASE_URL`
+pointed at a scratch PostgreSQL on `127.0.0.1:5433` (GAP-020); the repo `.env`
+was not modified and no live/user database was touched.
+
+| # | Command | Actual result |
+|---|---|---|
+| 1 | `pnpm --filter @novelforge/database db:test:prepare` | **exit 0** — `novelforge_test` dropped, recreated, all 19 migrations applied from empty, `All migrations have been successfully applied.` |
+| 2 | `pnpm --filter @novelforge/story-versioning test` | **exit 0** — `Test Files 1 passed (1)`, `Tests 17 passed (17)` |
+| 3 | `pnpm --filter @novelforge/api exec vitest run src/revision.test.ts` | **exit 0** — `Test Files 1 passed (1)`, `Tests 25 passed (25)` |
+| 4 | `pnpm --filter @novelforge/database exec vitest run test/revision-constraints.integration.test.ts` | **exit 0** — `Test Files 1 passed (1)`, `Tests 8 passed (8)`; both hand-written constraints probed load-bearing by drop-and-retry |
+| 5 | `pnpm lint` | **exit 0** — `$ eslint .`, no output |
+| 6 | `pnpm typecheck` | **exit 0** — every package `Done`, including `apps/api typecheck: Done` |
+| 7 | `pnpm -r build` | **exit 0** — all packages built, `apps/web build: Done` |
+| 8 | `pnpm test` | **exit 1** — `Test Files 7 failed \| 31 passed (38)`, `Tests 123 failed \| 673 passed \| 1 skipped (797)`. The separate API-only baseline command (`pnpm --filter @novelforge/api exec vitest run`) with the diff stashed reported `Test Files 14 passed (14)`, `Tests 313 passed (313)`; this is not a root-suite baseline result. All 123 are the C8 head CAS refusing seeds that create a novel with no `novel_branches` row — **GAP-017** |
+| 9 | Populated-database upgrade check: restore `.local-backup-novelforge-dev-20261002.sql` into scratch DB `novelforge_upgrade_check`, then `prisma migrate deploy` | **exit 0** after `prisma migrate resolve --applied 20260930_phase6_evidence_fk_hardening`; without the resolve it fails with `P3018 … relation "canon_proposals_object_entity_id_idx" already exists` **at baseline too** — **GAP-018**. End state verified: 2 novels → 2 `novel_branches` rows, each with one `BASELINE` revision numbered 1 and one change set, **0 snapshots** (C8's deliberate split); both hand-written constraints present |
+
+Commands 1–7 and 9 are green. Command 8 is the one red gate, and it is red
+for a reason outside the implemented paths (GAP-017). NF-WF-002A repaired that
+reason; its reruns are below.
+
+## NF-WF-002A fixture-repair receipts — 2026-10-02
+
+Executed at HEAD `811e7e68debdd7550b5516df96637d227d10fdf6` on `main` with the
+preserved uncommitted NF-WF-002 implementation, plus this task's fixture patch
+over the ten allowed test files. Exact-diff identity of the patch (final,
+post-review-fix): `sha256
+d775ad1fd867098b60072e359449c780175b6b8add26582387d51acb8f65edd8`, 439 diff
+lines, 10 files. The pre-review identity was `sha256
+885dabaa56abd381302d8dc89bb829ea37f97b91e9204a1c58de31c8cfbf2467` (417 lines);
+the two `narrative.test.ts` reviewer findings below account for the difference.
+`DATABASE_URL` pointed at the scratch PostgreSQL on
+`127.0.0.1:5433` (GAP-020); the repo `.env` was not modified, no live/user
+database was touched, and 5432 was verified unreachable (`ECONNREFUSED`)
+before the scratch container was used.
+
+Disposable-target check before preparation: the only reachable endpoint was
+`127.0.0.1:5433`, an isolated `pgvector/pgvector:pg16` container created for
+this run (`docker run --name nf-pg-5433 -p 5433:5432 …`) mounting the repo's
+own `novelforge-ai_postgres_data` volume. `db:test:prepare` drops and recreates
+only `novelforge_test`, and each suite drops and recreates its own
+`novelforge_test_<name>` database. No concurrent worker owned either.
+
+| # | Command | Actual result |
+|---|---|---|
+| 1 | `pnpm --filter @novelforge/api exec vitest run src/canon.test.ts` — **before** the repair | **exit 1** — `Test Files 1 failed (1)`, `Tests 44 failed \| 12 passed (56)`. Reproduced failure shape: `AssertionError: {"error":"CONFLICT"}: expected 409 to be 201` at `createEntity src/canon.test.ts:240`, i.e. the C8 head CAS refusing a novel seeded with no `novel_branches` row |
+| 2 | `pnpm --filter @novelforge/database db:test:prepare` | **exit 0** — `novelforge_test` dropped, recreated, all migrations applied from empty, `All migrations have been successfully applied.` |
+| 3 | Ten-suite targeted run (`canon`, `character`, `manuscript`, `narrative`, `planning`, `story`, `orchestrator`, `ai`, `definitions`, `retrieval`) | **exit 0** — `Test Files 10 passed (10)`, `Tests 288 passed (288)` |
+| 4 | `vitest run src/revision.test.ts` (unchanged file) | **exit 0** — `Test Files 1 passed (1)`, `Tests 25 passed (25)`; the deliberate missing-baseline 409 case still asserts its refusal |
+| 5 | `vitest run` (full API) | **exit 0** — `Test Files 15 passed (15)`, `Tests 338 passed (338)` — equal to the pre-existing API inventory, not the older 313 |
+| 6 | `pnpm lint` | **exit 0** — `$ eslint .`, no output |
+| 7 | `pnpm typecheck` | **exit 0** — every package `Done`, including `apps/api typecheck: Done` |
+| 8 | `pnpm test` (root) | **exit 0** — `Test Files 38 passed (38)`, `Tests 796 passed \| 1 skipped (797)`. The single skip is the pre-existing `describe.skipIf(!process.env.WORKER_IT_REDIS_URL)` redis integration case in `apps/worker/src/worker.test.ts:257`; no skip was added by this task |
+
+The 12 converted sites, all to the production path: `canon.test.ts`,
+`character.test.ts`, `manuscript.test.ts`, `narrative.test.ts`,
+`planning.test.ts`, `story.test.ts`, `orchestrator.test.ts`, `ai.test.ts` each
+have one seed helper; `definitions.test.ts` and `retrieval.test.ts` each have
+a seed helper plus one additional-novel site (the workflow-bound-to-a-different-novel
+and novel-scoped-reference cases respectively), both reviewed. Fixture return
+shapes (`{ workspaceId, novelId }`), workspace membership, novel settings and
+the cross-tenant/cross-novel identities are preserved; the two additional
+novels are created in the same workspace as before, so each test still tests
+what its name says.
+
+Two edits beyond the seed swap, both forced by seeding through production:
+
+- `manuscript.test.ts` audit-trail test: the expected action array is
+  `["chapter.created", "chapter.deleted", "chapter.saved", "novel.created"]`.
+  `createNovel` writes its own `novel.created` audit row, which is the setup
+  artifact; the exact-equality shape is kept rather than loosened, and the
+  `actorUserId` loop over every row still holds. The three chapter rows — the
+  behavior under test — are unchanged.
+- `narrative.test.ts` concurrency race test: NF-WF-002 moved the guarded
+  `antagonist.updateMany` inside `db.$transaction`, so the service calls the
+  transaction's delegate — a different object with a different `updateMany`
+  function — and the previous `vi.spyOn(db.antagonist, "updateMany")` parked
+  nothing (`staged` stayed null). The spy now wraps `db.$transaction`, swaps
+  `tx.antagonist.updateMany` for a version that holds its promise open, and
+  then runs the real write on release. The assertions are unchanged and remain
+  load-bearing: the parked write returns `count 0`, the stored stage is
+  `DEFEAT`, and the first request returns 409. This is a harness adaptation to
+  the production transaction, not a relaxation of the race check.
+
+No production service, route, schema, migration, lockfile or root constitution
+was modified. No test was skipped, deleted or weakened.
 
 > Coverage tracking by phase. Test levels are defined in
 > [docs/10-testing/TESTING.md](../10-testing/TESTING.md): unit,

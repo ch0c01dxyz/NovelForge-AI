@@ -24,6 +24,8 @@ import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
+import { createAuditService } from "./services/audit.ts";
+import { createPlatformServices } from "./services/platform.ts";
 
 const TEST_DB = "novelforge_test_manuscript";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -123,8 +125,14 @@ async function seedNovel(ownerId: string, slug: string) {
   await db.membership.create({
     data: { workspaceId: ws.id, userId: ownerId, role: "OWNER" },
   });
-  const novel = await db.novel.create({
-    data: { workspaceId: ws.id, title: `Novel ${slug}`, slug, createdById: ownerId },
+  // Through the production path, not a raw row: `createNovel` is where C8's
+  // baseline branch/revision lives, so a raw insert would seed a novel the
+  // product cannot produce (no head) and every covered mutation would 409.
+  const novel = await createPlatformServices({ db, audit: createAuditService(db) }).createNovel({
+    actorUserId: ownerId,
+    workspaceId: ws.id,
+    title: `Novel ${slug}`,
+    slug,
   });
   return { workspaceId: ws.id, novelId: novel.id };
 }
@@ -401,6 +409,35 @@ describe("import/export", () => {
     expect(chapters.every((c) => c.status === "DRAFT")).toBe(true); // imports are not canon
     expect(chapters[0]!.currentVersion!.number).toBe(1);
     expect(chapters[0]!.currentVersion!.note).toBe("import");
+
+    // THE PAYLOAD, not the bookkeeping (GAP-024). The import is HIGH, so its
+    // PRE_MUTATION snapshot must be the state BEFORE the chapters exist.
+    // `captureSnapshot` reads the live tables when it runs, so an advance
+    // placed after the loop (or inside it) files the imported chapters under a
+    // PRE_MUTATION label and restoring the checkpoint would remove nothing.
+    // Both covered tables the import writes, not just one.
+    const checkpoint = await db.checkpoint.findFirstOrThrow({
+      where: { novelId: ids.novelId },
+      select: { id: true, kind: true, snapshot: { select: { payload: true } } },
+    });
+    expect(checkpoint.kind).toBe("PRE_MUTATION");
+    const payload = checkpoint.snapshot!.payload as Record<string, unknown[]>;
+    expect(payload["chapters"]).toEqual([]);
+    expect(payload["chapter_versions"]).toEqual([]);
+
+    // And it really undoes the import: the preview reports both imported
+    // chapters as rows the restore will delete.
+    const preview = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/restores/preview`,
+      headers: { cookie: owner.cookie },
+      payload: { checkpointId: checkpoint.id, scope: "FULL" },
+    });
+    expect(preview.statusCode, preview.body).toBe(201);
+    expect(
+      (preview.json() as { preview: { counts: Record<string, { removed: number }> } }).preview
+        .counts["chapters"]!.removed,
+    ).toBe(2);
   });
 
   it("exports the whole novel as markdown, ordered, with separator", async () => {
@@ -617,7 +654,11 @@ describe("audit trail", () => {
 
     const logs = await db.auditLog.findMany({ where: { workspaceId: ids.workspaceId } });
     const actions = logs.map((l) => l.action).sort();
-    expect(actions).toEqual(["chapter.created", "chapter.deleted", "chapter.saved"]);
+    // `novel.created` is setup: the fixture now creates the novel through the
+    // production path, which is where C8's baseline lives, so it necessarily
+    // leaves its own audit row. The three chapter rows are the behavior under
+    // test; the exact-equality shape is kept rather than loosened.
+    expect(actions).toEqual(["chapter.created", "chapter.deleted", "chapter.saved", "novel.created"]);
     for (const l of logs) expect(l.actorUserId).toBe(owner.userId);
   });
 });

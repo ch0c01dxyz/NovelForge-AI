@@ -18,6 +18,8 @@ import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
+import { createAuditService } from "./services/audit.ts";
+import { createPlatformServices } from "./services/platform.ts";
 
 const TEST_DB = "novelforge_test_planning";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -152,8 +154,17 @@ async function seedWorkspace(
       data: { workspaceId: ws.id, userId: memberRole.userId, role: memberRole.role },
     });
   }
-  const novel = await db!.novel.create({
-    data: { workspaceId: ws.id, title: `Novel ${slug}`, slug, createdById: ownerId },
+  // Through the production path, not a raw row: `createNovel` is where C8's
+  // baseline branch/revision lives, so a raw insert would seed a novel the
+  // product cannot produce (no head) and every covered mutation would 409.
+  const novel = await createPlatformServices({
+    db: db!,
+    audit: createAuditService(db!),
+  }).createNovel({
+    actorUserId: ownerId,
+    workspaceId: ws.id,
+    title: `Novel ${slug}`,
+    slug,
   });
   return { workspaceId: ws.id, novelId: novel.id };
 }
@@ -454,6 +465,18 @@ describe("planning routes", () => {
     })).json() as Array<{ id: string; number: number; status: string }>;
     expect(list.map((v) => v.number)).toEqual([2, 1]);
 
+    // THE PAYLOAD, not the bookkeeping (GAP-024). `captureSnapshot` reads the
+    // live tables when it runs, so a checkpoint whose metadata is right but
+    // whose image is post-mutation restores nothing. Asserted after each
+    // mutation, since the checkpoint does not exist before it.
+    //
+    // Sorted: `captureSnapshot` issues no ORDER BY, so the row order is the
+    // database's business, not an assertion.
+    const outlineRows = (cp: { snapshot: { payload: unknown } | null }) =>
+      ((cp.snapshot!.payload as Record<string, { id: string; status: string }[]>)["outline_versions"] ?? [])
+        .map((r) => `${r.id}:${r.status}`)
+        .sort();
+
     // Approve v1 → 200, status flips, and v2 was never approved.
     const approved = await app!.inject({
       method: "POST",
@@ -464,6 +487,17 @@ describe("planning routes", () => {
     const approvedBody = approved.json() as { id: string; status: string };
     expect(approvedBody).toEqual(expect.objectContaining({ id: v1.id, status: "APPROVED" }));
 
+    // At approve time both versions were still DRAFT; the approval promotes v1
+    // to APPROVED. A snapshot holding v1 as DRAFT is the pre-mutation image;
+    // one holding APPROVED fails, and that is what an advance placed after the
+    // promote (or after the supersede step, which also writes
+    // `outline_versions`) would produce.
+    const approveCp = await db!.checkpoint.findFirstOrThrow({
+      where: { novelId, label: { startsWith: "outlineVersion.approve" } },
+      select: { id: true, snapshot: { select: { payload: true } } },
+    });
+    expect(outlineRows(approveCp)).toEqual([`${v1.id}:DRAFT`, `${v2.id}:DRAFT`].sort());
+
     // Supersede → 204; the single APPROVED slot is now empty.
     const superseded = await app!.inject({
       method: "POST",
@@ -471,6 +505,15 @@ describe("planning routes", () => {
       headers: { cookie: owner.cookie },
     });
     expect(superseded.statusCode, superseded.body).toBe(204);
+
+    // Same proof for the second planning site: the supersede's PRE_MUTATION
+    // image still shows v1 APPROVED, because the advance runs before the
+    // update rather than after it.
+    const supersedeCp = await db!.checkpoint.findFirstOrThrow({
+      where: { novelId, label: { startsWith: "outline.supersede" } },
+      select: { id: true, snapshot: { select: { payload: true } } },
+    });
+    expect(outlineRows(supersedeCp)).toEqual([`${v1.id}:APPROVED`, `${v2.id}:DRAFT`].sort());
 
     // Re-approve of the now-SUPERSEDED v1: the DRAFT CAS matches zero rows
     // → 409 with the generic body.
@@ -500,6 +543,39 @@ describe("planning routes", () => {
     expect(list).toEqual([
       expect.objectContaining({ number: 2, status: "APPROVED" }),
       expect.objectContaining({ number: 1, status: "SUPERSEDED" }),
+    ]);
+
+    // And the checkpoint really undoes the approval: applying the approve's
+    // PRE_MUTATION image puts v1 back to DRAFT. This one has to be an applied
+    // restore, not a preview — the row identity does not change, only its
+    // status, so the preview's added/removed counts are zero either way and
+    // would pass against a post-mutation image.
+    const preview = await app!.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/restores/preview`,
+      headers: { cookie: owner.cookie },
+      payload: { checkpointId: approveCp.id, scope: "FULL" },
+    });
+    expect(preview.statusCode, preview.body).toBe(201);
+    const applied = await app!.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/restores/${
+        (preview.json() as { restoreOperationId: string }).restoreOperationId
+      }/apply`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(applied.statusCode, applied.body).toBe(200);
+    // v1 is DRAFT again, and the later APPROVED v2 is gone — both rewound to
+    // the image the checkpoint holds.
+    expect(
+      await db!.outlineVersion.findMany({
+        where: { novelId },
+        select: { id: true, status: true },
+        orderBy: { number: "asc" },
+      }),
+    ).toEqual([
+      { id: v1.id, status: "DRAFT" },
+      { id: v2.id, status: "DRAFT" },
     ]);
   });
 

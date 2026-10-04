@@ -17,6 +17,8 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 import type { InputJsonValue, NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
+import { advanceForMutation, assertHeadExpectation, createWithRevision } from "./revisions.ts";
 
 // --- Views ---
 
@@ -81,9 +83,16 @@ export interface PlanningServices {
 
   listOutlineVersions(input: Scope & { take: number; skip: number }): Promise<OutlineVersionView[]>;
 
-  approveOutlineVersion(input: Scope & { versionId: string }): Promise<OutlineVersionView>;
+  approveOutlineVersion(input: Scope & {
+    versionId: string;
+    /** NF-WF-002D: the head the caller's plan was built against (C12.1). */
+    expectedHeadRevisionId?: string | null;
+  }): Promise<OutlineVersionView>;
 
-  supersedeApprovedOutline(input: Scope): Promise<void>;
+  supersedeApprovedOutline(input: Scope & {
+    /** NF-WF-002D: the head the caller's plan was built against (C12.1). */
+    expectedHeadRevisionId?: string | null;
+  }): Promise<void>;
 
   getHorizon(input: Scope): Promise<{ policy: unknown; updatedAt: Date | null }>;
 
@@ -97,6 +106,8 @@ export function createPlanningServices(deps: {
   audit: AuditService;
 }): PlanningServices {
   const { db, audit } = deps;
+  // Bound once so each call site stays a five-argument call (see revisions.ts).
+  const withRevision = createWithRevision(db);
 
   /** Tenant gate: membership + novel resolved server-side, missing either is the SAME 404 (no leak); capability granular (ADR-0004). */
   async function gate(
@@ -122,9 +133,15 @@ export function createPlanningServices(deps: {
 
     async createSynopsis({ actorUserId, workspaceId, novelId, content }) {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
-      const created = await db.synopsis.create({
-        data: { novelId, content, createdById: actorUserId },
-      });
+      const created = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "synopsis.write",
+        "Synopsis",
+        ["synopses"],
+        (tx) => tx.synopsis.create({
+          data: { novelId, content, createdById: actorUserId },
+        }),
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -168,13 +185,27 @@ export function createPlanningServices(deps: {
       if (!existing) throw new NotFoundError("synopsis");
 
       // CAS on ACTIVE (not read-then-write): a concurrent archive must lose with a 409, not double-archive or resurrect. Zero count = already archived.
-      const archived = await db.synopsis.updateMany({
-        where: { id: synopsisId, novelId, status: "ACTIVE" },
-        data: { status: "ARCHIVED" },
+      // The CAS and the revision share one transaction: a revision for an
+      // archive that matched zero rows would describe a mutation that did not
+      // happen (C4).
+      await db.$transaction(async (tx) => {
+        const archived = await tx.synopsis.updateMany({
+          where: { id: synopsisId, novelId, status: "ACTIVE" },
+          data: { status: "ARCHIVED" },
+        });
+        if (archived.count === 0) {
+          throw new ConflictError("this synopsis is already archived");
+        }
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "synopsis.write",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["synopses"],
+          items: [{ entityType: "Synopsis", entityId: synopsisId, operation: "UPDATE" }],
+        });
       });
-      if (archived.count === 0) {
-        throw new ConflictError("this synopsis is already archived");
-      }
       await audit.record({
         actorUserId,
         workspaceId,
@@ -188,10 +219,22 @@ export function createPlanningServices(deps: {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
       // deleteMany with the novel-scoped predicate: count 0 = missing or lost
       // a concurrent-delete race — both are the same 404 (and P2025 impossible).
-      const deleted = await db.synopsis.deleteMany({
-        where: { id: synopsisId, novelId },
+      // Count check INSIDE the transaction (C4): see archiveSynopsis.
+      await db.$transaction(async (tx) => {
+        const deleted = await tx.synopsis.deleteMany({
+          where: { id: synopsisId, novelId },
+        });
+        if (deleted.count === 0) throw new NotFoundError("synopsis");
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "synopsis.write",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["synopses"],
+          items: [{ entityType: "Synopsis", entityId: synopsisId, operation: "DELETE" }],
+        });
       });
-      if (deleted.count === 0) throw new NotFoundError("synopsis");
       await audit.record({
         actorUserId,
         workspaceId,
@@ -223,9 +266,15 @@ export function createPlanningServices(deps: {
       }
 
       try {
-        const created = await db.saga.create({
-          data: { novelId, kind, title, parentId, intent, createdById: actorUserId },
-        });
+        const created = await withRevision(
+          { workspaceId, novelId, actorUserId },
+          "saga.write",
+          "Saga",
+          ["sagas"],
+          (tx) => tx.saga.create({
+            data: { novelId, kind, title, parentId, intent, createdById: actorUserId },
+          }),
+        );
         await audit.record({
           actorUserId,
           workspaceId,
@@ -282,10 +331,23 @@ export function createPlanningServices(deps: {
       // Child sagas and outline nodes cascade DB-side (self parentId Cascade +
       // OutlineNode.sagaId Cascade); deleteMany keeps a concurrent delete a
       // clean 404 instead of P2025 → 500.
-      const deleted = await db.saga.deleteMany({
-        where: { id: sagaId, novelId },
+      // Count check INSIDE the transaction (C4). The cascade reaches child
+      // sagas and their outline nodes, so both tables are invalidated.
+      await db.$transaction(async (tx) => {
+        const deleted = await tx.saga.deleteMany({
+          where: { id: sagaId, novelId },
+        });
+        if (deleted.count === 0) throw new NotFoundError("saga");
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "saga.write",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["sagas", "outline_nodes"],
+          items: [{ entityType: "Saga", entityId: sagaId, operation: "DELETE" }],
+        });
       });
-      if (deleted.count === 0) throw new NotFoundError("saga");
       await audit.record({
         actorUserId,
         workspaceId,
@@ -331,9 +393,15 @@ export function createPlanningServices(deps: {
       }
 
       try {
-        const created = await db.outlineNode.create({
-          data: { novelId, sagaId, kind, title, summary, order, chapterId, sceneId },
-        });
+        const created = await withRevision(
+          { workspaceId, novelId, actorUserId },
+          "outlineNode.write",
+          "OutlineNode",
+          ["outline_nodes"],
+          (tx) => tx.outlineNode.create({
+            data: { novelId, sagaId, kind, title, summary, order, chapterId, sceneId },
+          }),
+        );
         await audit.record({
           actorUserId,
           workspaceId,
@@ -396,10 +464,22 @@ export function createPlanningServices(deps: {
         select: { sagaId: true, order: true },
       });
       if (!existing) throw new NotFoundError("outline node");
-      const deleted = await db.outlineNode.deleteMany({
-        where: { id: outlineNodeId, novelId },
+      // Count check INSIDE the transaction (C4).
+      await db.$transaction(async (tx) => {
+        const deleted = await tx.outlineNode.deleteMany({
+          where: { id: outlineNodeId, novelId },
+        });
+        if (deleted.count === 0) throw new NotFoundError("outline node");
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "outlineNode.write",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["outline_nodes"],
+          items: [{ entityType: "OutlineNode", entityId: outlineNodeId, operation: "DELETE" }],
+        });
       });
-      if (deleted.count === 0) throw new NotFoundError("outline node");
       await audit.record({
         actorUserId,
         workspaceId,
@@ -426,9 +506,24 @@ export function createPlanningServices(deps: {
             orderBy: { number: "desc" },
             select: { number: true },
           });
-          return tx.outlineVersion.create({
+          const draft = await tx.outlineVersion.create({
             data: { novelId, number: (latest?.number ?? 0) + 1, status: "DRAFT", content: content as InputJsonValue, note, createdById: actorUserId },
           });
+          // Same transaction as the create: the revision must not outlive a
+          // draft whose number collided (C4). LOW — a draft is not yet the
+          // approved outline, so no PRE_MUTATION checkpoint.
+          await advanceForMutation(tx, {
+            workspaceId,
+            novelId,
+            operation: "outlineDraft.create",
+            origin: "MANUAL",
+            actorUserId,
+            tables: ["outline_versions"],
+            items: [
+              { entityType: "OutlineVersion", entityId: draft.id, operation: "CREATE" },
+            ],
+          });
+          return draft;
         })
         .catch((e: unknown) => {
           // A concurrent create raced us to the same next number; the index
@@ -477,7 +572,13 @@ export function createPlanningServices(deps: {
       }));
     },
 
-    async approveOutlineVersion({ actorUserId, workspaceId, novelId, versionId }) {
+    async approveOutlineVersion({
+      actorUserId,
+      workspaceId,
+      novelId,
+      versionId,
+      expectedHeadRevisionId,
+    }) {
       await gate(actorUserId, workspaceId, novelId, "canon:approve");
 
       const existing = await db.outlineVersion.findFirst({
@@ -486,8 +587,35 @@ export function createPlanningServices(deps: {
       });
       if (!existing) throw new NotFoundError("outline version");
 
+      // Advisory pre-check after the tenant gate, before the transaction: a
+      // stale plan does no work. The locked CAS below is authoritative.
+      await assertHeadExpectation(db, { novelId, expectedHeadRevisionId });
+
       try {
         const approved = await db.$transaction(async (tx) => {
+          // HIGH (C3): the PRE_MUTATION checkpoint and snapshot are captured
+          // HERE, before the first covered-table write. `captureSnapshot` reads
+          // the live tables when it runs, so an advance placed after the
+          // supersede below would file a post-mutation image under a
+          // PRE_MUTATION label — the checkpoint would not undo the approval
+          // (GAP-024). The status CAS counts as a covered write too
+          // (`outline_versions` is in COVERED_TABLE_NAMES), so the advance
+          // precedes it rather than the other way round. A lost CAS throws
+          // inside this transaction, so its rollback removes the checkpoint,
+          // revision, head move and snapshot together — no orphan is possible.
+          await advanceForMutation(tx, {
+            workspaceId,
+            novelId,
+            expectedHeadRevisionId,
+            operation: "outlineVersion.approve",
+            origin: "MANUAL",
+            actorUserId,
+            tables: ["outline_versions"],
+            items: [
+              { entityType: "OutlineVersion", entityId: versionId, operation: "UPDATE" },
+            ],
+          });
+
           // Step 1: clear the single APPROVED slot — the status predicate is the CAS on the current live version; count 0 = already superseded (no-op, fine).
           await tx.outlineVersion.updateMany({
             where: { novelId, status: "APPROVED" },
@@ -536,11 +664,32 @@ export function createPlanningServices(deps: {
       }
     },
 
-    async supersedeApprovedOutline({ actorUserId, workspaceId, novelId }) {
+    async supersedeApprovedOutline({ actorUserId, workspaceId, novelId, expectedHeadRevisionId }) {
       await gate(actorUserId, workspaceId, novelId, "canon:approve");
-      const superseded = await db.outlineVersion.updateMany({
-        where: { novelId, status: "APPROVED" },
-        data: { status: "SUPERSEDED" },
+      // Advisory pre-check before the transaction (NF-WF-002D).
+      await assertHeadExpectation(db, { novelId, expectedHeadRevisionId });
+      // HIGH (C3). One transaction: the supersede and its PRE_MUTATION
+      // checkpoint either both land or neither does (C4).
+      const superseded = await db.$transaction(async (tx) => {
+        // HIGH (C3). Advance before the update, not after: the snapshot must
+        // hold the pre-supersede image (GAP-024).
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          expectedHeadRevisionId,
+          operation: "outline.supersede",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["outline_versions"],
+          // The change log records the operation, not one row: a supersede
+          // with no approved version supersedes nothing and names the novel.
+          items: [{ entityType: "OutlineVersion", entityId: novelId, operation: "UPDATE" }],
+        });
+        const result = await tx.outlineVersion.updateMany({
+          where: { novelId, status: "APPROVED" },
+          data: { status: "SUPERSEDED" },
+        });
+        return result;
       });
       await audit.record({
         actorUserId,
@@ -567,11 +716,23 @@ export function createPlanningServices(deps: {
       const probe = horizonFor(0, policy);
       if ("problem" in probe) throw new ConflictError(`horizon policy invalid: ${probe.problem}`);
 
-      const row = await db.planningHorizon.upsert({
-        where: { novelId },
-        update: { policy: policy as InputJsonValue },
-        create: { novelId, policy: policy as InputJsonValue },
-      });
+      // A per-novel singleton with no `id` column: the change-log entity id
+      // is the novelId, and the item is UPDATE (the C2 vocabulary has no
+      // UPSERT). The operation is unlisted in C3, which defaults it to LOW —
+      // but `planning_horizons` is covered by C1, so the mutation still takes
+      // the head CAS and records a revision.
+      const row = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "horizon.write",
+        "PlanningHorizon",
+        ["planning_horizons"],
+        (tx) => tx.planningHorizon.upsert({
+          where: { novelId },
+          update: { policy: policy as InputJsonValue },
+          create: { novelId, policy: policy as InputJsonValue },
+        }),
+        { entityId: novelId, itemOperation: "UPDATE" },
+      );
       await audit.record({
         actorUserId,
         workspaceId,

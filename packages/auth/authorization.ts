@@ -55,6 +55,12 @@ export const CAPABILITIES = [
   "canon:read", // read approved canon facts, their sources, and proposals
   "canon:manage", // author a fact directly, or propose a candidate
   "canon:approve", // decide a proposal: commit it to canon, or reject it
+  // Story versioning (M1, NF-WF-002). Workspace-scoped like canon: a
+  // revision is one tenant's story history, so neither capability is
+  // platform-only (STORY-VERSIONING.md C5, ADR-0005) — a platform
+  // administrator is not the restorer of every tenant's canon.
+  "revision:read", // read revision, checkpoint and restore history
+  "revision:manage", // create a checkpoint; apply a restore, which rewinds story state
   // Platform-scoped catalog. Only a platform administrator may define the
   // shared agent/skill/workflow catalog every workspace can read.
   "platform:define",
@@ -128,6 +134,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "canon:read",
     "canon:manage",
     "canon:approve",
+    // ADMIN curates the workspace's story history the same way it curates
+    // its story truth: rewinding state is an administrative act.
+    "revision:read",
+    "revision:manage",
   ]),
   AUTHOR: new Set<Capability>([
     "novel:create",
@@ -153,6 +163,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "canon:read",
     "canon:manage",
     "canon:approve",
+    // The author owns the story's history as well as its canon: creating a
+    // checkpoint and rewinding to one are both authoring acts (CLAUDE.md §5).
+    "revision:read",
+    "revision:manage",
   ]),
   EDITOR: new Set<Capability>([
     "novel:read",
@@ -173,6 +187,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // asserted explicitly in authorization.test.ts — the generic loops
     // would not catch a future edit that granted it.
     "canon:read",
+    // A continuity reviewer reads revision and checkpoint history to trace
+    // when a fact changed; applying a restore rewinds story state and stays
+    // the author's act, so EDITOR gets revision:read and NOT revision:manage.
+    "revision:read",
   ]),
   VIEWER: new Set<Capability>(["novel:read", "chapter:read"]),
 };

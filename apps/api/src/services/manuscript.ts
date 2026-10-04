@@ -18,6 +18,10 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 // setErrorHandler (registered once for the whole app) maps to 403.
 import { NotFoundError, ConflictError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// The head CAS every covered mutation must take inside its own transaction
+// (STORY-VERSIONING.md C3/C4). Imported directly rather than threaded through
+// the factory: the boundary call has to share the caller's `tx`.
+import { advanceForMutation, assertHeadExpectation } from "./revisions.ts";
 
 export interface ManuscriptServices {
   createChapter(input: {
@@ -91,6 +95,8 @@ export interface ManuscriptServices {
     novelId: string;
     text: string;
     format: "md" | "txt";
+    /** NF-WF-002D: the head the caller's plan was built against (C12.1). */
+    expectedHeadRevisionId?: string | null;
   }): Promise<{ created: number }>;
   exportNovel(input: {
     actorUserId: string;
@@ -168,7 +174,7 @@ export function createManuscriptServices(
           orderBy: { number: "desc" },
           select: { number: true },
         });
-        return tx.chapter.create({
+        const created = await tx.chapter.create({
           data: {
             novelId,
             number: (max?.number ?? 0) + 1,
@@ -176,6 +182,16 @@ export function createManuscriptServices(
             createdById: actorUserId,
           },
         });
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "chapter.create",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["chapters"],
+          items: [{ entityType: "Chapter", entityId: created.id, operation: "CREATE" }],
+        });
+        return created;
       });
       await audit?.record({
         actorUserId,
@@ -292,6 +308,20 @@ export function createManuscriptServices(
           where: { id: chapterId },
           data: { currentVersionId: created.id, wordCount },
         });
+        // C10 step 1: a LOW save still produces a revision — one UPDATE
+        // chapters and one CREATE chapter_versions — with no checkpoint.
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "chapter.save",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["chapters", "chapter_versions"],
+          items: [
+            { entityType: "ChapterVersion", entityId: created.id, operation: "CREATE" },
+            { entityType: "Chapter", entityId: chapterId, operation: "UPDATE" },
+          ],
+        });
         return created.number;
       });
       await audit?.record({
@@ -313,7 +343,17 @@ export function createManuscriptServices(
       if (chapter.status === "PUBLISHED") {
         throw new ConflictError("published chapters cannot be deleted; unpublish first");
       }
-      await db.chapter.delete({ where: { id: chapterId } }).catch((e: unknown) => {
+      await db.$transaction(async (tx) => {
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "chapter.delete",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["chapters", "chapter_versions"],
+          items: [{ entityType: "Chapter", entityId: chapterId, operation: "DELETE" }],
+        });
+        await tx.chapter.delete({ where: { id: chapterId } }).catch((e: unknown) => {
         // canon_fact_sources.chapter_version_id is ON DELETE RESTRICT, so a
         // chapter carrying canon evidence cannot be deleted. That refusal is
         // the point — a citation is the only place a fact's span is stored,
@@ -330,7 +370,8 @@ export function createManuscriptServices(
               "on those facts first, then delete the chapter",
           );
         }
-        throw e;
+          throw e;
+        });
       });
       await audit?.record({
         actorUserId,
@@ -353,7 +394,23 @@ export function createManuscriptServices(
       if (status === "PUBLISHED" && !chapter.currentVersion) {
         throw new ConflictError("cannot publish a chapter with no content");
       }
-      await db.chapter.update({ where: { id: chapterId }, data: { status } });
+      // A status change is a covered mutation like any other and takes the
+      // head CAS (C3 LOW). `chapters.status` is deliberately NOT in the
+      // snapshot payload (C7) — restore never rewinds publication — so the
+      // revision records the change while the state restore can see does not
+      // include it.
+      await db.$transaction(async (tx) => {
+        await tx.chapter.update({ where: { id: chapterId }, data: { status } });
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "chapter.setStatus",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["chapters"],
+          items: [{ entityType: "Chapter", entityId: chapterId, operation: "UPDATE" }],
+        });
+      });
       await audit?.record({
         actorUserId,
         workspaceId,
@@ -376,8 +433,16 @@ export function createManuscriptServices(
       novelId: string;
       text: string;
       format: "md" | "txt";
+      expectedHeadRevisionId?: string | null;
     }): Promise<{ created: number }> {
       await gate(input.workspaceId, input.novelId, input.actorUserId, "chapter:create");
+      // Advisory pre-check after the tenant gate, before the parse and any
+      // write: a stale plan does no work (NF-WF-002D). The locked CAS inside
+      // the transaction below is authoritative.
+      await assertHeadExpectation(db, {
+        novelId: input.novelId,
+        expectedHeadRevisionId: input.expectedHeadRevisionId,
+      });
       const lines = input.text.split(/\r?\n/);
 
       // Parse into raw blocks, then flush each to a part. `cur` holds the
@@ -427,6 +492,23 @@ export function createManuscriptServices(
       let created = 0;
       await db.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM novels WHERE id = ${input.novelId} FOR UPDATE`;
+        // HIGH (C3): the import captures a mandatory PRE_MUTATION checkpoint
+        // and snapshot in this same transaction, pinned to the pre-import
+        // head. A bulk import is exactly the operation a checkpoint is for.
+        // It runs before the loop, not after: `captureSnapshot` reads the live
+        // tables, so advancing last would file the post-import chapters under a
+        // PRE_MUTATION label and restoring the checkpoint would remove nothing
+        // (GAP-024). One advance for the whole import, not one per part.
+        await advanceForMutation(tx, {
+          workspaceId: input.workspaceId,
+          novelId: input.novelId,
+          expectedHeadRevisionId: input.expectedHeadRevisionId,
+          operation: "chapters.import",
+          origin: "MANUAL",
+          actorUserId: input.actorUserId,
+          tables: ["chapters", "chapter_versions"],
+          items: [{ entityType: "Novel", entityId: input.novelId, operation: "UPDATE" }],
+        });
         let next =
           (
             await tx.chapter.findFirst({
@@ -558,6 +640,18 @@ export function createManuscriptServices(
         await tx.chapter.update({
           where: { id: chapterId },
           data: { currentVersionId: created.id, wordCount },
+        });
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "chapter.restore",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["chapters", "chapter_versions"],
+          items: [
+            { entityType: "ChapterVersion", entityId: created.id, operation: "CREATE" },
+            { entityType: "Chapter", entityId: chapterId, operation: "UPDATE" },
+          ],
         });
         return created.number;
       });

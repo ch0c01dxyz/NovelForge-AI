@@ -1,5 +1,145 @@
 # Decision Log
 
+## Model availability update — 2026-10-03
+
+The author reports only `deepseek-v4.1-flash` active; `glm-5.3-flash` is
+currently inactive. This supersedes the availability assumption in the earlier
+owner assignment, not the separate-review requirement. Continue current-session
+002D implementation and checks under the playbook's single-model continuation
+rule. At submission, record REVIEW_PENDING until a separate reviewer actually
+reviews the exact artifact. 002F and parent acceptance remain gated. No review
+waiver, substitute dispatch or verified backend identity is claimed.
+
+## Task contract corrections and acceptance owner — 2026-10-03
+
+The author requested task analysis and workflow improvements and supplied
+the waiting DeepSeek response. Execution owner is the current DeepSeek-selected
+Claude session; one separate GLM reviewer is requested at submission. This
+resolves the owner question without another implementation worker or permission
+gate. Configured aliases and historical saves do not prove backend identity.
+Preserve the
+recorded HIGH-route/body/tri-state decision for 002D. Clarify its exact scope
+for typed metadata at existing revision mismatch throw sites, authorized
+proposal-to-novel resolution, empty-body compatibility and forced-race checks.
+No head-CAS comparison or snapshot-ordering change is authorized here.
+
+The earlier claim that locked rejection implies partially committed state is
+withdrawn: all work in the rejecting transaction rolls back. Its advisory
+pre-check still remains the chosen optimization. The rollback 400 claim was
+unsupported by the non-strict route schemas; verify older behavior and disclose
+loss of optional protection. Choosing HIGH routes does not mean a LOW head
+assertion is inherently impossible: the existing chapter CAS remains unchanged
+as the accepted compatibility choice, not because a pre-write head assertion
+would be self-contradictory. Inventory coverage requires inspection/tests;
+impactFor alone does not automatically modify HTTP schemas. The earlier
+If-Match impossibility rationale is also narrowed: no equivalent tri-state
+encoding is defined for that interface here, so the accepted body schema is
+reused; universal inability is not claimed.
+
+Add bounded 002F to own integrated foundation acceptance after reviewed D.
+Revisit 002E at NF-WF-004 consumer design, keeping pending intent history intact
+on rollback. This is task-scope/evidence clarification, not a new outbox design,
+author waiver, runtime repair or closure of the remaining product capability.
+The amended D artifact no longer has the earlier review hash: preserve that
+receipt as historical and review affected changes at the next submission.
+
+
+## NF-WF-002D mutation head expectation — 2026-10-03
+
+Author decision, taken before dispatch because the task contract forbids
+dispatch without it. GAP-022: no C3 mutation route accepts a client head
+expectation, so C4's optimistic-concurrency guarantee is unreachable for
+callers. This decides the request surface only; it does not itself implement
+or claim any runtime behaviour.
+
+**Outcome (2026-10-04).** Implemented 2026-10-03 and independently reviewed
+2026-10-04: APPROVE on the production diff. The review found one MAJOR
+test-fidelity defect (the locked-CAS probe's `waitForBlocked` matched any lock
+waiter in the test database, not the request's), fixed by pinning the match to
+the parking backend's pid via `pg_blocking_pids`. The decision below was not
+reopened. Reviewer backend MODEL_UNVERIFIED (GAP-013).
+
+**1. Which routes carry the expectation — the HIGH operations only, and the
+set is derived, not curated.** The four routes that gain it are
+`proposal.approve`, `outlineVersion.approve`, `outline.supersede` and
+`chapters.import`. `restore.apply` and `checkpoint.create` already carry the
+expectation and are unchanged. The set is computed from
+`impactFor(operation) === "HIGH"` (`packages/story-versioning/impact.ts`), not
+hand-listed, so it cannot drift from C3's own classification and a future HIGH
+operation inherits the assertion without a second decision.
+
+The criterion is not arbitrary: C3 calls an operation HIGH because its blast
+radius spans multiple records, and that is exactly the property that makes a
+stale-head apply dangerous — the payload encodes a decision *derived from a
+read of the branch*, so it is wrong once the branch moved. Rejected: *all C3
+mutations* — on a single-record write the assertion is not merely useless but
+**harmful**, because "the head moved" says nothing about whether that one row's
+write is still valid; a head assertion there refuses legitimate writes and
+manufactures spurious 409s. `chapter.save` is the clearest case: the save *is*
+the head move, so asserting the head against it is self-contradictory, and two
+saves on different chapters would refuse the second for no reason. *plan-shaped
+payloads only* — a hand-kept list that re-litigates itself every time a route is
+added, and it draws a line the contract does not draw.
+
+**2. Request shape — a body field, exactly the frozen tri-state.**
+`expectedHeadRevisionId: uuid.nullable().optional()` in the JSON body,
+identical to `revision-routes.ts:34` and `STORY-VERSIONING.md` §C12.1:
+`undefined` asserts nothing, `null` asserts "no head exists yet", a uuid
+compares. Rejected: *`If-Match` header* — HTTP-native but cannot spell the
+`null` state, so it would silently break the tri-state the contract froze;
+*both* — two code paths and two test sets for one assertion.
+
+**3. Client recovery — re-read and abandon; the 409 body carries the head.**
+This is what C4 already states ("the caller re-reads rather than silently
+retrying"). It requires a scoped change outside the routes: `ConflictError`
+(`services/platform.ts:26`) and the app-wide handler
+(`platform-routes.ts:79`) currently emit a bare `{ error: "CONFLICT" }` and
+drop the message, so the current head id cannot reach the client. The 409 body
+gains `currentHeadRevisionId`. Rejected: *auto-retry* — a silent retry applies
+a plan built on a stale head, which is the exact harm the expectation exists
+to prevent; *merge UI* — no revision UI exists anywhere, and a front-end
+deliverable does not belong in an API task.
+
+**4. Compatibility — coexist; `chapter.save` stays out.**
+`expectedVersion` guards one chapter's prose; the head expectation guards a
+novel-wide plan. Different scopes with different correct answers, so neither
+subsumes the other, and no existing `chapter.save` caller changes. Rejected:
+*head subsumes chapter CAS* — an unrelated canon mutation would then block a
+prose edit; *chapter CAS subsumes head* — leaves GAP-022 open on the chapter
+path and misstates the scope of a per-chapter version.
+
+The two-part mechanism in `applyRestore` is adopted whole, not half: the
+unlocked pre-check before any write (cheap, useful 409, no partial work) **and**
+the locked CAS inside `advanceHead` under `SELECT … FOR UPDATE` (authoritative).
+A design with only the first is racy; only the second returns 409 after doing
+partial work.
+
+**Implementation receipt — 2026-10-03.** All four decisions are implemented as
+recorded, no scope added: the four HIGH routes carry the field, the 409 body
+gains `currentHeadRevisionId`, both halves of the mechanism are in place per
+route, and `chapter.save`'s `expectedVersion` is untouched. Checks at this
+boundary: targeted 145/145, story-versioning 17/17, full API 365/365, root
+`pnpm test` 823 passed | 1 skipped, lint and typecheck clean. The locked CAS
+was proven load-bearing by a falsified probe (a pre-check-only build returns
+`201 {"created":1}`). GAP-022 is closed for implementation; the separate review
+is **pending** and no runtime acceptance is claimed beyond the checks listed.
+
+## NF-WF-002 bounded follow-up scope — 2026-10-02
+
+The author requested Markdown changes for another DeepSeek/GLM model to
+execute. NF-WF-002A explicitly permits fixture setup/cleanup changes in the
+ten named existing API suites, preserving the reviewed C8 creation boundary,
+production code and negative tests. NF-WF-002B follows passing fixture evidence
+and review to clarify GAP-019 and review the integrated foundation. This is
+an execution-scope amendment, not a new recovery architecture or approval of
+current implementation choices. No runtime fix or gate success is implied.
+
+Issues remain in ISSUES-AND-GAPS; earlier unanswered dispatch receipts remain
+historical. Source inventory corrects the reported 13 helpers to 12 valid
+fixture sites plus one intentional negative fixture. The current session
+lacks runtime memory attribution (GAP-021); progress carries the fallback.
+
+
 ## Engram context checkpoints — 2026-10-01
 
 The author requested mandatory Engram MCP working-context persistence because
@@ -395,3 +535,38 @@ proves load-bearing.
   the rule holds at the table as well as at the route. An EDITOR is
   refused 403 — asserted explicitly, because the generic capability loops
   would not catch a future edit that granted it.
+
+## NF-WF-002B contract clarifications (2026-10-02)
+
+- **`checkpoint.create` is HIGH, and that is not a new architectural
+  decision.** C12.2 corrects a misreading of C3, not a decision. C3's own
+  sentence is "The impact class decides whether a checkpoint and snapshot are
+  captured — it does not decide whether a revision is recorded." An operation
+  whose entire purpose is to capture a snapshot is the clearest member of the
+  capturing class; the earlier "LOW, with a checkpoint" reading argued from
+  *invalidation* instead. The code already classified it HIGH
+  (`packages/story-versioning/impact.ts`) and `story-versioning.test.ts` already
+  asserted it, so no behavior changed. **No new ADR is raised**, because an ADR
+  records a decision between alternatives and this is a correction of prose to
+  match the frozen contract's own rule. Had the code been LOW, that would have
+  been a decision and would have needed an ADR.
+- **A nullable field proves nothing about emitted values.** C11 asserted
+  `events.ts`'s `revisionId` "is currently always `null`". Nullability permits
+  `null`; it does not observe it. Inspection showed no producer and no consumer
+  at all, and the claim was withdrawn rather than restated (§C12.4, GAP-023).
+  The general rule this is an instance of: an inference from a type is not
+  evidence about runtime behavior, and a contract must not record one as though
+  it were.
+- **A green suite can be green because the assertion is about metadata.** The
+  `PRE_MUTATION` snapshot defect (GAP-024) passed 338 API tests because the one
+  assertion that touched a `PRE_MUTATION` checkpoint checked the pin, the
+  snapshot's revision, its format version and that it was non-empty — all of
+  which are *correct* while the payload is wrong. The pin being right is what
+  made the defect invisible. The lesson recorded for future snapshot work: a
+  recovery feature's test must assert the recovered **content**, not the
+  feature's bookkeeping.
+- **Contract questions are disposed of against source, not against the passing
+  suite.** GAP-019's five items were each answered by reading the service,
+  route, classifier and schema. Two of the five dispositions corrected the
+  contract (C12.2's class, C12.4's withdrawn claim), one named a requirement
+  nobody owned (GAP-022), and one was already consistent (test naming).

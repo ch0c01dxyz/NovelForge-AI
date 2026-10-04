@@ -90,6 +90,12 @@ const proposeBody = z.object({
 
 const approveBody = z.object({
   availableFromChapter: z.number().int().min(0).max(100_000).nullable().optional(),
+  /**
+   * The head the caller's plan was built against (C12.1 tri-state): omitted
+   * asserts nothing, `null` asserts "no head yet", a uuid compares. NF-WF-002D
+   * — `proposal.approve` is HIGH, so it carries the client assertion.
+   */
+  expectedHeadRevisionId: uuid.nullable().optional(),
 });
 
 const rejectBody = z.object({

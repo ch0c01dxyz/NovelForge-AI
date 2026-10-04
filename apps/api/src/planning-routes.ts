@@ -54,6 +54,15 @@ const putHorizonBody = z.object({
   policy: z.unknown(),
 });
 
+/**
+ * NF-WF-002D: the HIGH outline routes accept the caller's head expectation
+ * (C12.1 tri-state). Both are body-less today, so the schema is parsed against
+ * `request.body ?? {}` and an empty body stays compatible.
+ */
+const expectedHeadBody = z.object({
+  expectedHeadRevisionId: uuid.nullable().optional(),
+});
+
 // Query-string params arrive as strings, so every numeric field is coerced.
 const pageQuery = z.object({
   take: z.coerce.number().int().min(1).max(100_000).optional(),
@@ -321,11 +330,18 @@ export function registerPlanningRoutes(
         .extend({ versionId: uuid })
         .safeParse(request.params);
       if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = expectedHeadBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       return services.approveOutlineVersion({
         actorUserId,
         workspaceId: params.data.workspaceId,
         novelId: params.data.novelId,
         versionId: params.data.versionId,
+        // Preserve the tri-state: omitted must stay `undefined`, `null` is a
+        // real assertion ("no head exists yet").
+        ...(body.data.expectedHeadRevisionId === undefined
+          ? {}
+          : { expectedHeadRevisionId: body.data.expectedHeadRevisionId }),
       });
     },
   );
@@ -337,10 +353,15 @@ export function registerPlanningRoutes(
       if (!actorUserId) return;
       const params = novelParams.safeParse(request.params);
       if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = expectedHeadBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       await services.supersedeApprovedOutline({
         actorUserId,
         workspaceId: params.data.workspaceId,
         novelId: params.data.novelId,
+        ...(body.data.expectedHeadRevisionId === undefined
+          ? {}
+          : { expectedHeadRevisionId: body.data.expectedHeadRevisionId }),
       });
       return reply.code(204).send();
     },

@@ -33,6 +33,8 @@ import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
+import { createAuditService } from "./services/audit.ts";
+import { createPlatformServices } from "./services/platform.ts";
 import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
 
 const TEST_DB = "novelforge_test_canon";
@@ -217,8 +219,14 @@ async function seedWorkspace(
       data: { workspaceId: ws.id, userId: memberRole.userId, role: memberRole.role },
     });
   }
-  const novel = await db.novel.create({
-    data: { workspaceId: ws.id, title: `Novel ${slug}`, slug, createdById: ownerId },
+  // Through the production path, not a raw row: `createNovel` is where C8's
+  // baseline branch/revision lives, so a raw insert would seed a novel the
+  // product cannot produce (no head) and every covered mutation would 409.
+  const novel = await createPlatformServices({ db, audit: createAuditService(db) }).createNovel({
+    actorUserId: ownerId,
+    workspaceId: ws.id,
+    title: `Novel ${slug}`,
+    slug,
   });
   return { workspaceId: ws.id, novelId: novel.id };
 }

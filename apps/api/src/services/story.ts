@@ -38,6 +38,8 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 import type { NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
+import { createWithRevision } from "./revisions.ts";
 
 // --- Views ---
 
@@ -168,6 +170,8 @@ export function createStoryServices(deps: {
   audit: AuditService;
 }): StoryServices {
   const { db, audit } = deps;
+  // Head CAS for every covered mutation (C3/C4), bound once (see revisions.ts).
+  const withRevision = createWithRevision(db);
 
   /** Tenant gate: membership + novel resolved server-side, missing either is the SAME 404 (no leak); capability granular (ADR-0004). */
   async function gate(
@@ -250,12 +254,19 @@ export function createStoryServices(deps: {
         if (!chapter) throw new NotFoundError("chapter");
       }
 
-      const created = await db.storyEvent.create({
-        data: {
-          workspaceId, novelId, description, chapterId,
-          availableFromChapter, createdById: actorUserId,
-        },
-      });
+      const created = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "event.append",
+        "StoryEvent",
+        ["story_events"],
+        (tx) =>
+          tx.storyEvent.create({
+            data: {
+              workspaceId, novelId, description, chapterId,
+              availableFromChapter, createdById: actorUserId,
+            },
+          }),
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -313,12 +324,19 @@ export function createStoryServices(deps: {
 
       let created;
       try {
-        created = await db.timelineEvent.create({
-          data: {
-            workspaceId, novelId, description, order,
-            availableFromChapter, createdById: actorUserId,
-          },
-        });
+        created = await withRevision(
+          { workspaceId, novelId, actorUserId },
+          "timeline.append",
+          "TimelineEvent",
+          ["timeline_events"],
+          (tx) =>
+            tx.timelineEvent.create({
+              data: {
+                workspaceId, novelId, description, order,
+                availableFromChapter, createdById: actorUserId,
+              },
+            }),
+        );
       } catch (error) {
         // timeline_events_novel_id_order_key. Two concurrent appends both read
         // the same last order and both compute the next one; the index rejects
@@ -377,12 +395,19 @@ export function createStoryServices(deps: {
       kind, title, description, importance, introducedAtChapter, payoffIntent,
     }) {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
-      const created = await db.storyThread.create({
-        data: {
-          workspaceId, novelId, kind, title, description, importance,
-          introducedAtChapter, payoffIntent, createdById: actorUserId,
-        },
-      });
+      const created = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "thread.transition",
+        "StoryThread",
+        ["story_threads"],
+        (tx) =>
+          tx.storyThread.create({
+            data: {
+              workspaceId, novelId, kind, title, description, importance,
+              introducedAtChapter, payoffIntent, createdById: actorUserId,
+            },
+          }),
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -420,10 +445,17 @@ export function createStoryServices(deps: {
         throw new ConflictError(`a ${status} thread has not resolved, so it has no resolution chapter`);
       }
 
-      const updated = await db.storyThread.update({
-        where: { id: threadId },
-        data: { status, resolvedAtChapter },
-      });
+      const updated = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "thread.transition",
+        "StoryThread",
+        ["story_threads"],
+        (tx) =>
+          tx.storyThread.update({
+            where: { id: threadId },
+            data: { status, resolvedAtChapter },
+          }),
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -442,12 +474,19 @@ export function createStoryServices(deps: {
       title, description, importance, introducedAtChapter, payoffIntent,
     }) {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
-      const created = await db.storyPromise.create({
-        data: {
-          workspaceId, novelId, title, description, importance,
-          introducedAtChapter, payoffIntent, createdById: actorUserId,
-        },
-      });
+      const created = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "promise.transition",
+        "StoryPromise",
+        ["story_promises"],
+        (tx) =>
+          tx.storyPromise.create({
+            data: {
+              workspaceId, novelId, title, description, importance,
+              introducedAtChapter, payoffIntent, createdById: actorUserId,
+            },
+          }),
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -491,10 +530,17 @@ export function createStoryServices(deps: {
         throw new ConflictError(`a ${to} promise is not paid off, so it has no payoff chapter`);
       }
 
-      const updated = await db.storyPromise.update({
-        where: { id: promiseId },
-        data: { status: to, payoffAtChapter },
-      });
+      const updated = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "promise.transition",
+        "StoryPromise",
+        ["story_promises"],
+        (tx) =>
+          tx.storyPromise.update({
+            where: { id: promiseId },
+            data: { status: to, payoffAtChapter },
+          }),
+      );
       await audit.record({
         actorUserId,
         workspaceId,
@@ -550,12 +596,19 @@ export function createStoryServices(deps: {
 
       let created;
       try {
-        created = await db.causalEdge.create({
-          data: {
-            workspaceId, novelId, causeEventId, effectEventId, confidence,
-            approvedById: needsApproval ? actorUserId : null,
-          },
-        });
+        created = await withRevision(
+          { workspaceId, novelId, actorUserId },
+          "causalEdge.create",
+          "CausalEdge",
+          ["causal_edges"],
+          (tx) =>
+            tx.causalEdge.create({
+              data: {
+                workspaceId, novelId, causeEventId, effectEventId, confidence,
+                approvedById: needsApproval ? actorUserId : null,
+              },
+            }),
+        );
       } catch (error) {
         // causal_edges_novel_id_cause_event_id_effect_event_id_key.
         if ((error as { code?: string })?.code === "P2002") {

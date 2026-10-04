@@ -77,7 +77,15 @@ export async function registerPlatformRoutes(
       return reply.code(404).send({ error: "NOT_FOUND" });
     }
     if (error instanceof ConflictError) {
-      return reply.code(409).send({ error: "CONFLICT" });
+      return reply.code(409).send({
+        error: "CONFLICT",
+        // Only a head-expectation mismatch observed a head, and only that
+        // conflict gets the recovery field (C4). `!== undefined` rather than a
+        // truthiness test: `null` is the observation "no head exists yet".
+        ...(error.currentHeadRevisionId !== undefined
+          ? { currentHeadRevisionId: error.currentHeadRevisionId }
+          : {}),
+      });
     }
     // A registered agent/skill/workflow contract or graph that this
     // validator cannot enforce (Phase 4). The definition routes return the

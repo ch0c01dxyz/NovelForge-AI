@@ -96,8 +96,23 @@ with an ADR/task update, not by omission.
 ## Task queue
 
 Every row is a bounded delivery slice, not yet a fully dispatchable coding
-contract. NF-WF-001 is the reviewed design contract; NF-WF-002 is expanded
-from it and READY. At each predecessor's review, expand the
+contract. NF-WF-001 is the reviewed design contract; NF-WF-002 is
+**IMPLEMENTED_WITH_GAPS, parent acceptance VERIFIED for the evidenced M1
+foundation scope only** (002F, 2026-10-04) — full cross-domain recovery stays
+OPEN under GAP-004. NF-WF-002A is REVIEWED/APPROVE; NF-WF-002B delivered the
+GAP-019 clarification and found GAP-024, GAP-022 and GAP-023. NF-WF-002C
+executed the GAP-024 production fix on 2026-10-02 (implementation and
+two-direction proof complete; round-1 review CHANGES_REQUESTED (findings
+resolved), round-2 re-review APPROVE with no findings — **GAP-024 is
+CLOSED**). 002D is **IMPLEMENTED / REVIEWED** as of 2026-10-04: it implemented
+the 2026-10-03 author decision and amended execution contract (GAP-022 closed
+for implementation) and then passed an independent review of the frozen diff
+(APPROVE on production code; one test-fidelity defect found, fixed and
+re-reviewed). 002F ran the integrated acceptance against the tree on 2026-10-04
+(all gates green, empty and populated upgrade exercised, GAP-018 corrected) and
+returned **VERIFIED for the evidenced foundation scope only** — self-verification,
+not the independent review that GAP-013 still requires.
+002E remains PLANNED until an actual consumer is designed. At each predecessor's review, expand the
 next row into [TASK-TEMPLATE](../../tasks/templates/TASK-TEMPLATE.md) with
 exact inspected files/types/tests. Future tasks remain PLANNED until then;
 do not invent distant API signatures now.
@@ -105,7 +120,10 @@ do not invent distant API signatures now.
 | ID | Deliverable | Dependency | Acceptance focus |
 |---|---|---|---|
 | NF-WF-001 | Consistent recovery/revision contract and migration design | M0 | Coverage, atomicity, baseline and worked restore example; separate design review |
-| NF-WF-002 | Minimum revision/checkpoint/restore foundation | 001 | Populated upgrade, consistent cross-domain snapshot, expected-head conflict, failed checkpoint refusal, preserved history |
+| NF-WF-002 | Minimum revision/checkpoint/restore foundation | 001 | Populated upgrade, consistent cross-domain snapshot, expected-head conflict, failed checkpoint refusal, preserved history. **Parent acceptance VERIFIED 2026-10-04 for the evidenced M1 foundation scope only** (002F); full cross-domain recovery stays OPEN (GAP-004) |
+| NF-WF-002D | Client head assertions on existing HIGH routes | Reviewed 002C; recorded author decision | Exact request/error scope, forced race and tenant/no-disclosure tests; separate review. **IMPLEMENTED / REVIEWED 2026-10-04** |
+| NF-WF-002F | Integrated parent foundation acceptance | Reviewed 002A–D artifacts | Full diff coverage, current checks/migration evidence, scope-specific issue dispositions; parent G-01 verdict. **VERIFIED 2026-10-04 — evidenced foundation scope only; self-verification, not independent review** |
+| NF-WF-002E | Domain event producer when a consumer is designed | NF-WF-004 consumer investigation; explicit contract/ADR where needed | PLANNED; no speculative producer/outbox, no event completion claim from G-01 |
 | NF-WF-003 | Shared chapter context compiler and identity/source pins | 002 | Outline/state/time/knowledge/thread/DNA selection; no oldest-facts truncation; source/total budget proof |
 | NF-WF-004 | Durable workflow execution using existing BullMQ/executor | 002 | Restart, duplicate delivery, cancellation, persisted step/source identity; no double commit |
 | NF-WF-005 | Approval decision and safe continuation | 004 | Same-run approve/reject/resume, actor capability, stale state, repeated request |
@@ -193,12 +211,59 @@ Do not invent thresholds or claim scale from chapter count alone.
 
 ## Advancement and scope control
 
-The next execution task is NF-WF-001 (design), then reviewed NF-WF-002 (code).
+Current dispatch: [NF-WF-003](../../tasks/NF-WF-003-chapter-context-compiler.md)
+is **PLANNED with a drafted contract** — it carries one open author scope
+decision (wire both callers and fix the truncation, or build the module only)
+and must be reviewed before any coding. It is not dispatched.
+[NF-WF-002F](../../tasks/NF-WF-002F-foundation-acceptance.md) returned
+**VERIFIED 2026-10-04 for the evidenced M1 foundation scope only**; that is
+self-verification, not the independent review GAP-013 still requires, and it
+does not accept full cross-domain recovery (GAP-004 stays OPEN). Keep 002E
+assigned to actual consumer design rather than blocking the queue merely
+because its event field exists. Child status, issue closure, parent acceptance
+and full milestone completion are distinct outcomes.
+
+
+[NF-WF-002C](../../tasks/NF-WF-002C-premutation-ordering.md) (the GAP-024
+production fix) is **complete** as of 2026-10-02: all four HIGH sites now
+advance before their first covered-table write, each gained a payload-content
+assertion, each was proven to fail against the old ordering and pass against
+the new, and the independent re-review returned APPROVE with no findings.
+**GAP-024 is CLOSED.** [NF-WF-002D](../../tasks/NF-WF-002D-mutation-head-expectation.md)
+(GAP-022) is **IMPLEMENTED / REVIEWED** as of 2026-10-04: the four HIGH routes
+carry the client head expectation, the 409 carries `currentHeadRevisionId`, both
+the pre-check and the locked CAS are in place, and all required checks pass.
+GAP-022 is closed for implementation with per-route negative receipts. An
+independent review of the frozen diff (`glm-5.3-flash` via 9Router, 2026-10-04)
+returned APPROVE on the production change and confirmed one MAJOR
+test-fidelity defect in the lock-waiter probe, which was fixed and re-reviewed
+to APPROVE. GAP-013 remains open because that reviewer's backend is
+MODEL_UNVERIFIED.
+[NF-WF-002F](../../tasks/NF-WF-002F-foundation-acceptance.md) is **VERIFIED as
+of 2026-10-04 for the evidenced M1 foundation scope only**: it ran every gate
+against the NF-WF-002 tree green (story-versioning 17/17, constraints 8/8,
+targeted API 137/137, full API 365/365, root 823 passed | 1 skipped, lint,
+typecheck, build), exercised the empty upgrade (all 20 migrations from empty)
+and the populated upgrade, and corrected GAP-018 — a failed `migrate deploy` is
+**partially applied** (its two leading `DROP CONSTRAINT`s commit before
+`CREATE INDEX` fails), so the documented `migrate resolve --applied` workaround
+is what strips the two `canon_fact_sources` RESTRICT FKs. That is
+**self-verification by the implementing model, not an independent review**, so
+it does not close GAP-013, and it accepts the foundation slice only — full
+cross-domain recovery stays OPEN under GAP-004.
+[NF-WF-002A](../../tasks/NF-WF-002A-fixture-compatibility.md)
+(fixture-only repair) and [NF-WF-002B](../../tasks/NF-WF-002B-contract-clarification.md)
+(contract clarification and implementation review) are complete. NF-WF-001's
+reviewed design remains complete; NF-WF-002's parent acceptance returned
+**VERIFIED 2026-10-04 for the evidenced M1 foundation scope only**, which
+confirms GAP-022 and GAP-024 as closed but does not close GAP-004 or GAP-013.
+These child tasks do not renumber roadmap
+phases or waive parent acceptance. NF-WF-003/004 retain their NF-WF-002 dependency.
 Update CURRENT with the next READY task and remaining gates after each
 accepted handoff.
 Do not advance a dependency because its test file exists or a model says done.
 
 No new dependency/framework/provider is required by this plan. If an actual
 format, rich-editor, or E2E requirement needs one, inspect installed options
-and document the smallest justified addition. Runtime implementation remains
-future work; this document does not authorize publishing/deployment by itself.
+and document the smallest justified addition. Remaining runtime integration is future work; the partial NF-WF-002 delivery
+does not authorize publishing/deployment by itself.

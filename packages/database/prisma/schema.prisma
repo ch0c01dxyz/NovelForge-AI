@@ -77,6 +77,9 @@ model User {
   createdCharacters   Character[]      @relation("CharacterCreator")
   createdBonds        Bond[]           @relation("BondCreator")
   createdAntagonists  Antagonist[]     @relation("AntagonistCreator")
+  createdRevisions    Revision[]       @relation("RevisionCreator")
+  createdCheckpoints  Checkpoint[]     @relation("CheckpointCreator")
+  requestedRestores   RestoreOperation[] @relation("RestoreRequester")
 
   @@map("users")
 }
@@ -124,6 +127,13 @@ model Workspace {
   bonds        Bond[]
   interactions MeaningfulInteraction[]
   antagonists  Antagonist[]
+  branches     NovelBranch[]
+  revisions    Revision[]
+  changeSets   ChangeSet[]
+  snapshots    Snapshot[]
+  checkpoints  Checkpoint[]
+  restores     RestoreOperation[]
+  rebuildIntents DerivedRebuildIntent[]
 
   @@map("workspaces")
 }
@@ -173,10 +183,17 @@ model Novel {
   promises    StoryPromise[]
   causalEdges CausalEdge[]
   characters  Character[]
-  bonds       Bond[]
-  dnaProfile  NarrativeDnaProfile?
-  policies    NarrativePolicy[]
-  antagonists Antagonist[]
+  bonds        Bond[]
+  dnaProfile   NarrativeDnaProfile?
+  policies     NarrativePolicy[]
+  antagonists  Antagonist[]
+  branches     NovelBranch[]
+  revisions    Revision[]
+  changeSets   ChangeSet[]
+  snapshots    Snapshot[]
+  checkpoints  Checkpoint[]
+  restores     RestoreOperation[]
+  rebuildIntents DerivedRebuildIntent[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1133,6 +1150,7 @@ model StoryEntity {
   objectOf    CanonFact[]     @relation("CanonFactObjectEntity")
   proposals   CanonProposal[]
   proposedObjectOf CanonProposal[] @relation("CanonProposalObjectEntity")
+  characters  Character[]     @relation("CharacterStoryEntity")
 
   @@unique([novelId, key])
   @@index([novelId, kind])
@@ -1540,6 +1558,7 @@ model StoryEvent {
   causedEdges CausalEdge[]       @relation("CausalEdgeCause")
   effectsFrom CausalEdge[]       @relation("CausalEdgeEffect")
   threadLinks StoryThreadEvent[]
+  timelineEvents TimelineEvent[] @relation("TimelineEventStoryEvent")
 
   @@index([novelId])
   @@index([chapterId])
@@ -1568,6 +1587,14 @@ model TimelineEvent {
   /// identical column and null-means-not-visible semantics as
   /// Chunk.availableFromChapter, so one predicate governs both.
   availableFromChapter Int? @map("available_from_chapter")
+  /// Optional link to the structured `story_events` row this timeline entry
+  /// records (STORY-VERSIONING.md C9). Authored, never derived: no automatic
+  /// backfill is possible, because nothing ties a timeline row to a story
+  /// event and inventing one would be fabricated provenance. ON DELETE SET
+  /// NULL — deleting an event unlinks its timeline entries, it does not
+  /// destroy them.
+  storyEventId String?  @map("story_event_id") @db.Uuid
+  storyEvent   StoryEvent? @relation("TimelineEventStoryEvent", fields: [storyEventId], references: [id], onDelete: SetNull)
   createdById String    @map("created_by_id") @db.Uuid
   createdBy   User      @relation("TimelineEventCreator", fields: [createdById], references: [id])
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -1797,6 +1824,20 @@ model Character {
   key         String
   name        String
   summary     String?   @db.Text
+  /// Stable cross-domain join to the canon entity this character IS
+  /// (STORY-VERSIONING.md C9). Nullable: a character whose machine key does
+  /// not match any `story_entities` row of kind CHARACTER stays NULL, which
+  /// is the honest answer — the migration backfills ONLY on an exact
+  /// `(novel_id, key)` match, never on a name match.
+  ///
+  /// Deliberately carries no Prisma `@unique`: C9 requires a PARTIAL unique
+  /// index (`WHERE story_entity_id IS NOT NULL`), which Prisma cannot
+  /// express. The index is raw SQL in the migration — the same Phase 6–9
+  /// pattern as `canon_facts_live`. Do NOT "fix" this by adding `@unique`
+  /// here: that would also forbid two NULL rows, which is exactly what the
+  /// partial index exists to allow.
+  storyEntityId String?  @map("story_entity_id") @db.Uuid
+  storyEntity   StoryEntity? @relation("CharacterStoryEntity", fields: [storyEntityId], references: [id], onDelete: SetNull)
   createdById String    @map("created_by_id") @db.Uuid
   createdBy   User      @relation("CharacterCreator", fields: [createdById], references: [id])
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -1813,7 +1854,6 @@ model Character {
   @@unique([novelId, key])
   @@map("characters")
 }
-
 /// One span of a character's state. Half-open `[from, to)` — the chapter a
 /// state changes on belongs to the new state, matching a canon fact's
 /// validity window. Overlap is refused by the `character_states_no_overlap`
@@ -2158,4 +2198,275 @@ model Antagonist {
   @@unique([novelId, characterId])
   @@index([characterId])
   @@map("antagonists")
+}
+
+// ==================== Story versioning (M1, NF-WF-002) ====================
+// Scope: revisions, change sets, snapshots, checkpoints, restore operations
+// and durable rebuild intents — docs/03-domain/STORY-VERSIONING.md §Contract
+// (C2, C8, C9), ADR-0014.
+//
+// Every table carries `workspace_id` (denormalised tenant boundary, ADR-0007)
+// and `novel_id`, both ON DELETE CASCADE, so a filtered query never joins to
+// enforce isolation.
+//
+// Immutable: revisions, change_sets, change_set_items, snapshots, checkpoints.
+// Mutable: novel_branches.head_revision_id, derived_rebuild_intents
+// (status/attempts/last_error/completed_at) and restore_operations
+// (status/target_revision_id/applied_at) — a preview and its apply are
+// deliberately the SAME row.
+
+/// Where a revision came from. `checkpoints.kind` REUSES this enum: the
+/// checkpoint records the origin of the revision it pins, so the enum count
+/// stays five (C2).
+enum RevisionOrigin {
+  MANUAL
+  AUTO
+  PRE_MUTATION
+  PRE_GENERATION
+  PRE_IMPORT
+  PRE_MIGRATION
+  MILESTONE
+  BASELINE
+  RESTORE
+}
+
+/// Discriminator, not a behaviour switch: M1 implements INLINE only. The
+/// column exists so a future external-store decision needs no migration (C11).
+enum SnapshotStorage {
+  INLINE
+  EXTERNAL
+}
+
+enum RestoreStatus {
+  PREVIEWED
+  APPLIED
+  REFUSED
+  FAILED
+}
+
+enum RestoreScope {
+  FULL
+  DOMAIN
+  ENTITY
+  SELECTIVE
+}
+
+enum RebuildStatus {
+  PENDING
+  RUNNING
+  FRESH
+  FAILED
+  STALE
+}
+
+/// One mutable head pointer per (novel, branch). The head row is the single
+/// serialisation point every covered mutation locks with `SELECT … FOR UPDATE`
+/// before it compares the expected revision (C4). A novel is never observable
+/// without one: `createNovel` creates it in the same transaction as the novel
+/// (C8).
+model NovelBranch {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String       @map("workspace_id") @db.Uuid
+  workspace        Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId          String       @map("novel_id") @db.Uuid
+  novel            Novel        @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  name             String       @default("main")
+  /// Alternate lineage (branch merge is NF-WF-020). NULL for `main`.
+  parentBranchId   String?      @map("parent_branch_id") @db.Uuid
+  parentBranch     NovelBranch? @relation("BranchParent", fields: [parentBranchId], references: [id], onDelete: SetNull)
+  childBranches    NovelBranch[] @relation("BranchParent")
+  /// Mutable. A non-deferrable FK to revisions(id), which is why the revision
+  /// row must be inserted before the head can point at it (C4 reason 2).
+  headRevisionId   String?      @map("head_revision_id") @db.Uuid
+  headRevision     Revision?    @relation("BranchHead", fields: [headRevisionId], references: [id], onDelete: SetNull)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  revisions         Revision[]         @relation("RevisionBranch")
+  snapshots         Snapshot[]
+  checkpoints       Checkpoint[]
+  restoreOperations RestoreOperation[]
+
+  @@unique([novelId, name])
+  @@map("novel_branches")
+}
+
+/// Immutable mutation record. Never updated, never deleted; a correction is a
+/// new revision. `number` is monotonic per branch — the UNIQUE index is what
+/// turns two racers computing `head + 1` into a deterministic conflict rather
+/// than a silent duplicate (C4 reason 3).
+model Revision {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String         @map("workspace_id") @db.Uuid
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId          String         @map("novel_id") @db.Uuid
+  novel            Novel          @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  branchId         String         @map("branch_id") @db.Uuid
+  branch           NovelBranch    @relation("RevisionBranch", fields: [branchId], references: [id], onDelete: Cascade)
+  parentRevisionId String?        @map("parent_revision_id") @db.Uuid
+  parentRevision   Revision?      @relation("RevisionParent", fields: [parentRevisionId], references: [id], onDelete: SetNull)
+  childRevisions   Revision[]     @relation("RevisionParent")
+  number           Int
+  origin           RevisionOrigin
+  message          String?        @db.Text
+  createdById      String?        @map("created_by_id") @db.Uuid
+  createdBy        User?          @relation("RevisionCreator", fields: [createdById], references: [id])
+  createdAt        DateTime       @default(now()) @map("created_at")
+
+  changeSet         ChangeSet?
+  snapshot          Snapshot?
+  /// One-to-many, not one-to-one: C2 gives `checkpoints` no unique on
+  /// `revision_id`, so a revision may carry more than one named checkpoint.
+  checkpoints       Checkpoint[]
+  branchHeads       NovelBranch[]        @relation("BranchHead")
+  restoresTargeting RestoreOperation[]   @relation("RestoreTarget")
+  rebuildIntents    DerivedRebuildIntent[]
+
+  @@unique([branchId, number])
+  @@index([novelId, createdAt])
+  @@map("revisions")
+}
+
+/// One per revision; groups the item log.
+model ChangeSet {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  revisionId  String          @unique @map("revision_id") @db.Uuid
+  revision    Revision        @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  workspaceId String          @map("workspace_id") @db.Uuid
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String          @map("novel_id") @db.Uuid
+  novel       Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  createdAt   DateTime        @default(now()) @map("created_at")
+  items       ChangeSetItem[]
+
+  @@map("change_sets")
+}
+
+/// WHAT changed — never a before-image (C2, ADR-0014 §2). `operation` is a
+/// String with a migration CHECK rather than a Postgres enum: the vocabulary
+/// is internal to the change log and is expected to grow, and extending a
+/// Postgres enum rewrites the type. The CHECK can be dropped and the refused
+/// statement retried, proving it load-bearing.
+model ChangeSetItem {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  changeSetId String    @map("change_set_id") @db.Uuid
+  changeSet   ChangeSet @relation(fields: [changeSetId], references: [id], onDelete: Cascade)
+  entityType  String    @map("entity_type")
+  entityId    String    @map("entity_id") @db.Uuid
+  /// CREATE | UPDATE | DELETE (migration CHECK).
+  operation   String
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([changeSetId])
+  @@index([entityType, entityId])
+  @@map("change_set_items")
+}
+
+/// Reconstructable state at a revision boundary. Captured inside the mutation
+/// transaction, so it reads a consistent boundary by construction (C8).
+model Snapshot {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId   String          @map("workspace_id") @db.Uuid
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId       String          @map("novel_id") @db.Uuid
+  novel         Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  branchId      String          @map("branch_id") @db.Uuid
+  branch        NovelBranch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  revisionId    String          @unique @map("revision_id") @db.Uuid
+  revision      Revision        @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  /// 1 for the C2 payload shape. A reader refuses a version it does not know.
+  formatVersion Int             @map("format_version")
+  storage       SnapshotStorage @default(INLINE)
+  /// The 31-key C1 payload, rows in FK-dependency order.
+  payload       Json
+  byteSize      Int             @map("byte_size")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  checkpoints Checkpoint[]
+
+  @@map("snapshots")
+}
+
+/// Named recoverable snapshot. Append-only: a refused or failed capture is
+/// never rewritten, a retry is a new row.
+model Checkpoint {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String         @map("novel_id") @db.Uuid
+  novel       Novel          @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  branchId    String         @map("branch_id") @db.Uuid
+  branch      NovelBranch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  revisionId  String         @map("revision_id") @db.Uuid
+  revision    Revision       @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  snapshotId  String         @map("snapshot_id") @db.Uuid
+  snapshot    Snapshot       @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  /// Reuses RevisionOrigin: the checkpoint records the origin of the revision
+  /// it pins. The C8 baseline checkpoint is BASELINE.
+  kind        RevisionOrigin
+  label       String
+  note        String?        @db.Text
+  createdById String?        @map("created_by_id") @db.Uuid
+  createdBy   User?          @relation("CheckpointCreator", fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  restores RestoreOperation[]
+
+  @@index([novelId, createdAt])
+  @@map("checkpoints")
+}
+
+/// Preview and apply are the SAME row: `scope`, `preview`,
+/// `source_checkpoint_id` and `requested_by_id` are write-once, and
+/// `status`/`target_revision_id`/`applied_at` transition
+/// PREVIEWED → APPLIED | REFUSED | FAILED (C2, C7).
+model RestoreOperation {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId        String        @map("workspace_id") @db.Uuid
+  workspace          Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId            String        @map("novel_id") @db.Uuid
+  novel              Novel         @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  branchId           String        @map("branch_id") @db.Uuid
+  branch             NovelBranch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  sourceCheckpointId String        @map("source_checkpoint_id") @db.Uuid
+  sourceCheckpoint   Checkpoint    @relation(fields: [sourceCheckpointId], references: [id], onDelete: Cascade)
+  /// The revision apply created (origin = RESTORE). NULL until APPLIED.
+  targetRevisionId   String?       @map("target_revision_id") @db.Uuid
+  targetRevision     Revision?     @relation("RestoreTarget", fields: [targetRevisionId], references: [id], onDelete: SetNull)
+  status             RestoreStatus
+  scope              RestoreScope
+  /// Per-table changed/added/removed counts, orphan refs, affected chapters,
+  /// projections to rebuild, the outside-scope list, and the head the preview
+  /// was computed against (`headRevisionId`) — apply refuses a moved head.
+  preview            Json
+  requestedById      String        @map("requested_by_id") @db.Uuid
+  requestedBy        User          @relation("RestoreRequester", fields: [requestedById], references: [id])
+  createdAt          DateTime      @default(now()) @map("created_at")
+  appliedAt          DateTime?     @map("applied_at")
+
+  @@map("restore_operations")
+}
+
+/// Durable invalidation. Commits with the mutation; Redis is a delivery
+/// optimization the worker polls toward, never a write inside the transaction
+/// (C6). The UNIQUE pair is the deduplication identity: a replayed dispatch
+/// for the same source revision is a no-op, not a second rebuild.
+model DerivedRebuildIntent {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String        @map("workspace_id") @db.Uuid
+  workspace        Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId          String        @map("novel_id") @db.Uuid
+  novel            Novel         @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  projection       String
+  sourceRevisionId String        @map("source_revision_id") @db.Uuid
+  sourceRevision   Revision      @relation(fields: [sourceRevisionId], references: [id], onDelete: Cascade)
+  status           RebuildStatus @default(PENDING)
+  attempts         Int           @default(0)
+  lastError        String?       @map("last_error") @db.Text
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  completedAt      DateTime?     @map("completed_at")
+
+  @@unique([projection, sourceRevisionId])
+  @@map("derived_rebuild_intents")
 }

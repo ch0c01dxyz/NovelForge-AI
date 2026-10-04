@@ -6,8 +6,130 @@ exist; integrated product delivery remains PARTIAL**. Historical phase/test
 results below describe their original scope, not completion of all retained
 requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
+## Active dispatch snapshot — 2026-10-04
+
+| Task | Current scope/status | Next action |
+|---|---|---|
+| NF-WF-001 | Reviewed design | Preserve contract and historical receipts |
+| NF-WF-002A/B/C | Recorded fixture/clarification/ordering reviews | Reopen only changed or refuted evidence |
+| NF-WF-002D | **IMPLEMENTED / REVIEWED** (GAP-022 closed for implementation and review) | Done; accepted by 002F |
+| NF-WF-002F | **VERIFIED 2026-10-04 — evidenced M1 foundation scope only** (self-verification, not independent review) | Done; full cross-domain recovery stays OPEN under GAP-004 |
+| NF-WF-002E | PLANNED; actual consumer absent (GAP-023) | Revisit under NF-WF-004 consumer design |
+| NF-WF-003 | **PLANNED — contract drafted**, one open author scope decision | Resolve the decision, review the contract, then dispatch |
+
 Current sequence: [DELIVERY-PLAN](../implementation/DELIVERY-PLAN.md).
-Next READY task: [NF-WF-002 revision foundation](../../tasks/NF-WF-002-revision-foundation.md).
+Current model availability (author, 2026-10-04): DeepSeek implementer active;
+`glm-5.3-flash` is reachable as a reviewer through the 9Router gateway but is
+intermittently flaky there (see the transport note below).
+[002D](../../tasks/NF-WF-002D-mutation-head-expectation.md) is now
+**IMPLEMENTED / REVIEWED**: the four HIGH mutation routes
+(`proposal.approve`, `outlineVersion.approve`, `outline.supersede`,
+`chapters.import`) accept the optional `expectedHeadRevisionId` with the §C12.1
+tri-state, a mismatch is a 409 carrying `currentHeadRevisionId`, and both the
+unlocked pre-check and the locked CAS are in place. Checks rerun at this
+boundary against the scratch DB: targeted 145/145, story-versioning 17/17, full
+API 365/365, root `pnpm test` 823 passed | 1 skipped, lint and typecheck clean.
+The four per-route locked-CAS probes were falsified against a pre-check-only
+build (200/200/204/201 with the locked comparison disabled) and pass restored.
+The independent `glm-5.3-flash` review returned **APPROVE** on the production
+diff — authorization precedes every head disclosure, generic 409s stay bare, the
+tri-state is not collapsed — and one **MAJOR** test-fidelity defect: the probe's
+`waitForBlocked` matched any lock waiter in the test database, so a foreign
+waiter could release the probe before the request had parked. Fixed by pinning
+the match to the parking backend's pid via `pg_blocking_pids`, re-falsified on
+all four routes, and re-reviewed **APPROVE**. Reviewer backend is
+MODEL_UNVERIFIED, so GAP-013 stays open.
+[002F](../../tasks/NF-WF-002F-foundation-acceptance.md)
+ran the parent gate and returned **VERIFIED 2026-10-04 for the evidenced M1
+foundation scope only**. It reran every gate against the NF-WF-002 tree green
+(story-versioning 17/17, constraints 8/8, targeted API 137/137, full API
+365/365, root 823 passed | 1 skipped, lint, typecheck, build), exercised the
+empty upgrade (all 20 migrations from empty) and the populated upgrade, and
+corrected GAP-018: a failed `migrate deploy` is **partially applied** — its two
+leading `DROP CONSTRAINT`s commit before `CREATE INDEX` fails, so the
+documented `migrate resolve --applied` workaround is what strips the two
+`canon_fact_sources` RESTRICT FKs, and a `DELETE FROM chapter_versions` for a
+cited version then succeeds and orphans the citation. Accepted: revision,
+snapshot, checkpoint, non-destructive restore, rebuild intent, tenant
+isolation, the C3 `PRE_MUTATION` payload at all four HIGH sites, the 002D
+tri-state with authorization before head disclosure, and atomicity. **Not**
+accepted: full cross-domain recovery (GAP-004 stays OPEN at P1). GAP-017 and
+GAP-025 closed; GAP-013 stays OPEN because **this verdict is
+self-verification by the implementing model, not an independent review** — the
+only independent verdict remains 002D's `glm-5.3-flash` APPROVE on a
+MODEL_UNVERIFIED backend. NF-WF-003 (shared chapter context compiler) is the
+next queue row and has **no contract file yet**; authoring and reviewing that
+bounded contract is the next action.
+This boundary's SessionStart hook confirmed an authoritative Engram identity
+(`fae4b412-db3a-4ddc-a052-cfda214cfa9d`), distinct from the `0238856e…` binding
+recorded at the 002D boundary; GAP-021 remains a per-boundary observation, not a
+standing state.
+
+**Reviewer transport note (2026-10-04).** `POST /v1/messages` with
+`"model":"bansosmontera/glm-5.3-flash"` succeeded, but several attempts returned
+`upstream_error` after emitting reasoning and before any content. A silent empty
+answer from this gateway means "retry", not "no findings". The
+`glm-cn/glm-5.3-flash` and `cl/z-ai/glm-5.3-flash` routes both returned HTTP 503
+`429 ... balance/credit exhausted`, so only the `bansosmontera` route is usable.
+
+## Attributed foundation implementation narrative
+
+[NF-WF-002 revision foundation](../../tasks/NF-WF-002-revision-foundation.md)
+is **IMPLEMENTED_WITH_GAPS** (2026-10-02, baseline `5b5f139`): the M1
+migration, `@novelforge/story-versioning`, the revision service/routes and
+the head CAS across all C3 mutations are delivered; own suites are green
+(package 17, HTTP 25, constraints 8) and lint/typecheck/build pass. Its one
+red gate — 123 pre-existing API tests failing because the new C8 head CAS
+refused seeds that created a novel with no `novel_branches` row
+(**GAP-017**) — is now repaired by
+[NF-WF-002A](../../tasks/NF-WF-002A-fixture-compatibility.md), which converted
+all 12 valid-fixture creation sites across the ten affected suites to the
+production `createNovel` path. Actual reruns on the preserved diff: targeted
+ten suites `288 passed (288)`, `revision.test.ts` `25 passed (25)`, full API
+`338 passed (338)`, root `pnpm test` `796 passed | 1 skipped (797)`, lint and
+typecheck clean (receipts in `test-matrix.md` G-01). The independent
+exact-diff review returned **APPROVE** from two separate reviewer workers; its
+two non-blocking findings were fixed in `narrative.test.ts` (final diff
+`sha256 d775ad1f…`, 439 lines). GAP-017 therefore stays VERIFY_PENDING only on
+NF-WF-002 / G-01 parent acceptance; no
+production service was changed. Lazy baseline initialization remains
+forbidden. Contract questions **GAP-019** are now disposed by
+[NF-WF-002B](../../tasks/NF-WF-002B-contract-clarification.md) in
+`STORY-VERSIONING.md` §C12, and that clarification is now **reviewed and
+APPROVED** — receipt is the three reviewed artifacts
+(`docs/03-domain/STORY-VERSIONING.md` `sha256 73e3c9f5…`,
+`tasks/NF-WF-002C-premutation-ordering.md` `sha256 8fd083eb…`,
+`tasks/NF-WF-002D-mutation-head-expectation.md` `sha256 640f9698…`), not a
+combined-diff hash (those are milestones, and a register row cannot cite one
+that includes itself); the reviewer's backend is MODEL_UNVERIFIED, so GAP-013
+stays open. That review found a real recovery
+defect rather than only clarifying prose: four HIGH call sites capture their
+`PRE_MUTATION` snapshot *after* the mutation's writes, so the checkpoint an
+author restores from holds the post-mutation image and the "step back from this
+decision" operation is a no-op (**GAP-024**, measured by probe, P1). The same
+review named two previously unowned requirements: no mutation route accepts a
+client head expectation, so C4's optimistic-concurrency guarantee is unreachable
+for callers (**GAP-022**), and `domainEventSchema.revisionId` has no producer or
+consumer at all (**GAP-023**). The three have bounded owners —
+[002C](../../tasks/NF-WF-002C-premutation-ordering.md) (**complete** 2026-10-02 —
+round-1 review CHANGES_REQUESTED, dispositions recorded; round-2 re-review APPROVE, no findings),
+[002D](../../tasks/NF-WF-002D-mutation-head-expectation.md) and
+[002E](../../tasks/NF-WF-002E-domain-event-producer.md) (both PLANNED, blocked on
+a decision rather than on capacity — **002D's decision landed 2026-10-03** and
+it is now READY, with the four-route scope, tri-state body field and
+409-body recovery recorded in `decisions.md`; 002E remains blocked on a consumer
+design). **002C's production fix is in place**: all
+four HIGH sites now call `advanceForMutation` before their first covered-table
+write, each gained the payload-content assertion C12.6 asked for, and each was
+proven to fail against the old ordering and pass against the new (four receipts
+in `progress.md`). **GAP-024 is CLOSED.** Next execution is **002D** — not a
+restart of 001, and not 003: G-01 acceptance must first close or explicitly
+accept GAP-022 (GAP-024 is now closed).
+**GAP-018/020** require
+verified isolated test prerequisites; **GAP-021** records the missing Engram
+runtime attribution handling — re-observed at the 002A, 002B, 002C-preparation
+and 002C-execution boundaries, so each boundary's checkpoint is the fallback
+handoff in `progress.md`, not an MCP write.
 Its predecessor [NF-WF-001](../../tasks/NF-WF-001-revision-contract.md) is
 DESIGN_COMPLETE / **VERIFIED**: three independent reviews ran
 (`ctx_c4dcc5969164`, `ctx_db14a16c6968`, `ctx_a28a8bb47dc7`); rounds 1–2
@@ -213,10 +335,13 @@ a safe automatic canonical application/consolidation path.
 
 ### Canon / knowledge
 
-- **Canon currently has no `revision_id`.** It participates in no
-  checkpoint or branch; non-destructive correction relies on the supersede
-  chain alone. ADR-0013 supersedes ADR-0008 §4's scheduling deferral; the
-  runtime gap remains until NF-WF-002 passes.
+- **Canon has no `revision_id` column, but its C3 mutations now participate in
+  the revision/checkpoint model**: `proposal.approve` advances a revision and
+  captures a `PRE_MUTATION` snapshot covering `canon_facts` and
+  `canon_proposals` (NF-WF-002, accepted 002F 2026-10-04 for that scope).
+  Non-destructive correction still relies on the supersede chain alone, and
+  full cross-domain recovery is not accepted (GAP-004). ADR-0013 supersedes
+  ADR-0008 §4's scheduling deferral.
 - A canon fact's chapter citation is a historical pin — resolvable forever,
   but not "the current version" once the chapter is saved again.
 - **LLM fact extraction is not implemented.** Canon is author-authored only;

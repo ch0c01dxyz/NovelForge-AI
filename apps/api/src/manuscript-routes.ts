@@ -152,6 +152,9 @@ export function registerManuscriptRoutes(
   const importBody = z.object({
     text: z.string().min(1).max(5_000_000),
     format: z.enum(["md", "txt"]),
+    // NF-WF-002D: `chapters.import` is HIGH, so it carries the caller's head
+    // expectation (C12.1 tri-state). The text/format fields stay required.
+    expectedHeadRevisionId: uuid.nullable().optional(),
   });
 
   app.get(

@@ -269,7 +269,7 @@ payload (C7).
 | Class | Operations | Checkpoint | Validation |
 |---|---|---|---|
 | LOW | chapter save/restore, synopsis write, saga/outline-node CRUD, scene CRUD, thread/promise transition, character/relationship span write, DNA/policy write, antagonist advance, fact create/retract, proposal create/reject, event/timeline append, causal edge create | none (revision + change set still recorded) | existing per-service rules |
-| HIGH | `approveProposal`, `approveOutlineVersion`, `supersedeApprovedOutline`, `importChapters`, restore apply, bulk outline rewrite, branch merge, bulk AI rewrite | mandatory `PRE_MUTATION` | existing rules + `validateSnapshotComplete` |
+| HIGH | `approveProposal`, `approveOutlineVersion`, `supersedeApprovedOutline`, `importChapters`, restore apply, bulk outline rewrite, branch merge, bulk AI rewrite, **explicit checkpoint capture (`checkpoint.create`)** | mandatory `PRE_MUTATION` (a `checkpoint.create` captures its snapshot without mutating state; see C12.2) | existing rules + `validateSnapshotComplete` |
 
 **Both classes cross the mutation boundary.** The impact class decides whether a
 checkpoint and snapshot are captured — it does not decide whether a revision is
@@ -318,6 +318,11 @@ COMMIT
    instead of the promised 409. Reading the head under `FOR UPDATE` is what
    makes the number and the CAS comparison atomic with respect to each other.
 
+The `INSERT snapshot` line is not decoration. Because `captureSnapshot` reads
+the live tables when it runs, an implementation that writes its mutation before
+calling `advanceHead` captures a **post**-mutation image and labels it
+`PRE_MUTATION`. Four HIGH call sites did exactly that; see C12.6 and GAP-024.
+
 A single head row serialises every head-advancing mutation on the novel
 regardless of how the CAS is written — the `UPDATE` would take the same row
 lock — so locking explicitly costs no concurrency and buys a deterministic
@@ -326,6 +331,14 @@ in SQL; under the lock it is a plain comparison, because a `NULL` head and an
 expected `NULL` are equal and every other pairing is a mismatch. A lost race
 returns 409 and the caller re-reads rather than silently retrying, because a
 silent retry would apply a plan built on a stale head.
+
+The caller states the head it expects through the optional
+`expectedHeadRevisionId` body field, whose three states are C12.1. As of
+NF-WF-002D the four HIGH mutation routes carry it — `proposal.approve`,
+`outlineVersion.approve`, `outline.supersede`, `chapters.import` — plus
+`checkpoint.create`; `restore.apply` uses the server-pinned form. The comparison
+is the locked one below; a separate unlocked pre-check (C12.1) refuses a stale
+plan before it opens a transaction.
 
 This is the `saveChapter` lock pattern (`SELECT … FOR UPDATE`,
 `apps/api/src/services/manuscript.ts`) generalised from a chapter row to a
@@ -674,3 +687,345 @@ Adversarial cases the same contract answers:
   implement the preview detection, the apply refusal and the negative tests for
   both shapes, plus the FK-fallout case where `scenes`/`outline_nodes` name the
   deleted chapter.
+
+**Correction (NF-WF-002B).** The second bullet's "which is currently always
+`null`" was an inference from a nullable schema, not an observation. The field
+is `revisionId: z.string().min(1).nullable()` in
+`packages/contracts/events.ts`, and no producer exists anywhere in the
+repository, so no value is emitted at all. See C12.4; the original text is kept
+because the error is itself part of the record.
+
+## C12. Clarifications resolved after implementation (NF-WF-002B)
+
+C1–C11 left five questions open and one of them concealed a defect. Each item
+below is a disposition, not a description of what the code happens to do. Where
+the code and this contract disagree, the disagreement is named and owned.
+
+### C12.1 `expectedHeadRevisionId`: three distinct states
+
+`AdvanceHeadInput.expectedHeadRevisionId` is `string | null | undefined`, and
+all three mean something different. This is now contract, not an implementation
+detail:
+
+| Value | Meaning | Service behavior | HTTP |
+|---|---|---|---|
+| omitted (`undefined`) | "I assert nothing about the head." | The head is still read under `SELECT … FOR UPDATE`, because C4 requires the lock for number allocation; no comparison is made against a caller value. | 201 |
+| `null` | "I assert no head exists yet." | Compared null-safely against the locked head: equal only to a `null` head. On a baselined novel this is a mismatch. | 409 |
+| a uuid | "I assert the head is this revision." | Compared null-safely: equal only to that exact id. | 201, or 409 on mismatch |
+
+Two things this separates, which C4's single sentence "head <> expected
+(null-safe)" ran together:
+
+1. **The client's expectation** — optional, caller-supplied, and the only input
+   that can be absent. Collapsing `null` into `undefined` would make `null` mean
+   both "no expectation" and "no head", so every checkpoint on a baselined novel
+   would 409. The route preserves the distinction explicitly rather than letting
+   `JSON.parse` erase it (`apps/api/src/revision-routes.ts`, the
+   `=== undefined ? {} : {…}` spread).
+2. **The locked head CAS** — never optional. It always runs, whether or not a
+   caller supplied an expectation, because it is what makes the revision number
+   and the head advance atomic with respect to each other (C4 reason 3). An
+   omitted expectation suppresses the *comparison*, never the *lock*.
+
+Refusal and concurrency behavior, as verified: a mismatched expectation is a
+409 with no partial write (revision count unchanged, head unchanged), and two
+connections contending for the same head serialize on the branch row lock — the
+loser does not merely fail the comparison, it cannot reach the comparison until
+the winner commits, and then fails it. Both are asserted in
+`apps/api/src/revision.test.ts`.
+
+**Closed 2026-10-03 by NF-WF-002D.** The four HIGH mutation routes now accept a
+client head expectation, so C4's recovery path is reachable for mutations:
+`proposal.approve`, `outlineVersion.approve`, `outline.supersede` and
+`chapters.import`. Each takes the optional body field
+`expectedHeadRevisionId: uuid.nullable().optional()` with exactly the tri-state
+above, resolved through the same `AdvanceHeadInput` boundary. `restore.apply`
+keeps its server-pinned form and is unchanged; `checkpoint.create` keeps its
+existing client assertion. The route set is derived from
+`impactFor(operation) === "HIGH"`, not hand-listed; three HIGH operations
+(`ai.bulkRewrite`, `branch.merge`, `outline.bulkRewrite`) have no production
+route yet and must carry the expectation when one lands.
+
+A mismatch is a 409 whose body is `{ error: "CONFLICT", currentHeadRevisionId }`
+— the head observed at refusal, `null` when the novel has no head. Both halves
+of `applyRestore`'s mechanism are used on every one of the four: an unlocked
+advisory pre-check before any write (so a stale plan does no work), and the
+authoritative locked CAS inside the transaction. A pre-check-only implementation
+is racy and is not what is deployed. Authorization and tenant gates run before
+any head is disclosed, so a denied or cross-tenant caller learns nothing about
+the head. Per-route receipts and the locked-CAS probe are in
+`apps/api/src/revision.test.ts`.
+
+**Historical (the state this closed).** Before NF-WF-002D, only the checkpoint
+route (`POST …/checkpoints`) accepted a client head expectation. No C3 mutation
+route did: `saveChapter` carried a per-chapter `expectedVersion`, and the other
+mutation routes carried nothing. C4's rationale — "the caller re-reads rather
+than silently retrying, because a silent retry would apply a plan built on a
+stale head" — therefore could not be satisfied for a mutation, because the
+caller had no way to state the head its plan was built against; the server could
+never detect that case and would happily apply a plan from an older head. The
+head CAS as implemented protected *internal* consistency (number allocation, no
+lost revision, no torn interleave), which is real and tested; it did not provide
+*mutation-level* optimistic concurrency. Recorded as **GAP-022**, now closed
+with per-route negative receipts.
+
+### C12.2 `checkpoint.create` is HIGH
+
+C3's operation table does not list `checkpoint.create`, yet it must take the
+head CAS and capture a snapshot. It is **HIGH**.
+
+The earlier "LOW, with a checkpoint" reading was wrong, and the reason is worth
+stating because the mistake is easy to repeat: it argued from *invalidation*
+("a checkpoint mutates no story state, so it invalidates no projection") when
+C3's class decides *capture*. The contract's own sentence is "The impact class
+decides whether a checkpoint and snapshot are captured — it does not decide
+whether a revision is recorded." An operation whose entire purpose is to capture
+a snapshot is the clearest possible member of the capturing class. Classifying
+it LOW would mean the one operation named "checkpoint" captures nothing unless a
+caller remembers to pass `checkpoint` explicitly — a default that silently
+produces an empty checkpoint.
+
+`checkpoint.create` is HIGH by the same rule as the eight mutation operations
+already in that class, but it is not one of them: it writes no covered table
+(`tables: []`), so it queues no rebuild intent, and its `origin` is the
+checkpoint `kind` (`MANUAL`) rather than `PRE_MUTATION`. HIGH here means
+"captures a snapshot and takes the CAS", exactly as it does for the eight.
+
+C3's table now names it. `impactFor` is unchanged: it already classified it
+HIGH (`packages/story-versioning/impact.ts`), and
+`packages/story-versioning/story-versioning.test.ts` already asserted it. This
+item corrects the prose, not the code.
+
+### C12.3 Checkpoint pinning: which revision a checkpoint hangs off
+
+A checkpoint's `revisionId` is the revision whose state the snapshot captures.
+The two capture paths pin differently, and the difference is forced by C10:
+
+| Path | `pin` | Pinned revision | Snapshot contents |
+|---|---|---|---|
+| Explicit `createCheckpoint` | `NEW` | the revision this call creates | the state the author is marking, unchanged by the call |
+| A HIGH mutation's mandatory capture | `PREVIOUS` | the head the mutation is about to change | the pre-mutation image |
+
+C10 step 4 is what forces `PREVIOUS`: it says the HIGH checkpoint "is captured
+**inside** the same transaction as the supersede" at R45 while the commit is
+R46. The checkpoint therefore hangs off R45, and the newest revision (R46)
+carries no checkpoint — it is the second-newest that does. Both pins are
+asserted.
+
+Snapshots are attached to the **pinned revision**, not to the revision being
+created, and `snapshots.revisionId` is `@unique`. That uniqueness is what makes
+reuse mandatory rather than optional: when a HIGH mutation's `PREVIOUS` pin
+lands on a revision that an explicit checkpoint already captured, the capture
+must reuse the existing snapshot instead of inserting a second one. Reuse is
+safe because the head *is* that revision, so the state cannot have changed since
+the first capture. Two checkpoints may therefore share one snapshot and one
+`revisionId`; that is a supported shape with its own assertion, not a collision
+to be avoided.
+
+A checkpoint pins a revision on the same `main` branch. `novel_branches` is
+deliberately not covered state (C1): it is the head pointer, and restore
+advances it like any other mutation rather than rewinding it.
+
+Worked example, consistent with restore and preserved history:
+
+```text
+R42 BASELINE (head)                               no checkpoint
+R43 proposal created (LOW)                        no checkpoint
+R44 explicit checkpoint "before the divergence"   pin NEW      → snapshot S1 @ R44
+R45 proposal.approve (HIGH)                       pin PREVIOUS → reuses S1 @ R44
+R46 applyRestore(S1) → origin RESTORE, parent R45
+```
+
+One revision per operation, including the LOW one: `R43` is the proposal's
+own revision, and it is why the explicit checkpoint at `R44` — not at `R43` —
+is the one the approve's `PREVIOUS` pin lands on.
+
+The order matters, and the first version of this example had it wrong: a LOW
+operation advances the head too (C3 — "both classes cross the mutation
+boundary"), so a LOW step between the explicit checkpoint and the HIGH mutation
+would move the head off the revision that holds `S1` and the `PREVIOUS` pin
+would land on a revision with no snapshot. Reuse is reached only when the
+explicit checkpoint's revision **is** the head the HIGH mutation is about to
+change — which is exactly the shape `revision.test.ts` exercises ("reuses one
+snapshot when a HIGH checkpoint pins a revision that already has one": proposal
+created, explicit checkpoint, then approve).
+
+`previewRestore` on the `R44` checkpoint reports the `R45` approval's rows as
+*added* per covered table. Apply rewinds covered state to `R44`, leaves `R45`
+readable as a revision, and lands `R46`. The approval is undone and its history
+is not.
+
+**This example was aspirational until the GAP-024 fix (2026-10-02, now closed).** It is written against the
+intended ordering. Before GAP-024 was fixed, `proposal.approve` captured its
+`PRE_MUTATION` snapshot *after* its writes (C12.6), so the real `R45` step
+captured a *post*-approval image and the apply above would not have undone the
+approval. The ordering is now correct at all four HIGH sites, so the walkthrough
+above describes what actually happens. (The reuse step was never affected by the
+defect: `captureSnapshot` is called **only** in the
+`else` branch at `revisions.ts:391`, i.e. only when the
+`tx.snapshot.findUnique({ where: { revisionId: pinnedRevisionId } })` lookup at
+`:384` returns nothing. On the reuse path the capture never runs, so the defect
+can corrupt the *image* of a newly created snapshot but never *which* revision a
+snapshot attaches to. That is why the reuse test stays green.)
+
+### C12.4 Event revision provenance: no producer, so no claim
+
+C11's aside that `events.ts`'s `revisionId` is "currently always `null`" is
+**withdrawn**. The schema is `z.string().min(1).nullable()`; a nullable field
+permits `null`, it does not prove `null` is ever emitted. Inspection shows the
+stronger fact: `domainEventSchema` has **no producer and no consumer** anywhere
+in the repository. `packages/contracts/index.ts` re-exports it and
+`packages/contracts/boundaries.test.ts` asserts `DOMAIN_EVENT_NAMES` matches
+`SYSTEM-ARCHITECTURE.md`; that is the whole of its use. `domain_outbox` is named
+in `DATA-MODEL-BLUEPRINT.md` and does not exist in the schema.
+
+So there is no integration to claim, in either direction, and nothing in the M1
+revision foundation emits or consumes a domain event. `revisionId` is
+**future requirement**, not existing contract and not implemented behavior.
+
+When a producer lands, the requirement is: a versioned mutation's event carries
+the revision that mutation created, and a system-initiated event may carry
+`null` (the schema already says so). That producer does not exist, and its
+design — including whether events travel through a `domain_outbox` table in the
+mutation transaction, which would put them under C6's atomicity rule — is
+unassigned. Recorded as **GAP-023**; no code was changed and `events.ts` was not
+edited.
+
+### C12.5 Test file naming: the convention holds
+
+`packages/story-versioning/story-versioning.test.ts` follows the repository's
+convention, so there is no drift to close. Evidence: package test files are
+named after their subject, not after `index.ts` — `packages/narrative-rhythm/`
+(the layout C11 says to copy) has `rhythm.test.ts` and `scale.test.ts` for
+`rhythm.ts` and `scale.ts`; `packages/story-intelligence/` has `canon.test.ts`
+and `events.test.ts`; `packages/retrieval/` has `chunk.test.ts`, `fuse.test.ts`
+and `spoiler.test.ts`. No package has an `index.test.ts`, and none names its
+suite after the package where a more specific subject exists. The file covers
+`impact.ts` and `snapshot.ts` together, so the package name is the honest
+subject.
+
+The naming subitem is closed. It was never the substantive question — the
+semantic questions are C12.1–C12.4 and the defect below.
+
+### C12.6 Defect found by this review: HIGH snapshots are captured too late
+
+> **FIXED 2026-10-02 by NF-WF-002C (reviewed, APPROVED; GAP-024 closed).** All four call sites below now call
+> `advanceForMutation` **before** their first covered-table write, the status
+> CAS included, and each gained the payload-content assertion this section asked
+> for — proven to fail against the old ordering and pass against the new, one
+> receipt per site. `canon.ts` resolves the `fact.id` dependency by minting the
+> uuid client-side (`randomUUID()`) and passing `id: factId` to the create, so
+> the supersede → insert → link → decide order is unchanged. **Limitation:**
+> `PRE_MUTATION` checkpoints written before this fix keep their post-mutation
+> images and are deliberately **not** rewritten — rewriting a historical
+> snapshot is a destructive act against the record it preserves. Treat any
+> checkpoint created before 2026-10-02 as unusable for undo. The analysis below
+> is preserved as the defect's record, and the earlier drafts it corrects are
+> kept rather than deleted, because a contract that quietly rewrites its own
+> wrong instructions cannot be audited.
+
+**This is a real implementation defect, found by probing the running system
+rather than by reading the contract, and it is not fixed here** — NF-WF-002B's
+scope forbids production code changes. It is recorded as **GAP-024** with a
+bounded follow-up.
+
+C4's statement order puts the snapshot insert *before* the mutation's own
+writes:
+
+```text
+BEGIN
+  SELECT head … FOR UPDATE
+  INSERT revision
+  UPDATE novel_branches SET head_revision_id
+  INSERT change_set, change_set_items
+  INSERT snapshot            -- HIGH only   <-- BEFORE the mutation
+  INSERT checkpoint          -- HIGH only
+  INSERT derived_rebuild_intents
+  ... the mutation's own writes ...
+COMMIT
+```
+
+`advanceHead`'s doc comment states the same requirement: it "MUST be called
+inside the caller's transaction, before the caller's own writes". Four HIGH
+call sites violated it — they wrote first and advanced afterwards. The table is
+the **pre-fix** ordering, kept as the record of what was wrong:
+
+| Operation | File | Ordering before the fix |
+|---|---|---|
+| `proposal.approve` | `apps/api/src/services/canon.ts` | supersede + fact create + proposal CAS, then `advanceForMutation` |
+| `outlineVersion.approve` | `apps/api/src/services/planning.ts` | supersede + promote, then `advanceForMutation` |
+| `outline.supersede` | `apps/api/src/services/planning.ts` | `updateMany`, then `advanceForMutation` |
+| `chapters.import` | `apps/api/src/services/manuscript.ts` | chapter/version creates in the loop, then `advanceForMutation` |
+
+All four are now **advance → first covered write**. Note that
+`outline.supersede`'s `items` names the novelId rather than one version row (a
+supersede with no approved version supersedes nothing), and `chapters.import`
+uses a single advance for the whole import — not one per part — with its item
+naming the novel for the same reason. The change-set item list does not affect
+the capture; only the statement order does.
+
+Four is the complete count, not a sample. C3 names eight HIGH mutation
+operations, but only five are implemented: the four above plus `restore.apply`,
+which is ordered correctly. `outline.bulkRewrite`, `branch.merge` and
+`ai.bulkRewrite` have **no call site anywhere** under `apps/api/src/` — they
+exist in the classifier and the contract only, so they cannot exhibit this
+defect yet. That was verified by enumerating every `operation:` literal the
+services pass to `advanceHead`/`advanceForMutation`, not by reading the four
+files and assuming.
+
+`captureSnapshot` reads the live tables at the moment it runs, so in each case
+the "PRE_MUTATION" snapshot is a **post**-mutation image. Observed, not
+inferred: approving a proposal on a novel with one ACTIVE `canon_facts` row
+produced a `PRE_MUTATION` snapshot whose `canon_facts` payload held **2** rows —
+the pre-approval fact *and* the fact the approval minted — against 1 row before
+the approval. Applying that checkpoint restores the post-approval state:
+`previewRestore` reported `canon_facts {added: 0, removed: 0, retained: 2}` and
+apply left both facts ACTIVE. The author's "step back from this approval"
+operation does nothing.
+
+The existing suite cannot catch this. The one `PRE_MUTATION` assertion checks
+`checkpoint.revisionId` (the *pin*, which is correct — `pin: "PREVIOUS"` reads
+the head before the advance) and the snapshot's `revisionId`, `formatVersion`
+and `byteSize > 0`. It never inspects the payload's contents, so a snapshot that
+captures the wrong image passes every assertion. The pin being right is exactly
+what makes the defect invisible: the metadata is correct and the data is not.
+
+One consequence beyond the four call sites:
+
+- **`withRevision` is correct, and that is the trap.** The shared
+  `createWithRevision` helper calls `write(tx)` and *then* `advanceForMutation`,
+  so every LOW operation routed through it is fine — LOW captures no snapshot,
+  and its revision/change-set metadata describes the row it wrote. The helper is
+  the reason the pattern looks uniform; the four HIGH sites each hand-rolled
+  their ordering and put the advance last.
+
+The fix is a bounded reordering: at each HIGH site, call `advanceForMutation`
+**before the first covered-table write** — and that includes the status CAS.
+This is the part an earlier draft of this section got wrong, so it is worth
+stating precisely. `canonProposal.updateMany` writes `canon_proposals` and
+`outlineVersion.updateMany` writes `outline_versions`; both tables are in
+`COVERED_TABLE_NAMES` (`packages/story-versioning/snapshot.ts`), so a
+same-transaction capture sees those uncommitted writes. An instruction to
+"check the CAS first, then advance, then write" therefore still produces a
+snapshot that is pre-mutation for `canon_facts` and **post**-mutation for
+`canon_proposals` — a partial fix that a `canon_facts`-only assertion would
+happily pass. The CAS must move after the advance.
+
+That reordering is safe, and the earlier claim that it was not was also wrong:
+a CAS that loses its race **throws inside the same transaction**, so the
+rollback removes the checkpoint, the revision, the head move and the snapshot
+together. There is no need to order the advance after the CAS to avoid
+recording a checkpoint for a decision that did not happen — the transaction
+boundary already guarantees it. If a precondition genuinely must be evaluated
+before the advance, it has to be a **locked read** (`SELECT … FOR UPDATE`), not
+an `updateMany`.
+
+Two further constraints make this more than a move. `chapters.import` loops
+over parts, so the advance must move outside the loop. And in `canon.ts` the
+advance's `items` array names `fact.id`, which does not exist until the fact is
+minted — so that site cannot simply be hoisted; it needs either a two-phase
+write or the change-set items split from the capture. That is why it needs its
+own task rather than a drive-by edit. The payload-content assertion is still the
+test that would have caught it: assert the `PRE_MUTATION` snapshot's payload
+holds the *pre*-approval rows for **every** table the operation touches, not
+merely that a snapshot exists.

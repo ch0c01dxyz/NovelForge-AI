@@ -18,6 +18,7 @@
  * never reimplemented. This module is the IO half: it resolves scope from
  * stored rows, runs the transactions, and writes the audit trail.
  */
+import { randomUUID } from "node:crypto";
 import type { NovelForgeDb, CanonFactStatus } from "@novelforge/database";
 import {
   can,
@@ -46,6 +47,8 @@ import {
 import { canView, parseViewMode, type ViewMode } from "@novelforge/retrieval";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
+import { advanceForMutation, assertHeadExpectation, createWithRevision } from "./revisions.ts";
 import type { RetrievalServices } from "./retrieval.ts";
 
 export const STORY_ENTITY_KINDS = [
@@ -398,6 +401,8 @@ export interface CanonServices {
     workspaceId: string;
     proposalId: string;
     availableFromChapter?: number | null;
+    /** NF-WF-002D: the head the caller's plan was built against (C12.1). */
+    expectedHeadRevisionId?: string | null;
   }): Promise<{ canonFactId: string; supersededFactId: string | null }>;
 
   rejectProposal(input: {
@@ -445,6 +450,8 @@ export function createCanonServices(deps: {
   dbg?: { error?: (message: string, meta: unknown) => void };
 }): CanonServices {
   const { db, audit, retrieval, dbg } = deps;
+  // Bound once so each call site stays a five-argument call (see revisions.ts).
+  const withRevision = createWithRevision(db);
 
   /**
    * Membership gate. Missing membership is a 404, not a 403 — the caller
@@ -600,16 +607,22 @@ export function createCanonServices(deps: {
       // which is the 409 branch above.
       let created: { id: string; key: string };
       try {
-        created = await db.storyEntity.create({
-          data: {
-            novelId,
-            kind,
-            key: resolvedKey,
-            name: trimmed,
-            createdById: actorUserId,
-          },
-          select: { id: true, key: true },
-        });
+        created = await withRevision(
+          { workspaceId, novelId, actorUserId },
+          "entity.create",
+          "StoryEntity",
+          ["story_entities"],
+          (tx) => tx.storyEntity.create({
+            data: {
+              novelId,
+              kind,
+              key: resolvedKey,
+              name: trimmed,
+              createdById: actorUserId,
+            },
+            select: { id: true, key: true },
+          }),
+        );
       } catch (e) {
         if ((e as { code?: string })?.code !== "P2002") throw e;
         const won = await db.storyEntity.findUnique({
@@ -666,9 +679,24 @@ export function createCanonServices(deps: {
       // No audit line for a no-op: a concurrent caller may have won the
       // delete first (same principle as the create-race join above — never
       // attribute another caller's action to this one).
-      const deleted = await db.storyEntity
-        .deleteMany({
-          where: { id: entityId, novelId, novel: { workspaceId } },
+      const deleted = await db
+        .$transaction(async (tx) => {
+          const result = await tx.storyEntity.deleteMany({
+            where: { id: entityId, novelId, novel: { workspaceId } },
+          });
+          // A no-op delete is not a mutation: it records no revision, for the
+          // same reason it records no audit line — this caller changed nothing.
+          if (result.count === 0) return result;
+          await advanceForMutation(tx, {
+            workspaceId,
+            novelId,
+            operation: "entity.delete",
+            origin: "MANUAL",
+            actorUserId,
+            tables: ["story_entities"],
+            items: [{ entityType: "StoryEntity", entityId, operation: "DELETE" }],
+          });
+          return result;
         })
         .catch((e: unknown) => {
           const code = (e as { code?: string })?.code;
@@ -749,6 +777,21 @@ export function createCanonServices(deps: {
               data: { canonFactId: fact.id, ...sourceRow, createdById: actorUserId },
             });
           }
+          // Same transaction as the fact (C4). LOW — fact creation is not in
+          // C3's HIGH set, so no PRE_MUTATION checkpoint.
+          await advanceForMutation(tx, {
+            workspaceId,
+            novelId,
+            operation: "fact.create",
+            origin: "MANUAL",
+            actorUserId,
+            tables: sourceRow
+              ? ["canon_facts", "canon_fact_sources"]
+              : ["canon_facts"],
+            items: [
+              { entityType: "CanonFact", entityId: fact.id, operation: "CREATE" },
+            ],
+          });
           return fact.id;
         })
         .catch((e: unknown) => {
@@ -810,13 +853,27 @@ export function createCanonServices(deps: {
       // supersede already closed — a state ADR-0008 §1 says cannot exist
       // (retraction sets no supersededById), leaving a withdrawn fact linked
       // to a successor that replaced it.
-      const retracted = await db.canonFact.updateMany({
-        where: { id: fact.id, status: "ACTIVE" },
-        data: { status: "RETRACTED" },
+      // The CAS and the revision share ONE transaction: a revision for a
+      // retraction that matched zero rows would describe a mutation that did
+      // not happen (C4).
+      await db.$transaction(async (tx) => {
+        const retracted = await tx.canonFact.updateMany({
+          where: { id: fact.id, status: "ACTIVE" },
+          data: { status: "RETRACTED" },
+        });
+        if (retracted.count === 0) {
+          throw new ConflictError("this fact was already superseded or withdrawn");
+        }
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "fact.retract",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["canon_facts"],
+          items: [{ entityType: "CanonFact", entityId: fact.id, operation: "UPDATE" }],
+        });
       });
-      if (retracted.count === 0) {
-        throw new ConflictError("this fact was already superseded or withdrawn");
-      }
       await audit.record({
         actorUserId,
         workspaceId,
@@ -838,14 +895,31 @@ export function createCanonServices(deps: {
       // fact id nor a source id belonging to another fact can be used to
       // delete something the caller cannot see. A single deleteMany with both
       // conditions does that in one statement.
-      const removed = await db.canonFactSource.deleteMany({
-        where: {
-          id: sourceId,
-          canonFactId: factId,
-          canonFact: { novelId, workspaceId },
-        },
+      // Count check INSIDE the transaction (C4). `fact.unlinkSource` is not
+      // in C3's vocabulary, so it classifies LOW — but `canon_fact_sources`
+      // is covered by C1, so the head still advances and the revision is
+      // still recorded.
+      await db.$transaction(async (tx) => {
+        const removed = await tx.canonFactSource.deleteMany({
+          where: {
+            id: sourceId,
+            canonFactId: factId,
+            canonFact: { novelId, workspaceId },
+          },
+        });
+        if (removed.count === 0) throw new NotFoundError("evidence");
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "fact.unlinkSource",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["canon_fact_sources"],
+          items: [
+            { entityType: "CanonFactSource", entityId: sourceId, operation: "DELETE" },
+          ],
+        });
       });
-      if (removed.count === 0) throw new NotFoundError("evidence");
       await audit.record({
         actorUserId,
         workspaceId,
@@ -887,27 +961,33 @@ export function createCanonServices(deps: {
         input.statement?.trim() ||
         renderStatement(entity.name, trimmedPredicate, object, objectName);
 
-      const created = await db.canonProposal.create({
-        data: {
-          workspaceId,
-          novelId,
-          entityId,
-          predicate: trimmedPredicate,
-          objectEntityId: object.objectEntityId ?? null,
-          objectText: object.objectText ?? null,
-          statement,
-          validFromChapter: input.validFromChapter ?? null,
-          // CONFLICT is a flag, not a status (ADR-0008 §3): the proposal
-          // stays PROPOSED and awaits a human either way.
-          conflictKind:
-            classified.class === "FUNCTIONAL_CONFLICT" ? "FUNCTIONAL_CONFLICT" : null,
-          conflictsWithFactId:
-            classified.class === "FUNCTIONAL_CONFLICT" ? classified.liveFactId : null,
-          status: "PROPOSED",
-          proposedById: actorUserId,
-        },
-        select: { id: true, status: true, conflictKind: true, conflictsWithFactId: true },
-      });
+      const created = await withRevision(
+        { workspaceId, novelId, actorUserId },
+        "proposal.create",
+        "CanonProposal",
+        ["canon_proposals"],
+        (tx) => tx.canonProposal.create({
+          data: {
+            workspaceId,
+            novelId,
+            entityId,
+            predicate: trimmedPredicate,
+            objectEntityId: object.objectEntityId ?? null,
+            objectText: object.objectText ?? null,
+            statement,
+            validFromChapter: input.validFromChapter ?? null,
+            // CONFLICT is a flag, not a status (ADR-0008 §3): the proposal
+            // stays PROPOSED and awaits a human either way.
+            conflictKind:
+              classified.class === "FUNCTIONAL_CONFLICT" ? "FUNCTIONAL_CONFLICT" : null,
+            conflictsWithFactId:
+              classified.class === "FUNCTIONAL_CONFLICT" ? classified.liveFactId : null,
+            status: "PROPOSED",
+            proposedById: actorUserId,
+          },
+          select: { id: true, status: true, conflictKind: true, conflictsWithFactId: true },
+        }),
+      );
 
       await audit.record({
         actorUserId,
@@ -943,18 +1023,31 @@ export function createCanonServices(deps: {
       });
     },
 
-    async approveProposal({ actorUserId, workspaceId, proposalId, availableFromChapter }) {
+    async approveProposal({
+      actorUserId,
+      workspaceId,
+      proposalId,
+      availableFromChapter,
+      expectedHeadRevisionId,
+    }) {
       const proposal = await gateProposal(
         workspaceId,
         proposalId,
         actorUserId,
         "canon:approve",
       );
+      // The novel id comes from the STORED proposal, after authorization —
+      // never from an unchecked client value, and never before the gate, so an
+      // unauthorized caller learns nothing and no head is disclosed to one.
       const novelId = proposal.entity.novelId;
 
       if (proposal.status !== "PROPOSED") {
         throw new ConflictError(`proposal is already ${proposal.status.toLowerCase()}`);
       }
+
+      // Advisory pre-check before the transaction: a stale plan does no work.
+      // The locked CAS inside `advanceForMutation` is authoritative.
+      await assertHeadExpectation(db, { novelId, expectedHeadRevisionId });
 
       const result = await db
         .$transaction(async (tx) => {
@@ -1030,7 +1123,67 @@ export function createCanonServices(deps: {
             );
           }
 
-          let supersededFactId: string | null = null;
+          // (1)
+          // The fact id is minted HERE rather than by the column default, so the
+          // advance below can name it. `canon_facts.id` is
+          // `@default(dbgenerated("gen_random_uuid()"))` and the generated
+          // create input types it as optional `id?: string`, so an explicit
+          // value is accepted and the default is simply not used.
+          //
+          // Why the id is needed before the insert: HIGH (C3) requires the
+          // PRE_MUTATION checkpoint and snapshot to be captured in THIS
+          // transaction, pinned to the head before the commit (C10 step 4),
+          // because approving a proposal is the mutation an author most needs
+          // to step back from — it mints canon and supersedes the fact it
+          // replaced. `captureSnapshot` reads the live tables when it runs, so
+          // the advance must precede the supersede below or the "pre-mutation"
+          // image is post-mutation and the undo is a no-op (GAP-024). The
+          // change-set items name `fact.id`, which therefore has to exist
+          // first — hence a client-side uuid instead of a hoist that would
+          // reference an undefined id. The supersede -> insert -> link order
+          // documented above is unchanged.
+          const factId = randomUUID();
+
+          // The superseded id is known here, not after the CAS: `priorLive` was
+          // read above. The CAS below still decides whether the supersede
+          // actually happens; a loser throws and takes this checkpoint with it.
+          const supersededFactId: string | null = priorLive?.id ?? null;
+
+          // HIGH (C3). The PRE_MUTATION checkpoint and snapshot are captured in
+          // THIS transaction, pinned to the head before the commit (C10 step
+          // 4): approving a proposal is the mutation an author most needs to
+          // step back from, because it mints canon and supersedes the fact it
+          // replaced. It runs BEFORE the supersede rather than after the CAS,
+          // because the status CAS is itself a covered-table write
+          // (`canon_proposals`) and `captureSnapshot` reads the live tables when
+          // it runs — advancing after either one files a partially
+          // post-mutation image under a PRE_MUTATION label (GAP-024). A decision
+          // that lost its race throws inside this transaction, so the rollback
+          // removes the checkpoint, revision, head move and snapshot together:
+          // no checkpoint is recorded for a decision that did not happen.
+          await advanceForMutation(tx, {
+            workspaceId,
+            novelId,
+            expectedHeadRevisionId,
+            operation: "proposal.approve",
+            origin: "MANUAL",
+            actorUserId,
+            tables: ["canon_facts", "canon_proposals"],
+            items: [
+              { entityType: "CanonFact", entityId: factId, operation: "CREATE" },
+              { entityType: "CanonProposal", entityId: proposal.id, operation: "UPDATE" },
+              ...(supersededFactId
+                ? [
+                    {
+                      entityType: "CanonFact",
+                      entityId: supersededFactId,
+                      operation: "UPDATE" as const,
+                    },
+                  ]
+                : []),
+            ],
+          });
+
           if (priorLive) {
             // (1) Close the old fact's window so an as-of query can tell the
             // two values apart.
@@ -1095,12 +1248,12 @@ export function createCanonServices(deps: {
                 "the fact this claim supersedes was withdrawn or already superseded",
               );
             }
-            supersededFactId = priorLive.id;
           }
 
           // (2)
           const fact = await tx.canonFact.create({
             data: {
+              id: factId,
               workspaceId,
               novelId,
               entityId: proposal.entityId,
@@ -1223,18 +1376,32 @@ export function createCanonServices(deps: {
       // ACTIVE fact nobody approved. That is the "no canon without a decision"
       // rule (CLAUDE.md §2.13) bypassed by interleaving rather than by logic.
       // The predicate makes the decision atomic with the write.
-      const rejected = await db.canonProposal.updateMany({
-        where: { id: proposal.id, status: "PROPOSED" },
-        data: {
-          status: "REJECTED",
-          decidedById: actorUserId,
-          decidedAt: new Date(),
-          decisionNote: note?.trim() || null,
-        },
+      // The CAS and the revision share ONE transaction (C4).
+      await db.$transaction(async (tx) => {
+        const rejected = await tx.canonProposal.updateMany({
+          where: { id: proposal.id, status: "PROPOSED" },
+          data: {
+            status: "REJECTED",
+            decidedById: actorUserId,
+            decidedAt: new Date(),
+            decisionNote: note?.trim() || null,
+          },
+        });
+        if (rejected.count === 0) {
+          throw new ConflictError("this proposal was already decided");
+        }
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId: proposal.entity.novelId,
+          operation: "proposal.reject",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["canon_proposals"],
+          items: [
+            { entityType: "CanonProposal", entityId: proposal.id, operation: "UPDATE" },
+          ],
+        });
       });
-      if (rejected.count === 0) {
-        throw new ConflictError("this proposal was already decided");
-      }
       await audit.record({
         actorUserId,
         workspaceId,

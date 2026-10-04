@@ -136,15 +136,25 @@ model names are not evidence that those models performed this inspection.
   so tiers 7 and 8 of the §7 ladder have no backing store; the other **seven**
   store-backed tiers do, through `stateAt`/`stanceAt`/`bondStageAt`,
   `canon.ask` and `retrieval.search`. Author scope decision RESOLVED
-  2026-10-04: **full tiered compiler**. One review round has run
-  (CHANGES_REQUESTED, four findings, all applied — the material one corrected a
-  false assumption that the outline window names the cast; the real chain is
+  2026-10-04: **full tiered compiler**. Two review rounds have run
+  (round 1 CHANGES_REQUESTED, round 2 APPROVE_WITH_FINDINGS; ten findings
+  total, all applied). The material ones corrected the contract's own
+  assumptions, not the code's: the outline window does **not** name the cast
+  (`OutlineNode`/`Scene` carry no character or entity id), so the real chain is
   `CharacterState` → `Character.storyEntityId` → `StoryEntity` →
-  `CanonFact.entityId`). That review ran on an unevidenced backend
-  (`MODEL_UNVERIFIED`, and on `glm-5.3-flashx` rather than the requested
-  `glm-5.3-flash`, because the requested route kept returning `upstream_error`),
-  so GAP-013 still applies and a repo-grounded review by an evidenced backend
-  is outstanding. The contract is still not dispatchable.
+  `CanonFact.entityId`/`objectEntityId`; and `take` bounds rows, not
+  characters, so the cast bound needs a `characterId` dedupe. Round 2 left
+  three items asserted-but-unverified; all three are now verified by the author
+  directly against the tree at HEAD `fcbd4f4` (2026-10-05, read-only): the
+  approved-outline resolver is genuinely absent, `readHeadRevisionId` uses the
+  `novelId_name` compound key, and every service/schema line number in the
+  contract is exact. That is author-verification, not independent review. Both
+  rounds ran
+  on an unevidenced backend (`MODEL_UNVERIFIED`, and on `glm-5.3-flashx`
+  rather than the requested `glm-5.3-flash`, because the requested route kept
+  returning `upstream_error`), so GAP-013 still applies and a repo-grounded
+  review by an evidenced backend is outstanding. The contract is still not
+  dispatchable.
 - **004:** may be prepared independently only with frozen shared interfaces and
   non-overlapping file ownership. 003 and 004 are not to be dispatched as an
   unbounded swarm.

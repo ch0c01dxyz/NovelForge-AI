@@ -604,13 +604,24 @@ level, and supplied the query.
 | 9 | info | The set covers CHARACTER-kind entities only | **ACCEPTED as documentation.** Declared deliberate, with the reason: only characters have a `CharacterState` window to derive from |
 | 10 | minor | The window predicate, the exclusive `toChapter`, and the missing `characterId` dedupe were unstated | **ACCEPTED.** Real: `take` bounds rows, not characters, and the schema has no exclusion constraint on the window, so overlapping rows could silently evict a qualifying character. Predicate and dedupe are now in the contract |
 
-Round 2 also named what remains **asserted but unverified** rather than
-findings: `outline_versions`'s "no resolver — new", the
-`readHeadRevisionId`/`novelBranch.headRevisionId` compound key, and the
-`canon.ts`/`characters.ts`/`relationships.ts` line numbers all sit outside the
-excerpts it was given. The author verified those directly against the tree, but
-a reviewer has not, and the next round should be given the files rather than
-excerpts.
+Round 2 also named three items **asserted but unverified** rather than
+findings, because they sat outside the excerpts it was given. All three are now
+verified by the author directly against the tree (2026-10-05, read-only, at
+HEAD `fcbd4f4`), so they are no longer open assertions — but this is
+author-verification, not independent review, and the next round should still be
+given the files rather than excerpts.
+
+| # | Item | Verification |
+|---|---|---|
+| a | `outline_versions` "no resolver — new" | **CONFIRMED.** `planning.ts:76-95` exposes only `createOutlineDraft` / `listOutlineVersions` / `approveOutlineVersion` / `supersedeApprovedOutline`; no `getApprovedOutline`/`resolveOutline`/`currentOutline` exists anywhere. Approval is a CAS (`planning.ts:620-629`) with the prior holder moved to `SUPERSEDED` (`:688-691`), one-APPROVED-per-novel held by the partial unique index. The read is genuinely new |
+| b | `readHeadRevisionId` / `novelBranch.headRevisionId` compound key | **CONFIRMED.** `revisions.ts:135-145` reads `where: { novelId_name: { novelId, name: branchName } }`, `select: { headRevisionId: true }`; `NovelBranch.headRevisionId` at `schema.prisma:2280`, `@@unique([novelId, name])` at `:2290` |
+| c | Service line numbers | **ALL EXACT.** `canon.ts:1415` `listFacts`, `canon.ts:1439-1441` the ACTIVE filter, `retrieval.ts:848` `search`, `orchestrator.ts:156` and `:180` both inside `compile` (declared `:135`), `schema.prisma:1422` `model OutlineNode` (`order` at `:1432`, `@@unique([sagaId, order])` at `:1442`, no `number` column). Also exact: `characters.ts:377` `stateAt`, `relationships.ts:303` `stanceAt` / `:562` `bondStageAt`, `packages/planning/planning.ts:160` `HORIZON_DETAILS` / `:202` `horizonFor`, `schema.prisma` `:1138` `StoryEntity` / `:1190` `CanonFact.entityId` / `:1198` `objectEntityId` / `:1839` `Character.storyEntityId` / `:1861` `CharacterState` / `:301` `Scene` |
+
+One citation is imprecise rather than wrong: `schema.prisma:1485` / `:2135` are
+the **model declaration** lines for `PlanningHorizon` / `NarrativeDnaProfile`,
+while the prose keys them by `novel_id`, which is the field at `:1486` / `:2136`.
+The sentence reads "the models at 1485/2135 … both holding untyped `Json`", which
+is what it means; a reviewer wanting the key column should read one line down.
 
 **Two rounds, six substantive findings, all in the tier table and its
 derivation** — which is where this contract keeps being wrong. Both rounds ran

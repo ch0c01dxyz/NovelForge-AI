@@ -50,7 +50,8 @@ repository.
 **And the truncation is backwards — and the read behind it is unbounded.**
 `canon.listFacts` (`apps/api/src/services/canon.ts:1415`) issues
 `db.canonFact.findMany({ where, orderBy: { createdAt: "asc" }, select })`
-(`:1445-1449` AUTHOR, repeated `:1475` READER) with **no `take` and no `limit`
+(`:1445` AUTHOR, repeated `:1473` READER; `orderBy: { createdAt: "asc" }` at
+`:1447` and `:1475`) with **no `take` and no `limit`
 anywhere in the file** — verified, `canon.ts` contains no `take:`/`limit:` at
 all. So it returns *every* ACTIVE fact for the novel, and `compile` walks that
 full list with `break` on budget (`orchestrator.ts:165-171`) under a fixed
@@ -210,7 +211,7 @@ execution (NF-WF-004); any UI (NF-WF-007).
    workflow `RETRIEVAL` step must not each own a selection loop. If they still
    do, the task is not done.
 8. **Tenant and spoiler boundaries are inherited from the services**, applied
-   in the query (the `listFacts` READER branch at `canon.ts:1475` is the
+   in the query (the `listFacts` READER branch at `canon.ts:1473` is the
    precedent: filtering after the read means the forbidden rows were already
    read). A non-member must get a 404, not a 403.
 9. **No model call or human wait inside a database transaction** (CLAUDE.md §9).

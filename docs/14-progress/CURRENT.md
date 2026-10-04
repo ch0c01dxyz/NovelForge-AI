@@ -6,7 +6,7 @@ exist; integrated product delivery remains PARTIAL**. Historical phase/test
 results below describe their original scope, not completion of all retained
 requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
-## Active dispatch snapshot — 2026-10-04
+## Active dispatch snapshot — 2026-10-05
 
 | Task | Current scope/status | Next action |
 |---|---|---|
@@ -15,12 +15,18 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 | NF-WF-002D | **IMPLEMENTED / REVIEWED** (GAP-022 closed for implementation and review) | Done; accepted by 002F |
 | NF-WF-002F | **VERIFIED 2026-10-04 — evidenced M1 foundation scope only** (self-verification, not independent review) | Done; full cross-domain recovery stays OPEN under GAP-004 |
 | NF-WF-002E | PLANNED; actual consumer absent (GAP-023) | Revisit under NF-WF-004 consumer design |
-| NF-WF-003 | **PLANNED — contract drafted**, scope decision RESOLVED (full tiered compiler) | Review the contract, then dispatch |
+| NF-WF-003 | **PLANNED — contract drafted**, scope decision RESOLVED (full tiered compiler) | Review GAP-026 amendments on the refreshed blob, then dispatch |
 
 Current sequence: [DELIVERY-PLAN](../implementation/DELIVERY-PLAN.md).
-Current model availability (author, 2026-10-04): DeepSeek implementer active;
-`glm-5.3-flash` is reachable as a reviewer through the 9Router gateway but is
-intermittently flaky there (see the transport note below).
+Current assignment policy (author, 2026-10-05): model-neutral. Use the model
+chosen by the author at runtime with a separate reviewer actor; prior model
+names below attribute historical receipts only. No new reviewer was dispatched.
+NF-WF-003 remains PLANNED after GAP-026 contract repairs; the refreshed review
+manifest replaces the old round-3 artifact. Review before coding.
+Current Engram hook has no authoritative registered session identity (GAP-021).
+Reads are available; attributed saves are blocked. Progress holds the fallback.
+Fresh bounded checks are recorded in the 2026-10-05 progress/test-matrix entry;
+counts below are historical, not new full-platform verification.
 [002D](../../tasks/NF-WF-002D-mutation-head-expectation.md) is now
 **IMPLEMENTED / REVIEWED**: the four HIGH mutation routes
 (`proposal.approve`, `outlineVersion.approve`, `outline.supersede`,

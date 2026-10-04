@@ -3,18 +3,22 @@
 Status: **PLANNED** — not dispatchable. The author scope decision is RESOLVED
 ("Full tiered compiler", see "Scope decision"). Do not start coding from this
 file until it is separately reviewed.
+Project language: English for all authored/revised project artifacts and
+generated project content; follow the constitution for provenance and overrides.
 Milestone / capability IDs: M1 / G-02 (chapter context), per
 [DELIVERY-PLAN](../docs/implementation/DELIVERY-PLAN.md).
-Implementer role / requested and resolved model: unassigned. Author-selected
-coding models are `deepseek-v4.1-flash` and `glm-5.3-flash`; the resolved
-model must be recorded at dispatch, not assumed.
+Implementer role / requested and resolved model: unassigned. Use the model
+selected by the author at dispatch; record runtime evidence, not assumed
+identity. No historical model pairing constrains this task.
 Reviewer role / requested and resolved model: unassigned; a separate reviewer
 must read the exact submitted diff. Reviewer backend identity is UNVERIFIED
 (GAP-013).
 Readiness evidence / unresolved decisions / parent acceptance owner: NF-WF-002F
 returned VERIFIED for the evidenced M1 foundation scope only (2026-10-04);
 NF-WF-003 depends on NF-WF-002 and inherits nothing else from it.
-Frozen review manifest / exact artifact paths and identity: none yet. The
+Frozen contract manifest: see `NF-WF-003-review-request.md`; the 2026-10-05
+GAP-026 amendments require review of the replacement blob. Implementation
+manifest: not yet created (no implementation submitted). The
 manifest is frozen at submission and must not hash itself. **It must include the
 whole of `orchestrator.ts` and `canon.ts`, not excerpts**: the contract's claims
 that `compile` reads *only* two services and is called *only* from the two
@@ -24,8 +28,9 @@ Baseline revision / local changes to preserve: the NF-WF-002 foundation as
 committed at HEAD `4e63116` (which includes the 002F acceptance record); this
 task must not stash, reset or revert it.
 Engram checkpoint topic key / last confirmed observation reference: written
-under the runtime-bound identity confirmed at this boundary
-(`fae4b412-db3a-4ddc-a052-cfda214cfa9d`). GAP-021 remains per-boundary.
+under a historical identity (`fae4b412-db3a-4ddc-a052-cfda214cfa9d`), not a
+current binding. The 2026-10-05 hook supplies no authoritative identity; use
+progress fallback and do not write attributed memory. GAP-021 is per-boundary.
 
 ## Goal and reason
 
@@ -116,9 +121,14 @@ the §2.16 violation intact.
     **this task is the owner of the character/canon half.** Any join it adds
     must be an explicit, named relation, never a name match. Nullable-FK
     existence is not a join.
-  - **GAP-013** (OPEN/P2) — no review claim may rest on an unverified backend.
-  - **GAP-018** (OPEN/P2) — a failed `migrate deploy` is partially applied; if
-    this task adds a migration, its `CREATE INDEX` must be re-runnable.
+  - **GAP-013** (OPEN/P2) — record actual reviewer actor/tool evidence and
+    preserve MODEL_UNVERIFIED when serving-backend identity is unknown. An
+    attributed verdict may establish an exact-artifact review, not backend
+    identity; never claim a requested vendor/model was proven by its alias.
+  - **GAP-018** (OPEN/P2) — a failed `migrate deploy` is partially applied; this
+    task authorizes no migration. Any future migration needs a reviewed
+    transactional deploy/recovery plan and post-deploy schema checks; index
+    idempotency alone cannot prevent partial application.
   - **GAP-023** (OPEN) — do not build a domain-event producer or outbox here.
 
 ## Scope decision — RESOLVED (author, 2026-10-04)
@@ -139,6 +149,11 @@ Allowed paths (proposed; confirm at review):
   already-fetched rows. Not a new package: both callers live in `apps/api/src`,
   so a package boundary buys nothing here. The module must not import HTTP or a
   provider (CLAUDE.md §10), which keeps it testable without a server.
+- `apps/api/src/app.ts` — instantiate/reuse planning, character, relationship
+  and narrative services, inject the same readers into both factories, and
+  preserve route/authentication behavior.
+- `apps/api/src/services/relationships.ts` — compiler-facing bounded temporal
+  state/bond readers after the existing tenant gate; preserve public histories.
 - `apps/api/src/services/orchestrator.ts` — replace the inline loop in
   `compile` (`:135`) with a call to the compiler.
 - `apps/api/src/services/workflow-runs.ts` — the `RETRIEVAL` step (`:460`) must
@@ -152,8 +167,14 @@ Allowed paths (proposed; confirm at review):
 - `apps/api/src/services/canon.ts` — the bounded, relevance-ordered fact
   selection that replaces the unbounded read.
 - `apps/api/src/orchestrator.test.ts`, `apps/api/src/retrieval.test.ts`,
-  `apps/api/src/characters.test.ts`, and one new
+  `apps/api/src/characters.test.ts`, `apps/api/src/relationships.test.ts`,
+  `apps/api/src/planning.test.ts`, `apps/api/src/canon.test.ts`,
+  `apps/api/src/definitions.test.ts` (real workflow RETRIEVAL), and one new
   `apps/api/src/context-compiler.test.ts`.
+
+Allowed documentation: this task, its review request, START-HERE.md,
+`docs/14-progress/CURRENT.md`, and the delivery plan, issue register, progress
+and test matrix under `docs/implementation/`, for contracts/actual receipts.
 
 Forbidden paths: everything else — in particular any schema change, any
 migration, `packages/story-versioning/*`, `packages/auth/*`, and any file
@@ -238,7 +259,10 @@ execution (NF-WF-004); any UI (NF-WF-007).
    instead as **the bound on the relevant entity set itself**: at most
    `CAST_LIMIT` characters are resolved, and the per-character calls are made
    over that already-bounded list. The bound is therefore upstream of the
-   accessor, not inside it. Selecting which `CAST_LIMIT` characters, when more
+   accessor, and its internal query must also be bounded. Existing accessors
+   read full character/pair histories; add compiler-facing bounded temporal
+   reader methods in the same gated services. A bounded cast does not bound
+   rows inside each accessor. Selecting which `CAST_LIMIT` characters, when more
    qualify, uses the same determinism rule as invariant 3 — entity match then
    id — and must be stated, not left to row order.
 
@@ -294,7 +318,8 @@ execution (NF-WF-004); any UI (NF-WF-007).
    its own. The derivation is a single query on `character_states`:
 
    ```
-   characterState.findMany({
+   characterState.groupBy({
+     by: ["characterId"],
      where: {
        character: { novelId },          // the tenant path — see below
        fromChapter: { lte: N },          // N = story position
@@ -304,6 +329,10 @@ execution (NF-WF-004); any UI (NF-WF-007).
      take: CAST_LIMIT,
    })
    ```
+
+   Group before `take`: this query bounds distinct character IDs, not state
+   rows. Fetch entity IDs only for this bounded set inside the authorized
+   character service. Do not deduplicate after a row-level limit.
 
    Three things that query must get right, each of which a review flagged:
 
@@ -354,7 +383,13 @@ execution (NF-WF-004); any UI (NF-WF-007).
    `novelBranch.headRevisionId` via the `novelId_name` compound key) — so use
    it rather than a new query. The caller may supply an expectation
    (`expectedHeadRevisionId` tri-state, §C12.1) but must never be the authority
-   for what is pinned.
+   for what is pinned. Gate the tenant first, read the head before context
+   reads, fetch bounded data, then read it again. If it moved, return a typed
+   conflict and call no model; never relabel mixed rows. Reuse immutable
+   compiled rows and selected definition versions across model retries.
+   Race-test movement during compilation. This detects covered mutations
+   only; retain policy/definition row/version identities and disclose
+   uncovered mutations without claiming full snapshot isolation (GAP-004).
 7. **One compiler, two callers.** After this task, `orchestrator.ts` and the
    workflow `RETRIEVAL` step must not each own a selection loop. If they still
    do, the task is not done.
@@ -371,14 +406,25 @@ execution (NF-WF-004); any UI (NF-WF-007).
     present, empty one.
     - **The marker is a discriminated tag, not an empty list.** Each compiled
       block is `{ tier, status, rows, provenance }` with
-      `status: "PRESENT" | "UNAVAILABLE" | "OVERFLOWED"`; tiers 7 and 8 compile
+      `status: "PRESENT" | "EMPTY" | "UNAVAILABLE" | "NOT_APPLICABLE" | "OVERFLOWED"`; tiers 7 and 8 compile
       to `status: "UNAVAILABLE"` with an explicit reason string naming the
-      owning task (`NF-WF-009`). `rows` is empty **only** when `status` is
-      `UNAVAILABLE`, so an empty `rows` with `status: "PRESENT"` is itself a
-      bug the acceptance test can catch.
+      owning task (`NF-WF-009`). `rows` may be empty when `status` is
+      `UNAVAILABLE`, `EMPTY`, `NOT_APPLICABLE` or `OVERFLOWED`. A successfully
+      read backed tier with zero matches is EMPTY with query/position provenance.
+      Novel-less generic generation uses NOT_APPLICABLE for novel tiers and
+      invents no novel/head. PRESENT requires nonempty rows. Missing/invalid
+      required policy is a typed failure, not EMPTY or an invented default.
+      Mandatory OVERFLOWED blocks prevent model dispatch.
 11. **No full-manuscript scan** (§2.16). No query may be unbounded: every new
-    read states its bound. Tiers 5 and 6 already rank by debt; tier 3 must
-    acquire a bound.
+    read states its bound. Tier 5 ranks by debt; tier 6 requires temporal selection; tier 3 must
+    acquire a bound. Existing EVENT/CAUSAL and debt helpers fetch all rows
+    before sorting; do not call them unchanged and slice afterwards. Add gated
+    compiler-specific bounded reads in canon.ts, preserving public answers.
+    Temporal eligibility/visibility belong in the query. Debt selection must
+    preserve its documented ranking over eligible candidates, not pretend a
+    recency-limited sample proves global top-debt ranking. Every temporal
+    state/pair, outline/scene and thread/event/causal query needs an explicit
+    bound. Name a finite relationship pair budget separately from CAST_LIMIT.
 ## Acceptance and verification
 
 - [ ] Observable result through the real caller: a generation through
@@ -435,17 +481,35 @@ execution (NF-WF-004); any UI (NF-WF-007).
       admit a fact behind the reader's chapter position.
 - [ ] **Divergence test.** A test that would fail if the two callers' selection
       logic drifted apart again.
+- [ ] Empty novel/reference hits and novel-less generation distinguish EMPTY,
+      UNAVAILABLE and NOT_APPLICABLE without failing for zero backed rows.
+- [ ] A covered mutation between head reads refuses context and calls no model;
+      unchanged pinned rows are reused on model retry.
+- [ ] Query-bound assertions cover temporal state history, relationship/bond
+      pairs, outline/scenes and debt/event/causal reads, not only canon facts.
 - [ ] Named commands, prerequisites, and expected outcome recorded with actual
       results, separately from expectations. Zero selected tests do not pass a
       gate.
 - [ ] Separate review of the submitted revision; findings resolved.
 
+## Required commands and safe prerequisites
+
+Record Node/pnpm versions, selected test counts and scratch DB readiness. Never
+run db:test:prepare on live data. After the new test exists, run
+`pnpm --filter @novelforge/api exec vitest run src/orchestrator.test.ts
+src/definitions.test.ts src/context-compiler.test.ts src/canon.test.ts
+src/characters.test.ts src/relationships.test.ts src/planning.test.ts
+src/retrieval.test.ts`, then `pnpm lint` and
+`pnpm --filter @novelforge/api typecheck`. Expected: selected tests/checks pass;
+expectations are not receipts.
+
 ## Migration and rollback
 
 **None expected.** No schema change and no migration is authorized by this
 contract. If one becomes necessary, stop and return for a new contract: a
-migration is a reviewed artifact, and per GAP-018 its index creation must be
-re-runnable so a failed deploy cannot leave a half-applied database. This task
+migration is a reviewed artifact, and GAP-018 requires an inspected,
+transactional recovery/deploy plan with validated index/FK definitions;
+re-runnable index creation alone does not prevent partial application. This task
 must not reset, restore or destructively roll back any database.
 
 ## Documentation and handoff

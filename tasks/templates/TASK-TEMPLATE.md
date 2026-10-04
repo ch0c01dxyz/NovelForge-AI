@@ -1,5 +1,12 @@
 # Task NF-WF-NNN: <one measurable outcome>
 
+Project language: English for all authored/revised artifacts and generated
+project content; UI uses English (`en`)/Bahasa Indonesia (`id`) locale keys
+and resources with English fallback. Record any other explicit author override
+and its scope.
+Model selection: author-selected at runtime; separate implementer/reviewer
+actors, with requested aliases distinguished from runtime evidence.
+
 Status: PLANNED | READY | IN_PROGRESS | REVIEW_PENDING | CHANGES_REQUESTED | BLOCKED | VERIFIED
 Milestone / capability IDs:
 Implementer role / requested and resolved model:

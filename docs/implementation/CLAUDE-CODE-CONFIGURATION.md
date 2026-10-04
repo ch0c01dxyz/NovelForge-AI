@@ -4,7 +4,18 @@ Applied and verified on 2026-10-01 with Claude Code 2.1.286 on this Windows
 workstation. This is a local harness configuration receipt, not application
 delivery evidence. Existing NovelForge implementation gates remain pending.
 
-## Active configuration
+## Current interpretation — 2026-10-05
+
+This document records historical workstation configuration checks, not current
+model assignments. The author has removed the previous model-pair requirement:
+select coding models at runtime and use separate implementer/reviewer actors.
+Do not copy the historical tier mappings or reviewer --model arguments below
+into a new dispatch. Environment aliases and response echoes are routing/config
+claims, not serving-backend proof. Current missing session binding is GAP-021;
+previous hook smoke success does not establish today's identity. No host
+settings or installed routes were changed in this documentation task.
+
+## Historical configuration receipt
 
 | Area | Result |
 |---|---|

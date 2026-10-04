@@ -2,7 +2,7 @@
 
 Single authoritative register for unresolved technical problems, ambiguous
 contracts, unsupported claims, missing product paths and environment blockers.
-Applies to deepseek-v4.1-flash, glm-5.3-flash, the coordinator and reviewers.
+Applies to every coding model, the coordinator and reviewers.
 CURRENT and task handoffs summarize/link IDs here; do not create competing
 issue files. Historical progress/test receipts remain evidence, not live queues.
 
@@ -77,7 +77,7 @@ model names are not evidence that those models performed this inspection.
 | GAP-010 Automated workflow E2E and scale evidence missing | OPEN / P1 | DOCUMENTED: CURRENT says no automated E2E runner. Expect real writer/reader loop and measured bounded 2,500-chapter operation | NF-WF-007/011/023; actual selected E2E tests and load receipts |
 | GAP-011 Timeline/event and character/canon identity joins unresolved | OPEN / P1 | DOCUMENTED: CURRENT lists separate unlinked timeline/events and standalone characters. Shared context/restore requires explicit stable joins and temporal semantics. **2026-10-04 (NF-WF-002F): NOT closed.** The M1 migration adds nullable `characters.story_entity_id` and `timeline_events.story_event_id` (both `ON DELETE SET NULL`) plus a partial unique index on the former, and backfills `characters.story_entity_id` **only** on an exact `(novel_id, key)` match with `kind = 'CHARACTER'` — never a name match, because the two `key` columns already share one contract. `timeline_events.story_event_id` gets **no backfill** by design: nothing in the schema ties a timeline row to a story event, so any automatic link would be fabricated provenance. Nullable-FK existence is not a join and must not be read as closing this gap | NF-WF-003/010; reviewed identities, migration and temporal/cross-domain tests. Do not close on nullable-FK existence |
 | GAP-012 Narrative policy semantics incomplete | OPEN / P2 | DOCUMENTED: CURRENT records arbitrary DNA JSON, stored SCALE policy and hardness not consumed consistently. Expect validated consumed fields and explicit soft/hard behavior | NF-WF-010; policy-to-review integration and no forced drama tests |
-| GAP-013 Requested coding models not fully runtime-verified | OPEN / P2 | OBSERVED: read-only Claude smoke through configured `bansoskenari/deepseek-v4-1-flash` gateway alias called Engram/Ruflo successfully. Claude warns unrecognized model; backend identity/context/token metadata remain unverified. 2026-10-01: the reviewer worker's gateway (localhost:20127) returned HTTP 500 with no body on all 10 retries, twice, so no independent review ran. **Later the same day the gateway recovered** (`POST /v1/messages` → 200 SSE; `/api/health` `ok:true`, `failedProviders:[]`) and the review ran as dispatch `ctx_c4dcc5969164`. The worker self-reported `bansosmontera/deepseek-v4.1-flash` from `ANTHROPIC_DEFAULT_HAIKU_MODEL` — **not the `glm-5.3-flash` the contract requested**, so the reviewer role is still not the requested model and no backend identity is proven for either role. GLM runtime remains UNKNOWN. The round-2 re-review (`ctx_db14a16c6968`) self-reported `glm-5.3-flash` from `ANTHROPIC_DEFAULT_FABLE_MODEL` — a different env var, still a self-report, and still not proof that the requested model ran. **Root cause identified 2026-10-01:** those self-reports are the harness **tier aliases**, not the serving model. `~/.claude/settings.json` maps `ANTHROPIC_DEFAULT_HAIKU_MODEL` to `bansosmontera/deepseek-v4.1-flash` and `ANTHROPIC_DEFAULT_FABLE_MODEL` to `bansosmontera/glm-5.3-flash`, so each worker reported whichever alias its tier resolved to: the discrepancy was a tier change, not a model change, and neither reading proves which backend served the tokens. The requested id **is** dispatchable — `GET http://localhost:20127/v1/models` lists `bansosmontera/glm-5.3-flash`. Round 3 (`ctx_a28a8bb47dc7`, task `task_52d7a3338dbb`) therefore passed that id explicitly instead of relying on tier aliasing; whether inference is actually served by GLM still needs backend evidence, not an env read. **2026-10-04 (NF-WF-002D review):** the reviewer was dispatched by direct `POST http://localhost:20127/v1/messages` with `"model":"bansosmontera/glm-5.3-flash"` — the requested id is proven (present in `GET /v1/models`, echoed as `glm-5.3-flash` in the response). The serving backend is still not proven, and the gateway was intermittently flaky: several attempts returned `upstream_error` ("All upstream attempts routed by Mortera Cloud failed") *after* 25-35k characters of reasoning and before any content, so an empty answer there means "retry", not "no findings". `glm-cn/glm-5.3-flash` and `cl/z-ai/glm-5.3-flash` both returned HTTP 503 `429 ... balance/credit exhausted`, so only the `bansosmontera` route is usable today | Coordinator before each role dispatch; actual backend identity/tool/capability record for both roles, or explicit unavailable/alternative decision. See [harness receipt](CLAUDE-CODE-CONFIGURATION.md) |
+| GAP-013 Coding actor/model runtime evidence incomplete | OPEN / P2 | OBSERVED: read-only Claude smoke through configured `bansoskenari/deepseek-v4-1-flash` gateway alias called Engram/Ruflo successfully. Claude warns unrecognized model; backend identity/context/token metadata remain unverified. 2026-10-01: the reviewer worker's gateway (localhost:20127) returned HTTP 500 with no body on all 10 retries, twice, so no independent review ran. **Later the same day the gateway recovered** (`POST /v1/messages` → 200 SSE; `/api/health` `ok:true`, `failedProviders:[]`) and the review ran as dispatch `ctx_c4dcc5969164`. The worker self-reported `bansosmontera/deepseek-v4.1-flash` from `ANTHROPIC_DEFAULT_HAIKU_MODEL` — **not the `glm-5.3-flash` the contract requested**, so the reviewer role is still not the requested model and no backend identity is proven for either role. GLM runtime remains UNKNOWN. The round-2 re-review (`ctx_db14a16c6968`) self-reported `glm-5.3-flash` from `ANTHROPIC_DEFAULT_FABLE_MODEL` — a different env var, still a self-report, and still not proof that the requested model ran. **Root cause identified 2026-10-01:** those self-reports are the harness **tier aliases**, not the serving model. `~/.claude/settings.json` maps `ANTHROPIC_DEFAULT_HAIKU_MODEL` to `bansosmontera/deepseek-v4.1-flash` and `ANTHROPIC_DEFAULT_FABLE_MODEL` to `bansosmontera/glm-5.3-flash`, so each worker reported whichever alias its tier resolved to: the discrepancy was a tier change, not a model change, and neither reading proves which backend served the tokens. The requested id **is** dispatchable — `GET http://localhost:20127/v1/models` lists `bansosmontera/glm-5.3-flash`. Round 3 (`ctx_a28a8bb47dc7`, task `task_52d7a3338dbb`) therefore passed that id explicitly instead of relying on tier aliasing; whether inference is actually served by GLM still needs backend evidence, not an env read. **2026-10-04 (NF-WF-002D review):** the reviewer was dispatched by direct `POST http://localhost:20127/v1/messages` with `"model":"bansosmontera/glm-5.3-flash"` — the requested id is proven (present in `GET /v1/models`, echoed as `glm-5.3-flash` in the response). The serving backend is still not proven, and the gateway was intermittently flaky: several attempts returned `upstream_error` ("All upstream attempts routed by Mortera Cloud failed") *after* 25-35k characters of reasoning and before any content, so an empty answer there means "retry", not "no findings". `glm-cn/glm-5.3-flash` and `cl/z-ai/glm-5.3-flash` both returned HTTP 503 `429 ... balance/credit exhausted`, so only the `bansosmontera` route is usable today | Coordinator before each role dispatch; actual backend identity/tool/capability record for both roles, or explicit unavailable/alternative decision. See [harness receipt](CLAUDE-CODE-CONFIGURATION.md) |
 | GAP-014 Historical chronology needs attribution | OPEN / P2 | OBSERVED: progress/CURRENT contain October-dated claims relative to 2026-09-30 session. Preserve history; verify commit/receipt provenance before using chronology | Next evidence-maintenance task under M0; source attribution or explicit unresolved dates, not invented replacements |
 | GAP-015 Remaining retained capability gaps | OPEN / P2 | DOCUMENTED: formats, reader social/admin, advanced recovery/simulation/endgame/operations still need integration. CAP-12–20 enumerate scope | NF-WF-015–024; expand into specific entries when investigated and close only against capability receipts |
 | GAP-016 NF-WF-001 contract defects | CLOSED / P1 | OBSERVED: three independent reviews ran (`ctx_c4dcc5969164`, `ctx_db14a16c6968`, `ctx_a28a8bb47dc7`). Rounds 1 and 2 returned CHANGES_REQUESTED; round 3 returned **VERIFIED** — all five round-2 corrections correct, all regression checks pass (C1 56/56, C4 CAS order, C8 baseline split, C6 dedup, links, no placeholders). The contract is frozen and NF-WF-002 is unblocked. Reviewer backend identity stays unproven across all three (GAP-013) | NF-WF-002 implementation. See detail below |
@@ -94,7 +94,9 @@ model names are not evidence that those models performed this inspection.
 
 | GAP-025 Task readiness and final-acceptance contracts drift | CLOSED / P2 | OBSERVED 2026-10-03: delivery queue called 002D PLANNED despite its recorded READY decision; D excluded revision-service changes needed for typed 409 metadata, left test paths vague, reopened proposal scope and promised rollback 400 from non-strict schemas; no bounded parent acceptance task existed. Markdown corrections now delivered; no runtime failure or independent approval is inferred. **2026-10-03 (002D execution):** the amended contract was implemented as written — exact allowed paths, head-mismatch metadata, authorized proposal scope, optional empty-body compatibility, no generic/unauthorized head disclosures, forced race checks. Verification of those against the submitted diff was performed by the separate review on 2026-10-04 (APPROVE on production; one test-fidelity defect fixed and re-reviewed) — that verdict covers the frozen diff, not the whole tree, and the parent acceptance in NF-WF-002F still verifies against the tree. **CLOSED 2026-10-04 (NF-WF-002F)**: the amended contract was implemented as written and NF-WF-002F verified it against the tree, not against the frozen-diff verdict — all four HIGH routes carry the tri-state (`canon-routes.ts:98`, `planning-routes.ts:63` for both planning routes, `manuscript-routes.ts:157`), the routes preserve `undefined` rather than collapsing it into `null`, and each service runs its tenant gate before any head is read or disclosed | NF-WF-002D amended contract and NF-WF-002F; verify exact allowed paths, head-mismatch metadata and authorized proposal scope, review amended artifacts; advance parent only on final receipts |
 
-## Active queue — 2026-10-04
+| GAP-026 NF-WF-003 dispatch contract remains inconsistent | VERIFY_PENDING / P1 | OBSERVED 2026-10-05 at ac4a19a: composition paths forbidden, unbounded state/debt/event readers, cast dedupe after take, empty backed tiers rejected and weak source pin/identity instructions. Contract remedies delivered; no code or dispatch approval claimed. | NF-WF-003 coordinator; separate review of refreshed contract blob. See [detail](#gap-026--nf-wf-003-dispatch-contract-remains-inconsistent-2026-10-05). |
+
+## Active queue — historical snapshot, 2026-10-04
 
 - **002D REVIEWED 2026-10-04:** implemented 2026-10-03, reviewed by
   `glm-5.3-flash` on 2026-10-04 — APPROVE on the production diff, one MAJOR
@@ -608,3 +610,81 @@ Current Engram fallback remains GAP-021.
 For each active investigation, expand its row into the entry template below
 in this same file. Keep the table as an index; link its detail rather than
 maintaining a second description elsewhere.
+
+## GAP-026 — NF-WF-003 dispatch contract remains inconsistent (2026-10-05)
+
+Status: VERIFY_PENDING / P1. Owner: NF-WF-003 contract coordinator; separate
+reviewer unassigned. Source: HEAD ac4a19a, contract blob f89b75abc9955e72accb97a73cb47ac0382a3e06.
+Observed: the contract requires injected reader ports but forbids app.ts,
+where both service factories are wired (app.ts:219,276). It requires bounded
+state reads but stateAt/stanceAt fetch full histories (characters.ts:380,
+relationships.ts:306). EVENT/CAUSAL and debt answers also fetch unbounded
+rows (canon.ts askEvent/askCausal/askDebt). The cast example applies take
+before character deduplication, contradicting its own rule. PRESENT forbids
+legitimate empty backed tiers. Merely reading a revision before separate live
+reads does not establish a coherent source snapshot. Review Step 0 treats
+environment aliases as actual serving-model identity, contrary to GAP-013.
+Impact: G-02 implementation remains blocked by an unsafe/incomplete contract.
+Next action: repair exact scope, bounded selection, output states, pin
+consistency and identity instructions, then freeze a replacement manifest.
+Closure: separate exact-artifact contract review; implementation, race,
+empty-context and bounded-query receipts remain required for GAP-001/002.
+No code implementation or review approval is claimed by this diagnosis.
+
+Contract remedy delivered 2026-10-05: added composition/test/doc scope, bounded
+compiler-facing readers, grouped cast IDs, empty/applicability states, head-race
+checks and commands; replaced model-specific active assignments and alias-based
+review identity instructions. Status INVESTIGATING → VERIFY_PENDING. Independent
+review of the refreshed artifact is still required; no dispatch approval claimed.
+
+## Prioritized remedies — 2026-10-05
+
+This is the solution plan inside the existing register, not another issue log
+or a claim that features are implemented. Preserve open statuses until the
+named tests and separate reviews exist. The current bounded task repairs
+contracts; it does not implement all product phases at once.
+
+| Gap | Remedy and execution owner | Closure evidence / dependency |
+|---|---|---|
+| GAP-026 | Review the amended NF-WF-003 scope and query/output/source-pin contract using its refreshed manifest. Select actors/model at runtime. | Separate exact-blob verdict; corrections re-reviewed. Blocks coding 003, not unrelated preparation. |
+| GAP-001 | NF-WF-003: compose backed tiers with approved-outline resolution, temporal state, horizon, DNA, explicit unavailable memory and immutable provenance. Preserve generic novel-less generation. | Real generation and workflow paths share the compiler; mandatory overflow makes no model call; changed-head refusal and future-state exclusion. Unbacked memory remains owned by 009. |
+| GAP-002 | NF-WF-003: bound canon query candidates before materialization, prioritize explicit entity/object IDs with deterministic recency/id ties; bound every additional tier read. | Late relevant fact survives; query-bound assertions fail against old reads; inactive facts/foreign tenants excluded. Changing sort alone is insufficient. |
+| GAP-003 | NF-WF-005: persist the approval decision and continuation cursor, authorize approve/reject, bind decision to final text/version/source pins, and consume once. | Restart-safe continuation; rejection, stale edit, duplicate decision and unauthorized approval tests. Depends on durable execution in 004. |
+| GAP-004 | NF-WF-003/010 and later recovery contracts: inventory covered domains and explicitly refuse unsupported restore/apply. Extend immutable snapshots and atomic rebuild intent only after reviewed coverage/schema decisions. | Cross-domain restore reproduces content/state with later history retained; unsupported coverage refuses before mutation. Existing 002F scope remains attributed, not full recovery. |
+| GAP-005 | NF-WF-008/009: extract structured candidate changes from accepted final text; persist proposals/provenance, apply only approved policy classes, rebuild revision-tagged projections. | Reject leaves canon unchanged; stale text invalidates decisions; chapter N learning is retrieved by N+1. Depends on accepted author loop. |
+| GAP-006 | NF-WF-004: reuse BullMQ/PostgreSQL for durable jobs and attempt/cursor state; idempotent commit, bounded retry, cancellation and explicit incomplete streaming. | Process restart, queue outage, duplicate delivery, cancellation and no duplicated persisted output. No second orchestrator. |
+| GAP-007 | NF-WF-007/015/016: connect writer UI to generation/review/approval/save, then bounded rich-editing/scene tasks; retain expected-version conflicts. UI labels/messages use English/Indonesian locale resources and English fallback. | Browser journey with loading/empty/error states, concurrent edit, approval invalidation after edits, both locales and missing-translation fallback. Backend tests do not accept UI. |
+| GAP-008 | NF-WF-012–014: explicit immutable published versions, publication authorization and a non-member reader path with spoiler-safe navigation/search. | Both UI locales and fallback; anonymous/member access sees published content only; draft, unpublish and next/previous/search negatives. Depends on publication contract. |
+| GAP-009 | M0 evidence maintenance: keep roadmap phase numbers separate from capabilities and release receipts; current pointers must name pending review honestly. | Link/constitution/status consistency plus separate documentation review; no phase labels imply delivery. |
+| GAP-010 | NF-WF-007/011/023: add real chapter-loop browser/API E2E, then measured 2,000–2,500+ chapter retrieval/load fixtures with bounded query/output budgets. | Nonzero selected tests, actual p95/error/query/context receipts and failure recovery. Choose thresholds in the load contract before measuring. |
+| GAP-011 | NF-WF-003 owns explicit Character.storyEntityId → StoryEntity → fact subject/object joins; NF-WF-010 owns event/timeline identity decisions. | Null linkage contributes no ID, never name matching; temporal and tenant negatives; migrations reviewed if later required. Nullable columns alone do not close this gap. |
+| GAP-012 | NF-WF-010: distinguish hard author constraints from advisory DNA/rhythm preferences and connect policy evaluation to final-text review. | Soft preference never forces plot/drama; malformed policy, hard-rule rejection and changed-version tests. |
+| GAP-013 | Coordinator: author-selected runtime models, separate actor/session IDs, requested alias versus actual runtime/backend evidence; keep unknowns explicit. | Actual dispatch/tool/capability evidence for each role, or recorded unavailable status. Same model in separate actors is allowed; `/clear` in one actor is self-review. Past alias uncertainty remains historical. |
+| GAP-014 | M0 evidence maintenance: attribute each receipt's date/commit to its source, including future-named migrations; label unresolved chronology explicitly. | Traceable date/commit/source links; never replace uncertain dates with invented ones. |
+| GAP-015 | NF-WF-015–024: expand only the next dependency-ready capability into a bounded contract with allowed paths and measurable release gates. | Capability-by-capability implementation/review/E2E evidence; no blanket closure from a plan. |
+| GAP-018 | Environment/migration owner: preserve applied migration checksums. Use matched disposable dumps; diagnose partial application, restore missing RESTRICT FKs after orphan checks, and verify index/FK definitions before any resolve. Prepare a reviewed transactional recovery procedure/forward repair migration as needed. | Empty and populated upgrades without drift or partial schema; cited-version deletes are refused; schema comparison equal. No live reset or unverified mark-applied workaround. See correction below. |
+| GAP-020 | Environment owner: probe the selected endpoint first. If the documented host-port conflict recurs, choose an explicit free compose host port and align scratch connection settings; coordinate any host restart. | SQL connectivity to the intended disposable DB before DB tests. Do not run wsl --shutdown blindly; current state has not been re-probed here. |
+| GAP-021 | Host integration owner: startup/resume must re-register the runtime's own identity, verify binding/project, then perform an attributed scoped save/read. Until confirmed, retain task/progress fallback. | Real runtime-bound save/read success at the affected boundary, not a historical session or invented ID. Current hook still reports no identity; reads alone do not close it. |
+| GAP-023 | NF-WF-004 investigates actual consumers; activate 002E only when producer/consumer contract exists. Mutation event revision and any durable intent commit together. | Real consumer delivery/replay/idempotency tests and correct revision attribution; no speculative outbox. |
+
+### GAP-018 remedy correction
+
+The earlier suggestion to change the historical CREATE INDEX to IF NOT EXISTS
+is superseded as a proposed remedy, not as an observation of the failure.
+The migration is already recorded as applied in historical receipts. Editing it
+changes its checksum; IF NOT EXISTS alone also does not make multiple DROP/ADD
+statements atomic, validate an existing index definition, or repair a duplicate
+FK addition. A failed database needs inspected recovery before a later forward
+migration can run, because migrate deploy stops at the failure. Verify both
+RESTRICT constraints and orphan absence before any mark-applied decision. Keep
+all repair SQL reviewed and explicitly transactional where supported; never
+claim a fresh production-equivalent upgrade from the existing workaround.
+
+### Current environment and evidence boundary
+
+The 2026-10-05 runtime hook again reports no registered authoritative session
+identity. Attributed memory writes were not attempted; historical successful
+boundaries in GAP-021 remain valid only for those boundaries. No live database,
+WSL host, credentials, installed model routes or global harness settings were
+changed. Application runtime verification is limited to the checks recorded
+in progress/test-matrix; no full author/reader journey is accepted here.

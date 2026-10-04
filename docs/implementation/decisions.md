@@ -1,5 +1,38 @@
 # Decision Log
 
+## Runtime-neutral assignments and project-wide English — 2026-10-05
+
+Author instruction: remove the previous named coding-model pairing from active
+work context; the author will select another model. Use runtime-selected models
+and separate implementer/reviewer actors, including the same model in separate
+actors when appropriate. Requested aliases, serving-backend identity and actor
+independence are separate evidence. Historical model attributions are preserved,
+not silently relabeled; host settings/model routes were not modified.
+
+Author instruction: all new/revised project-owned content and workflows are in
+English, independent of model/provider. Apply this to prompts, generated project
+content, documentation, code identifiers/comments, tests/fixtures,
+handoffs and commit/PR text. Preserve verbatim source input and historical
+provenance; record any explicit scoped author override. Conversation language
+does not alter the project default. AGENTS.md and CLAUDE.md were changed together.
+
+Author follow-up: UI text must support English and Bahasa Indonesia. This is an
+explicit scoped bilingual exception: use locale keys/resources (`en`, `id`),
+selected-locale behavior and English missing-key fallback. Keys/machine codes
+remain English; translations/localization fixtures may be bilingual. Do not
+silently translate story data. Implementation and both-locale/fallback tests
+belong to the author/reader UI contracts, not this documentation repair.
+
+Workflow audit identified GAP-026 in the still-PLANNED NF-WF-003 contract.
+Repaired composition/test/doc scope, bounded internal readers, cast grouping,
+empty/applicability states, source-head race handling and review identity text.
+The issue register owns prioritized remedies for all currently unresolved gaps;
+plans do not close runtime issues. Earlier CREATE INDEX idempotency assurance
+is superseded by inspected transactional recovery/schema verification, without
+editing any applied migration or touching live data. Separate full contract
+approval remains required before dispatch; this documentation audit is not
+NF-WF-003 implementation or a platform acceptance receipt.
+
 ## Model availability update — 2026-10-03
 
 The author reports only `deepseek-v4.1-flash` active; `glm-5.3-flash` is

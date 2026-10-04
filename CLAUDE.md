@@ -186,8 +186,25 @@ version alone does not prove cross-domain recovery.
 -   Update documentation and progress records when behavior changes.
 -   New architectural decisions require an ADR.
 -   Never weaken security to make a demo work.
--   Write new specifications, task contracts, handoffs, and progress entries
-    in English unless the author explicitly requests another language.
+-   Project-wide language is English for every coding model and role. Write
+    all new or revised project-owned content in English: specifications,
+    workflow definitions, task contracts, prompts/agent instructions, generated
+    project content, identifiers, comments, tests/fixtures,
+    handoffs, progress records and commit/PR descriptions. Apply this default
+    consistently across modules and tooling; do not mix languages in shared
+    contracts. Preserve canonical domain names. Historical evidence and
+    verbatim imported/user input retain their provenance; do not silently
+    translate or rewrite them. A non-English project output requires an
+    explicit author instruction recorded with its scope. Conversation replies
+    may follow the author's language; they do not change this project default.
+-   UI localization is an explicit author-approved exception: support English
+    (`en`) and Bahasa Indonesia (`id`) through translation keys/resources for
+    labels, messages and UI text. Keep source keys and machine error codes in
+    English; respect the selected locale and use English fallback for missing
+    translations. Translation resources and localization fixtures may contain
+    both languages. Do not translate canonical story data or imported user text
+    silently. Verify both locales and missing-key fallback before claiming UI
+    localization complete.
 -   Preserve historical records; annotate superseded decisions instead of
     silently rewriting history. No task may mark planned work as implemented.
 
@@ -216,9 +233,10 @@ invariants; acceptance and negative tests; commands and prerequisites;
 migration and rollback effects; owner/reviewer; and handoff evidence.
 
 Follow `docs/06-ai/MULTI-LLM-ORCHESTRATION.md` and
-`tasks/templates/TASK-TEMPLATE.md`. The author-selected coding models are
-`deepseek-v4.1-flash` and `glm-5.3-flash`; verify runtime availability and
-capabilities rather than inventing identifiers or relying on model reputation.
+`tasks/templates/TASK-TEMPLATE.md`. Coding-model selection is controlled by the author at runtime; no provider or
+model is mandatory. Record implementer/reviewer assignments and verify runtime
+availability and capabilities. The same model may fill both roles through
+separate actors; the implementation session cannot independently approve itself.
 One bounded task and one writer per file at a time. Freeze shared contracts
 before dependent work; require a separate review of the exact submitted diff.
 Use existing authorization to continue ready tasks; do not add a permission

@@ -7,29 +7,46 @@ reviewable tasks without hidden conversational context. Follow the operating
 constitution and [evidence policy](MODEL-EVIDENCE-POLICY.md). This playbook
 governs coding agents; product story agents use [AI orchestration](AI-ORCHESTRATION.md).
 
-## Requested model pairing
+## Runtime model selection and separate roles
 
-| Role for a task | Default requested model | Responsibility |
+| Role for a task | Runtime selection | Responsibility |
 |---|---|---|
-| Implementer | `deepseek-v4.1-flash` | Inspect, implement one contracted slice, run checks, hand off evidence |
-| Reviewer | `glm-5.3-flash` | Independently inspect the diff, trace callers, challenge evidence and negative cases |
+| Implementer | Author-selected available model | Inspect, implement one contracted slice, run checks, hand off evidence |
+| Reviewer | Separate actor using an available author-selected model | Independently inspect the diff, trace callers, challenge evidence and negative cases |
 
-Swap roles for the next task or when actual task results justify it. This is
-a workflow assignment, not a claim that one model is inherently better.
-One model may perform a design task and the other review its contract.
+No model/provider is mandatory. The same model may implement and review
+through separate sessions/workers. A role switch or `/clear` in the implementation
+actor is self-review, not independent acceptance. Record each assignment; past
+model names are historical attribution only.
 The coordinator chooses dependency-ready work, records decisions, and owns
 integration; its confidence cannot substitute for acceptance evidence.
 
 Before dispatch, verify runtime availability, tool access, context/output
 limits, and required structured-output support. Record actual resolved model
-identity. These names are requested identities, not verified provider IDs
-or application constants. Product Model Profiles remain capability-based.
+identity. Requested aliases and environment tier mappings are configuration evidence,
+not verified serving-model identities or application constants. Unknown backend
+identity stays MODEL_UNVERIFIED; report actor separation independently. Product Model Profiles remain capability-based.
 
 If a requested model is unavailable, state that fact. Continue independent
 preparation or explicitly identified single-model work where authorized;
 mark its review pending. Do not silently switch identities or fabricate a
 second reviewer. A milestone gate requires a separate review actor or an
 explicit author-approved exception recorded with its limitation.
+
+## Project-wide English language rule
+
+Every coding model/role must write new or revised project-owned artifacts in
+English, including workflows, prompts, generated content, documentation,
+identifiers/comments, tests/fixtures, handoffs and commit/PR descriptions.
+UI labels/messages use locale keys with English (`en`) and Bahasa Indonesia
+(`id`) resources; English fallback, locale-switch and missing-key checks are
+required. Translation resources/localization fixtures are the authorized
+bilingual exception. Machine codes and translation keys remain English.
+This is the global project default from AGENTS.md / CLAUDE.md, independent of
+model/provider. Preserve canonical domain names, historical evidence and verbatim
+imported input with provenance. Record any explicit author language override
+and its scope. Validate authored artifact language before handoff; conversational
+replies may use the author's language without changing project artifacts.
 
 ## Dispatch contract
 
@@ -61,7 +78,7 @@ Split before coding if the relevant evidence does not fit in context.
    Run applicable lint/typecheck/build/migration checks; record actual output.
 5. **Handoff:** provide the exact diff/base revision, behavior change,
    evidence, risks and migration/recovery notes.
-6. **Review:** the other model inspects sources and the submitted diff,
+6. **Review:** the separate reviewer actor inspects sources and the submitted diff,
    challenges failure paths, and reproduces critical checks where possible.
 7. **Resolve:** fix valid findings; refute mistaken findings with evidence.
    A changed diff invalidates review of the affected portions.

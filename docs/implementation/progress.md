@@ -6,9 +6,51 @@
 > [decisions.md](./decisions.md), test coverage in
 > [test-matrix.md](./test-matrix.md).
 
-Latest documentation update: 2026-10-03. Historical entries and their dates
+Latest documentation update: 2026-10-05. Historical entries and their dates
 are preserved; current integration status lives in CURRENT and the delivery
 plan. New technical issues belong only in ISSUES-AND-GAPS.md.
+
+## Workflow audit and model-neutral continuation — 2026-10-05
+
+Baseline ac4a19a; working tree initially clean, main two documentation commits
+ahead of origin/main. Engram search recalled the 003 contract/history; source
+and Git inspection, not memory alone, established current status. 002D/002F
+receipts are historical and scoped. 003 remains PLANNED, not implemented.
+
+Recorded GAP-026 before workaround: missing composition/test/doc paths,
+unbounded internal state/debt/event reads, cast take-before-dedupe, legitimate
+empty tiers rejected, weak source-head checks and alias-based reviewer identity.
+Amended the contract and refreshed review-request blob to
+`aaed86bc34ecd599cef1e57533edaef41b4c0eeb`. Preserved previous review history;
+this changes the artifact and requires full contract review before dispatch.
+Corrected stale index-idempotency guarantees; no applied migration was edited.
+Added prioritized owner/remedy/closure evidence for all unresolved gaps inside
+the single issue register. These are solutions to implement, not closed runtime
+features. No application code, database, WSL host or credentials were changed.
+
+Author follow-ups: coding roles are model-neutral and runtime-selected, with
+separate reviewer actors; historical model names remain evidence only. English
+is the global project default. UI is the explicit bilingual exception, using
+English/Bahasa Indonesia resources with locale keys, English fallback and
+both-locale/fallback acceptance tests. Constitutions changed together.
+
+Fresh checks: Node v24.14.1, pnpm 12.5.1; story-versioning 1 file/17 tests
+passed; pnpm lint exit 0; API typecheck exit 0. Local Markdown/link/constitution/
+active-model/manifest checks and git diff --check passed: 15 Markdown files,
+83 local links and 26 unique issue rows; all unresolved rows have remedies.
+No DB-backed suite,
+full platform E2E or UI locale journey was rerun; historical counts remain
+attributed. Separate actor review_workflow_docs requested two documentation
+corrections (stale migration assurance, conflicting review-identity gate), then
+re-reviewed APPROVE after repair. This is documentation review only, not NF003
+full contract approval or proof of a serving backend/model. GAP-026 remains
+VERIFY_PENDING for that full contract gate.
+
+Fallback checkpoint (GAP-021): runtime hook has no authoritative registered
+identity. Attributed memory writes were not attempted, and no save is claimed.
+Next: assign a reviewer for the refreshed 003 contract, resolve actual findings,
+then implement only after approval. Preserve 004/002E consumer/dependency gates
+and remaining product/runtime gaps; no full release claim is warranted.
 
 ## Task workflow analysis and preparation — 2026-10-03
 

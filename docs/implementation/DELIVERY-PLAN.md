@@ -2,7 +2,7 @@
 
 Status: accepted execution sequence; runtime gates remain open.
 Decision: [ADR-0013](../adr/ADR-0013-workflow-delivery-and-recovery-foundation.md).
-Last revised: 2026-09-30. New implementation prose and handoffs use English.
+Last revised: 2026-10-05. New implementation prose and handoffs use English.
 
 ## Goal and boundaries
 
@@ -92,6 +92,16 @@ with an ADR/task update, not by omission.
 | CAP-19 | Durable jobs, failure recovery, backup, secrets, telemetry, retention; both baselines | Foundation exists; product jobs/operational release proof incomplete | M2, M8 |
 | CAP-20 | 2,000–2,500+ chapter bounded retrieval, evaluations and evidence-backed health; both baselines | No integrated scale/quality proof in this revision | M3, M8–M9 |
 | CAP-21 | Evidence discipline and prevention/containment of unsupported model output | Policy specified; runtime adversarial gates pending | All milestones |
+
+## Current dispatch constraint — 2026-10-05
+
+NF-WF-003 is still PLANNED: GAP-026 repairs composition scope, bounded state/
+event reads, cast deduplication, empty-context outcomes and source-pin checks.
+Review the refreshed exact contract blob before implementation. Runtime coding
+models are selected by the author; past role/model receipts are historical.
+The [issue register](ISSUES-AND-GAPS.md#prioritized-remedies--2026-10-05) records
+remedies, dependencies and closure checks for every currently unresolved gap.
+Do not substitute this solution plan for delivered runtime evidence.
 
 ## Task queue
 

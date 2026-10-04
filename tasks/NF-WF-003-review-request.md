@@ -5,16 +5,18 @@ anything. Read and judge only.
 
 ## Step 0 — report your identity first
 
-Print, as your first output line, the model identifier you are actually
-running as (check `ANTHROPIC_MODEL` / `ANTHROPIC_DEFAULT_*` or your own system
-context). If you cannot determine it, say `MODEL_UNVERIFIED`. This is required
-evidence: the contract requests `glm-5.3-flash` and the coordinator must know
-whether that is what actually ran.
+Report role/actor identity and the model selected by the runtime separately.
+Environment variables and gateway response echoes prove configuration/routing
+claims only, not the serving backend. If runtime evidence cannot establish the
+serving model, report `MODEL_UNVERIFIED` and name the limitation. Do not invoke
+old model routes or guess an identity. Use the author's current runtime model
+selection; no named model pairing is required. This reviewer must be a separate
+actor from the contract editor/implementer. Never present self-review as approval.
 
 ## Artifact under review — frozen
 
 - `tasks/NF-WF-003-chapter-context-compiler.md`
-- Blob `f89b75abc9955e72accb97a73cb47ac0382a3e06`, 42,174 bytes.
+- Blob `aaed86bc34ecd599cef1e57533edaef41b4c0eeb`, 46,686 bytes (UTF-8, LF canonical bytes).
 - Reproduce it before judging: `git rev-parse
   HEAD:tasks/NF-WF-003-chapter-context-compiler.md`. **That blob is the
   identity** — if it differs, say so and stop. Do not check `git rev-parse
@@ -24,10 +26,27 @@ whether that is what actually ran.
   duration. The author appends the review record afterwards, which changes it —
   by then this round is over.
 - For orientation only: the contract was last substantively changed at
-  `7c3e196`.
+  `ac4a19a` plus the 2026-10-05 GAP-026 working-tree amendments.
 
 This is a **contract review, not a code review**. Nothing in the contract is
 implemented. Judge whether the contract is safe and correct to dispatch.
+
+## Changed portions requiring review — 2026-10-05 (GAP-026)
+
+Review the amended contract against the source tree, especially:
+
+- app.ts composition and exact service/test/doc scope;
+- distinct character IDs bounded before take (groupBy), not dedupe after take;
+- temporal state/bond and debt/event helpers: current methods read unbounded
+  histories, so finite cast alone does not bound rows;
+- EMPTY versus UNAVAILABLE and novel-less NOT_APPLICABLE output;
+- before/after head comparison and immutable retry context; uncovered revision
+  scope must be disclosed rather than overstating snapshot consistency;
+- specific runnable commands and current model-neutral ownership.
+
+Prior findings stay attributed to their original artifacts. This new blob has
+no independent approval. Report CHANGES_REQUESTED if any bounded debt-ranking
+or temporal-query requirement cannot be implemented within the allowed paths.
 
 ## What already ran — do not re-report these as new
 
@@ -53,7 +72,9 @@ contract, not silently "fixed".
 Both rounds ran on an **unevidenced backend** (`MODEL_UNVERIFIED`, on
 `bansosmontera/glm-5.3-flashx` rather than the requested `glm-5.3-flash`,
 because the requested route kept returning `upstream_error`). That is GAP-013
-and it is still open — which is why this round exists.
+and remains open as historical identity uncertainty. This round reviews
+changed contract portions; backend identity and actor independence are recorded
+separately, without inventing either.
 
 ## The three items the last round could not see
 
@@ -112,8 +133,8 @@ the verdict must say so.** This is the highest-value thing you can check.
 
 ## The §7 tier table — the part most likely to be wrong
 
-The contract claims a 10-tier table in which **eight** tiers have a backing
-store today and **two** (recent memory, historical memory) do not. Two review
+The contract specifies 10 tiers: **seven** have backing stores, tier 1 is
+request input, and **two** (recent memory, historical memory) have no store. Two review
 rounds have already corrected six findings in this table and its derivation —
 it is where this contract keeps being wrong, so treat it as the weak point.
 
@@ -162,8 +183,8 @@ For each, answer VERIFIED / REFUTED / UNCERTAIN and cite file:line.
    §2.16 (no full-manuscript scan), §9 (versioning/recovery), §10 (module
    boundaries — the new module must not import HTTP or a provider), or §11?
    Does it respect GAP-004 (must not claim to close), GAP-011 (explicit named
-   joins only, never a name match), GAP-013 (no review claim on an unverified
-   backend) and GAP-023 (no event producer)?
+   joins only, never a name match), GAP-013 (separate actor evidence; unknown backend
+   identity remains MODEL_UNVERIFIED and does not become a vendor/model claim) and GAP-023 (no event producer)?
 7. **Is the "Known unknowns" section honest?** It claims there is no chapter
    generation entry point, no approved-outline resolver, no story-position
    model, and no memory service. Verify or refute each. Name any *additional*

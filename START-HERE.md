@@ -25,7 +25,7 @@ completion from a phase number. The accepted repair is recorded in
 2. Read [current evidence and gaps](docs/14-progress/CURRENT.md).
 3. Select the first dependency-ready task in the
    [delivery plan](docs/implementation/DELIVERY-PLAN.md).
-4. Use the [two-model execution protocol](docs/06-ai/MULTI-LLM-ORCHESTRATION.md)
+4. Use the [role-based execution protocol](docs/06-ai/MULTI-LLM-ORCHESTRATION.md)
    and [task template](tasks/templates/TASK-TEMPLATE.md). Read the mandatory
    [evidence/hallucination policy](docs/06-ai/MODEL-EVIDENCE-POLICY.md).
 5. Read only that task's domain specifications, contracts, callers, and tests.
@@ -33,7 +33,9 @@ completion from a phase number. The accepted repair is recorded in
 
 **Current next task:** submit the drafted
 [NF-WF-003 — chapter context compiler](tasks/NF-WF-003-chapter-context-compiler.md)
-contract (**PLANNED**, not dispatchable) for separate review, then dispatch it.
+contract (**PLANNED**, not dispatchable) for separate review after the
+2026-10-05 GAP-026 amendments. Use the refreshed manifest, then dispatch only
+after actual approval; earlier rounds do not approve changed portions.
 The author scope decision is resolved: **full tiered compiler**.
 001 design and children 002A–D have recorded reviews; do not restart them.
 [002F — foundation acceptance](tasks/NF-WF-002F-foundation-acceptance.md)
@@ -43,6 +45,14 @@ so GAP-013 stays OPEN, and full cross-domain recovery stays OPEN under GAP-004.
 002E stays PLANNED until a consumer is designed; do not create an outbox
 speculatively. Read CURRENT and the single issue register for
 evidence/limitations; queue pointers are not test receipts.
+
+## Project language
+
+English is the project-wide default for every model and role: all new/revised
+content, workflows, prompts, documentation and code comments/tests. UI text
+supports English (`en`) and Bahasa Indonesia (`id`) through localization keys;
+English is the missing-translation fallback. Follow AGENTS.md / CLAUDE.md for provenance preservation and scoped author
+overrides. A conversation in another language does not change this default.
 
 ## Reference reading order
 
@@ -116,11 +126,12 @@ resolve the affected contract before implementation.
 
 ## Implementation models
 
-The author selected `deepseek-v4.1-flash` and `glm-5.3-flash` for coding
-work. These are requested identities, not verified runtime catalog IDs or
-claims about capability. Use one as implementer and the other as reviewer
-when available; the playbook defines handoff, unavailable-model handling,
-and evidence requirements. Product AI roles continue to use Model Profiles.
+Use the coding model selected by the author at runtime. No model/provider pair
+is required. Assign an implementer and a separate reviewer actor; both may use
+the same model. Record requested aliases separately from runtime evidence.
+Historical model names identify past receipts, not current assignments.
+The playbook defines handoff and unavailable-review handling. Product AI roles
+continue to use Model Profiles.
 
 ## Release checkpoints
 

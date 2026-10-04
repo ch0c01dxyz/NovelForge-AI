@@ -1,7 +1,7 @@
 # Model Evidence and Hallucination Prevention Policy
 
-Status: mandatory implementation and product-AI policy. Applies to both
-`deepseek-v4.1-flash` and `glm-5.3-flash`, other coding models, and NovelForge
+Status: mandatory implementation and product-AI policy. Applies to all
+coding models and NovelForge
 story agents. No model or prompting technique guarantees zero hallucinations.
 The system must prevent unsupported claims from becoming trusted actions.
 

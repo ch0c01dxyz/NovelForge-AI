@@ -1,5 +1,23 @@
 # Test Matrix
 
+## Workflow documentation audit — 2026-10-05
+
+Baseline ac4a19a; Markdown-only changes, application code unchanged.
+
+| Check actually run | Result |
+|---|---|
+| `pnpm exec vitest run packages/story-versioning/story-versioning.test.ts` | 1 file, 17 passed, no skips |
+| `pnpm lint` | Exit 0 |
+| `pnpm --filter @novelforge/api typecheck` | Exit 0 |
+| Local Markdown links/fences, constitution equivalence, active model-neutral rules, frozen contract blob | Passed; final count in progress |
+| `git -c core.excludesFile= diff --check` | Exit 0; CRLF conversion warnings only |
+| Separate documentation actor review | CHANGES_REQUESTED → corrections → APPROVE; not full NF003 contract approval |
+
+Not run: database-backed suites, migration upgrades, full author/reader E2E,
+UI locale-switch/fallback journeys or scale tests. New English/Indonesian UI
+acceptance rules are requirements, not implemented localization evidence.
+Historical receipts below retain their original scope/date/model attribution.
+
 ## NF-WF-002F integrated foundation acceptance — 2026-10-04
 
 Executed against the NF-WF-002 tree at HEAD `811e7e6` (42 modified + 14

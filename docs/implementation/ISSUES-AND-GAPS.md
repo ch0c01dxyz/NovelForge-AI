@@ -133,11 +133,18 @@ model names are not evidence that those models performed this inspection.
   affected: it ranks by relevance and clamps `limit` to 1..100
   (`retrieval.ts:857`). No approved-outline resolver, no story-position model,
   no chapter-generation entry point, and **no memory/summary service** exist,
-  so tiers 7 and 8 of the §7 ladder have no backing store; the other eight do,
-  through `stateAt`/`stanceAt`/`bondStageAt`, `canon.ask` and
-  `retrieval.search`. Author scope decision RESOLVED 2026-10-04: **full tiered
-  compiler**. The contract must still be separately reviewed before dependent
-  coding.
+  so tiers 7 and 8 of the §7 ladder have no backing store; the other **seven**
+  store-backed tiers do, through `stateAt`/`stanceAt`/`bondStageAt`,
+  `canon.ask` and `retrieval.search`. Author scope decision RESOLVED
+  2026-10-04: **full tiered compiler**. One review round has run
+  (CHANGES_REQUESTED, four findings, all applied — the material one corrected a
+  false assumption that the outline window names the cast; the real chain is
+  `CharacterState` → `Character.storyEntityId` → `StoryEntity` →
+  `CanonFact.entityId`). That review ran on an unevidenced backend
+  (`MODEL_UNVERIFIED`, and on `glm-5.3-flashx` rather than the requested
+  `glm-5.3-flash`, because the requested route kept returning `upstream_error`),
+  so GAP-013 still applies and a repo-grounded review by an evidenced backend
+  is outstanding. The contract is still not dispatchable.
 - **004:** may be prepared independently only with frozen shared interfaces and
   non-overlapping file ownership. 003 and 004 are not to be dispatched as an
   unbounded swarm.

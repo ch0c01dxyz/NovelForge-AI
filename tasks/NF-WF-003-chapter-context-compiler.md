@@ -15,7 +15,11 @@ Readiness evidence / unresolved decisions / parent acceptance owner: NF-WF-002F
 returned VERIFIED for the evidenced M1 foundation scope only (2026-10-04);
 NF-WF-003 depends on NF-WF-002 and inherits nothing else from it.
 Frozen review manifest / exact artifact paths and identity: none yet. The
-manifest is frozen at submission and must not hash itself.
+manifest is frozen at submission and must not hash itself. **It must include the
+whole of `orchestrator.ts` and `canon.ts`, not excerpts**: the contract's claims
+that `compile` reads *only* two services and is called *only* from the two
+generate paths are whole-file negative claims, and a review that cannot see the
+whole file cannot falsify them.
 Baseline revision / local changes to preserve: the NF-WF-002 foundation as
 committed at HEAD `4e63116` (which includes the 002F acceptance record); this
 task must not stash, reset or revert it.
@@ -51,9 +55,12 @@ repository.
 `canon.listFacts` (`apps/api/src/services/canon.ts:1415`) issues
 `db.canonFact.findMany({ where, orderBy: { createdAt: "asc" }, select })`
 (`:1445` AUTHOR, repeated `:1473` READER; `orderBy: { createdAt: "asc" }` at
-`:1447` and `:1475`) with **no `take` and no `limit`
-anywhere in the file** — verified, `canon.ts` contains no `take:`/`limit:` at
-all. So it returns *every* ACTIVE fact for the novel, and `compile` walks that
+`:1447` and `:1475`) with **no `take` and no `limit` on either call**. Both
+findMany sites were read directly; the wider claim that the file contains no
+`take:`/`limit:` at all is reproducible with
+`rg -n '\btake\b|\blimit\b' apps/api/src/services/canon.ts`, whose only hit at
+the frozen revision is a prose comment at `:672`. So it returns *every* ACTIVE
+fact for the novel, and `compile` walks that
 full list with `break` on budget (`orchestrator.ts:165-171`) under a fixed
 `FACT_BUDGET_CHARS = 6_000` (`:28`). Two violations in one path:
 
@@ -138,10 +145,15 @@ Allowed paths (proposed; confirm at review):
   route through the same compiler.
 - `apps/api/src/services/planning.ts` — add `getApprovedOutline` (none exists;
   see "Known unknowns") and the derived story position.
+- `apps/api/src/services/characters.ts` — the bounded read that resolves the
+  relevant entity set at the story position (the `character_states` window plus
+  the `Character.storyEntityId` chain; see invariant 3). Reading this through
+  `characters.ts` inherits its tenant gate, which a raw query would not.
 - `apps/api/src/services/canon.ts` — the bounded, relevance-ordered fact
   selection that replaces the unbounded read.
-- `apps/api/src/orchestrator.test.ts`, `apps/api/src/retrieval.test.ts`, and
-  one new `apps/api/src/context-compiler.test.ts`.
+- `apps/api/src/orchestrator.test.ts`, `apps/api/src/retrieval.test.ts`,
+  `apps/api/src/characters.test.ts`, and one new
+  `apps/api/src/context-compiler.test.ts`.
 
 Forbidden paths: everything else — in particular any schema change, any
 migration, `packages/story-versioning/*`, `packages/auth/*`, and any file
@@ -151,6 +163,28 @@ Inputs: the existing reader ports already declared in `orchestrator.ts:33`
 (`CanonReader`) and `:44` (`ReferenceSearcher`) — reuse them rather than
 inventing a parallel interface. New reads must go through the existing
 services, not new raw queries, so their tenant and spoiler gates are inherited.
+
+**Who fetches what (resolved — this was ambiguous and blocked dispatch).** The
+compiler is pure: it takes already-fetched rows and selects, orders and budgets
+them. It performs **no** database read and imports no service. The **caller**
+fetches, through the existing services, and passes the rows in. Concretely:
+
+- `orchestrator.ts` already holds `canon` and `retrieval` as injected deps; it
+  must additionally be given the tier-2/4/5/6/9 readers as **typed parameters
+  on the same deps object**, not imported directly — that is what keeps the
+  module boundary (§10) and the existing test seam intact.
+- Each new dep is a narrow port named for what it returns, following the
+  `CanonReader` / `ReferenceSearcher` precedent — e.g. `OutlineReader`
+  (`getApprovedOutline`, `listNodes`), `StateReader` (`stateAt`, `stanceAt`,
+  `bondStageAt`), `BrainReader` (`ask`), `NarrativeReader` (`getDna`).
+- `workflow-runs.ts` receives the same dep set. Both callers therefore fetch
+  the same shapes through the same ports, which is what makes invariant 7
+  checkable rather than aspirational.
+- The compiler's signature is therefore `compile(input, rows)` — pure, and
+  testable with plain object literals and no server.
+
+Which concrete service satisfies each port, and the exact bound constant per
+port, is the implementer's to wire; the **shape and ownership** are fixed here.
 
 Outputs: a compiled context value carrying, per block, the selected rows **and
 their provenance** (ids, versions, and the reason each was selected), so a
@@ -167,21 +201,46 @@ execution (NF-WF-004); any UI (NF-WF-007).
 ## Behavior and invariants
 
 1. **Priority order is the constitution's**, and it is ordered, not a set
-   (CLAUDE.md §7). Eight of the ten tiers have a backing store today; the two
-   memory tiers do not, and invariant 10 governs them:
+   (CLAUDE.md §7). Seven tiers are store-backed today, tier 1 is request input
+   rather than a store, and tiers 7 and 8 are unbacked — invariant 10 governs
+   those. Every tier states its **bound** and its **order** separately;
+   invariant 11 forbids an unbounded read, so a tier whose bound is "all rows"
+   fails this contract:
 
-   | # | §7 tier | Backing today | Bound / order |
-   |---|---|---|---|
-   | 1 | author instruction | request input | n/a |
-   | 2 | current outline / scene | `outline_versions` (**no resolver — new**), `outline_nodes`, `scenes` | by `number` |
-   | 3 | hard canon | `canon.listFacts` — **unbounded, `createdAt asc`** | must become bounded + relevance-ordered |
-   | 4 | current states | `characters.stateAt(chapter)`, `relationships.stanceAt(chapter)`, `bondStageAt(chapter)` | **temporal — resolve at story position** |
-   | 5 | active threads / promises | `canon.ask({kind:"UNRESOLVED"\|"PROMISES"})` | already ranked by narrative debt |
-   | 6 | timeline | `canon.ask({kind:"EVENT"\|"CAUSAL"})` | from `story_events` / `causal_edges` |
-   | 7 | relevant recent memory | **none** | see invariant 10 |
-   | 8 | relevant historical memory | **none** | see invariant 10 |
-   | 9 | Narrative DNA / style | `narrative_dna_profiles` (`narrative.ts:287`) | per-novel singleton, untyped JSON |
-   | 10 | external references | `retrieval.search` | already relevance-ranked, `limit` 1..100 |
+   | # | §7 tier | Backing today | Bound | Order |
+   |---|---|---|---|---|
+   | 1 | author instruction | request input (not a store) | request size | n/a |
+   | 2 | current outline / scene | `outline_versions` (**no resolver — new**), `outline_nodes`, `scenes` | the planning-horizon window at the story position, `OUTLINE_LIMIT` nodes | by `number` |
+   | 3 | hard canon | `canon.listFacts` — **unbounded, `createdAt asc`** | `FACT_LIMIT` (**new** `take`, replacing the read-all) | relevance — invariant 3 |
+   | 4 | current states | `characters.stateAt(chapter)` (`characters.ts:377`), `relationships.stanceAt(chapter)` (`relationships.ts:303`), `bondStageAt(chapter)` (`:562`) | `CAST_LIMIT` characters whose `CharacterState` window covers the story position (`character_states.fromChapter`/`toChapter`, `schema.prisma:1861`) | by character id |
+   | 5 | active threads / promises | `canon.ask({kind:"UNRESOLVED"\|"PROMISES"})` (`canon.ts:1486`, branch `:1532`) | `THREAD_LIMIT` | narrative-debt rank — **keep** |
+   | 6 | timeline | `canon.ask({kind:"EVENT"\|"CAUSAL"})` (`canon.ts:1508`, `:1520`) | `EVENT_LIMIT`, and never past the story position | by story position, most recent first |
+   | 7 | relevant recent memory | **none** | — | invariant 10 |
+   | 8 | relevant historical memory | **none** | — | invariant 10 |
+   | 9 | Narrative DNA / style | `narrative_dna_profiles` (`narrative.ts:287`) | singleton — `take: 1` | n/a |
+   | 10 | external references | `retrieval.search` | one unified `limit`, 1..100 (`retrieval.ts:857`) | relevance-ranked — **keep** |
+
+   The `*_LIMIT` constants are named here and **numbered by the implementer**,
+   justified in the contract's own terms; each must be an explicit value, never
+   a default. Tiers 4 and 6 are bounded by the story position, so their bound
+   is derived rather than constant — that derivation is part of the story
+   position below.
+
+   **Every tier 2–10 bound is a bound on the read, never a post-fetch slice**,
+   except where the tier is a singleton. A bound applied after the read is not
+   a bound — that is exactly the `break` this task removes, and a tier bounded
+   that way fails invariant 11.
+
+   **Tier 4 is the one tier whose backing is per-row, not per-query.**
+   `stateAt` / `stanceAt` / `bondStageAt` each take a single character or pair
+   and a chapter (`characters.ts:377`, `relationships.ts:303`, `:562`), so
+   `CAST_LIMIT` cannot be expressed as one query-level `take`. It is expressed
+   instead as **the bound on the relevant entity set itself**: at most
+   `CAST_LIMIT` characters are resolved, and the per-character calls are made
+   over that already-bounded list. The bound is therefore upstream of the
+   accessor, not inside it. Selecting which `CAST_LIMIT` characters, when more
+   qualify, uses the same determinism rule as invariant 3 — entity match then
+   id — and must be stated, not left to row order.
 
 2. **Mandatory context never disappears silently.** When the budget is
    exhausted, the compiler must either (a) surface an explicit, typed overflow
@@ -192,6 +251,54 @@ execution (NF-WF-004); any UI (NF-WF-007).
 3. **Selection is bounded and relevance-ordered, never oldest-first.** No
    `orderBy: { createdAt: "asc" }` may decide what survives a budget.
    Tie-breaking must be deterministic and stated.
+
+   **The tier-3 relevance ordering is defined here, not left to the
+   implementer** — the truncation test cannot be written against an undefined
+   order. It is a three-key sort over columns the fact row already has:
+
+   1. **Entity match** — a fact whose `entityId` is in the **relevant entity
+      set** outranks one that is not. The relevant entity set is derived from
+      the story position, not from the outline (see "The relevant entity set"
+      below), and the comparison is an explicit id comparison, never a name
+      match (GAP-011).
+   2. **Recency** — `createdAt` **descending**. This is the exact inversion of
+      the current defect, and it is what makes the acceptance test fail against
+      the old code.
+   3. **Id** — `id` ascending, so the order is total and stable across runs
+      when 1 and 2 tie.
+
+   A fact that matches no relevant entity is still admissible; it sorts below
+   every match, and the `FACT_LIMIT` bound decides how many survive. Relevance
+   is *not* an embedding or a model call — this task adds no model dependency
+   to selection.
+
+   **The relevant entity set — this is the explicit join, and it is not the
+   outline.** A review found the earlier draft assumed `outline_nodes` / `scenes`
+   carry character or entity ids. They do not: `OutlineNode` links only to
+   `saga`, `chapter` and `scene` (`schema.prisma:1422`), and `Scene` links only
+   to `chapter` (`:301`). There is **no** join from the outline to a character,
+   so a cast cannot be read out of the tier-2 window and this task must not
+   pretend otherwise.
+
+   The relation that does exist, and that this task uses, is the canon identity
+   chain:
+
+   `Character.storyEntityId` (`schema.prisma:1839`, nullable, `onDelete:
+   SetNull`) → `StoryEntity.id` (`:1138`) → `CanonFact.entityId` (`:1190`,
+   `onDelete: Restrict`).
+
+   So the relevant entity set is built **from the story position outward**, not
+   from the outline: the characters that have a `CharacterState` window covering
+   the writing edge (`character_states`, `fromChapter`/`toChapter`, `:1861`),
+   plus the `StoryEntity` rows those characters name. Facts whose `entityId` is
+   in that set are the relevant ones. This is a real FK chain, it is what makes
+   invariant 3 implementable, and it is the canon half of **GAP-011** that this
+   task owns.
+
+   A `Character` with a null `storyEntityId` contributes no entity id — it is
+   skipped, not matched by name. That is deliberate: the nullable FK is exactly
+   the "not yet joined" state, and treating it as a join is the error GAP-011
+   records.
 4. **Provenance is retained** for every selected fact and reference, with the
    source revision recorded.
 5. **Tier 4 is resolved at the story position, not "now".** `stateAt`,
@@ -221,10 +328,16 @@ execution (NF-WF-004); any UI (NF-WF-007).
     reads as "there is no recent memory", and never a fabricated summary. This
     is the same failure shape as GAP-018: an absent thing that looks like a
     present, empty one.
+    - **The marker is a discriminated tag, not an empty list.** Each compiled
+      block is `{ tier, status, rows, provenance }` with
+      `status: "PRESENT" | "UNAVAILABLE" | "OVERFLOWED"`; tiers 7 and 8 compile
+      to `status: "UNAVAILABLE"` with an explicit reason string naming the
+      owning task (`NF-WF-009`). `rows` is empty **only** when `status` is
+      `UNAVAILABLE`, so an empty `rows` with `status: "PRESENT"` is itself a
+      bug the acceptance test can catch.
 11. **No full-manuscript scan** (§2.16). No query may be unbounded: every new
     read states its bound. Tiers 5 and 6 already rank by debt; tier 3 must
     acquire a bound.
-
 ## Acceptance and verification
 
 - [ ] Observable result through the real caller: a generation through
@@ -249,6 +362,13 @@ execution (NF-WF-004); any UI (NF-WF-007).
 - [ ] **Negative test — unbacked tiers are declared (invariant 10).** Assert
       tiers 7 and 8 appear as an explicit unavailable marker, and that no
       empty-but-present memory block is emitted.
+- [ ] **Negative test — the relevant entity set (invariant 3 key 1).** With two
+      facts of equal `createdAt`, one whose `entityId` is in the set derived
+      from the story position and one whose is not, assert the first is
+      selected and the second dropped under a tight `FACT_LIMIT`. Also assert a
+      `Character` with a null `storyEntityId` contributes **no** entity id and
+      is never matched by name — that is the GAP-011 rule, and a test that
+      passes while the name-match fallback is in place must not count.
 - [ ] **Negative test — tenant boundary.** A non-member requesting context for
       a foreign novel gets a 404 and learns nothing; an unauthorized caller is
       never shown a revision id.
@@ -298,11 +418,24 @@ claim an unconfirmed save.
   (`planning.ts:620-629`, `:688-691`), and one-APPROVED-per-novel is enforced
   by a partial unique index. Reading "the approved outline" is therefore a new
   read this task must define, not one it can reuse.
-- **There is no story-position model.** No `StoryState`/`StoryPosition` table
-  exists. Position must be derived from `chapters` (`number`, `status`;
-  `@@unique([novelId, number])`) and stated explicitly. Note the distance
-  `horizonFor` needs is chapters-ahead-of-the-writing-edge, and the writing
-  edge itself is a derived value this task must define.
+- **There is no story-position model, so the writing edge is defined here.**
+  No `StoryState`/`StoryPosition` table exists. **Story position = the highest
+  `chapters.number` for the novel whose `status` is not `DRAFT`; if no chapter
+  has left `DRAFT`, it is `0`.** It is derived per compile from `chapters`
+  (`number`, `status`; `@@unique([novelId, number])`) and stated explicitly in
+  the compiled output so a later step can check it. Tier 4 resolves state at
+  this number and tier 6 never admits an event past it. The distance
+  `horizonFor` needs is chapters-ahead-of-this-edge.
+  - A caller may **not** override the writing edge by passing a chapter number
+    — that is the same rule as invariant 6, applied to position rather than
+    revision. If a chapter-shaped entry point is later added, it supplies the
+    edge through the server-side resolver, not through request input.
+  - `DRAFT` is the excluded status because a draft is not yet true of the
+    story. Verified in the schema: `ChapterStatus = DRAFT | IN_REVIEW |
+    PUBLISHED` (`schema.prisma`, `enum ChapterStatus`), so the edge is the
+    highest `number` in `{IN_REVIEW, PUBLISHED}`. `chapters` already carries
+    `@@index([novelId, status])`, so the derived read is indexed — do not add
+    an index or a migration for it.
 - **Planning Horizon and Narrative DNA are per-novel singletons** keyed by
   `novel_id` (`schema.prisma:1485`, `:2135`), both holding untyped `Json` whose
   shape is validated in code (`horizonFor` at `packages/planning/planning.ts:202`,
@@ -330,8 +463,8 @@ claim an unconfirmed save.
   `relevantFacts` or `similarity` symbol, and no L2–L5 hierarchical memory
   store. Tiers 7 and 8 of the §7 ladder therefore have no backing store, and
   the contract must declare them unavailable rather than fake them (invariant
-  10). Building them is out of scope (NF-WF-009). **The other eight tiers do
-  have stores** — do not repeat my earlier overstatement that "four tiers are
+  10). Building them is out of scope (NF-WF-009). **The other seven store-backed
+  tiers do exist** — do not repeat my earlier overstatement that "four tiers are
   missing": tiers 4, 5 and 6 are backed by `characters.stateAt` /
   `relationships.stanceAt` / `bondStageAt`, `canon.ask({kind:"UNRESOLVED"|
   "PROMISES"})` (debt-ranked over `story_threads` / `story_promises`) and
@@ -339,6 +472,54 @@ claim an unconfirmed save.
 - The pure retrieval helpers live in `packages/retrieval/` (flat, no `src/`):
   `chunk.ts`, `fuse.ts`, `spoiler.ts`, `index.ts` — the precedent for where a
   pure, testable helper belongs if the compiler needs one.
+
+## Review record
+
+### Review 1 — 2026-10-04, CHANGES_REQUESTED, findings applied
+
+**Dispatch.** `POST http://localhost:20127/v1/messages` through the 9Router
+gateway. The requested reviewer was `bansosmontera/glm-5.3-flash`; that route
+returned `upstream_error` / "All upstream attempts routed by Mortera Cloud
+failed" after emitting ~30–40k characters of reasoning and no content, twice.
+The alternate GLM routes (`unorouter/`, `ocg/`, `tokenharbor/`) returned HTTP
+503 and `infoapi/` returned 400. The review therefore ran on
+`bansosmontera/glm-5.3-flashx`, a different model from the one this contract
+requests — recorded so the verdict is not read as the requested reviewer's.
+
+**Identity.** The reviewer self-reported `MODEL_UNVERIFIED`. The gateway is a
+router and its self-report is not backend evidence, so the serving backend is
+unverified and **GAP-013 stays OPEN**. This is a review by an unknown backend,
+not the evidenced review the contract's acceptance item requires.
+
+**Scope of what it read.** The first pass had no repository access and returned
+`UNCERTAIN` on every source-dependent question — correctly, and it said so.
+The second pass was given verbatim excerpts of `orchestrator.ts`, `canon.ts`
+`listFacts`, the workflow `RETRIEVAL` step and `retrieval.search`, and answered
+against those. It did not read the whole tree; its `VERIFIED` verdicts are
+`VERIFIED within the supplied excerpts`, which it stated itself.
+
+**What it verified.** Claims 1–6 of the review request all came back VERIFIED
+against the excerpts, including the central one: `listFacts` has no `take` and
+orders `createdAt asc`, and `compile` `break`s on the budget — so the budget
+keeps the oldest facts and drops the newest.
+
+**Findings, and what was done with them.**
+
+| # | Sev | Finding | Disposition |
+|---|---|---|---|
+| 1 | major | Tier-3's entity-match key and tier-4's cast bound presumed `outline_nodes`/`scenes` carry character/entity ids; no such relation is cited, and GAP-011 forbids the name-match fallback | **ACCEPTED — the finding was right.** Verified in `schema.prisma`: `OutlineNode` (`:1422`) links only saga/chapter/scene; `Scene` (`:301`) links only chapter. Rewrote invariant 3 to derive the relevant entity set from the real canon chain — `CharacterState` window → `Character.storyEntityId` (`:1839`) → `StoryEntity` (`:1138`) → `CanonFact.entityId` (`:1190`) — and added a negative test for it |
+| 2 | minor | Tier 4's backing is per-character accessors, so `CAST_LIMIT` cannot be one query-level bound | **ACCEPTED.** Invariant 1 now states the bound is on the relevant-entity-set derivation, not inside the accessor |
+| 3 | minor | The whole-file claim "no `take`/`limit` anywhere in `canon.ts`" was broader than the excerpt proved | **ACCEPTED.** The claim now scopes to the two `findMany` calls and cites the reproducible grep |
+| 4 | minor | The "reads only" / "called only from" claims need the whole file in the frozen manifest | **ACCEPTED.** The manifest line now requires the whole of `orchestrator.ts` and `canon.ts` |
+
+Finding 1 is the reason this review was worth running: it removed a
+plausible-looking assumption that would have made the truncation test
+unimplementable, and it is the second time this contract's tier table has been
+the weak point.
+
+**Not yet satisfied.** A repo-grounded review by an evidenced backend is still
+outstanding (GAP-013). This record does not discharge the acceptance item
+"separate review of the submitted revision".
 
 ## Next action
 

@@ -81,7 +81,7 @@ the §2.16 violation intact.
 - Source to read before designing anything: `apps/api/src/services/orchestrator.ts`
   (whole file — it is ~400 lines), `apps/api/src/services/workflow-runs.ts`
   around the `RETRIEVAL` step, `apps/api/src/services/canon.ts` `listFacts`
-  (`:1415`), `apps/api/src/services/retrieval.ts` `search` (`:847`),
+  (`:1415`), `apps/api/src/services/retrieval.ts` `search` (`:848`),
   `apps/api/src/services/planning.ts` (`approveOutlineVersion` `:575`,
   `supersedeApprovedOutline` `:667`, `planningHorizon.findUnique` `:707`),
   `apps/api/src/services/revisions.ts` (exports only),

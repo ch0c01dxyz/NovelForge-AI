@@ -212,9 +212,11 @@ Do not invent thresholds or claim scale from chapter count alone.
 ## Advancement and scope control
 
 Current dispatch: [NF-WF-003](../../tasks/NF-WF-003-chapter-context-compiler.md)
-is **PLANNED with a drafted contract** — it carries one open author scope
-decision (wire both callers and fix the truncation, or build the module only)
-and must be reviewed before any coding. It is not dispatched.
+is **PLANNED with a drafted contract** — the author scope decision is RESOLVED
+(full tiered compiler: select across every §7 tier that has a backing store,
+route both callers through one compiler, fix the measured §7/§2.16 defect) and
+the contract must still be separately reviewed before any coding. It is not
+dispatched.
 [NF-WF-002F](../../tasks/NF-WF-002F-foundation-acceptance.md) returned
 **VERIFIED 2026-10-04 for the evidenced M1 foundation scope only**; that is
 self-verification, not the independent review GAP-013 still requires, and it

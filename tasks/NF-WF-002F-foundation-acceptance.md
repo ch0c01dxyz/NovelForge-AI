@@ -371,8 +371,9 @@ ID was invented. GAP-021 remains per-boundary.
 ## Next
 
 NF-WF-003 (chapter context compiler) now has a drafted contract at
-`tasks/NF-WF-003-chapter-context-compiler.md`, status **PLANNED** — it carries
-one open author scope decision and must be reviewed before any coding. It is
+`tasks/NF-WF-003-chapter-context-compiler.md`, status **PLANNED** — the author
+scope decision is RESOLVED (full tiered compiler) and it must still be
+separately reviewed before any coding. It is
 **not** dispatched, and nothing in it is implemented. NF-WF-004 may be prepared
 independently only with frozen shared interfaces and disjoint ownership.
 Neither is a swarm.

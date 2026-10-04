@@ -1,8 +1,8 @@
 # Task NF-WF-003: shared chapter context compiler and identity/source pins
 
-Status: **PLANNED** — not dispatchable. One author scope decision is open (see
-"Open decision"). Do not start coding from this file until it is resolved and
-this contract is separately reviewed.
+Status: **PLANNED** — not dispatchable. The author scope decision is RESOLVED
+("Full tiered compiler", see "Scope decision"). Do not start coding from this
+file until it is separately reviewed.
 Milestone / capability IDs: M1 / G-02 (chapter context), per
 [DELIVERY-PLAN](../docs/implementation/DELIVERY-PLAN.md).
 Implementer role / requested and resolved model: unassigned. Author-selected
@@ -16,9 +16,9 @@ returned VERIFIED for the evidenced M1 foundation scope only (2026-10-04);
 NF-WF-003 depends on NF-WF-002 and inherits nothing else from it.
 Frozen review manifest / exact artifact paths and identity: none yet. The
 manifest is frozen at submission and must not hash itself.
-Baseline revision / local changes to preserve: the NF-WF-002 tree at HEAD
-`811e7e6` plus its uncommitted changes (42 modified, 14 untracked paths) must
-be preserved; this task must not stash, reset or revert them.
+Baseline revision / local changes to preserve: the NF-WF-002 foundation as
+committed at HEAD `4e63116` (which includes the 002F acceptance record); this
+task must not stash, reset or revert it.
 Engram checkpoint topic key / last confirmed observation reference: written
 under the runtime-bound identity confirmed at this boundary
 (`fae4b412-db3a-4ddc-a052-cfda214cfa9d`). GAP-021 remains per-boundary.
@@ -113,21 +113,14 @@ the §2.16 violation intact.
     this task adds a migration, its `CREATE INDEX` must be re-runnable.
   - **GAP-023** (OPEN) — do not build a domain-event producer or outbox here.
 
-## Open decision (blocking)
+## Scope decision — RESOLVED (author, 2026-10-04)
 
-**Does NF-WF-003 include the orchestrator/workflow wiring and the truncation
-fix, or only the compiler module behind the existing behaviour?**
-
-- *Option A (recommended):* extract the compiler as a module, wire **both**
-  existing callers to it, and fix the truncation. Smallest change that actually
-  satisfies §7, and it is the only option that removes the second path.
-- *Option B:* build the compiler module only, leave both callers untouched.
-
-Option B leaves the divergence in place and would let a green test suite
-coexist with the §7 violation, which is the exact failure mode this repository
-has already recorded. The author must choose; this contract does not choose on
-the author's behalf. Everything below is written for Option A and marks where
-Option B would differ.
+**Full tiered compiler.** The compiler selects across every §7 tier that has a
+backing store today, both existing callers route through it, and the measured
+§7/§2.16 defect is fixed. Tiers with **no** backing service are explicitly
+declared unimplemented rather than faked — see invariant 10. The author chose
+this over the narrower "fix the defect and unify the callers" option and over
+"module only, no wiring".
 
 ## Scope
 
@@ -142,10 +135,10 @@ Allowed paths (proposed; confirm at review):
   `compile` (`:135`) with a call to the compiler.
 - `apps/api/src/services/workflow-runs.ts` — the `RETRIEVAL` step (`:460`) must
   route through the same compiler.
-- `apps/api/src/services/planning.ts` — add the approved-outline resolver
-  (none exists; see "Known unknowns").
-- `apps/api/src/services/canon.ts` — only if the fix is a bounded-selection
-  query rather than a post-hoc `break`.
+- `apps/api/src/services/planning.ts` — add `getApprovedOutline` (none exists;
+  see "Known unknowns") and the derived story position.
+- `apps/api/src/services/canon.ts` — the bounded, relevance-ordered fact
+  selection that replaces the unbounded read.
 - `apps/api/src/orchestrator.test.ts`, `apps/api/src/retrieval.test.ts`, and
   one new `apps/api/src/context-compiler.test.ts`.
 
@@ -172,11 +165,23 @@ execution (NF-WF-004); any UI (NF-WF-007).
 
 ## Behavior and invariants
 
-1. **Priority order is the constitution's**, and it is ordered, not a set:
-   author instruction → current outline/scene → hard canon → current states →
-   active threads/promises → timeline → relevant recent memory → relevant
-   historical memory → Narrative DNA/style → external references
-   (CLAUDE.md §7).
+1. **Priority order is the constitution's**, and it is ordered, not a set
+   (CLAUDE.md §7). Eight of the ten tiers have a backing store today; the two
+   memory tiers do not, and invariant 10 governs them:
+
+   | # | §7 tier | Backing today | Bound / order |
+   |---|---|---|---|
+   | 1 | author instruction | request input | n/a |
+   | 2 | current outline / scene | `outline_versions` (**no resolver — new**), `outline_nodes`, `scenes` | by `number` |
+   | 3 | hard canon | `canon.listFacts` — **unbounded, `createdAt asc`** | must become bounded + relevance-ordered |
+   | 4 | current states | `characters.stateAt(chapter)`, `relationships.stanceAt(chapter)`, `bondStageAt(chapter)` | **temporal — resolve at story position** |
+   | 5 | active threads / promises | `canon.ask({kind:"UNRESOLVED"\|"PROMISES"})` | already ranked by narrative debt |
+   | 6 | timeline | `canon.ask({kind:"EVENT"\|"CAUSAL"})` | from `story_events` / `causal_edges` |
+   | 7 | relevant recent memory | **none** | see invariant 10 |
+   | 8 | relevant historical memory | **none** | see invariant 10 |
+   | 9 | Narrative DNA / style | `narrative_dna_profiles` (`narrative.ts:287`) | per-novel singleton, untyped JSON |
+   | 10 | external references | `retrieval.search` | already relevance-ranked, `limit` 1..100 |
+
 2. **Mandatory context never disappears silently.** When the budget is
    exhausted, the compiler must either (a) surface an explicit, typed overflow
    result naming what was dropped and why, or (b) fail closed. Silently
@@ -188,7 +193,12 @@ execution (NF-WF-004); any UI (NF-WF-007).
    Tie-breaking must be deterministic and stated.
 4. **Provenance is retained** for every selected fact and reference, with the
    source revision recorded.
-5. **Identity and source pins are resolved server-side, before the first model
+5. **Tier 4 is resolved at the story position, not "now".** `stateAt`,
+   `stanceAt` and `bondStageAt` all take a chapter number. Passing the writing
+   edge is the point: a character's state must be what it was at the chapter
+   being written, never the latest row. Getting this wrong silently leaks
+   future state into an earlier chapter.
+6. **Identity and source pins are resolved server-side, before the first model
    attempt**, per CLAUDE.md §7: the approved outline, the story position, and
    the source revision. The pin read already exists — `readHeadRevisionId`
    (`apps/api/src/services/revisions.ts:135`, reading
@@ -196,16 +206,23 @@ execution (NF-WF-004); any UI (NF-WF-007).
    it rather than a new query. The caller may supply an expectation
    (`expectedHeadRevisionId` tri-state, §C12.1) but must never be the authority
    for what is pinned.
-6. **One compiler, two callers.** After this task, `orchestrator.ts` and the
+7. **One compiler, two callers.** After this task, `orchestrator.ts` and the
    workflow `RETRIEVAL` step must not each own a selection loop. If they still
    do, the task is not done.
-7. **Tenant and spoiler boundaries are inherited from the services**, applied
+8. **Tenant and spoiler boundaries are inherited from the services**, applied
    in the query (the `listFacts` READER branch at `canon.ts:1475` is the
    precedent: filtering after the read means the forbidden rows were already
    read). A non-member must get a 404, not a 403.
-8. **No model call or human wait inside a database transaction** (CLAUDE.md §9).
-9. **No full-manuscript scan** (§2.16). No query may be unbounded: every new
-   read states its bound.
+9. **No model call or human wait inside a database transaction** (CLAUDE.md §9).
+10. **Unbacked tiers are declared, never faked.** Tiers 7 and 8 have no store
+    (`NF-WF-009` owns them). The compiler must represent them as an explicit
+    "unavailable" entry in the compiled context — never an empty block that
+    reads as "there is no recent memory", and never a fabricated summary. This
+    is the same failure shape as GAP-018: an absent thing that looks like a
+    present, empty one.
+11. **No full-manuscript scan** (§2.16). No query may be unbounded: every new
+    read states its bound. Tiers 5 and 6 already rank by debt; tier 3 must
+    acquire a bound.
 
 ## Acceptance and verification
 
@@ -225,6 +242,12 @@ execution (NF-WF-004); any UI (NF-WF-007).
 - [ ] **Negative test — mandatory overflow.** With mandatory context exceeding
       the budget, assert an explicit overflow result (or a fail-closed error)
       naming the dropped block. Assert no silent success.
+- [ ] **Negative test — tier 4 is temporal.** A character whose state changes at
+      chapter 12 must compile with its chapter-10 state when the writing edge is
+      chapter 10. A test that passes with "latest row" semantics proves nothing.
+- [ ] **Negative test — unbacked tiers are declared (invariant 10).** Assert
+      tiers 7 and 8 appear as an explicit unavailable marker, and that no
+      empty-but-present memory block is emitted.
 - [ ] **Negative test — tenant boundary.** A non-member requesting context for
       a foreign novel gets a 404 and learns nothing; an unauthorized caller is
       never shown a revision id.
@@ -263,9 +286,11 @@ claim an unconfirmed save.
   the generic `/generate`, `/generate/stream`, `/generations` and
   `/generations/stream`, whose body (`orchestrator-routes.ts:22`) carries no
   chapter, scene, outline or revision identity. So "chapter context" has no
-  chapter-shaped caller yet. Resolving whether this task introduces that
-  identity, or only compiles for the generic path, is part of the open
-  decision above.
+  chapter-shaped caller yet. Resolved by the scope decision above: this task
+  does **not** introduce a chapter-shaped entry point; it compiles for the
+  existing generic path, and the story position is derived (see below) rather
+  than supplied by a chapter request. Chapter-shaped generation is a later
+  contract.
 - **There is no resolver for "the current approved outline."** No
   `getApprovedOutline`/`resolveOutline`/`currentOutline` exists. Approval is a
   CAS to `APPROVED` with the previous holder moved to `SUPERSEDED`
@@ -287,9 +312,12 @@ claim an unconfirmed save.
   (`packages/planning/planning.ts:160`).
 - **Story state tables exist but nothing composes them:** `Character` (`:1814`),
   `CharacterState` (`:1861`), `RelationshipStance` (`:1943`), `Scene` (`:301`),
-  `StoryEvent` (`:1534`), `TimelineEvent` (`:1573`). Which of these the
-  compiler may read, and under what bound, is part of the open decision —
-  reading all of them is the full-manuscript scan §2.16 forbids.
+  `StoryEvent` (`:1534`), `TimelineEvent` (`:1573`). Resolved by the scope
+  decision above: the compiler reads tier 4 through the existing
+  `stateAt`/`stanceAt`/`bondStageAt` accessors at the derived story position,
+  and tiers 5 and 6 through `canon.ask`, each under its own bound. It does not
+  read the state tables directly, and reading all of them is the
+  full-manuscript scan §2.16 forbids.
 - `retrieval.search` clamps `limit` to 1..100 (`retrieval.ts:857`), ranks by
   relevance rather than creation time (SQL lexical leg `ORDER BY score DESC,
   c.id` + `LIMIT candidates`; vector leg ordered by similarity; RRF fusion
@@ -297,18 +325,22 @@ claim an unconfirmed save.
   `workflow-runs.ts:468` uses 10). Unifying callers means choosing one bound
   and justifying it — do not silently inherit either. The retrieval path is
   **not** the truncation problem; only the canon-fact path is.
-- **No memory/summary service exists.** No `recall`, `searchFacts`,
-  `relevantFacts` or `similarity` symbol anywhere, and no L2–L5 hierarchical
-  memory store. Retrieval is reference-chunk search only. So the §7 tiers
-  "current states", "active threads/promises", "relevant recent memory" and
-  "relevant historical memory" have **no backing service** today — the contract
-  must say what it does about each rather than imply they exist. Building them
-  is out of scope (NF-WF-009).
+- **No memory/summary service exists** — no `recall`, `searchFacts`,
+  `relevantFacts` or `similarity` symbol, and no L2–L5 hierarchical memory
+  store. Tiers 7 and 8 of the §7 ladder therefore have no backing store, and
+  the contract must declare them unavailable rather than fake them (invariant
+  10). Building them is out of scope (NF-WF-009). **The other eight tiers do
+  have stores** — do not repeat my earlier overstatement that "four tiers are
+  missing": tiers 4, 5 and 6 are backed by `characters.stateAt` /
+  `relationships.stanceAt` / `bondStageAt`, `canon.ask({kind:"UNRESOLVED"|
+  "PROMISES"})` (debt-ranked over `story_threads` / `story_promises`) and
+  `canon.ask({kind:"EVENT"|"CAUSAL"})` (over `story_events` / `causal_edges`).
 - The pure retrieval helpers live in `packages/retrieval/` (flat, no `src/`):
   `chunk.ts`, `fuse.ts`, `spoiler.ts`, `index.ts` — the precedent for where a
   pure, testable helper belongs if the compiler needs one.
 
 ## Next action
 
-Resolve the open decision, then submit this contract for separate review before
-any coding. Queue rows are not test receipts.
+Submit this contract for separate review before any coding — the scope decision
+is resolved, but an unreviewed contract is not dispatchable. Queue rows are not
+test receipts.

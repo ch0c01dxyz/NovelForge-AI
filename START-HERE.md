@@ -31,9 +31,10 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** resolve the open scope decision in the drafted
+**Current next task:** submit the drafted
 [NF-WF-003 — chapter context compiler](tasks/NF-WF-003-chapter-context-compiler.md)
-contract (**PLANNED**, not dispatchable), then review it before any coding.
+contract (**PLANNED**, not dispatchable) for separate review, then dispatch it.
+The author scope decision is resolved: **full tiered compiler**.
 001 design and children 002A–D have recorded reviews; do not restart them.
 [002F — foundation acceptance](tasks/NF-WF-002F-foundation-acceptance.md)
 returned **VERIFIED 2026-10-04 for the evidenced M1 foundation scope only**:

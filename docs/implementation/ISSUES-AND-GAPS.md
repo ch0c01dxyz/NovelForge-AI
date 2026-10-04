@@ -133,8 +133,11 @@ model names are not evidence that those models performed this inspection.
   affected: it ranks by relevance and clamps `limit` to 1..100
   (`retrieval.ts:857`). No approved-outline resolver, no story-position model,
   no chapter-generation entry point, and **no memory/summary service** exist,
-  so several §7 tiers have no backing store. The contract must be reviewed
-  before dependent coding, and one author scope decision is open.
+  so tiers 7 and 8 of the §7 ladder have no backing store; the other eight do,
+  through `stateAt`/`stanceAt`/`bondStageAt`, `canon.ask` and
+  `retrieval.search`. Author scope decision RESOLVED 2026-10-04: **full tiered
+  compiler**. The contract must still be separately reviewed before dependent
+  coding.
 - **004:** may be prepared independently only with frozen shared interfaces and
   non-overlapping file ownership. 003 and 004 are not to be dispatched as an
   unbounded swarm.

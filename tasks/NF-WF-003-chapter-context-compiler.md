@@ -210,8 +210,8 @@ execution (NF-WF-004); any UI (NF-WF-007).
    | # | §7 tier | Backing today | Bound | Order |
    |---|---|---|---|---|
    | 1 | author instruction | request input (not a store) | request size | n/a |
-   | 2 | current outline / scene | `outline_versions` (**no resolver — new**), `outline_nodes`, `scenes` | the planning-horizon window at the story position, `OUTLINE_LIMIT` nodes | by `number` |
-   | 3 | hard canon | `canon.listFacts` — **unbounded, `createdAt asc`** | `FACT_LIMIT` (**new** `take`, replacing the read-all) | relevance — invariant 3 |
+   | 2 | current outline / scene | `outline_versions` (**no resolver — new**), `outline_nodes`, `scenes` | `OUTLINE_LIMIT` nodes, and only inside the planning-horizon window | `outline_nodes.order` (unique per `sagaId`) and `scenes.number` (unique per `chapterId`) — **not** a `number` column on `OutlineNode`, which has none (`schema.prisma:1422`) |
+   | 3 | hard canon | `canon.listFacts` — **unbounded, `createdAt asc`** | `FACT_LIMIT` (**new** `take`, replacing the read-all), over **ACTIVE** rows only | relevance — invariant 3 |
    | 4 | current states | `characters.stateAt(chapter)` (`characters.ts:377`), `relationships.stanceAt(chapter)` (`relationships.ts:303`), `bondStageAt(chapter)` (`:562`) | `CAST_LIMIT` characters whose `CharacterState` window covers the story position (`character_states.fromChapter`/`toChapter`, `schema.prisma:1861`) | by character id |
    | 5 | active threads / promises | `canon.ask({kind:"UNRESOLVED"\|"PROMISES"})` (`canon.ts:1486`, branch `:1532`) | `THREAD_LIMIT` | narrative-debt rank — **keep** |
    | 6 | timeline | `canon.ask({kind:"EVENT"\|"CAUSAL"})` (`canon.ts:1508`, `:1520`) | `EVENT_LIMIT`, and never past the story position | by story position, most recent first |
@@ -256,11 +256,13 @@ execution (NF-WF-004); any UI (NF-WF-007).
    implementer** — the truncation test cannot be written against an undefined
    order. It is a three-key sort over columns the fact row already has:
 
-   1. **Entity match** — a fact whose `entityId` is in the **relevant entity
-      set** outranks one that is not. The relevant entity set is derived from
-      the story position, not from the outline (see "The relevant entity set"
-      below), and the comparison is an explicit id comparison, never a name
-      match (GAP-011).
+   1. **Entity match** — a fact whose `entityId` **or `objectEntityId`** is in
+      the **relevant entity set** outranks one whose neither is. Both columns
+      count: `CanonFact.objectEntityId` (`schema.prisma:1198`) makes a
+      relationship fact first-class ("X betrayed Y"), and matching only the
+      subject would silently demote every fact about the relevant character
+      that names them as the object. The comparison is an explicit id
+      comparison, never a name match (GAP-011).
    2. **Recency** — `createdAt` **descending**. This is the exact inversion of
       the current defect, and it is what makes the acceptance test fail against
       the old code.
@@ -285,12 +287,42 @@ execution (NF-WF-004); any UI (NF-WF-007).
 
    `Character.storyEntityId` (`schema.prisma:1839`, nullable, `onDelete:
    SetNull`) → `StoryEntity.id` (`:1138`) → `CanonFact.entityId` (`:1190`,
-   `onDelete: Restrict`).
+   `onDelete: Restrict`) and `CanonFact.objectEntityId` (`:1198`).
 
-   So the relevant entity set is built **from the story position outward**, not
-   from the outline: the characters that have a `CharacterState` window covering
-   the writing edge (`character_states`, `fromChapter`/`toChapter`, `:1861`),
-   plus the `StoryEntity` rows those characters name. Facts whose `entityId` is
+   **It is one bounded derivation with two consumers, and the bound is on the
+   derivation itself.** Tier 4 and tier 3 read the same set; neither may build
+   its own. The derivation is a single query on `character_states`:
+
+   ```
+   characterState.findMany({
+     where: {
+       character: { novelId },          // the tenant path — see below
+       fromChapter: { lte: N },          // N = story position
+       OR: [{ toChapter: null }, { toChapter: { gt: N } }],
+     },
+     orderBy: { characterId: "asc" },
+     take: CAST_LIMIT,
+   })
+   ```
+
+   Three things that query must get right, each of which a review flagged:
+
+   - **`fromChapter` is inclusive and `toChapter` is exclusive** ("Exclusive
+     last chapter; null = still current", `:1861`), so the predicate is
+     `fromChapter <= N AND (toChapter IS NULL OR toChapter > N)`. Getting the
+     fencepost wrong drops or duplicates the chapter at the boundary.
+   - **Deduplicate by `characterId`.** The schema has no exclusion constraint
+     on the window, so one character may have several overlapping
+     `CharacterState` rows. `take: CAST_LIMIT` bounds *rows*, not characters —
+     without a `characterId` dedupe the bound can silently evict a character
+     that did qualify. The bound is on the **deduplicated character list**.
+   - **`CharacterState` carries no `novelId` or `workspaceId`**, so the tenant
+     scope is the `character` join shown above. That is still "applied in the
+     query" per invariant 8, but it is the only path, and a raw `character_states`
+     read would cross tenants. Read it through `characters.ts`, not directly.
+
+   The set is then the non-null `storyEntityId` of those characters plus the
+   `StoryEntity` rows they name. Facts whose `entityId` or `objectEntityId` is
    in that set are the relevant ones. This is a real FK chain, it is what makes
    invariant 3 implementable, and it is the canon half of **GAP-011** that this
    task owns.
@@ -298,7 +330,16 @@ execution (NF-WF-004); any UI (NF-WF-007).
    A `Character` with a null `storyEntityId` contributes no entity id — it is
    skipped, not matched by name. That is deliberate: the nullable FK is exactly
    the "not yet joined" state, and treating it as a join is the error GAP-011
-   records.
+   records. Such a character still participates in **tier 4**, because
+   `stateAt` takes a `characterId`, not an entity id — it simply earns no
+   tier-3 boost.
+
+   **The set is `StoryEntityKind` CHARACTER-only, and that is deliberate.**
+   `StoryEntity.kind` exists (`:1138`), so location, faction and item entities
+   are representable, but only characters have a `CharacterState` window to
+   derive the set from. Facts about a non-character entity remain admissible
+   below every match rather than being boosted. Stated so a later reader does
+   not mistake the restriction for an oversight.
 4. **Provenance is retained** for every selected fact and reference, with the
    source revision recorded.
 5. **Tier 4 is resolved at the story position, not "now".** `stateAt`,
@@ -369,6 +410,24 @@ execution (NF-WF-004); any UI (NF-WF-007).
       `Character` with a null `storyEntityId` contributes **no** entity id and
       is never matched by name — that is the GAP-011 rule, and a test that
       passes while the name-match fallback is in place must not count.
+- [ ] **Negative test — the ACTIVE filter survives the new ordering.** A
+      superseded fact must never occupy a `FACT_LIMIT` slot. This is a
+      regression guard, not a new bug: `compile` omits `includeSuperseded`
+      (`orchestrator.ts:156`), so `listFacts` already narrows to
+      `status: "ACTIVE"` (`canon.ts:1439-1441`) — a review raised it as a
+      defect and that premise is **refuted**. The guard exists because the
+      ordering changes in this task, and an implementer who rewrites the read
+      could drop the filter.
+- [ ] **Negative test — `objectEntityId` counts as a match.** With two facts of
+      equal `createdAt` and a tight `FACT_LIMIT`, one naming a relevant
+      character as its `entityId` and one naming them as its `objectEntityId`,
+      assert both are selected. A test that only covers the subject case passes
+      while the object case is silently demoted.
+- [ ] **Negative test — the window fencepost and dedupe.** A character with two
+      overlapping `CharacterState` rows at the story position must appear
+      **once**, and a character whose `toChapter` equals the story position must
+      be **excluded** (`toChapter` is exclusive). Both are how `CAST_LIMIT`
+      silently evicts a qualifying character.
 - [ ] **Negative test — tenant boundary.** A non-member requesting context for
       a foreign novel gets a 404 and learns nothing; an unauthorized caller is
       never shown a revision id.
@@ -520,6 +579,42 @@ the weak point.
 **Not yet satisfied.** A repo-grounded review by an evidenced backend is still
 outstanding (GAP-013). This record does not discharge the acceptance item
 "separate review of the submitted revision".
+
+### Review 2 — 2026-10-04, APPROVE_WITH_FINDINGS, findings applied
+
+Same transport, same route (`bansosmontera/glm-5.3-flashx`), same
+`MODEL_UNVERIFIED` self-report, so the GAP-013 caveat above applies unchanged.
+Round 2 read the revised invariants plus verbatim schema excerpts, and was
+asked to verify the round-1 fixes and hunt for what they missed.
+
+**The round-1 fixes were verified against the schema, not accepted on
+assertion.** It confirmed the `CharacterState` → `Character.storyEntityId` →
+`StoryEntity` → `CanonFact.entityId` chain as a real FK chain, confirmed the
+window columns and their inclusive/exclusive semantics, and confirmed the
+nullable-`storyEntityId` handling is correct. It also confirmed the tier-4
+bound is a genuine query-level `take` rather than the same problem moved up a
+level, and supplied the query.
+
+| # | Sev | Finding | Disposition |
+|---|---|---|---|
+| 5 | minor | Tier-3's sort never states the `ACTIVE` filter, so superseded rows could consume `FACT_LIMIT` | **Premise REFUTED, requirement applied.** `compile` omits `includeSuperseded` (`orchestrator.ts:156`) so `listFacts` already narrows to ACTIVE (`canon.ts:1439-1441`) — the defect it describes does not exist on this path. The filter is now stated in the tier-3 row and guarded by a regression test, because this task rewrites that read |
+| 6 | minor | The entity match checks `entityId` only, so a fact naming the relevant character as `objectEntityId` never matches | **ACCEPTED.** Real asymmetry. Predicate is now `entityId OR objectEntityId in set`, with a negative test |
+| 7 | minor | Tier-2's order names a `number` column `OutlineNode` does not have | **ACCEPTED.** `OutlineNode` has `order` (unique per `sagaId`); `number` is the `Chapter`/`Scene` column. Row corrected |
+| 8 | minor | The entity set's bound was implied, so tier 3 could build an unbounded set and violate invariant 11 through the side door | **ACCEPTED.** Now stated as one bounded derivation with two consumers |
+| 9 | info | The set covers CHARACTER-kind entities only | **ACCEPTED as documentation.** Declared deliberate, with the reason: only characters have a `CharacterState` window to derive from |
+| 10 | minor | The window predicate, the exclusive `toChapter`, and the missing `characterId` dedupe were unstated | **ACCEPTED.** Real: `take` bounds rows, not characters, and the schema has no exclusion constraint on the window, so overlapping rows could silently evict a qualifying character. Predicate and dedupe are now in the contract |
+
+Round 2 also named what remains **asserted but unverified** rather than
+findings: `outline_versions`'s "no resolver — new", the
+`readHeadRevisionId`/`novelBranch.headRevisionId` compound key, and the
+`canon.ts`/`characters.ts`/`relationships.ts` line numbers all sit outside the
+excerpts it was given. The author verified those directly against the tree, but
+a reviewer has not, and the next round should be given the files rather than
+excerpts.
+
+**Two rounds, six substantive findings, all in the tier table and its
+derivation** — which is where this contract keeps being wrong. Both rounds ran
+on an unevidenced backend.
 
 ## Next action
 

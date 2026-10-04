@@ -175,6 +175,13 @@ version alone does not prove cross-domain recovery.
 ## 10. Development rules
 
 -   Inspect existing code and docs before modification.
+-   Follow `docs/11-deployment/ENVIRONMENT-PREFLIGHT.md` on every new host.
+    Ubuntu requires dependency/service preflight and installation of missing
+    task prerequisites using native tools, without Docker. Windows must reuse
+    the author's existing running Docker environment and preserve its data;
+    do not reinstall/reset the stack. Use dedicated disposable test databases
+    for mutation/migration tests. Record actual readiness and missing tools;
+    never claim another host's checks or session binding as current evidence.
 -   Make small coherent changes.
 -   Preserve module boundaries.
 -   Domain logic must not depend directly on HTTP/UI/provider

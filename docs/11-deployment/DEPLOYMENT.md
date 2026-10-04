@@ -2,12 +2,18 @@
 
 ## Supported development/host strategy
 
-Canonical deployment path is Docker Compose.
+Coding environments follow the mandatory
+[environment preflight](ENVIRONMENT-PREFLIGHT.md):
 
-Windows: - Docker Desktop with WSL2 backend recommended. - Repository
-must not depend on Windows-only paths or shell behavior.
+- Ubuntu: native Node/pnpm, PostgreSQL/pgvector and Redis as required by the
+  selected task; install missing prerequisites without Docker.
+- Windows: reuse the author's existing running Docker services/data, inspect
+  health/ports and isolate scratch tests; do not recreate/reset the stack.
 
-Ubuntu: - Docker Engine + Compose plugin.
+Docker Compose remains an optional deployment artifact. Historical Compose
+receipts do not impose a Docker dependency on Ubuntu coding agents. Production
+host preparation still needs its own approved deployment plan/evidence.
+Repository code must not depend on Windows-only paths or shell behavior.
 
 ## Services
 

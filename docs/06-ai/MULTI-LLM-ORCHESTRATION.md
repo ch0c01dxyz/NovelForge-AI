@@ -48,6 +48,15 @@ imported input with provenance. Record any explicit author language override
 and its scope. Validate authored artifact language before handoff; conversational
 replies may use the author's language without changing project artifacts.
 
+## Host preparation before dispatch
+
+Follow [environment preflight](../11-deployment/ENVIRONMENT-PREFLIGHT.md).
+Ubuntu: mandatory native readiness/install missing prerequisites, no Docker.
+Windows: reuse the author's running Docker services and preserve working data.
+Tests that mutate/reset require dedicated disposable databases. Record tool and
+service availability on the actual host; past host/session receipts are not
+current evidence. Continue independent review if dependent runtime setup fails.
+
 ## Dispatch contract
 
 Use [TASK-TEMPLATE.md](../../tasks/templates/TASK-TEMPLATE.md). A task is

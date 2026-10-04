@@ -96,6 +96,8 @@ model names are not evidence that those models performed this inspection.
 
 | GAP-026 NF-WF-003 dispatch contract remains inconsistent | VERIFY_PENDING / P1 | OBSERVED 2026-10-05 at ac4a19a: composition paths forbidden, unbounded state/debt/event readers, cast dedupe after take, empty backed tiers rejected and weak source pin/identity instructions. Contract remedies delivered; no code or dispatch approval claimed. | NF-WF-003 coordinator; separate review of refreshed contract blob. See [detail](#gap-026--nf-wf-003-dispatch-contract-remains-inconsistent-2026-10-05). |
 
+| GAP-027 External Ubuntu preparation conflicts with Docker-only setup guidance | VERIFY_PENDING / P2 | OBSERVED 2026-10-05: DEPLOYMENT.md required Compose on Ubuntu; verify-clone.sh ends with a mandatory Docker check. Author now requires native Ubuntu preparation without Docker and reuse of existing Windows containers/data. Documentation remedy supplied in ENVIRONMENT-PREFLIGHT.md; not tested on Ubuntu here. | Environment owner; validate native service/version/extension and scratch-test readiness on the actual host. Windows must preserve existing containers/volumes and use separate scratch databases. |
+
 ## Active queue — historical snapshot, 2026-10-04
 
 - **002D REVIEWED 2026-10-04:** implemented 2026-10-03, reviewed by
@@ -667,6 +669,12 @@ contracts; it does not implement all product phases at once.
 | GAP-021 | Host integration owner: startup/resume must re-register the runtime's own identity, verify binding/project, then perform an attributed scoped save/read. Until confirmed, retain task/progress fallback. | Real runtime-bound save/read success at the affected boundary, not a historical session or invented ID. Current hook still reports no identity; reads alone do not close it. |
 | GAP-023 | NF-WF-004 investigates actual consumers; activate 002E only when producer/consumer contract exists. Mutation event revision and any durable intent commit together. | Real consumer delivery/replay/idempotency tests and correct revision attribution; no speculative outbox. |
 
+GAP-027 remedy: environment owner follows the platform-specific preflight,
+installs only missing Ubuntu native prerequisites, and verifies actual tool,
+service and scratch-test readiness. Windows reuses existing containers/data.
+Closure needs actual host receipts; documentation review alone cannot verify
+Ubuntu installation. This remains VERIFY_PENDING until the new host is checked.
+
 ### GAP-018 remedy correction
 
 The earlier suggestion to change the historical CREATE INDEX to IF NOT EXISTS
@@ -688,3 +696,20 @@ boundaries in GAP-021 remain valid only for those boundaries. No live database,
 WSL host, credentials, installed model routes or global harness settings were
 changed. Application runtime verification is limited to the checks recorded
 in progress/test-matrix; no full author/reader journey is accepted here.
+
+
+## GAP-027 — platform-specific environment policy (2026-10-05)
+
+Owner: environment coordinator for the current task. Source: 52056ee.
+Author requirement: provision missing native dependencies on Ubuntu without
+Docker. Follow-up overrides optional Windows installation: reuse the author's
+running Docker environment and preserve data. Existing deployment instructions
+were Docker-only and the Linux clone script always invokes Compose. This is a
+setup-contract conflict, not evidence that any running service is broken.
+Remedy: mandatory Ubuntu preflight/native setup and Windows reuse rules in
+[ENVIRONMENT-PREFLIGHT](../11-deployment/ENVIRONMENT-PREFLIGHT.md), linked from
+both constitutions, START-HERE, deployment, testing and task template.
+Status: VERIFY_PENDING until a host-specific receipt verifies the actual setup.
+No packages, containers, databases or volumes were modified on this workstation.
+The legacy clone script is documented as Compose-specific; use the native
+commands rather than installing Docker just to satisfy its final check.

@@ -28,6 +28,14 @@ an implemented feature. Do not dispatch this unfilled template.
 - Relevant accepted ADR and exact domain specification sections.
 - Existing implementation, callers, tests and preceding contract artifact.
 
+## Environment prerequisites
+
+Follow [environment preflight](../../docs/11-deployment/ENVIRONMENT-PREFLIGHT.md).
+Record actual OS/tool versions, service endpoints (redacted), scratch DB
+ownership and required tools. Ubuntu installs missing native task prerequisites
+without Docker; Windows reuses existing running Docker services/data. List
+permission/network/credential blockers; never reset working databases for tests.
+
 ## Dependencies and evidence
 
 List task IDs, required contract versions, evidence links, and dispatch

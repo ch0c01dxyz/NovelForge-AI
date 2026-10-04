@@ -10,6 +10,29 @@ Latest documentation update: 2026-10-05. Historical entries and their dates
 are preserved; current integration status lives in CURRENT and the delivery
 plan. New technical issues belong only in ISSUES-AND-GAPS.md.
 
+## External-host prerequisites — 2026-10-05
+
+Author request: the next coding model runs on Ubuntu, which must provision
+missing native dependencies without installing Docker. Follow-up: Windows
+uses the author's already running Docker environment and existing data, not
+optional native reinstallation. Added ENVIRONMENT-PREFLIGHT and linked both
+constitutions, START-HERE, deployment/testing/playbook/template. Recorded the
+previous Docker-only guidance conflict as GAP-027 before applying the remedy.
+
+Guide covers runtime/pnpm pinning from the repository, PostgreSQL/pgvector,
+Redis, optional task tools, host-specific private config, service readiness,
+Engram/harness binding and dedicated scratch databases. Legacy clone scripts
+remain Compose-specific; native Ubuntu runs relevant checks directly instead.
+Official Node/pnpm/PostgreSQL/pgvector sources were checked for setup guidance.
+No host packages, containers, databases, credentials or applied migrations
+were changed here. Ubuntu installation/runtime validation has not been run.
+Documentation checks passed: 10 Markdown files, 46 local links, equivalent
+constitutions, unchanged NF-WF-003 frozen blob and git diff --check. Separate
+documentation actor review returned APPROVE, with no runtime acceptance implied.
+GAP-027 stays VERIFY_PENDING for host evidence; NF-WF-003 remains PLANNED and
+its contract blob is unchanged. Current runtime still lacks Engram binding;
+this progress entry is the fallback checkpoint, not an attributed MCP save.
+
 ## Workflow audit and model-neutral continuation — 2026-10-05
 
 Baseline ac4a19a; working tree initially clean, main two documentation commits

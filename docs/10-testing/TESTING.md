@@ -58,6 +58,15 @@ No stub may replace a production path merely to claim the feature works.
 | G-11 Release | NF-WF-023 | Supported-host clean clone/start; live schema upgrade; backup/restore drill; secrets/tenant review; job failure recovery; accessibility; measured 2,500-chapter query/context/cost budgets |
 | G-12 Evidence policy | All AI tasks | Nonexistent sources/IDs, irrelevant citation, hostile reference, stale approval, zero-selected-tests receipt, two models agreeing against canon; never promote unsupported claims |
 
+## Host prerequisites
+
+Follow [environment preflight](../11-deployment/ENVIRONMENT-PREFLIGHT.md).
+Ubuntu must provision missing native task dependencies without Docker; Windows
+must reuse the existing running Docker stack and preserve working data. Confirm
+scratch database ownership/CREATE DATABASE and extension prerequisites before
+any test that recreates databases. The legacy clean-clone scripts include a
+Compose check; use the documented native commands on Ubuntu, not Docker setup.
+
 ## Test execution rules
 
 - Inspect package scripts and environment prerequisites; run targeted tests

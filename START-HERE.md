@@ -46,6 +46,14 @@ so GAP-013 stays OPEN, and full cross-domain recovery stays OPEN under GAP-004.
 speculatively. Read CURRENT and the single issue register for
 evidence/limitations; queue pointers are not test receipts.
 
+## New-host environment preparation
+
+Follow [environment preflight](docs/11-deployment/ENVIRONMENT-PREFLIGHT.md).
+Ubuntu: mandatory native dependency/service setup; no Docker installation.
+Windows: reuse the author's running Docker environment/data; no stack reset.
+Verify host-specific endpoints and use separate disposable test databases.
+Environment readiness does not bypass the pending NF-WF-003 contract review.
+
 ## Project language
 
 English is the project-wide default for every model and role: all new/revised
@@ -153,8 +161,9 @@ advanced work cannot hide missing reader/editor flows.
 -   Object storage: S3-compatible abstraction
 -   AI gateway: OmniRoute through `OmniRouteGateway`
 -   Deployment: Docker / Docker Compose
--   Supported hosts: Windows 11 via Docker Desktop/WSL2 and Ubuntu via
-    Docker Engine
+-   Coding environments: Windows 11 uses the existing Docker Desktop/WSL2
+    services; Ubuntu uses native services without installing Docker.
+    Docker Compose remains an optional deployment artifact.
 
 ## Non-goals for early phases
 

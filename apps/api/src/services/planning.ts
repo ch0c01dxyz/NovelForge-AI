@@ -97,6 +97,48 @@ export interface PlanningServices {
   getHorizon(input: Scope): Promise<{ policy: unknown; updatedAt: Date | null }>;
 
   putHorizon(input: Scope & { policy: unknown }): Promise<{ policy: unknown; updatedAt: Date }>;
+
+  /**
+   * NF-WF-003 — the current approved outline (no resolver existed).
+   * One-APPROVED-per-novel is held by the partial unique index; the newest
+   * APPROVED row is the current one. Null when no version is approved.
+   */
+  getApprovedOutline(input: Scope): Promise<{ id: string; number: number } | null>;
+
+  /**
+   * NF-WF-003 — outline nodes inside the planning-horizon window, bounded.
+   * Nodes qualify when unplaced (no chapter) or their chapter sits at or
+   * before storyPosition + window, where the window is the policy's max
+   * finite band distance (unbounded when the tail band has maxDistance
+   * null). A missing or malformed policy is reported loudly via
+   * `horizonProblem` — never a silently invented default — and yields no
+   * nodes. Order: sagaId asc, outline order asc (deterministic total
+   * order; `order` is unique per saga only).
+   */
+  listOutlineNodesForCompiler(input: Scope & {
+    storyPosition: number;
+    limit: number;
+  }): Promise<{
+    nodes: Array<{
+      id: string;
+      title: string;
+      kind: string;
+      summary: string | null;
+      order: number;
+      sagaId: string;
+      chapterNumber: number | null;
+      sceneNumber: number | null;
+      horizonDetail: string | null;
+    }>;
+    horizonProblem: string | null;
+  }>;
+
+  /**
+   * NF-WF-003 — the writing edge: the highest `chapters.number` whose
+   * status is not DRAFT, else 0. Derived per compile from the indexed
+   * `@@index([novelId, status])`; the caller may not override it.
+   */
+  getStoryPosition(input: Scope): Promise<number>;
 }
 
 // --- Implementation ---
@@ -741,6 +783,92 @@ export function createPlanningServices(deps: {
         entityId: novelId,
       });
       return { policy: row.policy, updatedAt: row.updatedAt };
+    },
+
+    // --- NF-WF-003 chapter context compiler ---------------------------------
+
+    async getApprovedOutline({ actorUserId, workspaceId, novelId }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:read");
+      const row = await db.outlineVersion.findFirst({
+        where: { novelId, status: "APPROVED" },
+        orderBy: { number: "desc" },
+        select: { id: true, number: true },
+      });
+      return row ? { id: row.id, number: row.number } : null;
+    },
+
+    async listOutlineNodesForCompiler({ actorUserId, workspaceId, novelId, storyPosition, limit }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:read");
+      const horizonRow = await db.planningHorizon.findUnique({ where: { novelId } });
+      const policy = horizonRow?.policy ?? null;
+      const probe = horizonFor(0, policy);
+      if ("problem" in probe) {
+        // Loud, not silent: no window can be determined, so no nodes are
+        // selected — inventing an unbounded default would lie about the
+        // tier's "inside the horizon window" contract.
+        return { nodes: [], horizonProblem: probe.problem };
+      }
+      const bands = (policy as { bands: Array<{ maxDistance: number | null; detail: string }> }).bands;
+      const finite = bands
+        .map((b) => b.maxDistance)
+        .filter((d): d is number => d !== null);
+      const windowEnd = finite.length === bands.length ? Math.max(...finite, 0) : null;
+      const rows = await db.outlineNode.findMany({
+        where: {
+          novelId,
+          ...(windowEnd === null
+            ? {}
+            : {
+                OR: [
+                  { chapterId: null },
+                  { chapter: { number: { lte: storyPosition + windowEnd } } },
+                ],
+              }),
+        },
+        orderBy: [{ sagaId: "asc" }, { order: "asc" }],
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          kind: true,
+          summary: true,
+          order: true,
+          sagaId: true,
+          chapter: { select: { number: true } },
+          scene: { select: { number: true } },
+        },
+      });
+      return {
+        nodes: rows.map((r) => {
+          const chapterNumber = r.chapter?.number ?? null;
+          let horizonDetail: string | null = null;
+          if (chapterNumber !== null) {
+            const decided = horizonFor(Math.max(0, chapterNumber - storyPosition), policy);
+            horizonDetail = "problem" in decided ? null : decided.detail;
+          }
+          return {
+            id: r.id,
+            title: r.title,
+            kind: r.kind as string,
+            summary: r.summary,
+            order: r.order,
+            sagaId: r.sagaId,
+            chapterNumber,
+            sceneNumber: r.scene?.number ?? null,
+            horizonDetail,
+          };
+        }),
+        horizonProblem: null,
+      };
+    },
+
+    async getStoryPosition({ actorUserId, workspaceId, novelId }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:read");
+      const edge = await db.chapter.aggregate({
+        where: { novelId, status: { in: ["IN_REVIEW", "PUBLISHED"] } },
+        _max: { number: true },
+      });
+      return edge._max.number ?? 0;
     },
   };
 }

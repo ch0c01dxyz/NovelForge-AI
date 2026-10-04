@@ -144,6 +144,38 @@ export interface RelationshipServices {
 
   /** Neglect measured on weighted evidence, not on chapter presence. */
   neglectReport(input: RelationshipScope & { bondId: string; chapter: number; maxGap?: number }): Promise<NeglectView>;
+
+  /**
+   * NF-WF-003 — compiler-facing bounded temporal stance read. Exactly the
+   * pure `stanceAt` rule (the covering window with the latest fromChapter),
+   * but the query carries the covering predicate and `take: 1` instead of
+   * reading the full per-pair history. Public histories are preserved.
+   */
+  getStanceAtPosition(input: RelationshipScope & {
+    fromCharacterId: string;
+    toCharacterId: string;
+    chapter: number;
+  }): Promise<(StanceView & { fromCharacterName: string; toCharacterName: string }) | null>;
+
+  /**
+   * NF-WF-003 — compiler-facing bounded temporal bond read. Exactly the
+   * pure `bondStageAt` rule (the latest transition at or before `chapter`
+   * decides; `@@unique([bondId, chapter])` makes one row decisive), with
+   * `take: 1` instead of the full transition history.
+   */
+  getBondStageAtPosition(input: RelationshipScope & {
+    bondId: string;
+    chapter: number;
+  }): Promise<{ id: string; bondId: string; stage: string | null; chapter: number } | null>;
+
+  /**
+   * NF-WF-003 — bonds touching the compiler cast, bounded. Deterministic
+   * id order; the PAIR_LIMIT budget is shared with stance pairs.
+   */
+  listBondsForCast(input: RelationshipScope & {
+    characterIds: string[];
+    limit: number;
+  }): Promise<Array<{ id: string }>>;
 }
 
 // --- Implementation ---
@@ -639,6 +671,84 @@ export function createRelationshipServices(deps: {
         chapter,
         maxGap,
       );
+    },
+
+    // --- NF-WF-003 chapter context compiler ---------------------------------
+
+    async getStanceAtPosition({ actorUserId, workspaceId, novelId, fromCharacterId, toCharacterId, chapter }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:read");
+      await requireCharacters([fromCharacterId, toCharacterId], novelId, workspaceId);
+      // The covering predicate in the query + take: 1, ordered by latest
+      // fromChapter, is exactly the pure `stanceAt` rule.
+      const row = await db.relationshipStance.findFirst({
+        where: {
+          fromCharacterId,
+          toCharacterId,
+          fromChapter: { lte: chapter },
+          OR: [{ toChapter: null }, { toChapter: { gt: chapter } }],
+        },
+        orderBy: [{ fromChapter: "desc" }, { id: "asc" }],
+        select: {
+          id: true,
+          fromCharacterId: true,
+          toCharacterId: true,
+          stance: true,
+          fromChapter: true,
+          toChapter: true,
+          fromCharacter: { select: { name: true } },
+          toCharacter: { select: { name: true } },
+        },
+      });
+      if (!row) return null;
+      return {
+        id: row.id,
+        fromCharacterId: row.fromCharacterId,
+        toCharacterId: row.toCharacterId,
+        stance: row.stance as RelationshipStance,
+        fromChapter: row.fromChapter,
+        toChapter: row.toChapter,
+        fromCharacterName: row.fromCharacter.name,
+        toCharacterName: row.toCharacter.name,
+      };
+    },
+
+    async getBondStageAtPosition({ actorUserId, workspaceId, novelId, bondId, chapter }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:read");
+      const bond = await db.bond.findFirst({
+        where: { id: bondId, novelId, workspaceId },
+        select: { id: true },
+      });
+      if (!bond) throw new NotFoundError("bond");
+      // @@unique([bondId, chapter]): the latest transition at or before
+      // `chapter` is decisive — exactly the pure `bondStageAt` rule.
+      const row = await db.bondTransition.findFirst({
+        where: { bondId, chapter: { lte: chapter } },
+        orderBy: [{ chapter: "desc" }, { id: "asc" }],
+        select: { id: true, chapter: true, stage: true, kind: true },
+      });
+      if (!row) return null;
+      return {
+        id: row.id,
+        bondId,
+        stage: row.kind === "SEVER" ? null : (row.stage as string),
+        chapter: row.chapter,
+      };
+    },
+
+    async listBondsForCast({ actorUserId, workspaceId, novelId, characterIds, limit }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:read");
+      if (characterIds.length === 0) return [];
+      const rows = await db.bond.findMany({
+        where: {
+          novelId,
+          workspaceId,
+          members: { some: { characterId: { in: characterIds } } },
+        },
+        orderBy: { id: "asc" },
+        take: limit,
+        select: { id: true },
+      });
+      return rows;
     },
   };
 }

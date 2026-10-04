@@ -436,6 +436,83 @@ export interface CanonServices {
     mode?: unknown;
     readerChapter?: number;
   }): Promise<BrainAnswer>;
+
+  /**
+   * NF-WF-003 compiler reads. Bounded, relevance-ordered selections for the
+   * shared context compiler; the public `listFacts`/`ask` answers are
+   * preserved unchanged. Every query carries an explicit `take`
+   * (invariant 11); the spoiler boundary is applied in the query.
+   */
+  listFactsForCompiler(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    mode?: unknown;
+    readerChapter?: number;
+    /** Relevant entity ids from the cast derivation (invariant 3). */
+    relevantEntityIds: string[];
+    limit: number;
+  }): Promise<{
+    facts: Array<{
+      id: string;
+      entityId: string;
+      objectEntityId: string | null;
+      predicate: string;
+      statement: string;
+      createdAt: Date;
+    }>;
+  }>;
+
+  listDebtForCompiler(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    mode?: unknown;
+    readerChapter?: number;
+    kind: "UNRESOLVED" | "PROMISES";
+    storyPosition: number;
+    limit: number;
+  }): Promise<{
+    items: Array<{
+      id: string;
+      kind: "THREAD" | "PROMISE";
+      title: string;
+      debt: number;
+    }>;
+  }>;
+
+  listEventsForCompiler(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    mode?: unknown;
+    readerChapter?: number;
+    storyPosition: number;
+    limit: number;
+  }): Promise<{
+    events: Array<{
+      id: string;
+      description: string;
+      chapterNumber: number | null;
+    }>;
+  }>;
+
+  listCausalForCompiler(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    mode?: unknown;
+    readerChapter?: number;
+    storyPosition: number;
+    limit: number;
+  }): Promise<{
+    edges: Array<{
+      id: string;
+      causeDescription: string;
+      effectDescription: string;
+      confidence: string;
+    }>;
+  }>;
 }
 
 export function createCanonServices(deps: {
@@ -1832,6 +1909,303 @@ export function createCanonServices(deps: {
       };
         })(),
       });
+    },
+
+    /**
+     * NF-WF-003 compiler read — bounded, relevance-ordered fact selection.
+     *
+     * Replaces the unbounded `listFacts` read on the generation path
+     * (CLAUDE.md §2.16, §7). Two bounded queries implement the contract's
+     * three-key order (invariant 3): entity-matched facts first
+     * (`entityId` OR `objectEntityId` in the relevant set — an explicit id
+     * comparison, never a name match, GAP-011), then `createdAt` desc, then
+     * `id` asc. ACTIVE rows only (the round-2 refutation: `compile` omits
+     * `includeSuperseded`, so the filter is stated and guarded); the
+     * spoiler boundary is applied in the query for READER mode, exactly
+     * like `listFacts`.
+     */
+    async listFactsForCompiler({
+      actorUserId,
+      workspaceId,
+      novelId,
+      mode,
+      readerChapter,
+      relevantEntityIds,
+      limit,
+    }) {
+      await gate(workspaceId, novelId, actorUserId, "canon:read");
+      const viewMode: ViewMode = parseViewMode(mode);
+      const at = viewMode === "READER" ? (readerChapter ?? 0) : null;
+      const baseWhere = {
+        novelId,
+        workspaceId,
+        status: "ACTIVE" as CanonFactStatus,
+        ...(at === null
+          ? {}
+          : { availableFromChapter: { not: null, lte: at } }),
+      };
+      const orderBy = [{ createdAt: "desc" as const }, { id: "asc" as const }];
+      const select = {
+        id: true,
+        entityId: true,
+        objectEntityId: true,
+        predicate: true,
+        statement: true,
+        createdAt: true,
+      };
+      if (relevantEntityIds.length === 0) {
+        // No entity set: every fact is unmatched; a single bounded query in
+        // recency order. (An empty `in: []` inside NOT has
+        // version-dependent semantics; this branch avoids it entirely.)
+        const facts = await db.canonFact.findMany({
+          where: baseWhere,
+          orderBy,
+          take: limit,
+          select,
+        });
+        return { facts };
+      }
+      const entityMatch = {
+        OR: [
+          { entityId: { in: relevantEntityIds } },
+          { objectEntityId: { in: relevantEntityIds } },
+        ],
+      };
+      const matched = await db.canonFact.findMany({
+        where: { ...baseWhere, ...entityMatch },
+        orderBy,
+        take: limit,
+        select,
+      });
+      if (matched.length >= limit) return { facts: matched };
+      const rest = await db.canonFact.findMany({
+        where: { ...baseWhere, NOT: entityMatch },
+        orderBy,
+        take: limit - matched.length,
+        select,
+      });
+      return { facts: [...matched, ...rest] };
+    },
+
+    /**
+     * NF-WF-003 compiler read — bounded narrative-debt selection.
+     *
+     * The candidate pre-selection is bounded and deterministic: highest
+     * importance, oldest first (age is the other debt factor), `take: limit`
+     * per table. The exact `narrativeDebt` ranking is then applied over
+     * those candidates and the top `limit` are returned. The result is the
+     * documented ranking over the bounded candidate set — disclosed as
+     * such, never claimed as a proven global ranking (invariant 11).
+     * Reader visibility (anchor + close chapter) is applied in the query.
+     */
+    async listDebtForCompiler({
+      actorUserId,
+      workspaceId,
+      novelId,
+      mode,
+      readerChapter,
+      kind,
+      storyPosition,
+      limit,
+    }) {
+      await gate(workspaceId, novelId, actorUserId, "canon:read");
+      const viewMode: ViewMode = parseViewMode(mode);
+      const at = viewMode === "READER" ? (readerChapter ?? 0) : null;
+      // Age is anchored to the writing edge (the derived story position),
+      // reader-anchored in READER mode — the same rule `askDebt` applies to
+      // its frontier, applied to the compiler's position instead.
+      const now = viewMode === "READER" ? Math.min(storyPosition, at ?? 0) : storyPosition;
+      const candidateOrder = [
+        { importance: "desc" as const },
+        { introducedAtChapter: "asc" as const },
+        { id: "asc" as const },
+      ];
+      const visibility =
+        at === null
+          ? {}
+          : {
+              introducedAtChapter: { not: null, lte: at },
+            };
+      const threadClose =
+        at === null ? {} : { OR: [{ resolvedAtChapter: null }, { resolvedAtChapter: { lte: at } }] };
+      const promiseClose =
+        at === null ? {} : { OR: [{ payoffAtChapter: null }, { payoffAtChapter: { lte: at } }] };
+
+      const threadRows =
+        kind === "PROMISES"
+          ? []
+          : await db.storyThread.findMany({
+              where: { novelId, workspaceId, ...visibility, ...threadClose },
+              orderBy: candidateOrder,
+              take: limit,
+              select: {
+                id: true,
+                title: true,
+                status: true,
+                importance: true,
+                introducedAtChapter: true,
+              },
+            });
+      const promiseRows = await db.storyPromise.findMany({
+        where: { novelId, workspaceId, ...visibility, ...promiseClose },
+        orderBy: candidateOrder,
+        take: limit,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          importance: true,
+          introducedAtChapter: true,
+        },
+      });
+
+      const items: DebtItem[] = [
+        ...threadRows.map((t) => ({
+          id: t.id,
+          kind: "THREAD" as const,
+          open: isThreadUnresolved(t.status),
+          importance: t.importance,
+          ageChapters: Math.max(0, now - (t.introducedAtChapter ?? 0)),
+        })),
+        ...promiseRows.map((p) => ({
+          id: p.id,
+          kind: "PROMISE" as const,
+          open: isPromiseOpen(p.status),
+          importance: p.importance,
+          ageChapters: Math.max(0, now - (p.introducedAtChapter ?? 0)),
+          readyForPayoff: viewMode !== "READER" && p.status === "READY_FOR_PAYOFF",
+        })),
+      ];
+      const ranked = narrativeDebt(items);
+      const titleFor = (id: string): string =>
+        threadRows.find((t) => t.id === id)?.title ??
+        promiseRows.find((p) => p.id === id)?.title ??
+        "";
+      const kindFor = (id: string): "THREAD" | "PROMISE" =>
+        threadRows.some((t) => t.id === id) ? "THREAD" : "PROMISE";
+      return {
+        items: ranked.slice(0, limit).map((r) => ({
+          id: r.id,
+          kind: kindFor(r.id),
+          title: titleFor(r.id),
+          debt: r.score,
+        })),
+      };
+    },
+
+    /**
+     * NF-WF-003 compiler read — bounded temporal event selection.
+     *
+     * Never past the story position, most-recent-first (invariant 1, tier
+     * 6). `availableFromChapter` is the chapter-anchored temporal field;
+     * unclassified rows (null) sort after classified ones in AUTHOR mode
+     * and are withheld in READER mode — the same null semantics as
+     * `listFacts`.
+     */
+    async listEventsForCompiler({
+      actorUserId,
+      workspaceId,
+      novelId,
+      mode,
+      readerChapter,
+      storyPosition,
+      limit,
+    }) {
+      await gate(workspaceId, novelId, actorUserId, "canon:read");
+      const viewMode: ViewMode = parseViewMode(mode);
+      const at = viewMode === "READER" ? (readerChapter ?? 0) : null;
+      const edge = at === null ? storyPosition : Math.min(at, storyPosition);
+      const orderBy = [
+        { availableFromChapter: "desc" as const },
+        { id: "asc" as const },
+      ];
+      const select = { id: true, description: true, availableFromChapter: true };
+      const classified = await db.storyEvent.findMany({
+        where: {
+          novelId,
+          workspaceId,
+          availableFromChapter: { not: null, lte: edge },
+        },
+        orderBy,
+        take: limit,
+        select,
+      });
+      let rows = classified;
+      if (at === null && classified.length < limit) {
+        // AUTHOR only: unclassified events are admissible, after every
+        // classified one. A reader never sees an unanchored row exist.
+        const unclassified = await db.storyEvent.findMany({
+          where: { novelId, workspaceId, availableFromChapter: null },
+          orderBy: [{ id: "asc" as const }],
+          take: limit - classified.length,
+          select,
+        });
+        rows = [...classified, ...unclassified];
+      }
+      return {
+        events: rows.map((r) => ({
+          id: r.id,
+          description: r.description,
+          chapterNumber: r.availableFromChapter,
+        })),
+      };
+    },
+
+    /**
+     * NF-WF-003 compiler read — bounded temporal causal-edge selection.
+     *
+     * Both halves of an edge must be at or before the story position: an
+     * edge whose cause or effect is withheld would disclose the hidden
+     * half's existence (the same rule `askCausal` enforces). Most recent
+     * first by creation; READER mode additionally requires both halves
+     * anchored and visible.
+     */
+    async listCausalForCompiler({
+      actorUserId,
+      workspaceId,
+      novelId,
+      mode,
+      readerChapter,
+      storyPosition,
+      limit,
+    }) {
+      await gate(workspaceId, novelId, actorUserId, "canon:read");
+      const viewMode: ViewMode = parseViewMode(mode);
+      const at = viewMode === "READER" ? (readerChapter ?? 0) : null;
+      const edge = at === null ? storyPosition : Math.min(at, storyPosition);
+      const half =
+        at === null
+          ? {
+              OR: [
+                { availableFromChapter: { lte: edge } },
+                { availableFromChapter: null },
+              ],
+            }
+          : { availableFromChapter: { not: null, lte: edge } };
+      const rows = await db.causalEdge.findMany({
+        where: {
+          novelId,
+          workspaceId,
+          causeEvent: half,
+          effectEvent: half,
+        },
+        orderBy: [{ createdAt: "desc" as const }, { id: "asc" as const }],
+        take: limit,
+        select: {
+          id: true,
+          confidence: true,
+          causeEvent: { select: { description: true } },
+          effectEvent: { select: { description: true } },
+        },
+      });
+      return {
+        edges: rows.map((r) => ({
+          id: r.id,
+          causeDescription: r.causeEvent.description,
+          effectDescription: r.effectEvent.description,
+          confidence: r.confidence as string,
+        })),
+      };
     },
   };
 

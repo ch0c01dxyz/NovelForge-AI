@@ -143,6 +143,31 @@ export interface CharacterServices {
     arcId: string;
     chapter: number;
   }): Promise<{ reached: MilestoneView[]; total: number; latest: MilestoneView | null }>;
+
+  /**
+   * NF-WF-003 — the ONE bounded cast derivation (invariant 3): distinct
+   * character ids whose state window covers the story position, `take:
+   * limit` on the deduplicated list (groupBy), then the non-null
+   * `storyEntityId` of that bounded set. The tenant scope rides the
+   * `character` join — `CharacterState` carries no novelId. A null
+   * `storyEntityId` contributes no entity id (GAP-011); it is skipped,
+   * never matched by name.
+   */
+  listRelevantCast(input: CharacterScope & {
+    storyPosition: number;
+    limit: number;
+  }): Promise<{ characterIds: string[]; entityIds: string[] }>;
+
+  /**
+   * NF-WF-003 — compiler-facing bounded temporal state read. Exactly the
+   * `stateAt` domain rule (first covering window in fromChapter-asc order),
+   * but the query carries the covering predicate and `take: 1` instead of
+   * reading the full per-character history.
+   */
+  getStateAtPosition(input: CharacterScope & {
+    characterId: string;
+    chapter: number;
+  }): Promise<(StateView & { characterName: string }) | null>;
 }
 
 // --- Implementation ---
@@ -664,6 +689,67 @@ export function createCharacterServices(deps: {
               summary: progress.latest.summary,
             },
       };
+    },
+
+    // --- NF-WF-003 chapter context compiler ---------------------------------
+
+    async listRelevantCast({ actorUserId, workspaceId, novelId, storyPosition, limit }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:read");
+      // Group before take: this bounds DISTINCT character ids, not state
+      // rows. fromChapter is inclusive, toChapter exclusive ("Exclusive last
+      // chapter; null = still current").
+      const grouped = await db.characterState.groupBy({
+        by: ["characterId"],
+        where: {
+          character: { novelId },
+          fromChapter: { lte: storyPosition },
+          OR: [{ toChapter: null }, { toChapter: { gt: storyPosition } }],
+        },
+        orderBy: { characterId: "asc" },
+        take: limit,
+      });
+      const characterIds = grouped.map((g) => g.characterId);
+      if (characterIds.length === 0) return { characterIds: [], entityIds: [] };
+      // Entity ids only for the already-bounded set, inside the gated
+      // service. Null storyEntityId = "not yet joined" (GAP-011): skipped.
+      const characters = await db.character.findMany({
+        where: { id: { in: characterIds }, novelId },
+        select: { id: true, storyEntityId: true },
+      });
+      const entityIds = characters
+        .map((c) => c.storyEntityId)
+        .filter((id): id is string => id !== null);
+      return { characterIds, entityIds };
+    },
+
+    async getStateAtPosition({ actorUserId, workspaceId, novelId, characterId, chapter }) {
+      await gate(actorUserId, workspaceId, novelId, "canon:read");
+      const character = await db.character.findFirst({
+        where: { id: characterId, novelId, workspaceId },
+        select: { id: true, name: true },
+      });
+      if (!character) throw new NotFoundError("character");
+      // The covering predicate in the query + take: 1 is exactly the pure
+      // `stateAt` rule (first covering window in fromChapter-asc order),
+      // without reading the full per-character history.
+      const row = await db.characterState.findFirst({
+        where: {
+          characterId,
+          fromChapter: { lte: chapter },
+          OR: [{ toChapter: null }, { toChapter: { gt: chapter } }],
+        },
+        orderBy: [{ fromChapter: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          characterId: true,
+          fromChapter: true,
+          toChapter: true,
+          summary: true,
+          createdAt: true,
+        },
+      });
+      if (!row) return null;
+      return { ...toStateView(row), characterName: character.name };
     },
   };
 }

@@ -15,7 +15,7 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 | NF-WF-002D | **IMPLEMENTED / REVIEWED** (GAP-022 closed for implementation and review) | Done; accepted by 002F |
 | NF-WF-002F | **VERIFIED 2026-10-04 — evidenced M1 foundation scope only** (self-verification, not independent review) | Done; full cross-domain recovery stays OPEN under GAP-004 |
 | NF-WF-002E | PLANNED; actual consumer absent (GAP-023) | Revisit under NF-WF-004 consumer design |
-| NF-WF-003 | **PLANNED — contract drafted**, scope decision RESOLVED (full tiered compiler) | Review GAP-026 amendments on the refreshed blob, then dispatch |
+| NF-WF-003 | **IMPLEMENTED 2026-10-05 — pending separate review** (uncommitted working tree; 197 tests green, lint + typecheck clean; 5 review findings fixed) | Separate reviewer judges the exact diff |
 
 Current sequence: [DELIVERY-PLAN](../implementation/DELIVERY-PLAN.md).
 Current assignment policy (author, 2026-10-05): model-neutral. Use the model

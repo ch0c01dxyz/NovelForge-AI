@@ -3631,3 +3631,162 @@ be stated in both places. F2 (P3) — the relationship pair budget has no
 contract name (suggest `PAIR_LIMIT`). GAP-027 confirmed as environment-policy
 only; does not block this review. No implementation started; NF-WF-003 stays
 PLANNED pending the author's dispatch decision on the findings.
+
+## NF-WF-003 — implementation — 2026-10-05
+
+**Status: IMPLEMENTED, pending separate review.** Working tree holds the
+implementation uncommitted per the author's "do not commit" instruction; a
+separate reviewer judges the exact diff.
+
+**What was built (contract §§Scope, Invariants).**
+- New `apps/api/src/services/context-compiler.ts` (pure; no DB/HTTP/provider
+  imports): `compileContext(input, rows)`, `fetchAndCompileContext(ports,
+  input)` (head pin before/after bounded reads, `HeadConflictError` on
+  movement), `renderContextText`, tier statuses
+  PRESENT/EMPTY/UNAVAILABLE/NOT_APPLICABLE/OVERFLOWED. Budgets:
+  OUTLINE_LIMIT=40, FACT_LIMIT=60, CAST_LIMIT=12, PAIR_LIMIT=24,
+  THREAD_LIMIT=20, EVENT_LIMIT=30, REFERENCE_LIMIT=8 (unified; contract listed
+  8 vs 10 — chose 8, the tighter bound, documented in code),
+  FACT/REF_BUDGET_CHARS=6000, CONTEXT_BUDGET_CHARS=18000.
+- Bounded readers: `canon.ts:listFactsForCompiler` (three-key order: entity
+  match on `entityId`/`objectEntityId`, `createdAt` desc, `id` asc; two
+  queries, both `take`-bounded; ACTIVE-only; spoiler filter in query),
+  `listDebtForCompiler`, `listEventsForCompiler`, `listCausalForCompiler`;
+  `planning.ts:getApprovedOutline`, `listOutlineNodesForCompiler`
+  (horizon-window filter; absent/malformed policy → loud `horizonProblem`, no
+  invented default), `getStoryPosition` (highest non-DRAFT chapter, else 0);
+  `characters.ts:listRelevantCast` (the one bounded `groupBy characterId`
+  derivation; tenant via `character` join; null `storyEntityId` skipped, never
+  name-matched per GAP-011), `getStateAtPosition` (take:1 covering-predicate
+  query matching the pure `stateAt` rule); `relationships.ts`:
+  `getStanceAtPosition`, `getBondStageAtPosition`, `listBondsForCast` (same
+  take:1 equivalence pattern).
+- Wiring: `orchestrator.ts` inline fact loop replaced with
+  `fetchAndCompileContext`; `workflow-runs.ts` RETRIEVAL step routes through
+  the same compiler (keeps audit-linking via captured `retrievalAuditId`);
+  `app.ts` wires the same tier-reader instances into both factories; head
+  port via `readHeadRevisionId`. Overflow fails closed (no dispatch, no model
+  call).
+- Public `listFacts`/`ask` untouched. No schema change, no migration
+  (GAP-018); no event producer (GAP-023); no name matching (GAP-011).
+
+**Deviations from the contract (with justification).**
+- `REFERENCE_LIMIT`: contract named 8 in one place and 10 in another;
+  implemented 8 (tighter bound wins; documented at the constant).
+- Novel-less path: the contract's compiler would search references without
+  a novel; the pre-compiler orchestrator never did (it skipped the whole
+  context block without a novelId, avoiding an embedding generation for no
+  novel scope). Implemented `searchReferencesWithoutNovel` flag: orchestrator
+  leaves it false (old behavior preserved — verified by the "409s when the
+  model does not return JSON" test, which caught a spurious `task:"embed"`
+  generation row), workflow RETRIEVAL step sets it true (the step is an
+  explicit search and must work novel-less, per retrieval.test.ts).
+- Contract's test command names `src/characters.test.ts` and
+  `src/relationships.test.ts`; the repo has `src/character.test.ts`
+  (singular) and no relationships test file. Ran the 7 existing files.
+- `contextSnapshot` now carries the compiler's provenance `blocks` in
+  addition to the old `{facts}` floor (contract §Outputs: old shape is the
+  floor, not the ceiling). Two orchestrator tests updated to assert the new
+  shape.
+
+**Verification (actual runs, 2026-10-05, Ubuntu native).**
+- `pnpm --filter @novelforge/api exec vitest run
+  src/orchestrator.test.ts src/definitions.test.ts src/context-compiler.test.ts
+  src/canon.test.ts src/character.test.ts src/planning.test.ts
+  src/retrieval.test.ts` → **7 files, 192 tests, all passed** (includes the
+  new 27-test `context-compiler.test.ts`: 9 pure compiler tests + 18
+  DB-backed acceptance tests covering every contract bullet).
+- `pnpm lint` → clean. `pnpm --filter @novelforge/api typecheck` → clean.
+- Scratch databases only (`novelforge_test_*`); no live data touched.
+
+**Test findings during implementation (all resolved).**
+- `parseViewMode(undefined)` returns `"READER"` (deny-by-default, a security
+  feature — preserved, not weakened). Service-level tests pass
+  `mode: "AUTHOR"` explicitly, as the real callers do.
+- `createFact` returns `{id}`, not `{canonFactId}`; `canon_facts_live`
+  holds one ACTIVE row per (entity, predicate); supersede requires
+  `validFromChapter`; claim object requires exactly one of
+  `objectText`/`objectEntityId`; character states reject overlap (so the
+  groupBy dedupe test asserts the DB-level guarantee); Chapter has no
+  `workspaceId` and requires relation `connect` syntax.
+- An empty `in: []` inside `NOT` has version-dependent Prisma semantics;
+  the implementation branches explicitly for empty entity sets instead.
+
+**Open / untested.**
+- No `relationships.test.ts` exists in the repo; relationship tier readers
+  are covered indirectly via `context-compiler.test.ts` (bond/stance
+  temporal resolution) but have no dedicated suite.
+- The caller-divergence test asserts the two caller input shapes compile
+  identically through the shared `fetchAndCompileContext`; a full HTTP-level
+  workflow RETRIEVAL run asserting byte-identical context to POST /generate
+  was not added (the step's search behavior is covered by retrieval.test.ts).
+
+## NF-WF-003 — review findings fixed (F1–F5) — 2026-10-05
+
+The separate implementation review returned APPROVE_WITH_FINDINGS (5
+findings). All five are fixed below, per the author's "fix all, re-verify,
+then commit" decision. Nothing is committed; the tree holds the fixes for a
+focused re-review.
+
+**F1 (P2) — horizon problem now loud in tier-2 provenance.**
+`CompilerPlanningPort.listOutlineNodesForCompiler` declared only `{ nodes }`,
+so `fetchAndCompileContext` discarded the service's `horizonProblem` and a
+malformed policy compiled as a bare EMPTY. Fixed in
+`apps/api/src/services/context-compiler.ts`: the port type now declares
+`{ nodes: OutlineNodeRow[]; horizonProblem: string | null }`; `CompilerRows`
+gained `outlineHorizonProblem`; the fetch stashes it; tier 2 carries it as
+the block's provenance `reason`
+(`planning horizon problem MALFORMED_POLICY: no horizon window could be
+determined, so no outline nodes were selected`). New negative test
+(`context-compiler.test.ts`, "story position and outline (planning)"):
+malformed policy written directly to `planning_horizons` (putHorizon
+validates, so the service path can never store one) → tier 2 has zero rows
+**and** a reason matching /MALFORMED_POLICY/ — the test fails against the
+old discard.
+
+**F2 (P3) — head race now 409, not 500.** `HeadConflictError` extended plain
+`Error`, so the app-wide handler fell through to 500. Fixed with an explicit
+handler branch in `apps/api/src/platform-routes.ts` (one import + one
+branch; the compiler module keeps its zero-import purity — extending
+`ConflictError` would have pulled `@novelforge/auth` into it). The branch
+answers 409 `{ error: "CONFLICT", code: "HEAD_CONFLICT",
+currentHeadRevisionId }`. The observed head is disclosed because both
+callers gate the tenant before compiling (orchestrator `gate()`, workflow
+`gateWorkspace(..., "workflow:run")`) — the 002D rule holds. Note:
+`platform-routes.ts` is outside the contract's allowed-path list; this is
+the minimal change the accepted finding requires, and no other logic in the
+file was altered. Two new tests drive the real handler via a minimal
+Fastify app: 409 + body on a race, and null-head disclosure as null.
+
+**F3 (P3) — approved outline pinned.** `getApprovedOutline` existed but was
+never called. `fetchAndCompileContext` now calls it in the pin phase
+(alongside the head read); `CompilerRows`/`TierProvenance` gained
+`outlineVersionId`, recorded on the tier-2 block (null when nothing is
+approved — ordinary, not an error). New test: draft → approve → compile →
+`tier2.provenance.outlineVersionId` equals the approved version id.
+
+**F4 (P3) — test-matrix corrected.** The matrix claimed pure
+`HeadConflictError` tests, budget-constant assertions, and horizon tests
+that did not exist (constitution §10: never claim unverified work). The
+NF-WF-003 section now describes exactly the 31 tests in
+`context-compiler.test.ts` (9 pure: overflow, truncation, ordering/status
+transitions, renderContextText, no-invented-head, snapshot floor shape, §7
+order — no budget-constant or pure head-movement claims), the F1/F2/F3
+additions, and the F5 HTTP test; the "malformed policy" negative-test
+bullet now names the tier-2 `reason` mechanism.
+
+**F5 (P3) — HTTP-level divergence test added.** The compiler-level test
+could not catch drift in the actual callers. New test in
+`orchestrator.test.ts` ("caller divergence at the HTTP boundary"): POST
+`/generate` and a real workflow RETRIEVAL run on the same novel, then
+`Generation.contextSnapshot.blocks` deep-equals the step outcome
+`json.blocks`. This supersedes the "Open / untested" note above — the
+HTTP-level comparison now exists and passes.
+
+**Re-verification (actual, this host, scratch DBs only):**
+`pnpm --filter @novelforge/api exec vitest run src/orchestrator.test.ts
+src/definitions.test.ts src/context-compiler.test.ts src/canon.test.ts
+src/character.test.ts src/planning.test.ts src/retrieval.test.ts`
+→ 7 files, **197 passed**, 0 failed (was 192; +4 in context-compiler.test.ts,
++1 in orchestrator.test.ts). `pnpm lint` → clean. `pnpm --filter
+@novelforge/api typecheck` → clean.

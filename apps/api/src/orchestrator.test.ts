@@ -550,11 +550,16 @@ describe("the orchestrator assembles the prompt from resolved definitions", () =
 
     // Provenance on the settled row: the prompt pin names the exact version
     // that executed, and the snapshot records which facts were injected.
+    // NF-WF-003: the snapshot now carries the shared compiler's provenance
+    // blocks (the old {facts} shape is the floor, not the ceiling).
     const gen = await db.generation.findUniqueOrThrow({ where: { id: body.generationId } });
     expect(gen.status).toBe("SUCCEEDED");
     expect(gen.task).toBe("agent:chapter-writer");
     expect(gen.promptVersion).toBe("agent:chapter-writer@v1");
-    expect(gen.contextSnapshot).toEqual({ facts: [factId] });
+    const snapshot = gen.contextSnapshot as Record<string, unknown>;
+    expect(snapshot["facts"]).toEqual([factId]);
+    expect(snapshot["blocks"]).toBeDefined();
+    expect(Array.isArray(snapshot["blocks"])).toBe(true);
   });
 
   it("passes the agent's profile, temperature and maxTokens to the transport", async () => {
@@ -890,7 +895,12 @@ describe("streamed orchestration", () => {
     const gen = await db.generation.findUniqueOrThrow({ where: { id: streamedGenerationId(res.body) } });
     expect(gen.status).toBe("SUCCEEDED");
     expect(gen.promptVersion).toBe("agent:chapter-writer@v1");
-    expect(gen.contextSnapshot).toEqual({ facts: [factId] });
+    // NF-WF-003: the snapshot now carries the shared compiler's provenance
+    // blocks (the old {facts} shape is the floor, not the ceiling).
+    const snapshot = gen.contextSnapshot as Record<string, unknown>;
+    expect(snapshot["facts"]).toEqual([factId]);
+    expect(snapshot["blocks"]).toBeDefined();
+    expect(Array.isArray(snapshot["blocks"])).toBe(true);
   });
 
   it("does NOT stamp provenance when the stream breaks mid-output", async () => {
@@ -937,5 +947,74 @@ describe("streamed orchestration", () => {
     expect(res.statusCode, res.body).toBe(409);
     expect(res.headers["content-type"]).not.toContain("text/event-stream");
     expect(await db.generation.count()).toBe(0);
+  });
+});
+
+describe("caller divergence at the HTTP boundary (NF-WF-003 invariant 7, F5)", () => {
+  it("POST /generate and a workflow RETRIEVAL run compile the same context blocks", async () => {
+    const owner = await seedUser("diverge@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w-diverge");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "chapter-writer", {
+      instructions: "You are the chapter writer.",
+    });
+    await makeFact(owner.cookie, workspaceId, novelId, "Wren", "oath-sworn", "true");
+
+    const query = "Wren's oath";
+
+    // Path 1: the direct generate path.
+    const genRes = await generate(owner.cookie, workspaceId, {
+      agentKey: "chapter-writer",
+      instruction: query,
+      novelId,
+      contextQuery: query,
+    });
+    expect(genRes.statusCode, genRes.body).toBe(201);
+    const { generationId } = genRes.json() as { generationId: string };
+    const gen = await db.generation.findUniqueOrThrow({ where: { id: generationId } });
+    const snapshot = gen.contextSnapshot as { blocks: Array<Record<string, unknown>> };
+
+    // Path 2: a real workflow RETRIEVAL step on the same novel.
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/workflows",
+      headers: { cookie: owner.cookie },
+      payload: {
+        scope: "WORKSPACE",
+        workspaceId,
+        key: "diverge-check",
+        name: "diverge-check",
+        graph: {
+          steps: [{ key: "lookup", kind: "RETRIEVAL", instruction: query }],
+          edges: [],
+        },
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const { id: workflowId } = created.json() as { id: string };
+    const published = await app.inject({
+      method: "POST",
+      url: `/api/workflows/${workflowId}/publish`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(published.statusCode, published.body).toBe(200);
+    const run = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+      headers: { cookie: owner.cookie },
+      payload: { novelId },
+    });
+    expect(run.statusCode, run.body).toBe(201);
+    const runBody = run.json() as {
+      status: string;
+      output: Record<string, { blocks: Array<Record<string, unknown>> }>;
+    };
+    expect(runBody.status).toBe("SUCCEEDED");
+    const stepBlocks = runBody.output["lookup"]!.blocks;
+
+    // One compiler, two callers: identical tier selection and provenance
+    // for the same story state. If either caller grew its own selection
+    // loop again, these shapes would diverge.
+    expect(stepBlocks).toEqual(snapshot["blocks"]);
   });
 });

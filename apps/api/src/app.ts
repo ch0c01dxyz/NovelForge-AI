@@ -39,6 +39,7 @@ import { createPlanningServices } from "./services/planning.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
 import { createRevisionServices } from "./services/revisions.ts";
+import { readHeadRevisionId } from "./services/revisions.ts";
 import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
@@ -214,6 +215,18 @@ export async function buildApp(
     // the orchestrator resolves definitions, compiles context, and runs the
     // generation through the SAME aiServices path a direct request uses, so
     // gateway routing, retry, ledger, and audit stay in one place.
+    //
+    // NF-WF-003: the orchestrator and the workflow RETRIEVAL step share one
+    // context compiler. The same service instances satisfy both callers'
+    // tier-reader ports, which is what makes "one compiler, two callers"
+    // checkable rather than aspirational (invariant 7).
+    const planningServices = createPlanningServices({ db: options.db, audit });
+    const characterServices = createCharacterServices({ db: options.db, audit });
+    const relationshipServices = createRelationshipServices({ db: options.db, audit });
+    const narrativeServices = createNarrativeServices({ db: options.db, audit });
+    const headPort = {
+      readHeadRevisionId: (novelId: string) => readHeadRevisionId(options.db!, novelId),
+    };
     registerOrchestratorRoutes(app, {
       auth,
       services: createOrchestratorServices({
@@ -221,6 +234,11 @@ export async function buildApp(
         ai: aiServices,
         canon: canonServices,
         retrieval: retrievalServices,
+        planning: planningServices,
+        characters: characterServices,
+        relationships: relationshipServices,
+        narrative: narrativeServices,
+        head: headPort,
       }),
     });
 
@@ -228,7 +246,7 @@ export async function buildApp(
     // horizon — pure rules from @novelforge/planning, service owns CAS + audit.
     registerPlanningRoutes(app, {
       auth,
-      services: createPlanningServices({ db: options.db, audit }),
+      services: planningServices,
     });
 
     // Character & Relationship Intelligence (Phase 8): pure rules from
@@ -236,11 +254,11 @@ export async function buildApp(
     // the services own tenancy + audit, the EXCLUDE constraints own overlap.
     registerCharacterRoutes(app, {
       auth,
-      services: createCharacterServices({ db: options.db, audit }),
+      services: characterServices,
     });
     registerRelationshipRoutes(app, {
       auth,
-      services: createRelationshipServices({ db: options.db, audit }),
+      services: relationshipServices,
     });
 
     // Story Intelligence write surface (Phase 6 slice 2). The Brain already
@@ -259,7 +277,7 @@ export async function buildApp(
     // stay the backstop.
     registerNarrativeRoutes(app, {
       auth,
-      services: createNarrativeServices({ db: options.db, audit }),
+      services: narrativeServices,
     });
 
     // Story versioning (M1, NF-WF-002). The C3 services already take the head
@@ -278,6 +296,14 @@ export async function buildApp(
         audit,
         ai: aiServices,
         retrieval: retrievalServices,
+        // NF-WF-003: the same tier-reader instances the orchestrator uses,
+        // so the workflow RETRIEVAL step compiles through the one compiler.
+        canon: canonServices,
+        planning: planningServices,
+        characters: characterServices,
+        relationships: relationshipServices,
+        narrative: narrativeServices,
+        head: headPort,
         // A step's raw error is never returned to the client (it can carry a
         // Prisma string or an upstream provider body), so it is logged here
         // instead. Reuses the pino instance already configured above.

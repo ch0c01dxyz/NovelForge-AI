@@ -19,6 +19,7 @@ import {
   type PlatformServices,
 } from "./services/platform.ts";
 import { InvalidDefinitionError } from "./services/definitions.ts";
+import { HeadConflictError } from "./services/context-compiler.ts";
 
 const slug = z
   .string()
@@ -85,6 +86,20 @@ export async function registerPlatformRoutes(
         ...(error.currentHeadRevisionId !== undefined
           ? { currentHeadRevisionId: error.currentHeadRevisionId }
           : {}),
+      });
+    }
+    // NF-WF-003: the context compiler refuses generation when the branch
+    // head moved mid-compile (invariant 6). Like the C4 head conflicts
+    // above, that is a 409, not a 500. The observed head is disclosed
+    // because both callers gate the tenant before compiling (orchestrator
+    // `gate()`, workflow `gateWorkspace(..., "workflow:run")`) — the 002D
+    // disclosure rule: an unauthorized caller never reaches this throw.
+    // `null` is the observation "no head exists yet".
+    if (error instanceof HeadConflictError) {
+      return reply.code(409).send({
+        error: "CONFLICT",
+        code: "HEAD_CONFLICT",
+        currentHeadRevisionId: error.actualHead,
       });
     }
     // A registered agent/skill/workflow contract or graph that this

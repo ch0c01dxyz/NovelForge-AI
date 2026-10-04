@@ -1210,3 +1210,79 @@ The domain package carries its own unit suite —
 that catch an edit to `vocabulary.ts` and the branch coverage the HTTP surface
 cannot reach (a malformed stored window, an empty pattern sequence, a
 non-chapter `chaptersSinceDrama`).
+
+## NF-WF-003 — shared chapter context compiler — 2026-10-05
+
+**Scope verified:** the new `apps/api/src/services/context-compiler.ts`
+(pure) plus bounded readers in `canon.ts`/`planning.ts`/`characters.ts`/
+`relationships.ts`, wiring in `orchestrator.ts`/`workflow-runs.ts`/
+`app.ts`, and the `HeadConflictError`→409 mapping in `platform-routes.ts`
+(F2; one import + one handler branch, no other logic touched). No schema
+change; no migration.
+
+**Command (actual):**
+`pnpm --filter @novelforge/api exec vitest run src/orchestrator.test.ts
+src/definitions.test.ts src/context-compiler.test.ts src/canon.test.ts
+src/character.test.ts src/planning.test.ts src/retrieval.test.ts`
+→ 7 files, **197 tests passed**, 0 failed.
+`pnpm lint` → clean. `pnpm --filter @novelforge/api typecheck` → clean.
+
+Note: the contract names `src/characters.test.ts` and
+`src/relationships.test.ts`; the repo holds `src/character.test.ts`
+(singular) and no relationships suite — the 7 existing files ran.
+
+**New suite `src/context-compiler.test.ts` (31 tests):**
+- Pure (9): tier-1 mandatory overflow fails closed and names the dropped
+  block; droppable tiers truncate with provenance; tier ordering and status
+  transitions (PRESENT/EMPTY/UNAVAILABLE/NOT_APPLICABLE/OVERFLOWED);
+  `renderContextText` skips the instruction block and fences retrieved text
+  out of the system turn; `compileContext` never invents a head pin;
+  contextSnapshot keeps the old `{facts}`/`{references}` floor shape; block
+  order follows the §7 priority ladder.
+- Bounded reads / invariant 11 (DB): the fact query carries `take`
+  (spy on `db.canonFact.findMany`); 70 facts in → FACT_LIMIT out;
+  ACTIVE-only under the new ordering (superseded facts never occupy a slot).
+- Relevance ordering / invariant 3 (DB): entity-matched facts outrank
+  unmatched with a tight limit; `objectEntityId` counts as a match;
+  newest relevant survive, oldest dropped (createdAt desc, id asc
+  tiebreak); null `storyEntityId` contributes no entity id and is never
+  name-matched (GAP-011).
+- Cast derivation / invariant 3 (DB): `groupBy characterId` carries `take`
+  (spy); one character appears once; toChapter exclusive fencepost;
+  tenant isolation (other novel's characters excluded).
+- Tenant/spoiler / invariant 8 (DB): cross-workspace novel → 404;
+  READER mode withholds facts with `availableFromChapter` behind the reader
+  chapter; AUTHOR sees them.
+- Head pin / invariant 6 (DB): `expectedHeadRevisionId` mismatch →
+  `HeadConflictError`; covered mutation between pin and reads → conflict.
+- Caller divergence / invariant 7 (DB): orchestrator-shaped and
+  workflow-RETRIEVAL-shaped inputs compile to identical blocks/provenance,
+  storyPosition, and headRevisionId through the one
+  `fetchAndCompileContext`.
+- Caller divergence at the HTTP boundary (F5, in `orchestrator.test.ts`):
+  POST `/generate` and a real workflow RETRIEVAL run on the same novel
+  produce identical compiled context `blocks` (Generation row
+  `contextSnapshot.blocks` vs step outcome `json.blocks`).
+- Planning (DB): story position = highest non-DRAFT chapter else 0;
+  `getApprovedOutline` null when nothing approved; the approved outline
+  version id is pinned in tier-2 provenance (F3); a malformed horizon
+  policy surfaces the problem in tier-2 provenance `reason`, never as a
+  bare EMPTY (F1).
+- HeadConflictError HTTP mapping (2): the app-wide error handler maps a
+  head race to 409 (not 500) with `code: "HEAD_CONFLICT"` and the observed
+  head; a null observed head is disclosed as null (F2).
+
+**Negative tests:** mandatory overflow (tier 1) fails closed with no model
+call; malformed planning-horizon policy → tier-2 `reason` names the problem
+(`MALFORMED_POLICY`) rather than an invented default or a bare EMPTY;
+novel-less input yields NOT_APPLICABLE novel tiers (never a fabricated
+head); unbacked tiers (7/8) → UNAVAILABLE naming NF-WF-009; a head race
+during compilation → HTTP 409 with the observed head, never a 500.
+
+**Regressions caught and fixed by the suite:** the shared compiler's
+novel-less path initially ran a reference search (spurious `task:"embed"`
+generation row broke the orchestrator's "409s when the model does not
+return JSON" ledger assertion); fixed with `searchReferencesWithoutNovel`,
+false for the orchestrator (old behavior), true for the workflow RETRIEVAL
+step. Two orchestrator tests updated for the new `contextSnapshot` shape
+(old `{facts}` floor plus compiler `blocks`).

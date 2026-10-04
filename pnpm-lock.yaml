@@ -232,9 +232,18 @@ importers:
       '@novelforge/validation':
         specifier: workspace:*
         version: link:../../packages/validation
+      '@novelforge/workflow-executor':
+        specifier: workspace:*
+        version: link:../../packages/workflow-executor
+      bullmq:
+        specifier: ^5.0.0
+        version: 5.81.5(supports-color@10.2.2)
       fastify:
         specifier: ^5.0.0
         version: 5.12.5
+      ioredis:
+        specifier: ^5.4.0
+        version: 5.11.1(supports-color@10.2.2)
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -275,6 +284,12 @@ importers:
       '@novelforge/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@novelforge/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@novelforge/workflow-executor':
+        specifier: workspace:*
+        version: link:../../packages/workflow-executor
       bullmq:
         specifier: ^5.0.0
         version: 5.81.5(supports-color@10.2.2)
@@ -285,6 +300,12 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.4
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      pg:
+        specifier: ^8.23.0
+        version: 8.23.0
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -486,6 +507,31 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@22.20.4)(vite@8.3.0(@types/node@22.20.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
+
+  packages/workflow-executor:
+    dependencies:
+      '@novelforge/ai-core':
+        specifier: workspace:*
+        version: link:../ai-core
+      '@novelforge/database':
+        specifier: workspace:*
+        version: link:../database
+      '@novelforge/validation':
+        specifier: workspace:*
+        version: link:../validation
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      pg:
+        specifier: ^8.23.0
+        version: 8.23.0
       typescript:
         specifier: ^5.5.0
         version: 5.9.3

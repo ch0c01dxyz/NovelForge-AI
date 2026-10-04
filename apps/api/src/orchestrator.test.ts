@@ -39,6 +39,8 @@ import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import { createAuditService } from "./services/audit.ts";
 import { createPlatformServices } from "./services/platform.ts";
+import type { WorkflowQueue } from "./services/workflow-queue.ts";
+import { createTestDriver, type TestDriver } from "./workflow-test-driver.ts";
 
 const TEST_DB = "novelforge_test_orchestrator";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -142,6 +144,13 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
 
 let db: NovelForgeDb;
 let app: FastifyInstance;
+let driver: TestDriver;
+/** Fake queue: the worker suite covers the real BullMQ path. */
+const fakeQueue: WorkflowQueue = {
+  add: async () => ({}),
+  getJob: async () => undefined,
+  close: async () => {},
+};
 
 beforeAll(async () => {
   const admin = new pg.Client({ connectionString: withDb(BASE_URL, "postgres") });
@@ -160,7 +169,11 @@ beforeAll(async () => {
     env: { ...process.env, DATABASE_URL: TEST_URL },
   });
   db = createDb(TEST_URL);
-  app = await buildApp(env, { db, createGateway: fakeCreateGateway });
+  app = await buildApp(env, { db, createGateway: fakeCreateGateway, workflowQueue: fakeQueue });
+  driver = createTestDriver(db, {
+    encryptionKey: "unit-test-encryption-key",
+    createGateway: fakeCreateGateway,
+  });
 });
 
 afterAll(async () => {
@@ -1004,8 +1017,21 @@ describe("caller divergence at the HTTP boundary (NF-WF-003 invariant 7, F5)", (
       headers: { cookie: owner.cookie },
       payload: { novelId },
     });
-    expect(run.statusCode, run.body).toBe(201);
-    const runBody = run.json() as {
+    expect(run.statusCode, run.body).toBe(202);
+    const { id: runId } = run.json() as { id: string };
+
+    // NF-WF-004: the RETRIEVAL step now executes off-request, on the
+    // worker. Drive it through the shared executor and read the result
+    // back through the route.
+    const driven = await driver.driveRun(runId);
+    expect(driven.claimed).toBe(true);
+    const fetched = await app.inject({
+      method: "GET",
+      url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(fetched.statusCode, fetched.body).toBe(200);
+    const runBody = fetched.json() as {
       status: string;
       output: Record<string, { blocks: Array<Record<string, unknown>> }>;
     };

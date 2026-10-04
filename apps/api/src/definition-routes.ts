@@ -108,6 +108,10 @@ const addWorkflowVersionBody = z.object({ graph: z.unknown() });
 const runWorkflowBody = z.object({
   input: z.record(z.string(), z.unknown()).optional(),
   novelId: uuid.optional(),
+  // Client-generated idempotency key (opaque, e.g. UUID v4). A repeat POST
+  // with the same key returns the existing run (200), never a second row.
+  // Null/omitted keeps the legacy per-POST-row behavior.
+  idempotencyKey: z.string().max(64).optional(),
 });
 
 const listRunsQuery = z.object({
@@ -447,6 +451,12 @@ export function registerDefinitionRoutes(
   });
 
   // ==================== Runs ====================
+  //
+  // Enqueue, don't execute (NF-WF-004 invariant 1): the run row is created
+  // PENDING, one BullMQ job is queued, and the worker drives execution off
+  // the request thread. 202 carries the run id and the single-run status
+  // URL; it never claims execution. A repeat POST with the same
+  // idempotency key returns the existing run with 200.
 
   app.post(
     "/api/workspaces/:workspaceId/workflows/:workflowId/run",
@@ -460,14 +470,33 @@ export function registerDefinitionRoutes(
       if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       const body = runWorkflowBody.safeParse(request.body ?? {});
       if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-      const run = await runs.run({
+      const { run, deduped, statusUrl } = await runs.enqueueRun({
         actorUserId: actor.userId,
         workspaceId: params.data.workspaceId,
         workflowId: params.data.workflowId,
         ...(body.data.input ? { runInput: body.data.input } : {}),
         ...(body.data.novelId ? { novelId: body.data.novelId } : {}),
+        ...(body.data.idempotencyKey ? { idempotencyKey: body.data.idempotencyKey } : {}),
       });
-      return reply.code(201).send(run);
+      return reply.code(deduped ? 200 : 202).send({ ...run, statusUrl });
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/workflow-runs/:runId/cancel",
+    async (request, reply) => {
+      const actor = await requireActor(request, reply);
+      if (!actor) return;
+      const params = z
+        .object({ workspaceId: uuid, runId: uuid })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const run = await runs.cancelRun({
+        actorUserId: actor.userId,
+        workspaceId: params.data.workspaceId,
+        runId: params.data.runId,
+      });
+      return run;
     },
   );
 

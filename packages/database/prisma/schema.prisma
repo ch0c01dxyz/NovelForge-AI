@@ -745,6 +745,10 @@ model WorkflowRun {
   stepCount         Int               @default(0) @map("step_count")
   startedAt         DateTime          @default(now()) @map("started_at")
   completedAt       DateTime?          @map("completed_at")
+  /// Client-generated idempotency key (opaque, max 64 chars). Null keeps
+  /// the legacy per-POST-row behavior. The partial unique index below
+  /// makes a repeated POST with the same key return the existing run.
+  idempotencyKey  String?           @map("idempotency_key")
   steps             WorkflowStepRun[]
 
   @@index([workflowId, startedAt])
@@ -753,6 +757,11 @@ model WorkflowRun {
   @@index([workspaceId, startedAt])
   // SetNull trigger column (see the note on WorkflowStepRun below).
   @@index([triggeredById])
+  // Idempotency dedup (NF-WF-004): the partial unique index on
+  // (workspace_id, idempotency_key) WHERE idempotency_key IS NOT NULL is
+  // created in the migration SQL directly — Prisma's @@unique cannot
+  // express a partial index, and a full unique constraint would be wrong
+  // (NULL keys must never collide). See migration 20261005_nf_wf_004_idempotency_key.
   @@map("workflow_runs")
 }
 

@@ -32,6 +32,8 @@ import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import { createAuditService } from "./services/audit.ts";
 import { createPlatformServices } from "./services/platform.ts";
+import type { WorkflowQueue } from "./services/workflow-queue.ts";
+import { createTestDriver, type TestDriver } from "./workflow-test-driver.ts";
 
 const TEST_DB = "novelforge_test_phase4";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -140,6 +142,24 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
 
 let db: NovelForgeDb;
 let app: FastifyInstance;
+let driver: TestDriver;
+/**
+ * Fake queue for the run route: records enqueues without touching Redis.
+ * The worker suite covers the real BullMQ path.
+ */
+const enqueuedJobs: Array<{
+  name: string;
+  data: Record<string, unknown>;
+  opts: { jobId: string };
+}> = [];
+const fakeQueue: WorkflowQueue = {
+  add: async (name, data, opts) => {
+    enqueuedJobs.push({ name, data, opts });
+    return { id: opts.jobId };
+  },
+  getJob: async () => undefined,
+  close: async () => {},
+};
 
 beforeAll(async () => {
   const admin = new pg.Client({ connectionString: withDb(BASE_URL, "postgres") });
@@ -158,7 +178,8 @@ beforeAll(async () => {
     env: { ...process.env, DATABASE_URL: TEST_URL },
   });
   db = createDb(TEST_URL);
-  app = await buildApp(env, { db, createGateway: fakeCreateGateway });
+  app = await buildApp(env, { db, createGateway: fakeCreateGateway, workflowQueue: fakeQueue });
+  driver = createTestDriver(db, { encryptionKey: ENCRYPTION_KEY, createGateway: fakeCreateGateway });
 });
 
 afterAll(async () => {
@@ -169,6 +190,7 @@ afterAll(async () => {
 beforeEach(async () => {
   seenPrompts = [];
   gatewayFailure = null;
+  enqueuedJobs.length = 0;
   await db.workflowStepRun.deleteMany();
   await db.workflowRun.deleteMany();
   await db.workflowVersion.deleteMany();
@@ -361,6 +383,80 @@ async function makeWorkflow(
   });
   expect(pub.statusCode).toBe(200);
   return id;
+}
+
+// ---------------------------------------------------------------------------
+// NF-WF-004 helpers: the run route now enqueues (202) instead of executing.
+// Tests drive the run through the shared executor — the same code the
+// worker runs — then read the result back through the route.
+// ---------------------------------------------------------------------------
+
+/** POST the run route; expect 202; return the run id and status URL. */
+async function postRun(
+  cookie: string,
+  workspaceId: string,
+  workflowId: string,
+  payload: Record<string, unknown> = {},
+): Promise<{ runId: string; statusUrl: string; statusCode: number }> {
+  const res = await app.inject({
+    method: "POST",
+    url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+    headers: { cookie },
+    payload,
+  });
+  expect(res.statusCode).toBe(202);
+  const body = res.json() as { id: string; statusUrl: string };
+  expect(typeof body.statusUrl).toBe("string");
+  return { runId: body.id, statusUrl: body.statusUrl, statusCode: res.statusCode };
+}
+
+/** Drive one run to its terminal state through the executor, as the worker would. */
+async function driveRun(runId: string) {
+  const result = await driver.driveRun(runId);
+  expect(result.claimed).toBe(true);
+  return result;
+}
+
+/** GET the single-run status URL through the route. */
+async function getRun(cookie: string, workspaceId: string, runId: string) {
+  const res = await app.inject({
+    method: "GET",
+    url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}`,
+    headers: { cookie },
+  });
+  expect(res.statusCode).toBe(200);
+  return res.json() as {
+    id: string;
+    status: string;
+    stepCount: number;
+    output: Record<string, unknown>;
+    errorMessage: string | null;
+    completedAt: string | null;
+    steps: Array<{
+      stepKey: string;
+      sequence: number;
+      status: string;
+      agentKey: string | null;
+      agentVersionNumber: number | null;
+      skillKey: string | null;
+      skillVersionNumber: number | null;
+      generationId: string | null;
+      output: unknown;
+      errorMessage: string | null;
+    }>;
+  };
+}
+
+/** Enqueue, drive to completion, and return the run as the route serves it. */
+async function runToCompletion(
+  cookie: string,
+  workspaceId: string,
+  workflowId: string,
+  payload: Record<string, unknown> = {},
+) {
+  const { runId } = await postRun(cookie, workspaceId, workflowId, payload);
+  await driveRun(runId);
+  return getRun(cookie, workspaceId, runId);
 }
 
 // A three-agent chapter pipeline, mirroring the first steps of the
@@ -559,7 +655,7 @@ describe("Phase 4 — definitions", () => {
       headers: { cookie: owner.cookie },
       payload: { novelId, input: { premise: "a forge" } },
     });
-    expect(run.statusCode, run.body).toBe(201);
+    expect(run.statusCode, run.body).toBe(202);
 
     // Run history is the execution audit trail (CLAUDE.md §2.11): RESTRICT,
     // not CASCADE — the definition delete cannot take the record of what it
@@ -794,12 +890,7 @@ describe("Phase 4 — authorization", () => {
       steps: [{ key: "go", kind: "AGENT", ref: "shadowable" }],
       edges: [],
     });
-    await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
+    await runToCompletion(owner.cookie, workspaceId, workflowId, {});
     expect(seenPrompts.at(-1)!.messages[0]!.content).toBe("TENANT-INSTRUCTIONS");
   });
 
@@ -875,18 +966,12 @@ describe("Phase 4 — workflow execution", () => {
     await makeAgent(owner.cookie, workspaceId, "continuity-guardian");
     const workflowId = await makeWorkflow(owner.cookie, workspaceId, "chapter-test", CHAPTER_PIPELINE);
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: { novelId, input: { premise: "a forge" } },
+    // Enqueue (202) then drive via the worker's executor — the run no
+    // longer executes on the request thread.
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {
+      novelId,
+      input: { premise: "a forge" },
     });
-    expect(res.statusCode).toBe(201);
-    const run = res.json() as {
-      status: string;
-      stepCount: number;
-      steps: Array<{ stepKey: string; sequence: number; status: string; agentKey: string | null; agentVersionNumber: number | null; generationId: string | null }>;
-    };
 
     expect(run.status).toBe("SUCCEEDED");
     expect(run.stepCount).toBe(3);
@@ -920,16 +1005,8 @@ describe("Phase 4 — workflow execution", () => {
 
     const orders: string[][] = [];
     for (let i = 0; i < 3; i += 1) {
-      const res = await app.inject({
-        method: "POST",
-        url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-        headers: { cookie: owner.cookie },
-        payload: {},
-      });
-      expect(res.statusCode).toBe(201);
-      orders.push(
-        (res.json() as { steps: Array<{ stepKey: string }> }).steps.map((s) => s.stepKey),
-      );
+      const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
+      orders.push(run.steps.map((s) => s.stepKey));
     }
     expect(orders[0]).toEqual(orders[1]);
     expect(orders[1]).toEqual(orders[2]);
@@ -952,24 +1029,15 @@ describe("Phase 4 — workflow execution", () => {
       ],
     });
 
-    const taken = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: { input: { revise: true } },
+    const takenRun = await runToCompletion(owner.cookie, workspaceId, workflowId, {
+      input: { revise: true },
     });
-    expect(taken.statusCode).toBe(201);
-    const takenRun = taken.json() as { steps: Array<{ stepKey: string; status: string }> };
     expect(takenRun.steps.find((s) => s.stepKey === "revise")!.status).toBe("SUCCEEDED");
     expect(takenRun.steps.find((s) => s.stepKey === "accept")!.status).toBe("SKIPPED");
 
-    const notTaken = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: { input: { revise: false } },
+    const notTakenRun = await runToCompletion(owner.cookie, workspaceId, workflowId, {
+      input: { revise: false },
     });
-    const notTakenRun = notTaken.json() as { steps: Array<{ stepKey: string; status: string }> };
     expect(notTakenRun.steps.find((s) => s.stepKey === "revise")!.status).toBe("SKIPPED");
     expect(notTakenRun.steps.find((s) => s.stepKey === "accept")!.status).toBe("SUCCEEDED");
   });
@@ -985,14 +1053,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [],
     });
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(201);
-    const run = res.json() as { status: string; steps: Array<{ status: string }>; completedAt: string | null };
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
     expect(run.status).toBe("AWAITING_APPROVAL");
     expect(run.steps[0]!.status).toBe("AWAITING_APPROVAL");
     // Parked is not finished: a null completedAt is what distinguishes a
@@ -1028,18 +1089,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [],
     });
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(201);
-    const run = res.json() as {
-      status: string;
-      errorMessage: string | null;
-      steps: Array<{ stepKey: string; status: string; errorMessage: string | null }>;
-    };
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
     expect(run.status).toBe("FAILED");
     expect(run.errorMessage).toContain("contract");
     // The failing step gets its own row: `executed` is only pushed on
@@ -1072,13 +1122,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [],
     });
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    const run = res.json() as { status: string; output: Record<string, unknown> };
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
     expect(run.status).toBe("SUCCEEDED");
     expect(run.output["extract"]).toEqual({ summary: "ok", beats: ["a", "b"] });
   });
@@ -1105,13 +1149,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [{ from: "one", to: "two" }],
     });
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(201);
+    await runToCompletion(owner.cookie, workspaceId, workflowId, {});
 
     // The agent's own instructions became the system message, and the
     // previous step's text reached the second call.
@@ -1221,13 +1259,7 @@ describe("Phase 4 — workflow execution", () => {
       ],
       edges: [],
     });
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(201);
+    await runToCompletion(owner.cookie, workspaceId, workflowId, {});
 
     // The absent value must be rendered as an absence, never as the string
     // "undefined" and never as a function's stringification.
@@ -1283,13 +1315,8 @@ describe("Phase 4 — workflow execution", () => {
       steps: [{ key: "go", kind: "AGENT", ref: "writer", instruction: "go" }],
       edges: [],
     });
-    const run = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${a.workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    const runId = (run.json() as { id: string }).id;
+    const run = await postRun(owner.cookie, a.workspaceId, workflowId, {});
+    const runId = run.runId;
 
     const res = await app.inject({
       method: "GET",
@@ -1309,12 +1336,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [],
     });
     for (let i = 0; i < 2; i += 1) {
-      await app.inject({
-        method: "POST",
-        url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-        headers: { cookie: owner.cookie },
-        payload: {},
-      });
+      await postRun(owner.cookie, workspaceId, workflowId, {});
     }
     const res = await app.inject({
       method: "GET",
@@ -1345,14 +1367,7 @@ describe("Phase 4 — workflow execution", () => {
       ],
     });
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(201);
-    const run = res.json() as { status: string; steps: Array<{ stepKey: string; status: string }> };
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
     expect(run.status).toBe("SUCCEEDED");
     expect(run.steps.map((s) => s.status)).toEqual(["SUCCEEDED", "SUCCEEDED", "SUCCEEDED"]);
     // The agent step really did reach a model.
@@ -1377,12 +1392,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [],
     });
 
-    await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
+    await runToCompletion(owner.cookie, workspaceId, workflowId, {});
 
     const system = seenPrompts[0]!.messages[0]!.content;
     expect(system).toContain("AGENT-INSTRUCTIONS");
@@ -1405,12 +1415,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [],
     });
 
-    await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
+    await runToCompletion(owner.cookie, workspaceId, workflowId, {});
 
     const system = seenPrompts[0]!.messages[0]!.content;
     expect(system).toContain("AGENT-INSTRUCTIONS");
@@ -1429,17 +1434,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [],
     });
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(201);
-    const run = res.json() as {
-      status: string;
-      steps: Array<{ stepKey: string; skillKey: string | null; skillVersionNumber: number | null; agentKey: string | null }>;
-    };
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
     expect(run.status).toBe("SUCCEEDED");
     expect(run.steps[0]!.skillKey).toBe("extract-facts");
     expect(run.steps[0]!.skillVersionNumber).toBe(1);
@@ -1460,17 +1455,7 @@ describe("Phase 4 — workflow execution", () => {
 
     // A rate limit, so the classifier's message is deterministic.
     gatewayFailure = { status: 429 };
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    const run = res.json() as {
-      status: string;
-      errorMessage: string | null;
-      steps: Array<{ stepKey: string; status: string; errorMessage: string | null }>;
-    };
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
 
     expect(run.status).toBe("FAILED");
     // The regression this guards: `AiServices.generate` converts a
@@ -1501,13 +1486,7 @@ describe("Phase 4 — workflow execution", () => {
       edges: [{ from: "seed", to: "check" }],
     });
 
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    const run = res.json() as { status: string; steps: Array<{ stepKey: string; status: string }> };
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
     expect(run.status).toBe("FAILED");
     expect(run.steps.find((s) => s.stepKey === "check")!.status).toBe("FAILED");
   });
@@ -1521,12 +1500,7 @@ describe("Phase 4 — workflow execution", () => {
       steps: [{ key: "go", kind: "AGENT", ref: "writer", instruction: "go" }],
       edges: [],
     });
-    await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
+    await runToCompletion(owner.cookie, workspaceId, workflowId, {});
     const entry = await db.auditLog.findFirst({
       where: { action: "workflow.run_completed", workspaceId },
     });
@@ -1542,14 +1516,8 @@ describe("Phase 4 — workflow execution", () => {
       steps: [{ key: "approve", kind: "HUMAN_APPROVAL", instruction: "review it" }],
       edges: [],
     });
-    const res = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
-      headers: { cookie: owner.cookie },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(201);
-    expect((res.json() as { status: string }).status).toBe("AWAITING_APPROVAL");
+    const run = await runToCompletion(owner.cookie, workspaceId, workflowId, {});
+    expect(run.status).toBe("AWAITING_APPROVAL");
 
     // The run row holds `completedAt` null for exactly this state, so the
     // audit trail must not disagree with it by recording a completion.
@@ -1561,6 +1529,321 @@ describe("Phase 4 — workflow execution", () => {
         where: { action: "workflow.run_awaiting_approval", workspaceId },
       }),
     ).toBe(1);
+  });
+});
+
+describe("NF-WF-004 — durable execution", () => {
+  it("POST /run returns 202, creates PENDING rows, and enqueues one job", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [
+        { key: "a", kind: "TRANSFORM" },
+        { key: "b", kind: "TRANSFORM" },
+      ],
+      edges: [{ from: "a", to: "b" }],
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(202);
+    const body = res.json() as { id: string; status: string; statusUrl: string };
+    // 202 carries the run id and the single-run status URL; it never
+    // claims execution.
+    expect(body.status).toBe("PENDING");
+    expect(body.statusUrl).toBe(`/api/workspaces/${workspaceId}/workflow-runs/${body.id}`);
+
+    // One job, jobId = run.id.
+    expect(enqueuedJobs).toHaveLength(1);
+    expect(enqueuedJobs[0]!.opts.jobId).toBe(body.id);
+    expect((enqueuedJobs[0]!.data as { runId: string }).runId).toBe(body.id);
+
+    // PENDING run row + PENDING step rows for every step, in order.
+    const steps = await db.workflowStepRun.findMany({
+      where: { runId: body.id },
+      orderBy: { sequence: "asc" },
+    });
+    expect(steps.map((s) => [s.stepKey, s.status])).toEqual([
+      ["a", "PENDING"],
+      ["b", "PENDING"],
+    ]);
+  });
+
+  it("dedupes a repeat POST with the same idempotency key (200, one row)", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [{ key: "go", kind: "TRANSFORM" }],
+      edges: [],
+    });
+    const url = `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`;
+
+    const first = await app.inject({
+      method: "POST",
+      url,
+      headers: { cookie: owner.cookie },
+      payload: { idempotencyKey: "key-123" },
+    });
+    expect(first.statusCode).toBe(202);
+    const firstId = (first.json() as { id: string }).id;
+
+    const second = await app.inject({
+      method: "POST",
+      url,
+      headers: { cookie: owner.cookie },
+      payload: { idempotencyKey: "key-123" },
+    });
+    expect(second.statusCode).toBe(200);
+    expect((second.json() as { id: string }).id).toBe(firstId);
+
+    expect(await db.workflowRun.count({ where: { workspaceId } })).toBe(1);
+    // The repeat does not enqueue a second job.
+    expect(enqueuedJobs).toHaveLength(1);
+  });
+
+  it("creates a new row per POST when no idempotency key is given", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [{ key: "go", kind: "TRANSFORM" }],
+      edges: [],
+    });
+    const url = `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`;
+
+    const first = await app.inject({ method: "POST", url, headers: { cookie: owner.cookie }, payload: {} });
+    const second = await app.inject({ method: "POST", url, headers: { cookie: owner.cookie }, payload: {} });
+    expect(first.statusCode).toBe(202);
+    expect(second.statusCode).toBe(202);
+    expect((first.json() as { id: string }).id).not.toBe((second.json() as { id: string }).id);
+    expect(await db.workflowRun.count({ where: { workspaceId } })).toBe(2);
+  });
+
+  it("dedupes concurrent POSTs with the same key (one row)", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [{ key: "go", kind: "TRANSFORM" }],
+      edges: [],
+    });
+    const url = `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`;
+    const post = () =>
+      app.inject({
+        method: "POST",
+        url,
+        headers: { cookie: owner.cookie },
+        payload: { idempotencyKey: "race-key" },
+      });
+
+    const [a, b] = await Promise.all([post(), post()]);
+    // One wins with 202, the other dedupes with 200 — in either order.
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 202]);
+    expect((a.json() as { id: string }).id).toBe((b.json() as { id: string }).id);
+    expect(await db.workflowRun.count({ where: { workspaceId } })).toBe(1);
+  });
+
+  it("rejects an idempotency key longer than 64 chars", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [{ key: "go", kind: "TRANSFORM" }],
+      edges: [],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`,
+      headers: { cookie: owner.cookie },
+      payload: { idempotencyKey: "x".repeat(65) },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("cancel transitions PENDING → CANCELLED and the run never executes", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [{ key: "go", kind: "TRANSFORM" }],
+      edges: [],
+    });
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId, {});
+
+    const cancelled = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}/cancel`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(cancelled.statusCode).toBe(200);
+    expect((cancelled.json() as { status: string }).status).toBe("CANCELLED");
+
+    // The worker's claim now loses: the run stays CANCELLED, no step runs.
+    const result = await driver.driveRun(runId);
+    expect(result.claimed).toBe(false);
+    const run = await getRun(owner.cookie, workspaceId, runId);
+    expect(run.status).toBe("CANCELLED");
+    expect(run.steps.every((s) => s.status === "PENDING")).toBe(true);
+  });
+
+  it("cancel stops a RUNNING run: no further steps, terminal write skipped", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [
+        { key: "one", kind: "AGENT", ref: "writer", instruction: "one" },
+        { key: "two", kind: "AGENT", ref: "writer", instruction: "two" },
+      ],
+      edges: [{ from: "one", to: "two" }],
+    });
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId, {});
+
+    // A generate that blocks until released, so the cancel lands mid-run.
+    const generation = await db.generation.create({
+      data: { task: "test", modelProfile: "CREATIVE_WRITER", workspaceId },
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const { createWorkflowExecutor } = await import("@novelforge/workflow-executor");
+    const { resolveAgent, resolveSkill } = await import("./services/definition-resolution.ts");
+    const blocking = createWorkflowExecutor({
+      db,
+      audit: { record: async () => {} },
+      resolvers: {
+        resolveAgent: (ws, key) => resolveAgent(db, ws, key),
+        resolveSkill: (ws, key) => resolveSkill(db, ws, key),
+      },
+      generate: {
+        generate: async () => {
+          await gate;
+          return { generationId: generation.id, content: "done", model: "fake" };
+        },
+      },
+    });
+
+    const driving = blocking.executeRun(runId);
+    // Let the first step start, then cancel mid-execution.
+    await new Promise((r) => setTimeout(r, 100));
+    const cancelled = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}/cancel`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(cancelled.statusCode).toBe(200);
+    release();
+    const result = await driving;
+
+    expect(result.stoppedForCancellation).toBe(true);
+    const run = await getRun(owner.cookie, workspaceId, runId);
+    // The terminal write was skipped: CANCELLED is never overwritten.
+    expect(run.status).toBe("CANCELLED");
+    expect(run.steps.find((s) => s.stepKey === "one")!.status).toBe("SUCCEEDED");
+    // The second step never executed.
+    expect(run.steps.find((s) => s.stepKey === "two")!.status).toBe("PENDING");
+  });
+
+  it("cancel refuses a terminal run with 409", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [{ key: "go", kind: "TRANSFORM" }],
+      edges: [],
+    });
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId, {});
+    await driveRun(runId);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}/cancel`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it("cancel transitions AWAITING_APPROVAL → CANCELLED", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "gated", {
+      steps: [{ key: "approve", kind: "HUMAN_APPROVAL", instruction: "review" }],
+      edges: [],
+    });
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId, {});
+    await driveRun(runId);
+    expect((await getRun(owner.cookie, workspaceId, runId)).status).toBe("AWAITING_APPROVAL");
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}/cancel`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { status: string }).status).toBe("CANCELLED");
+  });
+
+  it("cancel is retry-safe: a second cancel returns the CANCELLED run", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "wf", {
+      steps: [{ key: "go", kind: "TRANSFORM" }],
+      edges: [],
+    });
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId, {});
+    const url = `/api/workspaces/${workspaceId}/workflow-runs/${runId}/cancel`;
+
+    const first = await app.inject({ method: "POST", url, headers: { cookie: owner.cookie } });
+    const second = await app.inject({ method: "POST", url, headers: { cookie: owner.cookie } });
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect((second.json() as { status: string }).status).toBe("CANCELLED");
+  });
+
+  it("cancel 404s for an unknown run or another tenant's run", async () => {
+    const owner = await seedUser("owner@example.com");
+    const other = await seedUser("other@example.com");
+    const a = await seedWorkspace(owner.userId, "ws-a");
+    const b = await seedWorkspace(other.userId, "ws-b");
+    await seedRoute();
+    await makeAgent(owner.cookie, a.workspaceId, "writer");
+    const workflowId = await makeWorkflow(owner.cookie, a.workspaceId, "wf", {
+      steps: [{ key: "go", kind: "TRANSFORM" }],
+      edges: [],
+    });
+    const { runId } = await postRun(owner.cookie, a.workspaceId, workflowId, {});
+
+    const unknown = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${a.workspaceId}/workflow-runs/00000000-0000-0000-0000-000000000000/cancel`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(unknown.statusCode).toBe(404);
+
+    const foreign = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${b.workspaceId}/workflow-runs/${runId}/cancel`,
+      headers: { cookie: other.cookie },
+    });
+    expect(foreign.statusCode).toBe(404);
   });
 });
 
@@ -1605,7 +1888,7 @@ describe("novel delete refuses a novel with workflow run history", () => {
       headers: { cookie: owner.cookie },
       payload: { novelId, input: { premise: "a forge" } },
     });
-    expect(run.statusCode, run.body).toBe(201);
+    expect(run.statusCode, run.body).toBe(202);
 
     // A novel with run history must refuse (409), never 500 and never
     // silent loss.

@@ -1286,3 +1286,52 @@ return JSON" ledger assertion); fixed with `searchReferencesWithoutNovel`,
 false for the orchestrator (old behavior), true for the workflow RETRIEVAL
 step. Two orchestrator tests updated for the new `contextSnapshot` shape
 (old `{facts}` floor plus compiler `blocks`).
+
+## NF-WF-004 — durable workflow execution (2026-10-05, this host, scratch DBs only)
+
+**Migration:** `20261005_nf_wf_004_idempotency_key` — verified from empty:
+`migrate deploy` clean; `idempotency_key` nullable TEXT; partial unique
+index `(workspace_id, idempotency_key) WHERE idempotency_key IS NOT NULL`
+present; DDL re-runnable (`IF NOT EXISTS` on both statements, GAP-018);
+semantics: two NULLs don't collide, duplicate key → 23505,
+workspace-scoped.
+
+**Suites (all green):**
+- `apps/api/src/definitions.test.ts` — 49/49. 21 workflow-execution
+  tests rewritten for 202 + off-request drive (same assertions, run read
+  back through the route). 11 new: 202 + single enqueue (`jobId =
+  run.id`) + PENDING rows; idempotency dedup (200, one row), null-key
+  two-rows, concurrent-race one-row, 65-char key → 400; cancel PENDING
+  (never executes), cancel RUNNING mid-step (deferred generate: stops,
+  terminal write skipped, second step PENDING), cancel terminal → 409,
+  cancel AWAITING_APPROVAL → CANCELLED, cancel retry → 200, cancel
+  404s.
+- `apps/api/src/orchestrator.test.ts` — 15/15. F5 divergence green: the
+  RETRIEVAL step executed off-request compiles identical blocks through
+  the shared compiler.
+- `apps/api/src/retrieval.test.ts` — 27/27. Two workflow-run tests updated
+  for the 202 + off-request-drive pattern (202, drive via the shared
+  executor, GET the run); all retrieval assertions (audit linkage,
+  retrievers, empty-index legs) unchanged.
+- `packages/workflow-executor/executor.test.ts` — 14/14. Guarded
+  run/step claims single-winner (no double commit);
+  RUNNING→PENDING reset atomic; `isRunCancelled`; executeRun drives
+  TRANSFORM chains, marks untaken branches SKIPPED (no PENDING left),
+  adopts SUCCEEDED rows on recovery without re-executing; sweeper
+  resets orphaned RUNNING + re-enqueues with dead-job removal before
+  re-add (F12), leaves live jobs alone, enqueues PENDING orphans > 5min,
+  ignores fresh PENDING.
+- `apps/worker/src/workflow-jobs.test.ts` — 10/10. Handler: runId from
+  job data (fallback to job id), silent on lost claim, rethrows on
+  executor throw, drops job without id; sweeper logging; lifecycle
+  start/sweep-at-startup/stop and Redis-down degrade; integration: real
+  BullMQ Queue + Worker + real executor → run reaches SUCCEEDED via the
+  worker (not the request thread).
+
+**Static:** `pnpm lint` clean; typecheck clean for `@novelforge/api`,
+`@novelforge/worker`, `@novelforge/workflow-executor`.
+
+**Regressions caught and fixed by the suite:** two `definitions.test.ts`
+tests outside the workflow block asserted the old synchronous behavior
+(delete-with-history expected 201; shadow-key test read `seenPrompts`
+synchronously) — updated to 202 and to drive-then-assert.

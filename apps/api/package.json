@@ -24,7 +24,10 @@
     "@novelforge/story-intelligence": "workspace:*",
     "@novelforge/story-versioning": "workspace:*",
     "@novelforge/validation": "workspace:*",
+    "@novelforge/workflow-executor": "workspace:*",
+    "bullmq": "^5.0.0",
     "fastify": "^5.0.0",
+    "ioredis": "^5.4.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

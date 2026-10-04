@@ -43,6 +43,7 @@ import { readHeadRevisionId } from "./services/revisions.ts";
 import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
+import { createWorkflowQueue, type WorkflowQueue } from "./services/workflow-queue.ts";
 import { createRetrievalServices } from "./services/retrieval.ts";
 import { createCanonServices } from "./services/canon.ts";
 import { createOrchestratorServices } from "./services/orchestrator.ts";
@@ -104,6 +105,13 @@ export interface BuildAppOptions {
    * is built from the gateway's stored record.
    */
   createGateway?: (rec: GatewayRecord) => AIGateway;
+  /**
+   * Queue seam for the workflow run route. Tests supply a fake so no test
+   * needs a live BullMQ exchange; the handler/sweeper are covered in the
+   * worker suite against real Redis. Production omits this and the shared
+   * `workflow-runs` queue is constructed.
+   */
+  workflowQueue?: WorkflowQueue;
 }
 
 export async function buildApp(
@@ -288,22 +296,24 @@ export async function buildApp(
       services: createRevisionServices({ db: options.db, audit }),
     });
 
+    // NF-WF-004: the one shared `workflow-runs` queue. The run route
+    // enqueues through it; the worker executes off the request thread.
+    // Tests may inject a fake; only a queue we created is closed here.
+    const ownQueue = options.workflowQueue === undefined;
+    const workflowQueue = options.workflowQueue ?? createWorkflowQueue(env.REDIS_URL);
+    if (ownQueue) {
+      app.addHook("onClose", async () => {
+        await workflowQueue.close();
+      });
+    }
+
     registerDefinitionRoutes(app, {
       auth,
       definitions: createDefinitionServices({ db: options.db, audit }),
       runs: createWorkflowRunServices({
         db: options.db,
         audit,
-        ai: aiServices,
-        retrieval: retrievalServices,
-        // NF-WF-003: the same tier-reader instances the orchestrator uses,
-        // so the workflow RETRIEVAL step compiles through the one compiler.
-        canon: canonServices,
-        planning: planningServices,
-        characters: characterServices,
-        relationships: relationshipServices,
-        narrative: narrativeServices,
-        head: headPort,
+        queue: workflowQueue,
         // A step's raw error is never returned to the client (it can carry a
         // Prisma string or an upstream provider body), so it is logged here
         // instead. Reuses the pino instance already configured above.

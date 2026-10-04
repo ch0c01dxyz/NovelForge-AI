@@ -4,9 +4,14 @@
  * output). Registers SIGTERM/SIGINT handlers for clean shutdown so an
  * orchestrator stop drains and closes queues/connections rather than killing
  * mid-job. Exit non-zero only on hard startup failure.
+ *
+ * Runs two workers side by side:
+ * - the heartbeat worker (Redis connectivity proof, degrades gracefully);
+ * - the `workflow-runs` worker (NF-WF-004: durable workflow execution).
  */
 import { loadEnv } from "@novelforge/config";
 import { startWorkerApp, type WorkerLogger } from "./worker.ts";
+import { startWorkflowWorkerApp } from "./workflow-jobs.ts";
 
 const logger: WorkerLogger = {
   info: (msg, meta) => console.log(JSON.stringify({ level: "info", msg, ...meta })),
@@ -16,6 +21,7 @@ const logger: WorkerLogger = {
 
 const env = loadEnv();
 const app = await startWorkerApp(env, logger);
+const workflows = await startWorkflowWorkerApp(env, logger);
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
@@ -23,6 +29,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   logger.info("shutdown signal received", { signal });
   try {
+    await workflows.stop();
     await app.stop();
     process.exit(0);
   } catch (err) {
@@ -34,4 +41,8 @@ async function shutdown(signal: string): Promise<void> {
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
-logger.info("worker started", { queue: "worker-heartbeat", proven: app.proven });
+logger.info("worker started", {
+  queue: "worker-heartbeat",
+  proven: app.proven,
+  workflowsStarted: workflows.started,
+});

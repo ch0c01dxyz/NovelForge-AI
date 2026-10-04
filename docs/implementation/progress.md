@@ -3852,3 +3852,87 @@ cross-validation for accuracy. Reviewer backends remain MODEL_UNVERIFIED
 
 **Next.** NF-WF-004 (durable workflow execution) — not started; no code
 beyond 003's scope was touched.
+
+## 2026-10-05 — NF-WF-004 implemented (durable workflow execution)
+
+**Contract.** `tasks/NF-WF-004-durable-workflow-execution.md` (frozen
+`8c73c55d`), reviewed **APPROVE** in round 3 by a separate reviewer after
+16 findings (F1–F16) were addressed. Scope decision A: worker executes.
+
+**What was built.**
+- `packages/workflow-executor/` (new): durable execution core — the
+  step-driving loop moved from `workflow-runs.ts` (not duplicated),
+  guarded run/step claims (`claimRunForExecution`,
+  `claimStepForExecution`), cancellation checks (between steps, before
+  claims, final read before terminal write), restart-recovery sweep
+  (`recoverStaleRuns`: liveness → RUNNING→PENDING reset → dead-job removal
+  → re-add), unreachable steps → SKIPPED, outcome envelopes `{text,json}`
+  on step rows for recovery. Typed factory with injected deps; no HTTP,
+  no BullMQ construction, no lifecycle imports.
+- `apps/api/src/services/workflow-queue.ts` (new): the one shared
+  `workflow-runs` BullMQ Queue (`attempts: 1`, `removeOnComplete: 1000`,
+  `removeOnFail: 5000`).
+- `apps/api/src/services/workflow-runs.ts`: `run()` split into
+  `enqueueRun()` (validate as today, idempotency-key lookup → 200 /
+  create PENDING run + PENDING step rows in one transaction, enqueue job)
+  and `cancelRun()` (guarded → CANCELLED, best-effort job removal).
+- `apps/api/src/definition-routes.ts`: run route → 202 (200 on
+  idempotency repeat, with `statusUrl`); new `POST
+  .../workflow-runs/:runId/cancel`.
+- `apps/worker/src/workflow-jobs.ts` (new): BullMQ job handler +
+  recovery sweeper + worker lifecycle (startup sweep, 60s interval,
+  `lockDuration: 300_000`).
+- Migration `20261005_nf_wf_004_idempotency_key`: `idempotency_key`
+  nullable + partial unique index `(workspace_id, idempotency_key) WHERE
+  idempotency_key IS NOT NULL`; both statements `IF NOT EXISTS`
+  (GAP-018 re-runnable). Verified: deploys from empty, re-runnable,
+  nulls don't collide, duplicates raise 23505.
+- Deps: `bullmq` + `ioredis` + `@novelforge/workflow-executor` in
+  `apps/api`; `@novelforge/database` + `@novelforge/workflow-executor` in
+  `apps/worker`.
+
+**Verification (this host, scratch DBs only).**
+- `definitions.test.ts`: 49/49 (21 workflow-execution rewritten for
+  202+drive, 11 new NF-WF-004: 202/enqueue, idempotency dedup/race/null,
+  key-length validation, cancel PENDING/RUNNING/terminal/approval/retry/404).
+- `orchestrator.test.ts`: 15/15 (F5 divergence green — RETRIEVAL
+  compiles through the shared compiler off-request).
+- `packages/workflow-executor/executor.test.ts`: 14/14 (guarded claims
+  single-winner, recovery adoption, sweeper: reset/requeue/dead-job
+  removal/PENDING orphan).
+- `apps/worker/src/workflow-jobs.test.ts`: 10/10 (handler, sweeper,
+  lifecycle, real BullMQ + real executor integration: run reaches
+  SUCCEEDED via the worker).
+- `pnpm lint` clean; `pnpm --filter @novelforge/api typecheck`,
+  `pnpm --filter @novelforge/worker typecheck`,
+  `pnpm --filter @novelforge/workflow-executor typecheck` clean.
+
+**Deviations from the contract.**
+- `lockDuration: 300_000` lives on the BullMQ Worker (where BullMQ
+  requires it), not the Queue; the value is defined once in the package
+  and shared. Queue options remain in `workflow-queue.ts`.
+- The compiler port returns rendered text from `compile()` (single
+  call) instead of a separate `renderText()` — simpler, same information.
+- Step rows store the outcome envelope `{text, json}` (was: kind-shaped
+  output); run-level output shape unchanged. Required for exact recovery.
+- Cancel on an already-CANCELLED run returns 200 (retry-safe), not 409;
+  409 is for SUCCEEDED/FAILED. This is the "idempotent in the
+  retry-safe sense" reading.
+
+**Known gaps (recorded in ISSUES-AND-GAPS).**
+- Production worker AI wiring: `generate`/`retrieval`/`compiler` are not
+  constructed in the worker (factories live in `apps/api/src`, which the
+  worker must not import). AGENT/SKILL/RETRIEVAL steps fail with a clear
+  "not configured" error until the factories move to shared packages.
+- `createDbDefinitionResolvers` (package) duplicates
+  `definition-resolution.ts` (API) resolution rules; the two must stay in
+  sync until the orchestrator path is unified.
+
+**Not committed.** Working tree left for separate review, per instructions.
+
+**Independent diff review (this host, read-only, verified HEAD `0cb321c`, contract blob `8c73c55d`).** Verdict: **APPROVE_WITH_FINDINGS**.
+- **F1 (P2, fixed).** `@types/pg` was missing from `@novelforge/workflow-executor` devDependencies (`pg` was listed, its types were not — `apps/worker` has both). `pnpm --filter @novelforge/workflow-executor typecheck` failed with TS7016 in the reviewed tree, so the implementer's "typecheck clean" claim (copied into this progress file, `test-matrix.md`, and `docs/14-progress/CURRENT.md`) was false at review time. Fixed 2026-10-05: added `@types/pg ^8.23.1`, `pnpm install` (lockfile updated), typecheck now clean; the claims above are now verified true.
+- **F2 (P3, observation for the author).** Sweeper (b) predicate is "no job record at all"; if (a)'s best-effort `job.remove()` fails while the re-add no-ops (the exact F12 scenario), the run sits PENDING with a retained dead record and nothing revisits it until `removeOnFail: 5000` incidentally evicts the record. The implementation matches the contract's (b) predicate exactly, so this is conformant — but the author may want (b) to use the liveness predicate as a backstop for (a)'s partial failure. Not a required change.
+- **F3 (P3, observation).** The F15 final cancellation read is genuinely immediate (no awaits between read and `UPDATE`), but the terminal write itself is unguarded: a cancel landing in that sub-ms window would be overwritten. Contract-conformant as prescribed; a guarded terminal write (`WHERE status != 'CANCELLED'`) would close it. Not a required change.
+
+Reviewer-verified independently: `pnpm lint` clean; api/worker typecheck clean; `definitions.test.ts` 49/49, `orchestrator.test.ts` 15/15, full api suite 408/408 (16 files), `executor.test.ts` 14/14, worker suite 19 passed/1 skipped; migration applied twice cleanly on a scratch DB (then dropped); no cross-app-boundary imports, no domain-event code, no approval-resume code in the new paths; GAP-028/GAP-029 recorded accurately. Reviewer backend MODEL_UNVERIFIED (GAP-013 stays OPEN).

@@ -37,6 +37,7 @@ import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import { createAuditService } from "./services/audit.ts";
 import { createPlatformServices } from "./services/platform.ts";
+import { createTestDriver, type TestDriver } from "./workflow-test-driver.ts";
 
 const TEST_DB = "novelforge_test_phase5";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -152,6 +153,7 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
 
 let db: NovelForgeDb;
 let app: FastifyInstance;
+let driver: TestDriver;
 
 beforeAll(async () => {
   const admin = new pg.Client({ connectionString: withDb(BASE_URL, "postgres") });
@@ -171,6 +173,10 @@ beforeAll(async () => {
   });
   db = createDb(TEST_URL);
   app = await buildApp(env, { db, createGateway: fakeCreateGateway });
+  driver = createTestDriver(db, {
+    encryptionKey: ENCRYPTION_KEY,
+    createGateway: fakeCreateGateway,
+  });
 });
 
 afterAll(async () => {
@@ -1387,8 +1393,16 @@ describe("RETRIEVAL workflow step", () => {
       headers: { cookie: owner.cookie },
       payload: {},
     });
-    expect(run.statusCode).toBe(201);
-    const body = run.json() as {
+    expect(run.statusCode).toBe(202);
+    const { id: runId } = run.json() as { id: string };
+    await driver.driveRun(runId);
+    const body = (
+      await app.inject({
+        method: "GET",
+        url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}`,
+        headers: { cookie: owner.cookie },
+      })
+    ).json() as {
       status: string;
       output: Record<string, { hits: Array<Record<string, unknown>>; retrievers: string[] }>;
     };
@@ -1436,8 +1450,16 @@ describe("RETRIEVAL workflow step", () => {
       headers: { cookie: owner.cookie },
       payload: {},
     });
-    expect(run.statusCode).toBe(201);
-    const body = run.json() as {
+    expect(run.statusCode).toBe(202);
+    const { id: runId } = run.json() as { id: string };
+    await driver.driveRun(runId);
+    const body = (
+      await app.inject({
+        method: "GET",
+        url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}`,
+        headers: { cookie: owner.cookie },
+      })
+    ).json() as {
       status: string;
       output: Record<string, { hits: unknown[]; retrievers: string[] }>;
     };

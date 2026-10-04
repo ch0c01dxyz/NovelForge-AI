@@ -14,14 +14,63 @@ whether that is what actually ran.
 ## Artifact under review — frozen
 
 - `tasks/NF-WF-003-chapter-context-compiler.md`
-- Base revision `991de23`, blob `470e4244e9518eabf58aa4a5b2450cd19a049b75`,
-  21,037 bytes.
-- Reproduce the identity before judging: `git rev-parse HEAD` and
-  `git rev-parse HEAD:tasks/NF-WF-003-chapter-context-compiler.md`. If either
-  differs, say so and stop.
+- Blob `f89b75abc9955e72accb97a73cb47ac0382a3e06`, 42,174 bytes.
+- Reproduce it before judging: `git rev-parse
+  HEAD:tasks/NF-WF-003-chapter-context-compiler.md`. **That blob is the
+  identity** — if it differs, say so and stop. Do not check `git rev-parse
+  HEAD`: HEAD moves as this request is committed, and this file cannot cite the
+  commit that contains it.
+- The contract is not edited while under review, so the blob is stable for the
+  duration. The author appends the review record afterwards, which changes it —
+  by then this round is over.
+- For orientation only: the contract was last substantively changed at
+  `7c3e196`.
 
 This is a **contract review, not a code review**. Nothing in the contract is
 implemented. Judge whether the contract is safe and correct to dispatch.
+
+## What already ran — do not re-report these as new
+
+This artifact has been through two rounds. Round 1 returned CHANGES_REQUESTED
+(four findings), round 2 APPROVE_WITH_FINDINGS (six findings); all ten are
+applied. **Do not spend budget re-deriving them.** The two material ones:
+
+- The outline window does **not** name the cast. `OutlineNode` and `Scene` carry
+  no character or entity id, so tier 3's entity key and tier 4's cast derivation
+  were rewritten onto the real chain `CharacterState` → `Character.storyEntityId`
+  → `StoryEntity` → `CanonFact.entityId`/`objectEntityId`.
+- `take` bounds **rows, not characters**. `character_states` has no exclusion
+  constraint on the window, so overlapping rows could let `take: CAST_LIMIT`
+  silently evict a character that qualified. The bound is now on the deduplicated
+  character list.
+
+Round 2 also raised a finding (F5) whose **premise was refuted** — `compile`
+omits `includeSuperseded`, so `listFacts` already narrows to `ACTIVE`; the
+defect it described does not exist on that path. The requirement was applied
+anyway because this task rewrites that read. That refutation is recorded in the
+contract, not silently "fixed".
+
+Both rounds ran on an **unevidenced backend** (`MODEL_UNVERIFIED`, on
+`bansosmontera/glm-5.3-flashx` rather than the requested `glm-5.3-flash`,
+because the requested route kept returning `upstream_error`). That is GAP-013
+and it is still open — which is why this round exists.
+
+## The three items the last round could not see
+
+Round 2 named three claims it could not falsify from the excerpts it was given.
+The author has since verified all three against the tree at `7c3e196` (read-only)
+and recorded the evidence in the contract's review record. **Independent
+re-verification is still wanted** — an author checking their own citation is not
+a review — but these are the cheapest things on the list, so treat a match as
+expected and spend your budget on the tier table and the acceptance list:
+
+- `outline_versions`'s "no resolver — new": `planning.ts:76-95` exposes only
+  `createOutlineDraft` / `listOutlineVersions` / `approveOutlineVersion` /
+  `supersedeApprovedOutline`.
+- `readHeadRevisionId` (`revisions.ts:135-145`) reads
+  `where: { novelId_name: { novelId, name: branchName } }`; `NovelBranch`'s
+  `@@unique([novelId, name])` is at `schema.prisma:2290`.
+- Every service/schema line number in the contract.
 
 ## Context you may read but must not change
 
@@ -34,8 +83,8 @@ GAP-013, GAP-018, GAP-023), `docs/03-domain/STORY-VERSIONING.md` §C12,
 
 ## The contract's central factual claims — verify or refute each
 
-Every line number in the contract was checked by the author against the tree at
-`991de23` and matched. Re-verify independently; a wrong citation in a contract
+Every line number below was checked by the author against the tree, and
+re-checked at `7c3e196`. Re-verify independently; a wrong citation in a contract
 becomes a wrong assumption in the implementation.
 
 1. `compile()` at `apps/api/src/services/orchestrator.ts:135` is a closure
@@ -64,8 +113,9 @@ the verdict must say so.** This is the highest-value thing you can check.
 ## The §7 tier table — the part most likely to be wrong
 
 The contract claims a 10-tier table in which **eight** tiers have a backing
-store today and **two** (recent memory, historical memory) do not. The author
-has already corrected one overstatement here, so treat this as the weak point.
+store today and **two** (recent memory, historical memory) do not. Two review
+rounds have already corrected six findings in this table and its derivation —
+it is where this contract keeps being wrong, so treat it as the weak point.
 
 Verify, against real source, that each of these actually exists and does what
 the table says:
@@ -139,5 +189,11 @@ Then a "checks run" section listing the exact commands you ran and their
 results. Then "unknowns".
 
 If a category is clean, say so explicitly. Do not pad. A refutation with
-evidence is more valuable than agreement — the author has already found and
-corrected two of their own errors in this contract, so a third is likely.
+evidence is more valuable than agreement — ten findings have landed across two
+rounds, so a third round finding something is more likely than not.
+
+**Read whole files, not excerpts.** The contract makes whole-file negative
+claims: that `compile` reads *only* two services, and is called *only* from the
+two generate paths. An excerpt cannot falsify either. Read all of
+`apps/api/src/services/orchestrator.ts` and `apps/api/src/services/canon.ts`
+before judging claims 1–4.

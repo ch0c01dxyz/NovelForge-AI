@@ -3790,3 +3790,65 @@ src/character.test.ts src/planning.test.ts src/retrieval.test.ts`
 → 7 files, **197 passed**, 0 failed (was 192; +4 in context-compiler.test.ts,
 +1 in orchestrator.test.ts). `pnpm lint` → clean. `pnpm --filter
 @novelforge/api typecheck` → clean.
+
+## NF-WF-003 — session checkpoint 2026-10-05 (contract → implementation → commit)
+
+**Checkpoint.** This entry is the consolidated handoff for the session that
+took NF-WF-003 from PLANNED contract to committed implementation. Git:
+pulled `origin/main` to `9e46568` (author-named checkpoint; PAT decrypted
+transiently with an in-chat password, wiped after use), then two local
+commits: `0d094c3` (contract F1/F2 wording fixes) and `494a796`
+(implementation). Working tree clean at checkpoint.
+
+**Environment (this host, Ubuntu 24.04.5 LTS x86_64, native, no Docker).**
+pnpm 12.5.1 (`~/.local/bin`), Node v24.20.0, PostgreSQL 16.15 + pgvector
+0.6.0 on localhost:5432, Redis 7.0.15 on localhost:6379 — all installed
+natively and started by hand (no systemd auto-start). `apt-get update`
+stalled on `mirror.cogentco.com`; removed that URI (backup kept), azure
+mirror clean. `pnpm install --frozen-lockfile` done. All test runs used
+scratch `novelforge_test_*` databases only; root `.env` (gitignored) points
+at localhost scratch. GAP-027's Ubuntu side is now exercised on a real
+host; the Windows-container side remains the author's.
+
+**Contract review (separate reviewer actor, backend MODEL_UNVERIFIED /
+GAP-013).** Frozen blob `aaed86bc` (46,686 bytes) judged read-only against
+the tree: all six central claims VERIFIED, tier table VERIFIED, GAP-026
+remedies present, constitution clean. Verdict **APPROVE_WITH_FINDINGS**:
+F1 (P2, cast-overflow prose vs query) and F2 (P3, unnamed pair budget).
+Author decision: fix both before dispatch. Fixed → blob `186fa644`,
+committed `0d094c3`.
+
+**Implementation (separate implementer actor).** Per contract blob
+`186fa644`: pure `services/context-compiler.ts` (zero imports), bounded
+readers in canon/planning/characters/relationships, both callers
+(`orchestrator.ts`, workflow RETRIEVAL) routed through
+`fetchAndCompileContext`, `app.ts` wiring, no migration, no schema change.
+
+**Implementation review (separate reviewer actor, MODEL_UNVERIFIED).**
+Diff review: old defect gone, every new read bounded, tier-3 ordering and
+invariant 10/6 mechanics as contracted, deviations justified. Verdict
+**APPROVE_WITH_FINDINGS** — five findings (F1 P2: horizonProblem
+discarded → bare EMPTY; F2 P3: head race → 500 not 409; F3 P3:
+`getApprovedOutline` uncalled; F4 P3: test-matrix phantom claims; F5 P3:
+divergence test not HTTP-level). Author decision: fix all five, re-verify,
+then commit. All five fixed; focused re-review **APPROVE** with no
+regressions. Per author request the re-review added internet cross-checks:
+Prisma docs confirm `groupBy`+`take` requires `orderBy` and paginates
+groups (validating the cast query); MDN/RFC 9110 confirm 409 for
+optimistic-concurrency conflicts (validating F2); Fastify docs confirm the
+`setErrorHandler` mapping pattern.
+
+**Final verification (this host, scratch DBs only).** Contract command: 7
+files, **197 passed, 0 failed**; `pnpm lint` clean; `pnpm --filter
+@novelforge/api typecheck` clean. The 197-count was independently re-run
+by the coordinator for the new test file (27/27) and by the re-reviewer
+for the full set.
+
+**Decisions recorded.** Author: (1) fix contract F1/F2 before dispatch;
+(2) fix all five implementation findings before commit; (3) periodic
+reports with plain-language explanations before questions; (4) internet
+cross-validation for accuracy. Reviewer backends remain MODEL_UNVERIFIED
+(GAP-013 stays OPEN); no claim to close GAP-004.
+
+**Next.** NF-WF-004 (durable workflow execution) — not started; no code
+beyond 003's scope was touched.

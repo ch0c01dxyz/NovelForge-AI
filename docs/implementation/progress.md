@@ -3567,3 +3567,67 @@ was invented. GAP-021 remains **per-boundary**.
 prepare and is **not** dispatched; NF-WF-004 stays gated on frozen shared
 interfaces and disjoint ownership. Neither is a swarm. Queue rows are not test
 receipts.
+
+## NF-WF-003 — session resume, Ubuntu native preflight, contract review dispatch — 2026-10-05
+
+**Git.** Pulled `origin/main` to `9e46568` ("docs(environment): require native
+Ubuntu setup and preserve Windows Docker data"), the checkpoint the author
+named. The previously recorded local HEAD `52056ee` did not contain it; the
+pull fast-forwarded 10 files, including new
+`docs/11-deployment/ENVIRONMENT-PREFLIGHT.md` and the GAP-027 register row.
+Working tree clean before and after. Contract blob
+`aaed86bc34ecd599cef1e57533edaef41b4c0eeb` (46,686 bytes) re-verified against
+the refreshed `tasks/NF-WF-003-review-request.md` — matches. The PAT used for
+the pull was decrypted transiently from the author's encrypted store with a
+password supplied in-chat for this single operation, then wiped; it was never
+written to disk unencrypted or to memory.
+
+**Environment preflight (Ubuntu, native, no Docker).** Host: Ubuntu 24.04.5 LTS,
+x86_64. Installed natively per `ENVIRONMENT-PREFLIGHT.md`:
+- pnpm 12.5.1 (pinned `packageManager`), via npm into
+  `~/.local/share/novelforge-tools`, symlinked to `~/.local/bin/pnpm`.
+  Node v24.20.0 (existing baseline) + npm 10.9.4 already present.
+- `pnpm install --frozen-lockfile` completed (4m 50s), dependencies ready.
+- PostgreSQL 16.15 + `postgresql-16-pgvector` 0.6.0 + Redis 7.0.15 from Ubuntu
+  noble (candidate check after `apt-get update`; no PGDG/Redis PPA needed).
+  Services started natively: `pg_isready` accepting on 5432, `redis-cli ping`
+  → PONG, `CREATE EXTENSION vector` → 0.6.0 loads.
+- Notes: `apt-get update` stalled ~10 min on `mirror.cogentco.com`; killed it,
+  removed that URI from `/etc/apt/sources.list.d/ubuntu.sources` (backup kept
+  at `.bak`), re-ran clean in 12s via `azure.archive.ubuntu.com`. No Docker or
+  Compose installed, per policy. No test databases created and no
+  `db:test:prepare` run — provisioning stops at service readiness; scratch DBs
+  are created only under the approved implementation contract.
+- GAP-027 (environment policy vs Docker-only guidance) stays VERIFY_PENDING:
+  the native setup here is installed but the task's scratch-test readiness
+  (CREATEDB role, per-suite `novelforge_test_*` databases) is not yet
+  exercised. That exercise belongs to the implementation phase, not the review.
+
+**Contract review.** A separate reviewer subagent (distinct actor, same model
+family as the coordinator — recorded as such per GAP-013, backend
+MODEL_UNVERIFIED) was dispatched with the frozen review brief
+`tasks/NF-WF-003-review-request.md` to judge blob `aaed86bc…` read-only:
+whole-file verification of `orchestrator.ts`/`canon.ts`, the six central
+claims, the §7 tier table, and the GAP-026 changed portions. Verdict pending;
+**no implementation starts until the contract is approved.** GAP-026 stays
+VERIFY_PENDING until the separate exact-blob verdict lands.
+
+**Checkpoint fallback.** No Engram tool is available on this host and no
+runtime session binding was supplied, so no attributed Engram save was
+possible (GAP-021, per-boundary). This progress entry is the fallback handoff.
+No previous host's session ID was reused and none was invented.
+
+**Contract review verdict — 2026-10-05.** Separate reviewer (subagent actor,
+Muse Spark family, backend MODEL_UNVERIFIED per GAP-013) judged the frozen blob
+`aaed86bc…` read-only against HEAD `9e46568`. **Verdict: APPROVE_WITH_FINDINGS.**
+All six central factual claims VERIFIED (whole-file reads of
+`orchestrator.ts`/`canon.ts`); the §7 tier table VERIFIED backing-by-backing;
+all GAP-026 remedies present and grounded; constitution compliance clean
+(§7/§2.16/§9/§10/§11, GAP-004/011/013/018/023 respected); acceptance list
+falsifiable; contract dispatchable. Two findings, neither dispatch-blocking:
+F1 (P2) — invariant 1's prose says cast overflow uses "entity match then id"
+but invariant 3's `groupBy` query orders by `characterId` only; one rule must
+be stated in both places. F2 (P3) — the relationship pair budget has no
+contract name (suggest `PAIR_LIMIT`). GAP-027 confirmed as environment-policy
+only; does not block this review. No implementation started; NF-WF-003 stays
+PLANNED pending the author's dispatch decision on the findings.

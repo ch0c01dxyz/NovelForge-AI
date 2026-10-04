@@ -263,8 +263,10 @@ execution (NF-WF-004); any UI (NF-WF-007).
    read full character/pair histories; add compiler-facing bounded temporal
    reader methods in the same gated services. A bounded cast does not bound
    rows inside each accessor. Selecting which `CAST_LIMIT` characters, when more
-   qualify, uses the same determinism rule as invariant 3 — entity match then
-   id — and must be stated, not left to row order.
+   qualify, is `characterId` ascending — the order of the `groupBy` query in
+   invariant 3 — and must be stated, not left to row order. Invariant 3's
+   "entity match then id" key governs *fact* ranking only; it does not apply
+   to the character selection the entity set is derived from.
 
 2. **Mandatory context never disappears silently.** When the budget is
    exhausted, the compiler must either (a) surface an explicit, typed overflow
@@ -424,7 +426,8 @@ execution (NF-WF-004); any UI (NF-WF-007).
     preserve its documented ranking over eligible candidates, not pretend a
     recency-limited sample proves global top-debt ranking. Every temporal
     state/pair, outline/scene and thread/event/causal query needs an explicit
-    bound. Name a finite relationship pair budget separately from CAST_LIMIT.
+    bound. Name a finite relationship pair budget (`PAIR_LIMIT`, numbered by the
+   implementer like the other `*_LIMIT` constants) separately from CAST_LIMIT.
 ## Acceptance and verification
 
 - [ ] Observable result through the real caller: a generation through

@@ -162,6 +162,30 @@ async function save(cookie: string, ids: { workspaceId: string; novelId: string 
   });
 }
 
+/** NF-WF-010: review the chapter's current version, then publish. The
+ * setStatus gate refuses any transition out of DRAFT without a PASS
+ * receipt for the current version. */
+async function reviewThenPublish(cookie: string, ids: { workspaceId: string; novelId: string }, chapterId: string) {
+  const version = await db.chapterVersion.findFirstOrThrow({
+    where: { chapterId },
+    orderBy: { number: "desc" },
+  });
+  const reviewed = await app.inject({
+    method: "POST",
+    url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${chapterId}/final-text-review`,
+    headers: { cookie },
+    payload: { chapterVersionId: version.id },
+  });
+  expect(reviewed.statusCode, reviewed.body).toBe(200);
+  expect((reviewed.json() as { verdict: string }).verdict).toBe("PASS");
+  return app.inject({
+    method: "PATCH",
+    url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${chapterId}/status`,
+    headers: { cookie },
+    payload: { status: "PUBLISHED" },
+  });
+}
+
 describe("chapter CRUD + numbering", () => {
   it("creates chapters with sequential numbers and lists them ordered", async () => {
     const owner = await seedUser("owner1@t.io");
@@ -257,7 +281,31 @@ describe("versioning", () => {
       headers: { cookie: owner.cookie },
       payload: { status: "PUBLISHED" },
     });
-    expect(publish.statusCode).toBe(200);
+    // NF-WF-010: the setStatus gate requires a PASS receipt for the current
+    // version — first review the final text, then publish.
+    expect(publish.statusCode).toBe(409);
+    expect(publish.json().error).toBe("REVIEW_STALE");
+
+    const version = await db.chapterVersion.findFirstOrThrow({
+      where: { chapterId: c.id },
+      orderBy: { number: "desc" },
+    });
+    const reviewed = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/final-text-review`,
+      headers: { cookie: owner.cookie },
+      payload: { chapterVersionId: version.id },
+    });
+    expect(reviewed.statusCode).toBe(200);
+    expect(reviewed.json().verdict).toBe("PASS");
+
+    const publish2 = await app.inject({
+      method: "PATCH",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/status`,
+      headers: { cookie: owner.cookie },
+      payload: { status: "PUBLISHED" },
+    });
+    expect(publish2.statusCode).toBe(200);
 
     const blocked = await save(owner.cookie, ids, c.id, "sneaky edit", 1);
     expect(blocked.statusCode).toBe(409);
@@ -601,12 +649,8 @@ describe("published immutability across mutations", () => {
     const ids = await seedNovel(owner.userId, "pubdel-ws");
     const c = await makeChapter(owner.cookie, ids, "Locked");
     await save(owner.cookie, ids, c.id, "final", null);
-    await app.inject({
-      method: "PATCH",
-      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/status`,
-      headers: { cookie: owner.cookie },
-      payload: { status: "PUBLISHED" },
-    });
+    const pub = await reviewThenPublish(owner.cookie, ids, c.id);
+    expect(pub.statusCode, pub.body).toBe(200);
 
     const del = await app.inject({
       method: "DELETE",
@@ -623,12 +667,8 @@ describe("published immutability across mutations", () => {
     const c = await makeChapter(owner.cookie, ids, "Locked2");
     await save(owner.cookie, ids, c.id, "v1", null);
     await save(owner.cookie, ids, c.id, "v2", 1);
-    await app.inject({
-      method: "PATCH",
-      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${c.id}/status`,
-      headers: { cookie: owner.cookie },
-      payload: { status: "PUBLISHED" },
-    });
+    const pub2 = await reviewThenPublish(owner.cookie, ids, c.id);
+    expect(pub2.statusCode, pub2.body).toBe(200);
 
     const res = await app.inject({
       method: "POST",

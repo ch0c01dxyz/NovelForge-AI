@@ -38,7 +38,7 @@ export interface CoveredTable {
 }
 
 /**
- * The 31 covered tables in FK-dependency order (C1, C2).
+ * The 35 covered tables in FK-dependency order (C1, C2).
  *
  * A row's parents are always EARLIER in this array, so inserting in array
  * order never violates a foreign key and deleting in reverse order never
@@ -113,6 +113,10 @@ export const COVERED_TABLES: readonly CoveredTable[] = [
   // to revision R drops projections pinned newer than R, which is the
   // coherent behavior (freshness is derived against the head anyway).
   { key: "memory_projections", restoreTarget: true },
+  // Final-text review receipts (NF-WF-010): audit, not truth. Covered so
+  // restore sees them; a re-review regenerates any receipt, so rollback
+  // is always SAFE.
+  { key: "final_text_reviews", restoreTarget: true },
 ] as const;
 
 /** Every covered table name, in FK-dependency order. */

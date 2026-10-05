@@ -31,6 +31,7 @@ import {
   type CompilerPlanningPort,
   type CompilerRelationshipPort,
   type CompilerRetrievalPort,
+  type CompilerStateAssemblyPort,
 } from "./context-compiler.ts";
 
 /** Minimal structural ports — same pattern as the executor's StepGenerator. */
@@ -117,8 +118,10 @@ export function createOrchestratorServices(deps: {
   relationships?: CompilerRelationshipPort;
   narrative?: CompilerNarrativePort;
   head?: CompilerHeadPort;
+  /** NF-WF-010: tiers 4/6 consume the assembly services when present. */
+  stateAssembly?: CompilerStateAssemblyPort;
 }): OrchestratorServices {
-  const { db, ai, canon, retrieval, planning, characters, relationships, narrative, head } = deps;
+  const { db, ai, canon, retrieval, planning, characters, relationships, narrative, head, stateAssembly } = deps;
 
   async function gate(
     workspaceId: string,
@@ -170,7 +173,7 @@ export function createOrchestratorServices(deps: {
     ].filter((s) => s.length > 0);
 
     const compiled = await fetchAndCompileContext(
-      { canon, retrieval, planning, characters, relationships, narrative, head },
+      { canon, retrieval, planning, characters, relationships, narrative, head, stateAssembly },
       {
         actorUserId: input.actorUserId,
         workspaceId: input.workspaceId,

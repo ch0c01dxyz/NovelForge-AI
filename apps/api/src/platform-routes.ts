@@ -23,6 +23,7 @@ import { HeadConflictError } from "./services/context-compiler.ts";
 import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 import { CanonApplicationError } from "./services/canon-applications.ts";
 import { MemoryError } from "./services/memory.ts";
+import { PolicyError } from "./services/policy-errors.ts";
 
 const slug = z
   .string()
@@ -107,6 +108,14 @@ export async function registerPlatformRoutes(
     // INVALID_INPUT) carry the machine-readable code as the envelope's
     // error field. Checked before the generic 400 fallthrough.
     if (error instanceof MemoryError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-010: typed policy refusals (MALFORMED_POLICY,
+    // HARD_POLICY_VIOLATION, REVIEW_STALE) carry the machine-readable
+    // code as the envelope's error field. Checked BEFORE the generic
+    // ConflictError branch below (which can only emit CONFLICT) — the
+    // same position as CanonApplicationError/MemoryError.
+    if (error instanceof PolicyError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
     if (error instanceof ConflictError) {

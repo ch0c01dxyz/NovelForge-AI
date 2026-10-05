@@ -215,6 +215,10 @@ const TABLE_SCOPE: Readonly<Record<string, string>> = {
   synopses: `"novel_id" = $1`,
   timeline_events: `"novel_id" = $1`,
   memory_projections: `"novel_id" = $1`,
+  // NF-WF-010: final-text review receipts are audit, not truth — covered
+  // so restore sees them, but rebuildable (a re-review regenerates any
+  // receipt).
+  final_text_reviews: `"novel_id" = $1`,
 };
 
 /**

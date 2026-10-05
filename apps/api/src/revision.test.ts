@@ -897,7 +897,20 @@ describe("C7 restore", () => {
 
     // Move the chapter forward and publish it, so the checkpoint's pinned
     // pointer and the live one disagree on a PUBLISHED chapter.
+    // NF-WF-010: the setStatus gate needs a PASS review receipt for the
+    // current version before any transition out of DRAFT.
     const v2 = await saveChapter(f, chapterId, "second draft", v1.version);
+    const currentVersion = await db.chapterVersion.findFirstOrThrow({
+      where: { chapterId },
+      orderBy: { number: "desc" },
+    });
+    const reviewed = await app.inject({
+      method: "POST",
+      url: novelUrl(f, `/chapters/${chapterId}/final-text-review`),
+      headers: { cookie: f.cookie },
+      payload: { chapterVersionId: currentVersion.id },
+    });
+    expect(reviewed.statusCode, reviewed.body).toBe(200);
     const published = await app.inject({
       method: "PATCH",
       url: novelUrl(f, `/chapters/${chapterId}/status`),

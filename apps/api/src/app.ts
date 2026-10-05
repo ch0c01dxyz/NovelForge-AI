@@ -47,6 +47,10 @@ import { createWorkflowQueue, type WorkflowQueue } from "./services/workflow-que
 import { createMemoryQueue, type MemoryQueue } from "./services/memory-queue.ts";
 import { createMemoryServices } from "./services/memory.ts";
 import { registerMemoryRoutes } from "./memory-routes.ts";
+import { createStateAssemblyServices } from "./services/state-assembly.ts";
+import { createFinalTextReviewServices } from "./services/final-text-review.ts";
+import { createStoryHealthServices } from "./services/story-health.ts";
+import { registerStoryHealthRoutes } from "./story-health-routes.ts";
 import { createRetrievalServices } from "./services/retrieval.ts";
 import { createCanonServices } from "./services/canon.ts";
 import { createCanonApplicationServices } from "./services/canon-applications.ts";
@@ -250,6 +254,35 @@ export async function buildApp(
     const headPort = {
       readHeadRevisionId: (novelId: string) => readHeadRevisionId(options.db!, novelId),
     };
+    // NF-WF-009: the one shared `memory-rebuild` queue (moved up from the
+    // route-registration block so the NF-WF-010 state assembly can share
+    // the same memory-services instance). Tests may inject a fake; only
+    // a queue we created is closed here.
+    const ownMemoryQueue = options.memoryQueue === undefined;
+    const memoryQueue = options.memoryQueue ?? createMemoryQueue(env.REDIS_URL);
+    if (ownMemoryQueue) {
+      app.addHook("onClose", async () => {
+        await memoryQueue.close();
+      });
+    }
+    const memoryServices = createMemoryServices({ db: options.db, queue: memoryQueue });
+    // NF-WF-010: state consumers. The assembly's memory port is the
+    // shared memory-services instance (optional wiring — absent, the
+    // assembly proceeds on live tables alone with an explicit
+    // UNCONFIGURED note).
+    const stateAssemblyServices = createStateAssemblyServices({
+      db: options.db,
+      audit,
+      memory: {
+        recallNovel: (actorUserId, workspaceId, novelId, opts) =>
+          memoryServices.recallNovel(actorUserId, workspaceId, novelId, opts),
+      },
+    });
+    const finalTextReviewServices = createFinalTextReviewServices({
+      db: options.db,
+      audit,
+    });
+    const storyHealthServices = createStoryHealthServices({ db: options.db, audit });
     registerOrchestratorRoutes(app, {
       auth,
       services: createOrchestratorServices({
@@ -262,6 +295,18 @@ export async function buildApp(
         relationships: relationshipServices,
         narrative: narrativeServices,
         head: headPort,
+        // NF-WF-010: the state-assembly port — tiers 4/6 consume the
+        // assembly services (per-row memory-vs-live provenance) when
+        // present; the compiler falls back to the legacy fan-out when
+        // absent.
+        stateAssembly: {
+          assembleStates: (input) =>
+            stateAssemblyServices.assembleCharacterState(input),
+          assembleRelationships: (input) =>
+            stateAssemblyServices.assembleRelationships(input),
+          assembleTimeline: (input) =>
+            stateAssemblyServices.assembleTimeline(input),
+        },
       }),
     });
 
@@ -313,18 +358,19 @@ export async function buildApp(
 
     // NF-WF-009: revision-derived chapter/arc memory. The rebuild route
     // enqueues through the one shared `memory-rebuild` queue; the worker
-    // runs the deterministic rebuild off the request thread. Tests may
-    // inject a fake; only a queue we created is closed here.
-    const ownMemoryQueue = options.memoryQueue === undefined;
-    const memoryQueue = options.memoryQueue ?? createMemoryQueue(env.REDIS_URL);
-    if (ownMemoryQueue) {
-      app.addHook("onClose", async () => {
-        await memoryQueue.close();
-      });
-    }
+    // runs the deterministic rebuild off the request thread. (The queue
+    // and the shared memory-services instance are created above, before
+    // the orchestrator block, so NF-WF-010's state assembly shares them.)
     registerMemoryRoutes(app, {
       auth,
-      memory: createMemoryServices({ db: options.db, queue: memoryQueue }),
+      memory: memoryServices,
+    });
+
+    // NF-WF-010: story health and final-text review routes (canon:read).
+    registerStoryHealthRoutes(app, {
+      auth,
+      health: storyHealthServices,
+      review: finalTextReviewServices,
     });
 
     // NF-WF-004: the one shared `workflow-runs` queue. The run route

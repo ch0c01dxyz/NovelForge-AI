@@ -102,6 +102,12 @@ export interface FactRow {
   createdAt: Date;
 }
 
+/** Per-row source declaration (NF-WF-010, Invariant 1). */
+export interface StateRowProvenance {
+  source: "LIVE" | "MEMORY_FRESH";
+  sourceRevisionId: string | null;
+}
+
 export interface CharacterStateRow {
   id: string;
   characterId: string;
@@ -109,6 +115,8 @@ export interface CharacterStateRow {
   fromChapter: number;
   toChapter: number | null;
   summary: string;
+  /** NF-WF-010: per-row source (memory corroboration vs live). */
+  provenance?: StateRowProvenance;
 }
 
 export interface StanceRow {
@@ -120,6 +128,8 @@ export interface StanceRow {
   stance: string;
   fromChapter: number;
   toChapter: number | null;
+  /** NF-WF-010: per-row source (stances are always LIVE). */
+  provenance?: StateRowProvenance;
 }
 
 export interface BondStageRow {
@@ -127,6 +137,8 @@ export interface BondStageRow {
   bondId: string;
   stage: string | null;
   chapter: number;
+  /** NF-WF-010: per-row source (bonds are always LIVE). */
+  provenance?: StateRowProvenance;
 }
 
 export interface DebtRow {
@@ -140,6 +152,16 @@ export interface TimelineEventRow {
   id: string;
   description: string;
   chapterNumber: number | null;
+  /**
+   * NF-WF-010: when the row is a timeline entry (assembleTimeline),
+   * the in-story slot and the raw story_event_id (null flagged, never
+   * inferred). Story-event rows (legacy path) leave these undefined.
+   */
+  order?: number;
+  linkedEventId?: string | null;
+  availableFromChapter?: number | null;
+  /** NF-WF-010: per-row source (timeline entries are always LIVE). */
+  provenance?: StateRowProvenance;
 }
 
 export interface CausalEdgeRow {
@@ -147,6 +169,8 @@ export interface CausalEdgeRow {
   causeDescription: string;
   effectDescription: string;
   confidence: string;
+  /** NF-WF-010: per-row source (causal edges are always LIVE). */
+  provenance?: StateRowProvenance;
 }
 
 export interface ReferenceHitRow {
@@ -194,6 +218,20 @@ export interface CompilerRows {
    * memory; tiers 7/8 then compile UNAVAILABLE, never an empty PRESENT.
    */
   memory: import("@novelforge/memory").RecallNovelResult | null;
+  /**
+   * NF-WF-010: the 009-memory status behind the tier-4/6 assembly
+   * (FRESH/STALE/FAILED/MISSING/UNCONFIGURED), carried into the tier
+   * blocks' provenance. Set when the state-assembly port served the
+   * tier; absent on the legacy path.
+   */
+  stateMemory?: { status: string; sourceRevisionId: string | null };
+  /**
+   * NF-WF-010: MEMORY_LIVE_DIVERGENCE findings from the tier-4 assembly
+   * (the live row stands; the memory row is suspect). Surfaced on the
+   * rows for observability; the assembly service is the primary
+   * surface.
+   */
+  stateDivergences?: import("./evidence-findings.ts").EvidenceFinding[];
 }
 
 export function emptyCompilerRows(): CompilerRows {
@@ -283,6 +321,13 @@ export interface TierProvenance {
   freshness?: import("@novelforge/memory").MemoryFreshness;
   sourceRevisionId?: string | null;
   chapterCoverage?: number[];
+  /**
+   * NF-WF-010: the 009-memory status behind a tier-4/6 assembly
+   * (FRESH/STALE/FAILED/MISSING/UNCONFIGURED). Present whenever the
+   * state-assembly port served the tier, so a live-only assembly names
+   * why (Invariant 1).
+   */
+  memory?: { status: string; sourceRevisionId: string | null };
 }
 
 export interface CompiledBlock {
@@ -483,6 +528,40 @@ export interface CompilerMemoryPort {
   }): Promise<import("@novelforge/memory").RecallNovelResult>;
 }
 
+/**
+ * NF-WF-010: the state-assembly port (Consumer 1). When present, tiers
+ * 4 and 6 consume the assembly services (which declare per-row
+ * memory-vs-live provenance) instead of the legacy per-item fan-out.
+ * Optional so deployments and tests without the 010 wiring keep the
+ * legacy path.
+ */
+export interface CompilerStateAssemblyPort {
+  assembleStates(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapter: number;
+  }): Promise<{
+    characters: import("./state-assembly.ts").CharacterAssembly[];
+    memory: import("./state-assembly.ts").MemoryStatusNote;
+    divergences: import("./evidence-findings.ts").EvidenceFinding[];
+  }>;
+  assembleTimeline(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+  }): Promise<import("./state-assembly.ts").TimelineAssembly>;
+  assembleRelationships(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapter: number;
+  }): Promise<{
+    assembly: import("./state-assembly.ts").RelationshipAssembly;
+    memory: import("./state-assembly.ts").MemoryStatusNote;
+  }>;
+}
+
 export interface CompilerPorts {
   canon?: CompilerCanonPort;
   planning?: CompilerPlanningPort;
@@ -492,6 +571,7 @@ export interface CompilerPorts {
   retrieval?: CompilerRetrievalPort;
   head?: CompilerHeadPort;
   memory?: CompilerMemoryPort;
+  stateAssembly?: CompilerStateAssemblyPort;
 }
 
 // ---------------------------------------------------------------------------
@@ -546,18 +626,27 @@ function renderOutlineRow(n: OutlineNodeRow): string {
   return `- [outline:${n.id}] ${n.title}${where}${summary}`;
 }
 
+function provenanceNote(p?: StateRowProvenance): string {
+  // NF-WF-010: a MEMORY_FRESH row names its source revision; LIVE rows
+  // carry no suffix (the block provenance already declares the assembly
+  // as live-sourced when memory is STALE/FAILED/MISSING/UNCONFIGURED).
+  return p?.source === "MEMORY_FRESH"
+    ? ` [memory: FRESH @${p.sourceRevisionId}]`
+    : "";
+}
+
 function renderStateRow(s: CharacterStateRow): string {
-  return `- [state:${s.id}] ${s.characterName}: ${s.summary}`;
+  return `- [state:${s.id}] ${s.characterName}: ${s.summary}${provenanceNote(s.provenance)}`;
 }
 
 function renderStanceRow(s: StanceRow): string {
-  return `- [stance:${s.id}] ${s.fromCharacterName} → ${s.toCharacterName}: ${s.stance}`;
+  return `- [stance:${s.id}] ${s.fromCharacterName} → ${s.toCharacterName}: ${s.stance}${provenanceNote(s.provenance)}`;
 }
 
 function renderBondRow(b: BondStageRow): string {
-  return b.stage === null
-    ? `- [bond:${b.bondId}] severed`
-    : `- [bond:${b.bondId}] stage: ${b.stage}`;
+  const base =
+    b.stage === null ? `- [bond:${b.bondId}] severed` : `- [bond:${b.bondId}] stage: ${b.stage}`;
+  return `${base}${provenanceNote(b.provenance)}`;
 }
 
 function renderDebtRow(d: DebtRow): string {
@@ -566,11 +655,20 @@ function renderDebtRow(d: DebtRow): string {
 
 function renderEventRow(e: TimelineEventRow): string {
   const where = e.chapterNumber !== null ? ` [ch.${e.chapterNumber}]` : "";
-  return `- [event:${e.id}]${where} ${e.description}`;
+  // NF-WF-010: timeline entries flag their linkage (null = unlinked,
+  // never inferred) and their slot order.
+  const link =
+    e.linkedEventId !== undefined
+      ? e.linkedEventId === null
+        ? " [unlinked]"
+        : ` [event:${e.linkedEventId}]`
+      : "";
+  const slot = e.order !== undefined ? ` [slot ${e.order}]` : "";
+  return `- [event:${e.id}]${where}${slot}${link} ${e.description}${provenanceNote(e.provenance)}`;
 }
 
 function renderCausalRow(c: CausalEdgeRow): string {
-  return `- [causal:${c.id}] ${c.causeDescription} ⇒ ${c.effectDescription} (${c.confidence})`;
+  return `- [causal:${c.id}] ${c.causeDescription} ⇒ ${c.effectDescription} (${c.confidence})${provenanceNote(c.provenance)}`;
 }
 
 function renderDnaRow(dna: unknown): string {
@@ -734,6 +832,9 @@ export function compileContext(
   });
 
   // Tier 4 — current states at the story position (never "now").
+  // NF-WF-010: when the state-assembly port served the tier, the block
+  // provenance carries the explicit memory status note (Invariant 1);
+  // per-row provenance rides on the rows themselves.
   type StateTierRow = CharacterStateRow | StanceRow | BondStageRow;
   const renderStateTierRow = (row: StateTierRow): string => {
     if ("summary" in row) return renderStateRow(row as CharacterStateRow);
@@ -753,6 +854,7 @@ export function compileContext(
         ...rows.stances.map((s) => s.id),
         ...rows.bondStages.map((b) => b.id),
       ],
+      ...(rows.stateMemory ? { memory: rows.stateMemory } : {}),
     },
   );
 
@@ -763,8 +865,13 @@ export function compileContext(
     selectedIds: rows.debt.map((d) => d.id),
   });
 
-  // Tier 6 — timeline: events then causal edges, most-recent-first, never
-  // past the story position (enforced by the caller in the query).
+  // Tier 6 — timeline: events then causal edges.
+  // Legacy path (no state-assembly port): story events + causal edges,
+  // most-recent-first, never past the story position (enforced by the
+  // caller in the query).
+  // NF-WF-010 path: timeline entries (with linkedEventId flags) +
+  // causal edges, order asc — 009 memory contributes nothing to tier 6
+  // (timeline entries are authored prose-position records, Invariant 1).
   type TimelineTierRow = TimelineEventRow | CausalEdgeRow;
   const timelineTierRows: TimelineTierRow[] = [...rows.events, ...rows.causal];
   addTier(
@@ -776,11 +883,14 @@ export function compileContext(
         : renderEventRow(row as TimelineEventRow),
     {
       bound: EVENT_LIMIT,
-      order: "story position desc, most recent first",
+      order: rows.stateMemory
+        ? "timeline order asc (authored slots); causal edges by id"
+        : "story position desc, most recent first",
       selectedIds: [
         ...rows.events.map((e) => e.id),
         ...rows.causal.map((c) => c.id),
       ],
+      ...(rows.stateMemory ? { memory: rows.stateMemory } : {}),
     },
   );
 
@@ -1200,66 +1310,144 @@ export async function fetchAndCompileContext(
     }
   }
 
-  // Tier 4 at the story position (invariant 5): per-character bounded reads
-  // over the already-bounded cast. Character names are carried for rendering;
-  // the lookup is by id, never by name (GAP-011).
-  const characterNames = new Map<string, string>();
-  if (cast.characterIds.length > 0) {
-    const states = await Promise.all(
-      cast.characterIds.map((characterId) =>
-        characters.getStateAtPosition({ ...base, characterId, chapter: storyPosition }),
-      ),
-    );
-    for (const s of states) {
-      if (s) {
-        rows.states.push(s);
-        characterNames.set(s.characterId, s.characterName);
-      }
-    }
-
-    // Directed pairs among the cast, deterministically ordered, PAIR_LIMIT.
-    const pairs: Array<[string, string]> = [];
-    const sorted = [...cast.characterIds].sort();
-    for (const from of sorted) {
-      for (const to of sorted) {
-        if (from !== to) pairs.push([from, to]);
-      }
-    }
-    const boundedPairs = pairs.slice(0, PAIR_LIMIT);
-    const stances = await Promise.all(
-      boundedPairs.map(([fromCharacterId, toCharacterId]) =>
-        relationships.getStanceAtPosition({
-          ...base,
-          fromCharacterId,
-          toCharacterId,
-          chapter: storyPosition,
-        }),
-      ),
-    );
-    for (const st of stances) {
-      if (st) {
-        rows.stances.push(st);
-        characterNames.set(st.fromCharacterId, st.fromCharacterName);
-        characterNames.set(st.toCharacterId, st.toCharacterName);
-      }
-    }
-
-    const bonds = await relationships.listBondsForCast({
-      ...base,
-      characterIds: cast.characterIds,
-      limit: PAIR_LIMIT,
+  // NF-WF-010: when the state-assembly port is present, tiers 4 and 6
+  // consume the assembly services — which declare per-row memory-vs-live
+  // provenance (Invariant 1) — instead of the legacy per-item fan-out
+  // below. Tier 6 then carries timeline entries (with linkedEventId
+  // flags), not story events; 009 memory contributes nothing to tier 6.
+  if (ports.stateAssembly) {
+    const assembled = await ports.stateAssembly.assembleStates({
+      actorUserId: input.actorUserId,
+      workspaceId: input.workspaceId,
+      novelId,
+      chapter: storyPosition,
     });
-    const bondStages = await Promise.all(
-      bonds.map((b) =>
-        relationships.getBondStageAtPosition({
-          ...base,
-          bondId: b.id,
-          chapter: storyPosition,
-        }),
-      ),
-    );
-    for (const bs of bondStages) {
-      if (bs) rows.bondStages.push(bs);
+    for (const c of assembled.characters) {
+      if (c.currentState) {
+        rows.states.push({
+          id: c.currentState.id,
+          characterId: c.characterId,
+          characterName: c.name,
+          fromChapter: c.currentState.fromChapter,
+          toChapter: c.currentState.toChapter,
+          summary: c.currentState.summary,
+          provenance: c.currentState.provenance,
+        });
+      }
+    }
+    const assembledRel = await ports.stateAssembly.assembleRelationships({
+      actorUserId: input.actorUserId,
+      workspaceId: input.workspaceId,
+      novelId,
+      chapter: storyPosition,
+    });
+    for (const p of assembledRel.assembly.pairs) {
+      rows.stances.push({
+        id: p.id,
+        fromCharacterId: p.fromCharacterId,
+        fromCharacterName: p.fromCharacterName,
+        toCharacterId: p.toCharacterId,
+        toCharacterName: p.toCharacterName,
+        stance: p.stance,
+        fromChapter: p.window[0],
+        toChapter: p.window[1],
+        provenance: p.provenance,
+      });
+    }
+    for (const b of assembledRel.assembly.bonds) {
+      rows.bondStages.push({
+        id: b.id,
+        bondId: b.id,
+        stage: b.stageAtChapter,
+        chapter: b.stageChapter ?? b.fromChapter,
+        provenance: b.provenance,
+      });
+    }
+    rows.stateMemory = assembled.memory;
+    rows.stateDivergences = assembled.divergences;
+    const assembledTimeline = await ports.stateAssembly.assembleTimeline({
+      actorUserId: input.actorUserId,
+      workspaceId: input.workspaceId,
+      novelId,
+    });
+    rows.events = assembledTimeline.entries.map((e) => ({
+      id: e.id,
+      description: e.description,
+      chapterNumber: e.availableFromChapter,
+      order: e.order,
+      linkedEventId: e.linkedEventId,
+      availableFromChapter: e.availableFromChapter,
+      provenance: e.provenance,
+    }));
+    rows.causal = assembledTimeline.causal.map((c) => ({
+      id: c.id,
+      causeDescription: c.causeDescription,
+      effectDescription: c.effectDescription,
+      confidence: c.confidence,
+      provenance: c.provenance,
+    }));
+  } else {
+    // Tier 4 at the story position (invariant 5): per-character bounded reads
+    // over the already-bounded cast. Character names are carried for rendering;
+    // the lookup is by id, never by name (GAP-011).
+    const characterNames = new Map<string, string>();
+    if (cast.characterIds.length > 0) {
+      const states = await Promise.all(
+        cast.characterIds.map((characterId) =>
+          characters.getStateAtPosition({ ...base, characterId, chapter: storyPosition }),
+        ),
+      );
+      for (const s of states) {
+        if (s) {
+          rows.states.push(s);
+          characterNames.set(s.characterId, s.characterName);
+        }
+      }
+
+      // Directed pairs among the cast, deterministically ordered, PAIR_LIMIT.
+      const pairs: Array<[string, string]> = [];
+      const sorted = [...cast.characterIds].sort();
+      for (const from of sorted) {
+        for (const to of sorted) {
+          if (from !== to) pairs.push([from, to]);
+        }
+      }
+      const boundedPairs = pairs.slice(0, PAIR_LIMIT);
+      const stances = await Promise.all(
+        boundedPairs.map(([fromCharacterId, toCharacterId]) =>
+          relationships.getStanceAtPosition({
+            ...base,
+            fromCharacterId,
+            toCharacterId,
+            chapter: storyPosition,
+          }),
+        ),
+      );
+      for (const st of stances) {
+        if (st) {
+          rows.stances.push(st);
+          characterNames.set(st.fromCharacterId, st.fromCharacterName);
+          characterNames.set(st.toCharacterId, st.toCharacterName);
+        }
+      }
+
+      const bonds = await relationships.listBondsForCast({
+        ...base,
+        characterIds: cast.characterIds,
+        limit: PAIR_LIMIT,
+      });
+      const bondStages = await Promise.all(
+        bonds.map((b) =>
+          relationships.getBondStageAtPosition({
+            ...base,
+            bondId: b.id,
+            chapter: storyPosition,
+          }),
+        ),
+      );
+      for (const bs of bondStages) {
+        if (bs) rows.bondStages.push(bs);
+      }
     }
   }
 

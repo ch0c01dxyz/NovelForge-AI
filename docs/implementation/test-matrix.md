@@ -1484,3 +1484,57 @@ reason). The pre-existing 003 compiler test asserting the old
 paths in 009 (GAP-028 inapplicable — structural-only). The C1/C6
 invariants were updated for the 34th covered table (`memory_projections`
 → `story_intelligence` projection, Q2: no eighth projection).
+
+## NF-WF-010 state consumers (character/relationship/rhythm/world/health) — 2026-10-05
+
+`tasks/NF-WF-010-state-consumer-integration.md` at `d309c52` (reviewed
+CHANGES_REQUESTED; P1/P2/P3 findings applied in text; Q1+Q3 decided).
+Implementer actor separate from contract author/reviewer; backend
+MODEL_UNVERIFIED per GAP-013; NOT committed.
+
+| Check | Command | Result |
+| New API tests | `npx vitest run src/state-consumers.test.ts` (apps/api, dedicated `novelforge_test_stateconsumers` db) | 1 file, **32/32** |
+| Full API suite | `npx vitest run` (apps/api) | 22 files, **510/510** (478 pre-existing incl. 5 no-regression fixes for the setStatus gate + 32 new; no regressions) |
+| Typecheck api | `npx tsc --noEmit` (apps/api) | exit 0 |
+| Typecheck story-versioning | `npx tsc --noEmit` (packages/story-versioning) | exit 0 |
+| Typecheck database | `npx tsc --noEmit` (packages/database) | exit 0 |
+| Full story-versioning suite | `npx vitest run` (packages/story-versioning) | 1 file, **17/17** |
+| Lint | `pnpm lint` (repo root) | exit 0 |
+| Migration | fresh `prisma migrate deploy` on scratch DB | applies clean (`20261006_nf_wf_010_final_text_reviews`; GAP-030 DO-block) |
+
+Verification notes: the 30 new tests cover the whole acceptance
+checklist — real state consumers; memory-vs-live sourcing (FRESH
+corroboration with `[memory: FRESH @rev]` per-row provenance, STALE
+live-only note, forced divergence → MEMORY_LIVE_DIVERGENCE OPEN);
+null-linkage identity (no canon facts, no name match; FK-only join);
+temporal windows + as-of-revision negatives (health + assembly);
+CLOCK_CONTRADICTION; malformed policy write → 409 for all three kinds
+(SCALE rides the new typed `PolicyError` → MALFORMED_POLICY);
+malformed on read → fail-open + UNRESOLVED finding; HARD COOLDOWN →
+FAIL → setStatus 409 HARD_POLICY_VIOLATION; no receipt → 409
+REVIEW_STALE; soft-never-forces vs the imperative-pattern fixture;
+changed version → REVIEW_STALE; receipt replacement on re-review; all
+seven health categories (with positive + negative pairs where
+machine-checkable); UNRESOLVED_IDENTITY surfaced under `/unresolved`
+with `remediation: null`; auth (cross-novel 404, anonymous 401, VIEWER
+403 / EDITOR 200 on `canon:read`); chapterId/version mismatch 400;
+`simulation: true` → 400 SIMULATION_SOURCE_REFUSED with no receipt;
+compiler tier 4/6 assembly integration + legacy no-regression.
+
+Pre-existing tests touched by the 010 product behavior changes: the
+`manuscript.test.ts` publish flow and the "cannot delete /
+restored-over" immutability cases now review the version (PASS) before
+publishing; `revision.test.ts` C7 reviews before publishing the
+chapter; `narrative.test.ts` SCALE-unset auth fixture now uses a valid
+SCALE payload (empty object is a 409 MALFORMED_POLICY per GAP-012);
+`workflow-test-driver.ts` binds the stateAssembly port so the workflow
+RETRIEVAL step and POST /generate compile identical blocks (NF-WF-003
+invariant 7 — the pre-existing divergence test caught the drift).
+
+No AI paths in 010 (GAP-028 inapplicable — deterministic rules only).
+The C1/C6 story-versioning invariants were updated for the 35th
+covered table (`final_text_reviews` → `narrative` projection).
+Deviations: GAP-038 (IMPOSSIBLE_PREREQUISITE self-establishment —
+fixed), GAP-039 (SCALE never FAILs — open follow-up), plus the
+author-decided setStatus behavior change (documented in
+ISSUES-AND-GAPS.md, not a deviation).

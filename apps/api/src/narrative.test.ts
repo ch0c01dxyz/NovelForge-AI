@@ -1032,7 +1032,9 @@ describe("a policy can be unset, not only overwritten", () => {
     await put(f, "/narrative/policies", {
       kind: "SCALE",
       hardness: "SOFT",
-      payload: {},
+      // NF-WF-010 (GAP-012): SCALE payloads are schema-validated on write;
+      // an empty object is a 409 MALFORMED_POLICY, not a stored policy.
+      payload: { standing: { scale: "CITY", access: ["CITY"], reputation: 50 } },
     });
     const res = await app.inject({
       method: "DELETE",

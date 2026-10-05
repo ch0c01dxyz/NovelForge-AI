@@ -27,6 +27,8 @@ import { createCharacterServices } from "./services/characters.ts";
 import { createRelationshipServices } from "./services/relationships.ts";
 import { createNarrativeServices } from "./services/narrative.ts";
 import { readHeadRevisionId } from "./services/revisions.ts";
+import { createMemoryServices } from "./services/memory.ts";
+import { createStateAssemblyServices } from "./services/state-assembly.ts";
 import { resolveAgent, resolveSkill } from "./services/definition-resolution.ts";
 import {
   fetchAndCompileContext,
@@ -69,6 +71,23 @@ export function createTestDriver(
   const head = {
     readHeadRevisionId: (novelId: string) => readHeadRevisionId(db, novelId),
   };
+  // NF-WF-010: the driver's compiler mirrors buildApp's wiring — the
+  // workflow RETRIEVAL step consumes the state assembly (tiers 4/6) just
+  // like POST /generate does (NF-WF-003 invariant 7: the two callers must
+  // not drift). The memory queue is a no-op fake: recallNovel reads live
+  // projections and never enqueues.
+  const memoryServices = createMemoryServices({
+    db,
+    queue: { add: async () => ({ id: "driver-fake" }) } as never,
+  });
+  const stateAssemblyServices = createStateAssemblyServices({
+    db,
+    audit,
+    memory: {
+      recallNovel: (actorUserId, workspaceId, novelId, opts) =>
+        memoryServices.recallNovel(actorUserId, workspaceId, novelId, opts),
+    },
+  });
 
   const compiler: ContextCompilerPort = {
     compile: async (input) => {
@@ -81,6 +100,14 @@ export function createTestDriver(
           narrative,
           retrieval: retrievalServices,
           head,
+          stateAssembly: {
+            assembleStates: (i) =>
+              stateAssemblyServices.assembleCharacterState(i),
+            assembleRelationships: (i) =>
+              stateAssemblyServices.assembleRelationships(i),
+            assembleTimeline: (i) =>
+              stateAssemblyServices.assembleTimeline(i),
+          },
         },
         {
           actorUserId: input.actorUserId,

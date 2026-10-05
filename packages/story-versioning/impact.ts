@@ -178,6 +178,12 @@ const TABLE_PROJECTION: Readonly<Record<string, Projection>> = {
   // memory is downstream — but the C6 invariant requires every covered
   // table to belong to exactly one projection, and this is its family.
   memory_projections: "story_intelligence",
+  // NF-WF-010: final_text_reviews are receipts of policy evaluation
+  // (narrative policies + chapter versions). The C6 invariant requires
+  // every covered table to belong to exactly one projection; the
+  // narrative family is the closest — receipts are produced by the
+  // narrative-policy consumer, not by story-intelligence derivation.
+  final_text_reviews: "narrative",
 };
 
 /** The projection a covered table belongs to. Unknown tables have none. */

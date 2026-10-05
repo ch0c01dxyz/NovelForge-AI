@@ -139,6 +139,7 @@ model Workspace {
   restores     RestoreOperation[]
   rebuildIntents DerivedRebuildIntent[]
   memoryProjections MemoryProjection[]
+  finalTextReviews FinalTextReview[]
 
   @@map("workspaces")
 }
@@ -201,6 +202,7 @@ model Novel {
   restores     RestoreOperation[]
   rebuildIntents DerivedRebuildIntent[]
   memoryProjections MemoryProjection[]
+  finalTextReviews FinalTextReview[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -299,6 +301,9 @@ model ChapterVersion {
   // Opposite side of Chapter.currentVersion pointer.
   currentForChapter Chapter? @relation("CurrentChapterVersion")
   factSources       CanonFactSource[]
+  /// NF-WF-010: the (replaced-on-rereview) final-text review receipt for
+  /// this immutable version. Null until reviewed.
+  finalTextReview   FinalTextReview?
 
   @@unique([chapterId, number])
   @@index([chapterId, createdAt])
@@ -2323,8 +2328,12 @@ enum AntagonistOutcome {
 model NarrativeDnaProfile {
   novelId   String   @id @map("novel_id") @db.Uuid
   novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
-  /// Shape validated in packages/narrative-rhythm, not by the database — the
-  /// same contract as PlanningHorizon.policy.
+  /// Minimal shape check in putDna (non-null, non-array object) — NOT a
+  /// field-inventory validation, and nothing in
+  /// packages/narrative-rhythm validates this shape (the earlier
+  /// "Shape validated in packages/narrative-rhythm" comment was false;
+  /// corrected in NF-WF-010). Consumers read named fields defensively:
+  /// a missing field means "not configured", never an error.
   dna       Json
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -2509,6 +2518,7 @@ model Revision {
   branchHeads       NovelBranch[]        @relation("BranchHead")
   restoresTargeting RestoreOperation[]   @relation("RestoreTarget")
   rebuildIntents    DerivedRebuildIntent[]
+  finalTextReviews  FinalTextReview[]
   memoryProjections MemoryProjection[]
 
   @@unique([branchId, number])
@@ -2701,4 +2711,46 @@ model MemoryProjection {
 enum MemoryBuildStatus {
   OK
   FAILED
+}
+
+/// Final-text review receipts (NF-WF-010): a stored, per-version verdict
+/// from reviewFinalText. One row per immutable ChapterVersion
+/// (@@unique([chapterVersionId])); a re-review of the SAME version
+/// REPLACES the row — versions are immutable, so replacement is not
+/// history loss. The manuscript.setStatus gate reads the latest receipt
+/// for chapter.currentVersionId: no receipt → 409 REVIEW_STALE, FAIL →
+/// 409 HARD_POLICY_VIOLATION (constitution §11: any later edit
+/// invalidates the review).
+///
+/// Receipts are audit, not truth: restore covers them as rebuildable
+/// (a re-review regenerates any receipt), so rollback is always SAFE.
+model FinalTextReview {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String           @map("workspace_id") @db.Uuid
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId          String           @map("novel_id") @db.Uuid
+  novel            Novel            @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  chapterVersionId String           @unique @map("chapter_version_id") @db.Uuid
+  chapterVersion   ChapterVersion   @relation(fields: [chapterVersionId], references: [id], onDelete: Cascade)
+  /// The head revision the evaluation ran against (sourceRevisionId pin).
+  revisionId       String           @map("revision_id") @db.Uuid
+  revision         Revision         @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  verdict          FinalTextVerdict
+  /// EvidenceFinding[] — empty when PASS.
+  hardViolations   Json             @map("hard_violations")
+  /// ReviewAdvisory[] — SOFT policies; variation-guidance only, never
+  /// plot instructions (Invariant 4, shape-enforced).
+  advisory         Json
+  /// { kind, hardness, configured } per NarrativePolicyKind.
+  evaluatedPolicies Json            @map("evaluated_policies")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  @@index([novelId])
+  @@map("final_text_reviews")
+}
+
+/// Verdict of a final-text review (NF-WF-010).
+enum FinalTextVerdict {
+  PASS
+  FAIL
 }

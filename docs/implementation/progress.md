@@ -4416,3 +4416,127 @@ counts here. Reviewer backend MODEL_UNVERIFIED per GAP-013.
 Gaps recorded: GAP-037 (migration ordering, fixed); F3 full-lineage
 follow-up (OPEN, Invariant 6 gate); intent-lifecycle gap below. No AI
 paths in 009 (GAP-028 inapplicable — structural-only).
+
+## 2026-10-05 — NF-WF-010 implemented (character/relationship/rhythm/world/health integration)
+
+**Contract:** `tasks/NF-WF-010-state-consumer-integration.md` at `d309c52`
+(reviewed CHANGES_REQUESTED; P1/P2/P3 findings applied in text; Q1+Q3
+decided, Q2/Q4/Q5 open; review record filled).
+
+**Implementation (implementer actor, separate from contract author and
+reviewer; backend MODEL_UNVERIFIED per GAP-013; NOT committed — working
+tree left for the diff reviewer).**
+
+New services (`apps/api/src/services/`):
+- `policy-errors.ts`: typed `PolicyError extends Error { code:
+  "MALFORMED_POLICY" | "HARD_POLICY_VIOLATION" | "REVIEW_STALE";
+  statusCode: 409 }`, mapped in `platform-routes.ts` BEFORE the generic
+  `ConflictError` branch (same position as `CanonApplicationError` /
+  `MemoryError`) → `409 {error: CODE}`.
+- `evidence-findings.ts`: normative `EvidenceFinding` + `assertFindingEvidence`
+  (refuses empty evidence; UNRESOLVED requires `remediation: null`).
+- `revision-birth.ts`: `birthRevisionNumbers` / `bornAtOrBefore` —
+  temporal-negative via ChangeSetItem CREATE lookup; birth-unknown rows
+  are kept (never silently dropped).
+- `state-assembly.ts`: `assembleCharacterState` / `assembleRelationships` /
+  `assembleTimeline`. Memory corroboration = entity match on
+  `storyEntityId` with validity window (prose state rows carry no
+  triples; the full triple compare lives in the divergence check);
+  divergence only vs FRESH blocks (STALE/FAILED/MISSING/UNCONFIGURED →
+  live-only + explicit note). NULL linkage contributes NO id and never a
+  name match (GAP-011); stances/bonds always LIVE.
+- `final-text-review.ts`: `reviewFinalText(chapterVersionId)` →
+  `ReviewVerdict` + stored `FinalTextReview` receipt (upsert keyed by
+  unique `chapterVersionId`; versions immutable). Beat projection = story
+  events with chapterId as type CUSTOM. DRAMA_GAP HARD fails only on
+  BEYOND_EXTENDED_CALM + strictInterval. COOLDOWN candidate = the version
+  itself. **SCALE never FAILs in 010** — no deterministic proposal
+  source (GAP-039, documented in the file). Malformed-on-read →
+  fail-open + UNRESOLVED MALFORMED_POLICY advisory. `simulation: true` →
+  400 SIMULATION_SOURCE_REFUSED, no receipt.
+- `story-health.ts`: `evaluateHealth(novelId, {chapter?,
+  asOfRevisionId?})` + `unresolvedIdentities`; all SEVEN
+  STORY-INTELLIGENCE.md categories + CLOCK_CONTRADICTION, bounded
+  (`HEALTH_MAX_FINDINGS = 200`, `HEALTH_HISTORY_CHAPTERS = 50`,
+  per-rule cap 25). GAP-038: the IMPOSSIBLE_PREREQUISITE rule initially
+  matched the requiring fact itself (dead rule) — fixed during
+  verification to exclude it.
+
+Policy validation (GAP-012): `putPolicy` validates ALL THREE kinds on
+write — 010 adds the missing SCALE schema (`standing: { scale ∈
+NARRATIVE_SCALES, access non-empty, reputation int 0–100 }`); malformed
+SCALE write → 409 `MALFORMED_POLICY` via `PolicyError` (DRAMA_GAP /
+COOLDOWN keep their `ConflictError` posture). Malformed on read →
+fail-open + UNRESOLVED finding. HARD refuses, SOFT advises; advisory
+shape-enforced against the imperative-pattern fixture (soft never
+forces plot).
+
+Enforcement point (author decision): `manuscript.setStatus` — ANY
+transition out of DRAFT refuses with 409 `HARD_POLICY_VIOLATION`
+(latest receipt FAIL) or 409 `REVIEW_STALE` (no receipt for
+currentVersionId, or receipt version mismatch). NOT `runs.decideRun`
+(005 untouched). This IS an explicit product behavior change owned by
+010 — `manuscript.test.ts` (publish/requires-review flow, delete and
+restore-over immutability cases) and `revision.test.ts` (C7 published
+chapter pointer) were updated to review before publishing; the
+`workflow-test-driver.ts` compiler binding gained the stateAssembly
+port so the workflow RETRIEVAL step and POST /generate cannot drift
+(NF-WF-003 invariant 7); `narrative.test.ts` SCALE-unset fixture now
+uses a valid payload (empty object is a 409).
+
+Routes (`story-health-routes.ts`, all `canon:read`): `GET
+…/story-health`, `POST …/chapters/:chapterId/final-text-review`
+(chapterId/chapterVersionId consistency → 400 INVALID_INPUT; sync
+default — no REVIEW_STALE mid-review), `GET
+…/story-health/unresolved`.
+
+Prisma: `FinalTextReview` model + `FinalTextVerdict` enum
+(`@@unique([chapterVersionId])`); migration
+`20261006_nf_wf_010_final_text_reviews` (GAP-030 DO-block; named to sort
+after `20261006_m1_story_versioning` — GAP-037 lesson). Registered in
+TABLE_SCOPE / COVERED_TABLES (`final_text_reviews` → `"narrative"`
+projection; 34→35 covered tables). Corrected the false
+`NarrativeDnaProfile.dna` schema comment.
+
+Compiler (003) tiers 4/6 consume the assembly when the port is present
+(tier 4 = states with per-row `[memory: FRESH @rev]` provenance; tier 6
+= timeline entries with `linkedEventId` flags + causal edges); legacy
+fan-out unchanged when absent. The orchestrator and the workflow test
+driver both wire the port.
+
+Tests: `apps/api/src/state-consumers.test.ts` (dedicated
+`novelforge_test_stateconsumers` db) — 32/32 (30 implementer + 2
+reviewer regression tests for the setStatus gate's out-of-DRAFT-only
+scope): real consumers;
+memory-vs-live (FRESH corroboration, STALE note, forced divergence →
+MEMORY_LIVE_DIVERGENCE OPEN); null linkage (no canon facts, no name
+match; FK join only); temporal windows + as-of negatives; CLOCK_;
+malformed write 409 for all 3 kinds; malformed read fail-open;
+HARD→FAIL→setStatus 409; no-receipt→REVIEW_STALE; soft-never-forces
+(imperative fixture); changed-version→REVIEW_STALE; receipt replace on
+re-review; all 7 health categories + unresolved + auth (cross-novel
+404, anonymous 401, VIEWER 403 without canon:read, EDITOR 200);
+chapterId/version mismatch 400; simulation refusal; compiler tier 4/6
+integration + legacy no-regression. No AI paths (GAP-028 N/A —
+deterministic).
+
+Gaps recorded: GAP-038 (IMPOSSIBLE_PREREQUISITE self-establishment,
+fixed); GAP-039 (SCALE never FAILs — open follow-up). Backend
+MODEL_UNVERIFIED per GAP-013.
+
+**Independent diff review (2026-10-05) — APPROVE_WITH_FINDINGS.**
+One P2 fixed inline: the `manuscript.setStatus` gate fired on EVERY
+status transition, but the contract pins it to transitions OUT of
+DRAFT only (Invariant 4: "the setStatus contract is otherwise
+unchanged"). The over-scoped gate would have refused the
+PUBLISHED→IN_REVIEW unpublish path and IN_REVIEW→PUBLISHED whenever
+the current version lacked a PASS receipt — blocking the natural
+fix-after-FAIL flow. Fix: the gate now applies only when
+`chapter.status === "DRAFT"` (the route only accepts IN_REVIEW /
+PUBLISHED as targets, so this is exactly "out of DRAFT"), plus two
+regression tests (IN_REVIEW→PUBLISHED ungated with no receipt for the
+current version; IN_REVIEW→PUBLISHED ungated despite a FAIL receipt).
+One P2 recorded as an open gap: `evaluateHealth`/`assembleTimeline`
+accept an `asOfRevisionId` from any branch of the novel — 009
+Invariant 7's cross-branch 400 is not enforced in 010's temporal
+ceiling (see ISSUES-AND-GAPS.md).

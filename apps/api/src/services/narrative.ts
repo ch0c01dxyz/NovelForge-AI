@@ -27,11 +27,16 @@
  *    has no DRAMA_GAP policy rather than inventing a ladder, matching
  *    `getHorizon`'s posture (ADR-0011 §2).
  *
- * Known gap: the SCALE policy kind is stored but not shape-validated, because
- * no rule consumes a scale *policy* — `assessScaleAppropriateness` takes the
- * protagonist's standing, not the novel's preference. The schema comment's
- * "shape validated in packages/narrative-rhythm" is therefore aspirational
- * for that one kind; the other two are probed on write.
+ * Known gap (CLOSED in NF-WF-010, GAP-012): the SCALE policy kind was
+ * stored but not shape-validated, because no rule consumes a scale
+ * *policy* — `assessScaleAppropriateness` takes the protagonist's
+ * standing, not the novel's preference. NF-WF-010 added the SCALE
+ * payload schema (`isValidScalePayload`, probed on write via the typed
+ * `PolicyError` → 409 MALFORMED_POLICY) and the malformed-on-read
+ * fail-open rule. The schema comment's "shape validated in
+ * packages/narrative-rhythm" remains aspirational for that one kind —
+ * the shape lives in this service file, and the Prisma schema comment
+ * now says so.
  */
 import {
   assessDramaWindow,
@@ -39,6 +44,7 @@ import {
   checkCooldown,
   detectRepeatedSequence,
   validateAntagonistProgression,
+  NARRATIVE_SCALES,
   type AntagonistOutcome,
   type AntagonistProblem,
   type AntagonistRole,
@@ -61,9 +67,68 @@ export type { NarrativePolicyKind, PolicyHardness };
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 import type { InputJsonValue, NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError } from "./platform.ts";
+import { PolicyError } from "./policy-errors.ts";
 import type { AuditService } from "./audit.ts";
 // Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
 import { advanceForMutation, createWithRevision } from "./revisions.ts";
+
+/**
+ * NF-WF-010 (GAP-012): the SCALE payload schema, in one place because it
+ * is applied twice — on write (putPolicy refuses a bad shape with 409
+ * MALFORMED_POLICY via PolicyError) and on read (evaluation treats a
+ * malformed row as "no policy configured" and emits an UNRESOLVED
+ * MALFORMED_POLICY finding — fail-open, never a silent pass).
+ *
+ * Shape: { standing: { scale: NarrativeScale, access: NarrativeScale[],
+ * reputation: number } } — every scale a member of NARRATIVE_SCALES
+ * (pinned by the domain-package test), access non-empty, reputation an
+ * integer 0–100.
+ */
+export function isValidScalePayload(payload: unknown): boolean {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+  const standing = (payload as { standing?: unknown }).standing;
+  if (standing === null || typeof standing !== "object" || Array.isArray(standing)) {
+    return false;
+  }
+  const s = standing as { scale?: unknown; access?: unknown; reputation?: unknown };
+  if (!NARRATIVE_SCALES.includes(s.scale as NarrativeScale)) return false;
+  if (
+    !Array.isArray(s.access) ||
+    s.access.length === 0 ||
+    !s.access.every((a) => NARRATIVE_SCALES.includes(a as NarrativeScale))
+  ) {
+    return false;
+  }
+  if (!Number.isInteger(s.reputation) || (s.reputation as number) < 0 || (s.reputation as number) > 100) {
+    return false;
+  }
+  return true;
+}
+
+/** Extract the validated standing, or null when the payload is malformed. */
+export function scaleStandingOf(payload: unknown): {
+  scale: NarrativeScale;
+  access: NarrativeScale[];
+  reputation: number;
+} | null {
+  if (!isValidScalePayload(payload)) return null;
+  const standing = (payload as { standing: { scale: NarrativeScale; access: NarrativeScale[]; reputation: number } }).standing;
+  return { scale: standing.scale, access: [...standing.access], reputation: standing.reputation };
+}
+
+/**
+ * The COOLDOWN payload predicate, hoisted to module scope (NF-WF-010) so
+ * read-side evaluation (final-text review, health) can apply the same
+ * predicate putPolicy applies on write. checkCooldown has no problem
+ * channel, so a bad window reads as "no cooldown configured" — the
+ * fail-OPEN posture — and this predicate is what names a malformed row.
+ */
+export function isValidCooldownPayload(payload: unknown): boolean {
+  const window = (payload as { windowChapters?: unknown } | null)?.windowChapters;
+  return Number.isInteger(window) && (window as number) > 0;
+}
 
 // --- Views ---
 
@@ -274,11 +339,6 @@ export function createNarrativeServices(deps: {
    * channel, so a bad window there reads as "no cooldown configured" — a
    * fail-OPEN on the only HARD rule in Phase 9.
    */
-  function isValidCooldownPayload(payload: unknown): boolean {
-    const window = (payload as { windowChapters?: unknown } | null)?.windowChapters;
-    return Number.isInteger(window) && (window as number) > 0;
-  }
-
   return {
     // --- Narrative DNA ----------------------------------------------------
 
@@ -372,8 +432,19 @@ export function createNarrativeServices(deps: {
         if (!isValidCooldownPayload(payload)) {
           throw new ConflictError("cooldown policy invalid: windowChapters must be a positive integer");
         }
+      } else if (kind === "SCALE") {
+        // NF-WF-010 (GAP-012): SCALE was stored unvalidated (see the file
+        // comment). It now rides the new typed PolicyError — 409
+        // MALFORMED_POLICY — not the generic ConflictError path, which can
+        // only emit CONFLICT. The existing DRAMA_GAP/COOLDOWN refusals keep
+        // their ConflictError behavior (unchanged).
+        if (!isValidScalePayload(payload)) {
+          throw new PolicyError(
+            "MALFORMED_POLICY",
+            "scale policy invalid: standing must be { scale, access, reputation } with valid narrative scales, non-empty access, and reputation an integer 0-100",
+          );
+        }
       }
-      // SCALE: stored unvalidated — see the file comment.
 
       // Upsert, so the change-log item is UPDATE rather than CREATE (the C2
       // vocabulary has no UPSERT); see the note in putDna.

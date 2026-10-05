@@ -969,3 +969,104 @@ locking so two consumers don't fight over one row), or amend the 009
 contract text to describe the head-derived staleness + manual-trigger
 model actually shipped. Do NOT silently edit the frozen contract —
 amend with the review record.
+
+## GAP-038 — NF-WF-010 IMPOSSIBLE_PREREQUISITE could never fire: the requiring fact self-established (2026-10-05)
+
+Status: FIXED during implementer verification (test-exposed).
+
+OBSERVED: the first implementation of the `IMPOSSIBLE_PREREQUISITE`
+rule in `apps/api/src/services/story-health.ts` asked "does any ACTIVE
+canon fact mention the prerequisite entity as subject or object?" — but
+the requiring fact itself always mentions the prerequisite as its
+object, so the rule matched itself and could NEVER fire. The acceptance
+test ("Cannon requires Gunpowder", nothing else in canon) exposed the
+dead rule.
+
+FIX: the establishment lookup now excludes the requiring fact itself
+(`id: { not: f.id }`) — establishment needs a DIFFERENT active fact
+about the entity. The rule's documented semantics ("no ACTIVE canon
+fact establishes the prerequisite entity (as subject or object)") were
+updated in the file comment to say so. No contract amendment needed:
+the contract only pins the finding name and the acceptance scenario,
+both of which the fix satisfies.
+
+VERIFICATION: `apps/api/src/state-consumers.test.ts` —
+"IMPOSSIBLE_PREREQUISITE fires for a required-but-unknown entity (and
+clears when it appears)" passes; the negative (adding "Gunpowder is
+stockpiled") clears the finding.
+
+## GAP-039 — NF-WF-010: SCALE policies never FAIL a final-text review (no deterministic proposal source, 2026-10-05)
+
+Status: OPEN (documented limitation, follow-up task).
+
+OBSERVED: the contract adds the missing SCALE policy schema (GAP-012)
+and wires SCALE through write-time validation and read-side fail-open,
+but `reviewFinalText` has no deterministic way to propose a SCALE
+standing change from prose — there is no extraction/proposal source in
+010. So a violated SCALE standing produces no HARD/SOFT verdict in the
+review; it only surfaces via write-time 409s and read-side
+MALFORMED_POLICY findings. The limitation is documented in
+`apps/api/src/services/final-text-review.ts`.
+
+NEXT: a follow-up task should define the SCALE assessment source
+(author-declared standings vs extracted claims, or an explicit
+proposal flow) before SCALE can participate in review verdicts. Do not
+invent one silently inside 010.
+
+## Note — NF-WF-010 explicit product behavior change (owned by the contract, not a deviation)
+
+The `manuscript.setStatus` gate is an AUTHOR-DECIDED behavior change
+(contract §author decision): ANY transition out of DRAFT now refuses
+with 409 `HARD_POLICY_VIOLATION` (latest receipt FAIL) or 409
+`REVIEW_STALE` (no receipt for the current version, or version
+mismatch). `runs.decideRun` (005) is untouched. The existing
+`manuscript.test.ts` case "published chapters reject saves; unpublish
+via IN_REVIEW re-enables" was updated to review the version (PASS)
+before publishing — the empty-chapter 409 and tenant-isolation cases
+are unchanged.
+
+## Note — NF-WF-010 diff review: setStatus gate scope fixed (2026-10-05)
+
+Status: FIXED inline by the diff reviewer (with regression tests).
+
+OBSERVED: the implementer's `manuscript.setStatus` gate fired on EVERY
+status transition, but the contract (Invariant 4, author decision at
+review) pins the gate to transitions OUT of `DRAFT` only — "the
+setStatus contract is otherwise unchanged". The over-scoped gate
+refused PUBLISHED→IN_REVIEW (the unpublish path) and
+IN_REVIEW→PUBLISHED whenever the current version lacked a PASS
+receipt, breaking the natural fix-after-FAIL flow (review FAIL →
+edit → re-review → publish) and contradicting the documented intent
+in this same file ("ANY transition out of DRAFT").
+
+FIX: the gate now applies only when `chapter.status === "DRAFT"`
+(the route only accepts IN_REVIEW | PUBLISHED as targets, so this is
+exactly "out of DRAFT"). Two regression tests added to
+`apps/api/src/state-consumers.test.ts` (IN_REVIEW→PUBLISHED ungated
+with no receipt for the current version; IN_REVIEW→PUBLISHED ungated
+despite a FAIL receipt for the current version). `manuscript.test.ts`
+21/21 and `state-consumers.test.ts` 32/32 pass.
+
+## GAP-040 — NF-WF-010: cross-branch asOfRevisionId accepted in health/assembly temporal ceiling (2026-10-05)
+
+Status: OPEN (documented limitation; behavior is safe, semantics incomplete).
+
+OBSERVED: the contract's Invariant 3 defines "as of revision R" via
+the 009 as-of semantics (009 Invariant 7), which pins cross-branch
+`revisionId` → 400 `INVALID_INPUT` ("cross-branch as-of is rejected,
+not defined"). The 010 implementation (`evaluateHealth`,
+`assembleTimeline`, `assembleCharacterState`) accepts any revision of
+the novel: `db.revision.findFirst({ where: { id, novelId } })` does not
+constrain to the novel's main branch, and the birth-number ceiling
+compares revision numbers without branch context.
+
+IMPACT: low. The as-of in 010 is only a temporal ceiling (exclude rows
+born after R.number); a cross-branch R still yields a monotone
+ceiling, never a wrong truth claim. But it is not the 009 semantics
+the contract names.
+
+NEXT: either enforce same-branch (resolve `(branchId, number)` and
+400 on branch mismatch, mirroring `memory.ts`'s 009 as-of path), or
+amend the 010 contract to define the temporal ceiling as
+branch-agnostic. Do NOT silently edit the frozen contract — amend with
+the review record.

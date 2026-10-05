@@ -500,6 +500,66 @@ export function registerDefinitionRoutes(
     },
   );
 
+  // ==================== Approval decisions (NF-WF-005) ====================
+  //
+  // A run parked at a HUMAN_APPROVAL step (AWAITING_APPROVAL) is decided
+  // here: approve resumes the same run from the parked step, reject fails
+  // it. The decision binds to the park-time snapshot — the client echoes
+  // the snapshotHash it read from GET .../workflow-runs/:runId, and a
+  // decision minted against a different view of the material is refused
+  // (409 STALE_APPROVAL). A rejection must say why (400 without a reason).
+  const decideParams = z.object({ workspaceId: uuid, runId: uuid });
+  const approveBody = z.object({
+    expectedSnapshotHash: z.string().regex(/^[0-9a-f]{64}$/),
+    reason: z.string().max(2000).optional(),
+  });
+  const rejectBody = z.object({
+    expectedSnapshotHash: z.string().regex(/^[0-9a-f]{64}$/),
+    reason: z.string().min(1).max(2000),
+  });
+
+  app.post(
+    "/api/workspaces/:workspaceId/workflow-runs/:runId/approve",
+    async (request, reply) => {
+      const actor = await requireActor(request, reply);
+      if (!actor) return;
+      const params = decideParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = approveBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const run = await runs.decideRun({
+        actorUserId: actor.userId,
+        workspaceId: params.data.workspaceId,
+        runId: params.data.runId,
+        decision: "approve",
+        expectedSnapshotHash: body.data.expectedSnapshotHash,
+        ...(body.data.reason ? { reason: body.data.reason } : {}),
+      });
+      return run;
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/workflow-runs/:runId/reject",
+    async (request, reply) => {
+      const actor = await requireActor(request, reply);
+      if (!actor) return;
+      const params = decideParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = rejectBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const run = await runs.decideRun({
+        actorUserId: actor.userId,
+        workspaceId: params.data.workspaceId,
+        runId: params.data.runId,
+        decision: "reject",
+        expectedSnapshotHash: body.data.expectedSnapshotHash,
+        reason: body.data.reason,
+      });
+      return run;
+    },
+  );
+
   app.get("/api/workspaces/:workspaceId/workflow-runs", async (request, reply) => {
     const actor = await requireActor(request, reply);
     if (!actor) return;

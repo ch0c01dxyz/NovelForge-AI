@@ -20,6 +20,7 @@ import {
 } from "./services/platform.ts";
 import { InvalidDefinitionError } from "./services/definitions.ts";
 import { HeadConflictError } from "./services/context-compiler.ts";
+import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 
 const slug = z
   .string()
@@ -76,6 +77,15 @@ export async function registerPlatformRoutes(
     }
     if (error instanceof NotFoundError) {
       return reply.code(404).send({ error: "NOT_FOUND" });
+    }
+    // NF-WF-005: typed approval-decision refusals carry the machine-readable
+    // decision code. Checked before the generic ConflictError branch below
+    // (ApprovalDecisionError extends it).
+    if (error instanceof ApprovalDecisionError) {
+      return reply.code(409).send({
+        error: "CONFLICT",
+        code: error.decisionCode,
+      });
     }
     if (error instanceof ConflictError) {
       return reply.code(409).send({

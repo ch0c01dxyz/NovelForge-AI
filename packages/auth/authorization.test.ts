@@ -109,6 +109,29 @@ describe("capability model", () => {
     }
   });
 
+  // ---- NF-WF-005 workflow:approve ----
+  // Deciding a parked HUMAN_APPROVAL step mirrors canon:approve: it commits
+  // the run's continuation (or fails it), which is the same authority act.
+  // Explicit assertions, for the same reason as the canon block above.
+
+  it("workflow:approve is a workspace-scoped capability, never a platform one", () => {
+    expect(PLATFORM_ONLY_CAPABILITIES.has("workflow:approve")).toBe(false);
+    // A platform SUPER_ADMIN is deliberately not a member of every
+    // workspace, so platform authority must not decide every tenant's
+    // parked approvals (ADR-0005/ADR-0008).
+    expect(canPlatform("SUPER_ADMIN", "workflow:approve")).toBe(false);
+  });
+
+  it("workflow:approve is held by OWNER, ADMIN and AUTHOR only", () => {
+    expect(can("OWNER", "workflow:approve")).toBe(true);
+    expect(can("ADMIN", "workflow:approve")).toBe(true);
+    expect(can("AUTHOR", "workflow:approve")).toBe(true);
+    // An editor reviews continuity; deciding what a workflow continues
+    // with is the authority act reserved to the author (CLAUDE.md §5).
+    expect(can("EDITOR", "workflow:approve")).toBe(false);
+    expect(can("VIEWER", "workflow:approve")).toBe(false);
+  });
+
   it("ADMIN manages members and novels but cannot delete workspaces", () => {
     expect(can("ADMIN", "member:invite")).toBe(true);
     expect(can("ADMIN", "member:change-role")).toBe(true);

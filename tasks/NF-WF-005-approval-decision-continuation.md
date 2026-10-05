@@ -6,7 +6,7 @@ and resources with English fallback.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: READY (contract draft; not yet reviewed)
+Status: VERIFIED (contract APPROVE round 3, 2026-10-05; implementation APPROVE, committed separately)
 Milestone / capability IDs: M1 workflow execution; DELIVERY-PLAN NF-WF-005
 Implementer role / requested and resolved model: (to be assigned at dispatch)
 Reviewer role / requested and resolved model: (separate actor; backend MODEL_UNVERIFIED per GAP-013)

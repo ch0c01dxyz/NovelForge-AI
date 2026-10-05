@@ -18,6 +18,8 @@ import {
   claimStepForExecution,
   resetRunForRecovery,
   isRunCancelled,
+  canonicalizeJson,
+  hashApprovalMaterial,
   type WorkflowExecutor,
 } from "./index.ts";
 
@@ -417,5 +419,149 @@ describe("recoverStaleRuns", () => {
     expect(report.orphanEnqueues).toEqual([]);
     expect(added).toEqual([]);
     expect(runId).toBeTruthy();
+  });
+});
+
+describe("approval snapshot (NF-WF-005)", () => {
+  const APPROVAL_GRAPH = {
+    steps: [
+      { key: "draft", kind: "TRANSFORM", inputs: { v: "$input.x" } },
+      { key: "review", kind: "HUMAN_APPROVAL", instruction: "Approve the draft" },
+      { key: "final", kind: "TRANSFORM", inputs: { v: "$steps.draft.json" } },
+    ],
+    edges: [
+      { from: "draft", to: "review" },
+      { from: "review", to: "final" },
+    ],
+  };
+
+  it("canonicalizeJson sorts keys recursively (fixed vector)", () => {
+    const material = {
+      instruction: "Approve the draft: héllo",
+      priorOutcomes: { a: { text: "x", json: { v: 1 } } },
+      workflowVersionNumber: 3,
+      agentVersions: { writer: 2 },
+      skillVersions: {},
+    };
+    expect(canonicalizeJson(material)).toBe(
+      '{"agentVersions":{"writer":2},"instruction":"Approve the draft: héllo","priorOutcomes":{"a":{"json":{"v":1},"text":"x"}},"skillVersions":{},"workflowVersionNumber":3}',
+    );
+  });
+
+  it("hashApprovalMaterial matches the fixed sha256 vector", () => {
+    const material = {
+      instruction: "Approve the draft: héllo",
+      priorOutcomes: { a: { text: "x", json: { v: 1 } } },
+      workflowVersionNumber: 3,
+      agentVersions: { writer: 2 },
+      skillVersions: {},
+    };
+    expect(hashApprovalMaterial(material)).toBe(
+      "4da4268402993a7056f08b931e324fecc68dd298b1e78e51760478eb6caac36a",
+    );
+    // Key order in the input must not matter.
+    expect(
+      hashApprovalMaterial({
+        skillVersions: {},
+        agentVersions: { writer: 2 },
+        workflowVersionNumber: 3,
+        priorOutcomes: { a: { json: { v: 1 }, text: "x" } },
+        instruction: "Approve the draft: héllo",
+      }),
+    ).toBe(
+      "4da4268402993a7056f08b931e324fecc68dd298b1e78e51760478eb6caac36a",
+    );
+  });
+
+  it("persists the approval snapshot in the same write that parks the step", async () => {
+    const seed = await seedWorkflow(APPROVAL_GRAPH);
+    const runId = await seedRun(seed, APPROVAL_GRAPH);
+    await db.workflowRun.update({
+      where: { id: runId },
+      data: { input: { x: "hello" } },
+    });
+
+    const result = await executor.executeRun(runId);
+    expect(result.claimed).toBe(true);
+    expect(result.status).toBe("AWAITING_APPROVAL");
+
+    const step = await db.workflowStepRun.findFirstOrThrow({
+      where: { runId, stepKey: "review" },
+    });
+    expect(step.status).toBe("AWAITING_APPROVAL");
+    const snapshot = step.approvalSnapshot as {
+      material: {
+        instruction: string;
+        priorOutcomes: Record<string, { text: string | null; json: unknown }>;
+        workflowVersionNumber: number;
+        agentVersions: Record<string, number>;
+        skillVersions: Record<string, number>;
+      };
+      snapshotHash: string;
+    };
+    expect(snapshot).not.toBeNull();
+    // The material binds what the approver saw.
+    expect(snapshot.material.instruction).toBe("Approve the draft");
+    expect(snapshot.material.priorOutcomes["draft"]).toBeDefined();
+    expect(snapshot.material.workflowVersionNumber).toBe(1);
+    expect(snapshot.material.agentVersions).toEqual({});
+    expect(snapshot.material.skillVersions).toEqual({});
+    // The hash is the canonical sha256 of the material.
+    expect(snapshot.snapshotHash).toBe(hashApprovalMaterial(snapshot.material));
+    expect(snapshot.snapshotHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("skips the decided approval step on resume and runs post-approval steps once", async () => {
+    const seed = await seedWorkflow(APPROVAL_GRAPH);
+    const runId = await seedRun(seed, APPROVAL_GRAPH);
+    await db.workflowRun.update({
+      where: { id: runId },
+      data: { input: { x: "hello" } },
+    });
+    await executor.executeRun(runId);
+
+    const before = await db.workflowStepRun.findMany({ where: { runId } });
+    const draftCompletedAt = before.find((s) => s.stepKey === "draft")!.completedAt;
+
+    // Simulate the decide path: the approval step is SUCCEEDED (with its
+    // decision row), the run is PENDING again — the resume cursor.
+    const reviewRow = before.find((s) => s.stepKey === "review")!;
+    await db.workflowStepRun.update({
+      where: { id: reviewRow.id },
+      data: {
+        status: "SUCCEEDED",
+        output: { text: null, json: { decision: "APPROVED" } },
+        completedAt: new Date(),
+      },
+    });
+    await db.workflowApprovalDecision.create({
+      data: {
+        runId,
+        stepRunId: reviewRow.id,
+        stepKey: "review",
+        decision: "APPROVED",
+        snapshotHash: "h",
+        pins: {},
+        reason: null,
+      },
+    });
+    await db.workflowRun.update({ where: { id: runId }, data: { status: "PENDING" } });
+
+    const result = await executor.executeRun(runId);
+    expect(result.claimed).toBe(true);
+    expect(result.status).toBe("SUCCEEDED");
+
+    const after = await db.workflowStepRun.findMany({ where: { runId } });
+    // The pre-approval step was not re-executed: same row, same completedAt.
+    const draftAfter = after.find((s) => s.stepKey === "draft")!;
+    expect(after.filter((s) => s.stepKey === "draft")).toHaveLength(1);
+    expect(draftAfter.completedAt?.getTime()).toBe(draftCompletedAt?.getTime());
+    // The decided approval step was not re-parked: still SUCCEEDED, one row.
+    expect(after.filter((s) => s.stepKey === "review")).toHaveLength(1);
+    expect(after.find((s) => s.stepKey === "review")!.status).toBe("SUCCEEDED");
+    // The post-approval step ran exactly once.
+    expect(after.find((s) => s.stepKey === "final")!.status).toBe("SUCCEEDED");
+    const run = await db.workflowRun.findUniqueOrThrow({ where: { id: runId } });
+    expect(run.status).toBe("SUCCEEDED");
   });
 });

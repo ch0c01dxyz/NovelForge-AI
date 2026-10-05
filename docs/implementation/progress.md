@@ -3936,3 +3936,88 @@ beyond 003's scope was touched.
 - **F3 (P3, observation).** The F15 final cancellation read is genuinely immediate (no awaits between read and `UPDATE`), but the terminal write itself is unguarded: a cancel landing in that sub-ms window would be overwritten. Contract-conformant as prescribed; a guarded terminal write (`WHERE status != 'CANCELLED'`) would close it. Not a required change.
 
 Reviewer-verified independently: `pnpm lint` clean; api/worker typecheck clean; `definitions.test.ts` 49/49, `orchestrator.test.ts` 15/15, full api suite 408/408 (16 files), `executor.test.ts` 14/14, worker suite 19 passed/1 skipped; migration applied twice cleanly on a scratch DB (then dropped); no cross-app-boundary imports, no domain-event code, no approval-resume code in the new paths; GAP-028/GAP-029 recorded accurately. Reviewer backend MODEL_UNVERIFIED (GAP-013 stays OPEN).
+
+## 2026-10-05 — NF-WF-005 implemented (approval decision and safe continuation)
+
+**Contract.** `tasks/NF-WF-005-approval-decision-continuation.md` (frozen
+`37a91d1a`), reviewed **APPROVE** in round 3 by a separate reviewer after
+9 findings were addressed. Builds on NF-WF-004's durable substrate
+(`1afb5c1`, pushed). Closes GAP-003 with the acceptance evidence below.
+
+**What was built.**
+- `packages/auth/authorization.ts`: new `workflow:approve` capability,
+  granted to OWNER (via the all-non-platform filter), ADMIN, AUTHOR;
+  EDITOR/VIEWER excluded (mirrors `canon:approve`). `authorization.test.ts`
+  extended with the deliberate-asymmetry assertions (15/15).
+- `packages/database/prisma/schema.prisma` + migration
+  `20261005_nf_wf_005_approval_decision`: `WorkflowApprovalDecision`
+  model (uuid PK, runId→WorkflowRun Cascade, stepRunId→WorkflowStepRun
+  Cascade, stepKey, APPROVED/REJECTED enum, snapshotHash, pins Json,
+  decidedById→User SetNull, reason nullable, decidedAt default now;
+  `@@unique([runId, stepKey])`, no separate runId index) and nullable
+  `WorkflowStepRun.approvalSnapshot` (JsonB). Every DDL statement
+  re-runnable (GAP-018): `ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF
+  NOT EXISTS`, and a `DO $$ ... EXCEPTION WHEN duplicate_object` block
+  for the enum — PostgreSQL's `CREATE TYPE` has no `IF NOT EXISTS`
+  clause (GAP-030). No backfill: pre-NF-WF-005 parked rows are
+  undecidable by design.
+- `packages/workflow-executor/snapshot.ts` (new): canonical-JSON
+  (recursive key sort, UTF-8) + sha256 `hashApprovalMaterial`, exported
+  from the package index. `executor.ts` park path persists
+  `{ material, snapshotHash }` on the step row in the same update that
+  parks it; material = rendered instruction + prior-step `{text,json}`
+  outcome envelopes + workflowVersionNumber + resolved agent/skill
+  version numbers. No other executor changes (PENDING-only claims already
+  give the resume cursor).
+- `apps/api/src/services/workflow-runs.ts`: new `decideRun()` —
+  `gateWorkspace(..., "workflow:approve")`, then ONE transaction:
+  parked-step lookup → NULL snapshot → 409 NO_APPROVAL_SNAPSHOT; hash
+  mismatch → 409 STALE_APPROVAL; guarded run AWAITING_APPROVAL→PENDING
+  (approve) / →FAILED (reject, completedAt + errorMessage=reason), zero
+  rows → 409 RUN_CANCELLED (run reads CANCELLED) else 409
+  ALREADY_DECIDED; guarded step →SUCCEEDED (decision summary in output)
+  / →FAILED, zero rows → rollback; decision insert (unique violation →
+  rollback); audit `workflow.run_approved`/`workflow.run_rejected` in the
+  same transaction. After commit on approve: best-effort
+  `queue.getJob(runId)`→`remove()` then `queue.add` same `jobId` on the
+  shared queue (invariant 5 order). New `ApprovalDecisionError` (extends
+  ConflictError) mapped in `platform-routes.ts` to 409
+  `{ error: "CONFLICT", code }`. `getRun` step views now expose
+  `approvalSnapshot` so clients can echo `expectedSnapshotHash`.
+- `apps/api/src/definition-routes.ts`: `POST
+  .../workflow-runs/:runId/approve` (`expectedSnapshotHash` 64-hex +
+  optional reason ≤2000) and `/reject` (reason required 1..2000),
+  cancel-route style (requireActor, zod params, 400 INVALID_INPUT).
+
+**Verification (this host, scratch DBs only).**
+- `approval-decision.test.ts` (new, real BullMQ queue): 15/15 —
+  approve happy path (live `waiting` job asserted via `getJob`, decision
+  row, audit, drive to SUCCEEDED), resume cursor exactness
+  (pre-approval `completedAt` untouched, post-approval once), reject
+  (FAILED + reason, no resume), stale (409 STALE_APPROVAL → fresh hash
+  resumes), snapshotless seed (409 NO_APPROVAL_SNAPSHOT, untouched),
+  duplicate (409 ALREADY_DECIDED, one row, no second enqueue),
+  sequential two-approval workflow (two decisions, per-step hashes),
+  EDITOR/VIEWER → 403 + non-member → 404, validation 400s,
+  cancel-won-race → 409 RUN_CANCELLED + decide-then-cancel normal path,
+  restart-safe (simulated post-commit enqueue throw → PENDING/no job →
+  sweeper (b) re-enqueue → SUCCEEDED), migration SQL raw re-apply clean.
+- `executor.test.ts`: 18/18 (4 new: canonicalization fixed vector —
+  `4da42684…6caac36a` — park-time snapshot persistence, resume skips the
+  decided step).
+- `authorization.test.ts`: 15/15. Full API suite: 423/423 (17 files;
+  408 pre-existing + 15 new — no regressions).
+- `pnpm lint` clean; typechecks clean: api, worker, workflow-executor,
+  auth. Prisma client regenerated.
+- Migration: applies from empty (`migrate deploy`), second deploy is a
+  clean no-op, raw SQL re-runs cleanly, duplicate `(run_id, step_key)`
+  → 23505, `migrate diff --from-migrations --to-schema` empty (one
+  drift found and fixed: `decided_at` must be `TIMESTAMP(3)`, not
+  `TIMESTAMPTZ(6)`).
+
+**Deviations from the contract.** None material. The tx-scoped audit is
+`createAuditService(tx)` (cast, commented) rather than a new seam — same
+service, same record shape, inside the transaction as invariant 4
+requires.
+
+**Not committed.** Working tree left for separate review, per instructions.

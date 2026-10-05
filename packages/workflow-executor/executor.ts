@@ -35,6 +35,10 @@ import {
   isClientSafeError,
 } from "./errors.ts";
 import {
+  buildApprovalSnapshot,
+  type ApprovalSnapshotMaterial,
+} from "./snapshot.ts";
+import {
   WORKFLOW_PENDING_ORPHAN_AGE_MS,
   type AuditPort,
   type CompiledStepContext,
@@ -339,6 +343,8 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
         status: "SUCCEEDED" | "FAILED" | "SKIPPED" | "AWAITING_APPROVAL";
         outcome?: StepOutcome;
         instruction?: string;
+        /** NF-WF-005: persisted only on the HUMAN_APPROVAL park write. */
+        approvalSnapshot?: ApprovalSnapshotMaterial;
         errorMessage?: string | null;
         latencyMs?: number;
         agent?: ResolvedAgent;
@@ -354,6 +360,13 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
             ? { output: { text: data.outcome.text, json: data.outcome.json } as never }
             : {}),
           ...(data.instruction !== undefined ? { instruction: data.instruction } : {}),
+          ...(data.approvalSnapshot !== undefined
+            ? {
+                approvalSnapshot: buildApprovalSnapshot(
+                  data.approvalSnapshot,
+                ) as never,
+              }
+            : {}),
           ...(data.errorMessage !== undefined ? { errorMessage: data.errorMessage } : {}),
           ...(data.latencyMs !== undefined ? { latencyMs: data.latencyMs } : {}),
           ...(data.agent
@@ -496,9 +509,28 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
         if (step.kind === "HUMAN_APPROVAL") {
           executed.push(stepKey);
           const instruction = renderInstruction(step, runInput, outcomes);
+          // NF-WF-005 invariant 2: persist the approval snapshot in the
+          // same step-row update that parks the step — no new transaction
+          // scope. The material binds the rendered instruction, the prior
+          // steps' outcome envelopes at park time, and the definition
+          // version pins, so a decision can later be checked against
+          // exactly what the approver saw.
+          const agentVersions: Record<string, number> = {};
+          for (const [key, agent] of agents) agentVersions[key] = agent.versionNumber;
+          const skillVersions: Record<string, number> = {};
+          for (const [key, skill] of skills) skillVersions[key] = skill.versionNumber;
+          const priorOutcomes: Record<string, StepOutcome> = {};
+          for (const [key, outcome] of outcomes) priorOutcomes[key] = outcome;
           await finishStepRow(row.id, {
             status: "AWAITING_APPROVAL",
             instruction,
+            approvalSnapshot: {
+              instruction,
+              priorOutcomes,
+              workflowVersionNumber: runRow.workflowVersionNumber,
+              agentVersions,
+              skillVersions,
+            },
           });
           status = "AWAITING_APPROVAL";
           pendingStep = null;

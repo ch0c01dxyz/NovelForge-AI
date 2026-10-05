@@ -68,6 +68,7 @@ model User {
   createdFactSources  CanonFactSource[] @relation("CanonFactSourceCreator")
   proposedCanon       CanonProposal[]  @relation("CanonProposalAuthor")
   decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
+  decidedApprovals    WorkflowApprovalDecision[] @relation("WorkflowApprovalDecider")
   storyEvents         StoryEvent[]     @relation("StoryEventCreator")
   timelineEvents      TimelineEvent[]  @relation("TimelineEventCreator")
   storyThreads        StoryThread[]    @relation("StoryThreadCreator")
@@ -556,6 +557,13 @@ enum StepRunStatus {
   AWAITING_APPROVAL
 }
 
+/// An approver's decision on a parked HUMAN_APPROVAL step (NF-WF-005).
+/// APPROVED resumes the run from the parked step; REJECTED fails it.
+enum ApprovalDecisionKind {
+  APPROVED
+  REJECTED
+}
+
 /// An AI role: WHO performs a task (CLAUDE.md §3 "Agent").
 model Agent {
   id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -750,6 +758,9 @@ model WorkflowRun {
   /// makes a repeated POST with the same key return the existing run.
   idempotencyKey  String?           @map("idempotency_key")
   steps             WorkflowStepRun[]
+  /// Approval decisions on this run's HUMAN_APPROVAL steps (NF-WF-005).
+  /// At most one decision per (runId, stepKey).
+  decisions         WorkflowApprovalDecision[]
 
   @@index([workflowId, startedAt])
   // RESTRICT FK-check target: deleting a workflow version scans this column.
@@ -793,6 +804,13 @@ model WorkflowStepRun {
   generation       Generation?   @relation(fields: [generationId], references: [id], onDelete: SetNull)
   /// Rendered instruction actually sent, for reproducibility.
   instruction      String?       @db.Text
+  /// Approval snapshot written when this step parks at AWAITING_APPROVAL
+  /// (NF-WF-005): `{ material, snapshotHash }` where material binds the
+  /// rendered instruction, the prior-step outcome envelopes at park time,
+  /// and the definition version pins. NULL for steps that never parked and
+  /// for rows parked before NF-WF-005 — the latter are undecidable
+  /// (decide → 409 NO_APPROVAL_SNAPSHOT), never backfilled.
+  approvalSnapshot Json?        @map("approval_snapshot")
   output           Json?         @map("output")
   errorMessage     String?       @map("error_message")
   latencyMs        Int?          @map("latency_ms")
@@ -801,6 +819,8 @@ model WorkflowStepRun {
   /// Phase 5: retrievals triggered by or within this step. One-to-many
   /// because a step may retrieve more than once.
   retrievals       RetrievalAudit[] @relation("StepRunRetrieval")
+  /// Approval decisions recorded against this step row (NF-WF-005).
+  approvalDecisions WorkflowApprovalDecision[]
 
   @@unique([runId, sequence])
   @@unique([runId, stepKey])
@@ -815,6 +835,42 @@ model WorkflowStepRun {
   @@index([skillVersionId])
   @@index([generationId])
   @@map("workflow_step_runs")
+}
+
+/// One approver decision on one parked HUMAN_APPROVAL step (NF-WF-005).
+///
+/// Exactly one row per (runId, stepKey): the @@unique is the backstop, the
+/// guarded decide transaction is the mechanism. The decision binds to the
+/// parked material via `snapshotHash` (sha256 over the canonical JSON of
+/// the step row's `approvalSnapshot.material`) plus the version `pins`;
+/// a decision minted against a different view of the material is refused
+/// (409 STALE_APPROVAL). Rows are never updated or deleted by the API —
+/// the decision is the audit record.
+model WorkflowApprovalDecision {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId       String              @map("run_id") @db.Uuid
+  run         WorkflowRun         @relation(fields: [runId], references: [id], onDelete: Cascade)
+  stepRunId   String              @map("step_run_id") @db.Uuid
+  stepRun     WorkflowStepRun     @relation(fields: [stepRunId], references: [id], onDelete: Cascade)
+  /// Step key from the graph (the @@unique scope, not the step-row id:
+  /// the decision binds to the parked step, and the key is the stable
+  /// identifier across the run's definition version).
+  stepKey     String              @map("step_key")
+  decision    ApprovalDecisionKind
+  /// Must equal the step row's approvalSnapshot.snapshotHash at decide
+  /// time; recorded redundantly so the binding is auditable from the row.
+  snapshotHash String             @map("snapshot_hash")
+  /// The version pins from the snapshot material (workflowVersionNumber,
+  /// agent/skill version numbers), denormalized for audit queries.
+  pins        Json
+  decidedById String?             @map("decided_by_id") @db.Uuid
+  decidedBy   User?               @relation("WorkflowApprovalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  /// Required for REJECTED (why), optional for APPROVED.
+  reason      String?             @db.Text
+  decidedAt   DateTime            @default(now()) @map("decided_at")
+
+  @@unique([runId, stepKey])
+  @@map("workflow_approval_decisions")
 }
 
 // ==================== Knowledge / Retrieval (Phase 5) ====================

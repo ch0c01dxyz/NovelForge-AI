@@ -733,3 +733,23 @@ Status: VERIFY_PENDING until a host-specific receipt verifies the actual setup.
 No packages, containers, databases or volumes were modified on this workstation.
 The legacy clone script is documented as Compose-specific; use the native
 commands rather than installing Docker just to satisfy its final check.
+
+## GAP-030 — `CREATE TYPE` has no `IF NOT EXISTS` (migration DDL lesson, 2026-10-05)
+
+Status: CLOSED (resolved during NF-WF-005 implementation; recorded per
+standing author instruction).
+
+OBSERVED: the first draft of migration
+`20261005_nf_wf_005_approval_decision` used
+`CREATE TYPE IF NOT EXISTS "ApprovalDecisionKind" AS ENUM (...)`.
+PostgreSQL 16 rejects it: `syntax error at or near "NOT"` (SQLSTATE
+42601) — unlike `CREATE TABLE` / `CREATE INDEX`, `CREATE TYPE` has no
+`IF NOT EXISTS` clause. The failed `migrate deploy` was recovered by
+dropping the scratch database and redeploying from empty (scratch-only;
+no working data involved).
+
+FIX: the idempotent `DO $$ BEGIN CREATE TYPE ...; EXCEPTION WHEN
+duplicate_object THEN null; END $$;` block — re-runnable, so a partially
+applied deploy converges on retry (GAP-018). Documented in the migration
+file's header. Future migrations introducing a PG enum must use the DO
+block, not `IF NOT EXISTS`.

@@ -26,6 +26,13 @@ export {
   isUniqueViolation,
 } from "./errors.ts";
 export {
+  buildApprovalSnapshot,
+  canonicalizeJson,
+  hashApprovalMaterial,
+  type ApprovalSnapshot,
+  type ApprovalSnapshotMaterial,
+} from "./snapshot.ts";
+export {
   WORKFLOW_QUEUE_NAME,
   WORKFLOW_DEFAULT_JOB_OPTIONS,
   WORKFLOW_WORKER_LOCK_DURATION_MS,

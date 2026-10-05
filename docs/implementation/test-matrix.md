@@ -1335,3 +1335,31 @@ workspace-scoped.
 tests outside the workflow block asserted the old synchronous behavior
 (delete-with-history expected 201; shadow-key test read `seenPrompts`
 synchronously) — updated to 202 and to drive-then-assert.
+
+## NF-WF-005 approval decision and safe continuation — 2026-10-05
+
+Uncommitted working tree on HEAD `c426d2b`; contract
+`tasks/NF-WF-005-approval-decision-continuation.md` (APPROVE round 3).
+Executed on this host (Ubuntu 24.04.5): PostgreSQL 16.15 + pgvector 0.6.0
+and Redis 7.0.15 installed natively and started manually (fresh host —
+no prior services existed), scratch `novelforge_test_*` databases only.
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Approval API | `npx vitest run src/approval-decision.test.ts` (apps/api, real BullMQ queue) | 1 file, **15/15** |
+| Executor | `npx vitest run executor.test.ts` (@novelforge/workflow-executor) | 1 file, **18/18** (4 new) |
+| Auth | `npx vitest run authorization.test.ts` (@novelforge/auth) | 1 file, **15/15** (2 new) |
+| Full API | `npx vitest run` (apps/api) | 17 files, **423/423** (no regressions) |
+| Lint | `pnpm lint` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/api typecheck` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/worker typecheck` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/workflow-executor typecheck` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/auth typecheck` | exit 0 |
+
+Migration `20261005_nf_wf_005_approval_decision` (scratch
+`novelforge_test_mig_005`): `migrate deploy` from empty exit 0; second
+deploy "No pending migrations to apply"; raw `migration.sql` re-run clean;
+duplicate `(run_id, step_key)` insert → 23505; `migrate diff
+--from-migrations --to-schema --script` empty after fixing one drift
+(`decided_at` `TIMESTAMP(3)`, not `TIMESTAMPTZ(6)`); automated re-apply
+check also encoded in `approval-decision.test.ts` ("migration" describe).

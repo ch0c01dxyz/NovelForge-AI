@@ -42,6 +42,7 @@ export const CAPABILITIES = [
   "workflow:read",
   "workflow:manage",
   "workflow:run",
+  "workflow:approve", // decide a parked HUMAN_APPROVAL step: approve (resume) or reject
   // Knowledge / retrieval (Phase 5). Reading a reference means querying the
   // workspace's knowledge base; managing one means importing or editing
   // external material that will be embedded and fed to models.
@@ -127,6 +128,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "workflow:read",
     "workflow:manage",
     "workflow:run",
+    // ADMIN decides parked approvals the same way it curates the
+    // workspace's story truth (canon:approve): deciding what continues is
+    // an administrative act.
+    "workflow:approve",
     // ADMIN curates the workspace's knowledge base.
     "reference:read",
     "reference:manage",
@@ -155,6 +160,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     "skill:read",
     "workflow:read",
     "workflow:run",
+    // The author owns the story's canon and its execution: approving a
+    // parked workflow step is the same authority act as canon:approve
+    // (CLAUDE.md §5).
+    "workflow:approve",
     // A writer may consult the knowledge base and run retrieval against it,
     // but importing or editing reference material is an ADMIN act.
     "reference:read",

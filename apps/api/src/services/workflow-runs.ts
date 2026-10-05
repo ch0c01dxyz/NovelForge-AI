@@ -23,8 +23,42 @@ import {
 import { isUniqueViolation } from "@novelforge/workflow-executor";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import { resolveAgent, resolveSkill } from "./definition-resolution.ts";
-import type { AuditService } from "./audit.ts";
+import { createAuditService, type AuditService } from "./audit.ts";
 import type { WorkflowQueue } from "./workflow-queue.ts";
+
+/**
+ * Typed 409 for approval-decision refusals (NF-WF-005, invariant 4).
+ * Extends ConflictError so unmapped handlers still return 409; the
+ * platform-routes error handler maps `decisionCode` to the machine-readable
+ * `code` field, following the HeadConflictError precedent.
+ */
+export class ApprovalDecisionError extends ConflictError {
+  readonly decisionCode:
+    | "STALE_APPROVAL"
+    | "NO_APPROVAL_SNAPSHOT"
+    | "ALREADY_DECIDED"
+    | "RUN_CANCELLED";
+  constructor(
+    decisionCode: ApprovalDecisionError["decisionCode"],
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApprovalDecisionError";
+    this.decisionCode = decisionCode;
+  }
+}
+
+/** Shape of the persisted `approvalSnapshot` written at park time. */
+interface ParkedApprovalSnapshot {
+  material: {
+    instruction: string;
+    priorOutcomes: Record<string, { text: string | null; json: unknown }>;
+    workflowVersionNumber: number;
+    agentVersions: Record<string, number>;
+    skillVersions: Record<string, number>;
+  };
+  snapshotHash: string;
+}
 
 export interface StepRunView {
   stepKey: string;
@@ -39,6 +73,12 @@ export interface StepRunView {
   output: unknown;
   errorMessage: string | null;
   latencyMs: number | null;
+  /**
+   * The park-time approval snapshot (NF-WF-005 invariant 2):
+   * `{ material, snapshotHash } | null`. Null for steps that never parked
+   * and for rows parked before NF-WF-005 (undecidable).
+   */
+  approvalSnapshot: unknown;
 }
 
 export interface RunView {
@@ -81,6 +121,23 @@ export interface WorkflowRunServices {
     workspaceId: string;
     runId: string;
   }): Promise<RunView>;
+  /**
+   * Decide a parked HUMAN_APPROVAL step (NF-WF-005).
+   * `approve` resumes the same run from the parked step; `reject` fails it.
+   * The decision binds to `expectedSnapshotHash` (409 STALE_APPROVAL on
+   * mismatch, 409 NO_APPROVAL_SNAPSHOT when the step row has none) and is
+   * persisted exactly once in a single transaction with its audit record.
+   * Body shape (hash length, reason rules) is validated at the route.
+   */
+  decideRun(input: {
+    actorUserId: string;
+    workspaceId: string;
+    runId: string;
+    decision: "approve" | "reject";
+    expectedSnapshotHash: string;
+    /** Required for reject (route-validated), optional for approve. */
+    reason?: string;
+  }): Promise<RunView>;
   listRuns(input: {
     actorUserId: string;
     workspaceId: string;
@@ -107,7 +164,7 @@ export function createWorkflowRunServices(deps: {
   async function gateWorkspace(
     workspaceId: string,
     userId: string,
-    cap: "workflow:run" | "workflow:read",
+    cap: "workflow:run" | "workflow:read" | "workflow:approve",
   ): Promise<void> {
     const membership = await db.membership.findUnique({
       where: { workspaceId_userId: { workspaceId, userId } },
@@ -381,6 +438,206 @@ export function createWorkflowRunServices(deps: {
       return loadRun(db, run.id);
     },
 
+    async decideRun(input) {
+      await gateWorkspace(
+        input.workspaceId,
+        input.actorUserId,
+        "workflow:approve",
+      );
+
+      const run = await db.workflowRun.findFirst({
+        where: { id: input.runId, workspaceId: input.workspaceId },
+        select: { id: true, status: true },
+      });
+      if (!run) throw new NotFoundError("run");
+
+      // One transaction: snapshot comparison, guarded run transition,
+      // guarded step transition, decision insert, audit insert (invariant 4).
+      // No LLM calls and no awaits across the human — the transaction is
+      // short and local (constitution §9).
+      await db.$transaction(async (tx) => {
+        // Find the parked step. Absent → the run is not awaiting a
+        // decision: pick the accurate code from the run's current status
+        // (invariant 4.1 / invariant 7's cancel-won-race rule).
+        const stepRow = await tx.workflowStepRun.findFirst({
+          where: { runId: run.id, status: "AWAITING_APPROVAL" },
+          select: { id: true, stepKey: true, approvalSnapshot: true },
+        });
+        if (!stepRow) {
+          const current = await tx.workflowRun.findUniqueOrThrow({
+            where: { id: run.id },
+            select: { status: true },
+          });
+          if (current.status === "CANCELLED") {
+            throw new ApprovalDecisionError(
+              "RUN_CANCELLED",
+              "the run was cancelled before a decision was recorded",
+            );
+          }
+          throw new ApprovalDecisionError(
+            "ALREADY_DECIDED",
+            `the run is ${current.status.toLowerCase()}; no approval is pending`,
+          );
+        }
+
+        // Invariant 3: the decision binds to the parked material. A NULL
+        // snapshot (rows parked before NF-WF-005) is undecidable — never
+        // backfilled, because a hash over unpinned material would
+        // manufacture a binding the approver never saw.
+        const snapshot = stepRow.approvalSnapshot as ParkedApprovalSnapshot | null;
+        if (!snapshot) {
+          throw new ApprovalDecisionError(
+            "NO_APPROVAL_SNAPSHOT",
+            "this run parked before approval snapshots existed and cannot be decided",
+          );
+        }
+        if (snapshot.snapshotHash !== input.expectedSnapshotHash) {
+          throw new ApprovalDecisionError(
+            "STALE_APPROVAL",
+            "the approval material changed since this decision was prepared; re-read the current snapshot",
+          );
+        }
+
+        // 1. Guarded run transition: only AWAITING_APPROVAL moves.
+        const updated = await tx.workflowRun.updateMany({
+          where: { id: run.id, status: "AWAITING_APPROVAL" },
+          data: {
+            status: input.decision === "approve" ? "PENDING" : "FAILED",
+            ...(input.decision === "reject"
+              ? { completedAt: new Date(), errorMessage: input.reason ?? null }
+              : {}),
+          },
+        });
+        if (updated.count === 0) {
+          // Lost a race with a concurrent decide or a cancel: re-read to
+          // report accurately (invariant 7).
+          const current = await tx.workflowRun.findUniqueOrThrow({
+            where: { id: run.id },
+            select: { status: true },
+          });
+          if (current.status === "CANCELLED") {
+            throw new ApprovalDecisionError(
+              "RUN_CANCELLED",
+              "the run was cancelled before a decision was recorded",
+            );
+          }
+          throw new ApprovalDecisionError(
+            "ALREADY_DECIDED",
+            `the run is ${current.status.toLowerCase()}; no approval is pending`,
+          );
+        }
+
+        // 2. Guarded step transition. Zero rows → roll back: a decision row
+        // must never exist while its step is still AWAITING_APPROVAL —
+        // that corrupt state would strand the run PENDING with an
+        // undecided step the worker cannot claim.
+        const decidedAt = new Date();
+        const decidedKind =
+          input.decision === "approve" ? "APPROVED" : "REJECTED";
+        const stepUpdated = await tx.workflowStepRun.updateMany({
+          where: { id: stepRow.id, status: "AWAITING_APPROVAL" },
+          data: {
+            status: input.decision === "approve" ? "SUCCEEDED" : "FAILED",
+            output: {
+              text: input.reason ?? null,
+              json: {
+                decision: decidedKind,
+                snapshotHash: snapshot.snapshotHash,
+                decidedById: input.actorUserId,
+                decidedAt: decidedAt.toISOString(),
+              },
+            } as never,
+            ...(input.decision === "reject"
+              ? { errorMessage: input.reason ?? null }
+              : {}),
+            completedAt: decidedAt,
+          },
+        });
+        if (stepUpdated.count === 0) {
+          throw new ApprovalDecisionError(
+            "ALREADY_DECIDED",
+            "the parked step was decided concurrently",
+          );
+        }
+
+        // 3. The decision row. The @@unique([runId, stepKey]) is the
+        // backstop; a violation rolls the whole transaction back.
+        const pins = {
+          workflowVersionNumber: snapshot.material.workflowVersionNumber,
+          agentVersions: snapshot.material.agentVersions,
+          skillVersions: snapshot.material.skillVersions,
+        };
+        try {
+          await tx.workflowApprovalDecision.create({
+            data: {
+              runId: run.id,
+              stepRunId: stepRow.id,
+              stepKey: stepRow.stepKey,
+              decision: decidedKind,
+              snapshotHash: snapshot.snapshotHash,
+              pins: pins as never,
+              decidedById: input.actorUserId,
+              reason: input.reason ?? null,
+            },
+          });
+        } catch (err) {
+          if (isUniqueViolation(err)) {
+            throw new ApprovalDecisionError(
+              "ALREADY_DECIDED",
+              "a decision is already recorded for this approval step",
+            );
+          }
+          throw err;
+        }
+
+        // 4. The audit record is part of the same transaction: no decision
+        // without its audit record (invariant 9).
+        await createAuditService(tx as unknown as NovelForgeDb).record({
+          actorUserId: input.actorUserId,
+          workspaceId: input.workspaceId,
+          action:
+            input.decision === "approve"
+              ? "workflow.run_approved"
+              : "workflow.run_rejected",
+          entityType: "WorkflowRun",
+          entityId: run.id,
+          payload: {
+            stepKey: stepRow.stepKey,
+            snapshotHash: snapshot.snapshotHash,
+            pins: pins as never,
+            ...(input.reason ? { reason: input.reason } : {}),
+          },
+        });
+      });
+
+      if (input.decision === "approve") {
+        // Resume the same run (invariant 5), in this exact order:
+        // (1) best-effort remove the old job record — the park path
+        // completes its BullMQ job normally and the queue retains
+        // completed records, so a re-add() with the same jobId while any
+        // record exists is a silent no-op and the approved run would sit
+        // PENDING forever; (2) re-add with the same jobId on the one
+        // shared queue. A remove-vs-sweeper-(b) race is benign: both add
+        // with the same jobId, dedup yields one job, and the PENDING-only
+        // claim single-wins. If the add throws after commit, the run sits
+        // PENDING with no job and sweeper (b) re-enqueues it.
+        try {
+          const job = await queue.getJob(run.id);
+          await job?.remove();
+        } catch (err) {
+          dbg?.error?.("could not remove decided run's old job record", {
+            runId: run.id,
+            err,
+          });
+        }
+        await queue.add("workflow-run", { runId: run.id }, { jobId: run.id });
+      }
+      // Reject is terminal (invariant 6): no enqueue, remaining PENDING
+      // step rows are left untouched as history of what never ran.
+
+      return loadRun(db, run.id);
+    },
+
     async listRuns(input) {
       await gateWorkspace(input.workspaceId, input.actorUserId, "workflow:read");
       const rows = await db.workflowRun.findMany({
@@ -461,6 +718,10 @@ async function loadRun(db: NovelForgeDb, runId: string): Promise<RunView> {
       output: s.output,
       errorMessage: s.errorMessage,
       latencyMs: s.latencyMs,
+      // NF-WF-005: the park-time approval snapshot ({ material,
+      // snapshotHash } | null) so the approver's client can echo
+      // expectedSnapshotHash.
+      approvalSnapshot: s.approvalSnapshot ?? null,
     })),
   };
 }

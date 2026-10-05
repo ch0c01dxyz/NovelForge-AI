@@ -1,0 +1,106 @@
+{
+  "generatedAt": "2026-10-05T11:53:15.980Z",
+  "gitSha": "8ff19527b52f230ce13da3c4b70941a6cd39e63d",
+  "fixtureSeed": 20261005,
+  "fixture": {
+    "chapters": 300,
+    "revisions": 4554,
+    "characters": 60,
+    "facts": 3001,
+    "timelineEvents": 300,
+    "threads": 30
+  },
+  "measurements": {
+    "compile_ch301": {
+      "p50Ms": 246,
+      "p95Ms": 309,
+      "queries": 252,
+      "thresholdMs": 10000,
+      "thresholdQueries": 500
+    },
+    "recall_ch300": {
+      "p50Ms": 53,
+      "p95Ms": 66,
+      "queries": 41,
+      "thresholdMs": 2000,
+      "thresholdQueries": 200
+    },
+    "rebuild_ch300_scope": {
+      "p50Ms": 15,
+      "p95Ms": 16,
+      "queries": 0,
+      "thresholdMs": 60000,
+      "thresholdQueries": null
+    },
+    "health_ch300": {
+      "p50Ms": 24,
+      "p95Ms": 25,
+      "queries": 31,
+      "thresholdMs": 30000,
+      "thresholdQueries": 1000
+    },
+    "restore_full": {
+      "p50Ms": 1054,
+      "p95Ms": 1054,
+      "queries": 0,
+      "thresholdMs": 120000,
+      "thresholdQueries": null
+    },
+    "fixture_build": {
+      "p50Ms": 40923,
+      "p95Ms": 40923,
+      "queries": 0,
+      "thresholdMs": 600000,
+      "thresholdQueries": null
+    }
+  },
+  "contextSizes": {
+    "chapter-301": {
+      "tier1": 33,
+      "tier2": 7104,
+      "tier3": 10708,
+      "tier4": 133,
+      "tier5": 0,
+      "tier6": 0,
+      "tier7": 0,
+      "tier8": 0,
+      "tier9": 0,
+      "tier10": 0,
+      "total": 17978
+    }
+  },
+  "thresholds": {
+    "compile_ch301": {
+      "latencyMs": 10000,
+      "queries": 500
+    },
+    "recall_ch300": {
+      "latencyMs": 2000,
+      "queries": 200
+    },
+    "rebuild_ch300_scope": {
+      "latencyMs": 60000,
+      "queries": null
+    },
+    "health_ch300": {
+      "latencyMs": 30000,
+      "queries": 1000
+    },
+    "restore_full": {
+      "latencyMs": 120000,
+      "queries": null
+    },
+    "fixture_build": {
+      "latencyMs": 600000,
+      "queries": null
+    }
+  },
+  "notes": [
+    "First receipts for NF-WF-011 (GAP-010 E2E scope). Thresholds are generous ceilings chosen before measuring.",
+    "compile_ch301 measured cleanly (fixture build excluded); p50/p95 over 5 repetitions.",
+    "rebuild measured via direct processRebuild(@novelforge/memory) call — the driver's memory queue is a no-op fake.",
+    "The strict >2x no-regression rule applies to deterministic measurements (query counts, context sizes); latencies are checked against absolute ceilings.",
+    "fixture_build measured from a real uncached build.",
+    "previous e2e-baseline.json did not match the E2EBaseline shape (missing contextSizes/thresholds); re-baselined with the harness schema"
+  ]
+}

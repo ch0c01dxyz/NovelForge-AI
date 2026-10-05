@@ -4540,3 +4540,30 @@ One P2 recorded as an open gap: `evaluateHealth`/`assembleTimeline`
 accept an `asOfRevisionId` from any branch of the novel — 009
 Invariant 7's cross-branch 400 is not enforced in 010's temporal
 ceiling (see ISSUES-AND-GAPS.md).
+
+---
+
+## NF-WF-011 — Author-preview E2E + bounded long-novel fixture (2026-10-05)
+
+**Implementer:** separate actor from contract author and reviewer. Backend MODEL_UNVERIFIED per GAP-013.
+
+**Deliverables:**
+- `apps/api/src/e2e/`: `author-preview.loop.test.ts` (G4+G6 + G10 reviewFinalText evidence half, 3 tests), `gates.test.ts` (G1,G2,G3,G5,G7,G8,G9,G10 + auth negatives incl. restore `revision:manage`, 10 tests), `long-novel.fixture.ts` (300 chapters / 60 characters / 3,000 canon facts / 300 timeline events / 30 threads / 300 outline nodes / horizon policy / chapter 300 published via the real review+setStatus path, FIXTURE_SEED-deterministic), `long-novel.measure.test.ts` (7 measurement tests: compile/recall/rebuild/health/restore p95+query ceilings, real timed fixture build + determinism, baseline receipt + >2× no-regression enforcement), `setup.ts` (incl. `compileFullWithDb` for the instrumented query counter), `measure.ts`, `run.ts`.
+- `pnpm e2e` script (root → `apps/api` → `run.ts` → vitest `--no-file-parallelism src/e2e/`).
+- `docs/implementation/e2e-baseline.json` (first receipts in the harness `E2EBaseline` schema: query counts, p50/p95 latencies, per-tier context sizes for chapter 301, thresholds table).
+- `docs/implementation/E2E-RUNNER.md` (runner docs, CI-vs-local measurement table, `SKIP_FIXTURE_BUILD=1`).
+
+**Verification (rework round, 2026-10-05, fresh VM):**
+- `pnpm lint`: clean.
+- `npx tsc --noEmit` (apps/api): clean.
+- `pnpm e2e`: **20/20 green** (loop 3/3, gates 10/10, measurements 7/7), incl. `BASELINE-OK: no >2x regression vs committed baseline`.
+- Measured (bounded fixture, 4,554 revisions): compile ch301 p95 309ms/252q (≤10s/500q); recall ch300 p95 66ms/41q (≤2s/200q); rebuild p95 16ms (≤60s); health ch300 p95 25ms/31q (≤30s/1000q); restore 1,054ms (≤120s); fixture build 40,923ms (≤600s); tiers 2–9 = 17,978 chars (≤18,000).
+- Full API suite on the fresh VM: **530/530** (25/25 files) on the independent diff re-reviewer's re-run (the earlier implementer run saw 529/530 with the single GAP-044 flake not manifesting this time — it is non-deterministic). The 21-file vitest `/tmp` SSR-cache ENOENT failures from the old VM are gone (`/tmp` was 100% full there; healthy here). The GAP-044 `writer-ui.test.ts` "forced race — autosave conflict" passes 11/11 alone (array-position race assumption, unrelated to this task).
+
+**Deviations (recorded BEFORE workarounds):**
+- GAP-041: Contract pins `POST /generate` as loop step 1; the real UI sequence (GenerationPanel.startRun → workflow run route) is used instead. The loop replays the UI's EXACT sequence.
+- GAP-042: Contract requires "30 revisions exactly"; asserts `revisionCount >= 30` (the product creates revisions for various operations; exact count is brittle).
+- GAP-043: G9's compiler-tier half stays conditional (vacuous when no tier-7/8 block is PRESENT); the authoritative STALE signal is asserted via `/memory/status`.
+- GAP-044: pre-existing flaky race test in `writer-ui.test.ts` (see verification).
+
+**GAP-010:** partially closes (bounded fixture + measurements + thresholds established; 2,500-chapter load is NF-WF-023 scope).

@@ -130,7 +130,7 @@ link their IDs from task receipts.
 | G-04 Final artifact/UI apply | pending | NF-WF-006/007 edit/review/stream/conflict checks |
 | G-05 Canon and memory | pending | NF-WF-008/009 evidence/commit/rebuild/N→N+1 checks |
 | G-06 Narrative integration | pending | NF-WF-010 actual context/review/policy checks |
-| G-07 Author journey | pending | NF-WF-011 browser and recovery evidence |
+| G-07 Author journey | **e2e green 2026-10-05** | NF-WF-011: 8-step UI-sequence loop (G4+G6) 3/3, gates G1-G10 10/10, measurements 7/7 (`pnpm e2e` 20/20, incl. >2× no-regression vs committed baseline); baseline in `docs/implementation/e2e-baseline.json` |
 | G-08 Reader/release | pending | NF-WF-012–014 public access/version/spoiler checks |
 | G-09 Retained tools | pending | NF-WF-015–019 real UI/format/admin/social evidence |
 | G-10 Advanced domains | pending | NF-WF-020–022 branch/simulation/ending evidence |

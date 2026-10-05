@@ -100,6 +100,17 @@ export function createTestDriver(
           narrative,
           retrieval: retrievalServices,
           head,
+          memory: {
+            recallNovel: (args: {
+              actorUserId: string;
+              workspaceId: string;
+              novelId: string;
+              chapter: number;
+            }) =>
+              memoryServices.recallNovel(args.actorUserId, args.workspaceId, args.novelId, {
+                chapter: args.chapter,
+              }),
+          },
           stateAssembly: {
             assembleStates: (i) =>
               stateAssemblyServices.assembleCharacterState(i),

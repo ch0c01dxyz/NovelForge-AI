@@ -762,3 +762,50 @@ UNVERIFIED / explicitly non-normative:
   measured values — Q3 asks the reviewer to judge them.
 - CI runtime for the 300-chapter fixture build is estimated, not
   measured — Q1.
+
+## Implementation review record
+
+(Diff reviewer: separate actor from contract author/reviewer/implementer,
+Muse Spark model family, backend MODEL_UNVERIFIED per GAP-013. This section
+is an additive record — no normative contract changes.)
+
+- **Round 1 verdict: CHANGES_REQUESTED (2026-10-05).** Independent re-run
+  confirmed the implementer's 17/17 e2e claim (pnpm e2e, 3 files, exit 0),
+  but the acceptance "Measurements recorded" was not genuinely met:
+  **P1-1** — restore latency never measured; compile 37.6 s vs the 10 s
+  ceiling with no latency assertion; no p95 recorded anywhere;
+  per-tier context sizes only console.log'd, never in the baseline JSON;
+  the >2× no-regression rule was dead code (`checkNoRegression` called by
+  nothing); fixture-build "measurement" was a cache hit (0 ms).
+  **P2-1** — G1 implemented as DB-level checks only (no compilation, no
+  tier-2/tier-4 pins, relaxation unrecorded in ISSUES-AND-GAPS.md).
+  **P2-2** — restore capability negative (`revision:manage`) untested.
+  **P2-3** — G10 asserted `evaluateHealth` findings only; the
+  `reviewFinalText` half missing. **P2-4** — progress.md inaccurate (the
+  21-file API-suite failure on the old VM — /tmp 100% full — was not
+  recorded). **P3** — E2E-RUNNER.md wrong revision count; fixture
+  determinism missing row-count comparison; G9's conditional compiler-tier
+  half unrecorded. GAP-041/042 judged LEGITIMATE adaptations (contract
+  defects: `/generate` never starts a run — GenerationPanel uses the
+  workflow run route; per-mutation revisions make ~4,000 the honest count).
+  No inline fixes (none small-and-safe); returned to implementer.
+- **Round 2 verdict: APPROVE_WITH_FINDINGS (2026-10-05).** Rework verified
+  by re-reviewer's own runs: `pnpm e2e` 20/20 green (loop 3/3, gates
+  10/10, measurements 7/7); restore measured via real API (1,054 ms
+  ≤ 120 s); compile 246/309 ms p50/p95 with 252 queries (the 37.6 s
+  number was fixture-build contamination — no ceiling breach, no GAP);
+  p95 recorded + asserted for compile/recall/health; per-tier sizes in
+  the schema-correct `e2e-baseline.json`; the >2× no-regression rule is
+  wired and proven live; fixture build measured real (40,923 ms ≤ 600 s)
+  with `SKIP_FIXTURE_BUILD=1` documented. G1 as specified: 300 real
+  outline nodes via `planning.createOutlineNode` + horizon policy (window
+  300), chapter 300 published via reviewFinalText→PASS→setStatus; tier 2
+  PRESENT with `provenance.outlineVersionId === fixture.outlineVersionId`,
+  tier 4 PRESENT with FRESH memory at ≥ settle rev. P2-2: VIEWER →
+  403 FORBIDDEN on checkpoint create / restore preview / restore apply.
+  P2-3: `reviewFinalText` evidence assertions added (FAIL chapter
+  non-vacuous COOLDOWN_VIOLATION). Full API suite re-run on the fresh
+  VM: 530/530 (the old 21-file /tmp-full failures are gone; the single
+  interim failure was the pre-existing `writer-ui.test.ts` race flake,
+  GAP-044). New gaps: GAP-043 (G9 conditional tier half), GAP-044
+  (pre-existing race flake). Lint + typechecks clean. Ready to commit.

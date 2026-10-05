@@ -1070,3 +1070,129 @@ NEXT: either enforce same-branch (resolve `(branchId, number)` and
 amend the 010 contract to define the temporal ceiling as
 branch-agnostic. Do NOT silently edit the frozen contract — amend with
 the review record.
+
+## GAP-041 — NF-WF-011 contract pins `POST /generate` as the chapter-generation step, but the generation surface starts workflow runs (2026-10-05)
+
+Status: OPEN (contract defect, not a product defect; implementer deviation recorded BEFORE the workaround).
+
+OBSERVED: the NF-WF-011 contract's Invariant 2, step 1 pins
+`POST /api/workspaces/:workspaceId/generate` (`orchestrator-routes.ts:56`)
+with `{ agentKey, instruction, novelId }` as the step that "starts the
+chapter workflow run". Three independent checks refute this:
+
+1. `POST /generate` returns `{ generationId, content, model,
+   agentVersionNumber }` (`services/orchestrator.ts:276-329`) — a direct
+   generation with NO run row. There is no run to drive and no
+   approval flow, so the contract's own step 2 ("drive the run to
+   terminal via the test driver; if the run parks at AWAITING_APPROVAL:
+   `POST .../workflow-runs/:runId/approve`") is unimplementable from a
+   `/generate` call.
+2. The author-preview surface the contract pins (`apps/web/app/
+   components/generation/GenerationPanel.vue`) never calls `/generate`:
+   it resolves the workflow id by key `chapter-generation-review`
+   (`runs.resolveWorkflowId`, line 80) and starts a run with
+   `POST /api/workspaces/:workspaceId/workflows/:workflowId/run`
+   carrying a fresh `idempotencyKey`, `novelId`, and
+   `input.chapterNumber/outlineRef` (lines 121-152).
+3. The contract's own Goal section describes the generate step as
+   "generate (workflow run, fake gateway)" — i.e. a workflow run.
+
+The contract reviewer's backend verification confirmed only that
+`/generate` EXISTS with that body shape; it did not verify that
+`/generate` starts a run. The normative core of Invariant 2 ("the E2E
+loop replays the UI's EXACT API sequence... UI↔E2E drift is a contract
+violation") points the other way: the UI's sequence IS the workflow run
+route.
+
+IMPLEMENTER DEVIATION (recorded before the workaround, per Invariant
+10): the E2E loop's steps 1–2 use the workflow run route
+(`POST /workflows/:workflowId/run` with `idempotencyKey`, `novelId`,
+`input`) against the real `chapter-generation-review` platform template
+(seeded through the public API via `scripts/seed-chapter-template.ts`'s
+`ensureChapterTemplate`), driving runs with `createTestDriver` and
+approving at `AWAITING_APPROVAL` through the pinned approve route. Step
+1's `/generate` pin is NOT implemented — it cannot be, without
+inventing a run semantics `/generate` does not have.
+
+NEXT: amend the frozen NF-WF-011 contract's Invariant 2 step 1 with the
+review record (replace `/generate` with the workflow run route and the
+`chapter-generation-review` template pin). Do NOT silently edit.
+
+## GAP-042 — NF-WF-011 `FIXTURE_REVISIONS = 30` is not exactly attainable through real service paths (2026-10-05)
+
+Status: OPEN (documented limitation; normative constraint still satisfied).
+
+OBSERVED: the NF-WF-011 contract pins `FIXTURE_REVISIONS = 30`
+("10 chapters per revision"). The product's revision machinery makes an
+exact count of 30 unattainable through the real service stack the
+fixture MUST use: every covered-table mutation advances the head by
+exactly one revision (`advanceHead`, `services/revisions.ts:314-376`,
+called by `advanceForMutation` from every service — `chapter.create`,
+`chapter.save`, `fact.create`, outline approval, character/thread/event
+creation all advance). Building 300 chapters (create + save = 2
+revisions each), 3,000 canon facts, 60 characters, 300 timeline events,
+30 threads, and one approved outline through the real services yields
+roughly 4,000 revisions — every measured row still attributable to a
+real revision (Invariant 4's actual normative requirement), and the
+"multi-revision work" rationale for memory rebuild (30 revisions × 7
+scopes) is exceeded, not undermined.
+
+IMPLEMENTER DEVIATION (recorded before the workaround): the fixture
+builder asserts `revisionCount >= 30` (the normative floor that makes
+the rebuild measurements meaningful) rather than an exact 30, and the
+measurement receipt records the actual revision count. The fixture does
+NOT batch rows revision-lessly — that would violate Invariant 4.
+
+NEXT: amend the NF-WF-011 contract's Invariant 3 to say "at least 30
+revisions" (exact counts are a product-semantics artifact, not a
+fixture choice). Do NOT silently edit.
+
+## GAP-043 — NF-WF-011 G9's compiler-tier half is conditional and can be vacuous (2026-10-05)
+
+Status: OPEN (documented limitation; the gate's authoritative signal is asserted).
+
+OBSERVED: the G9 gate test (`apps/api/src/e2e/gates.test.ts`) asserts
+"tier 7/8 blocks MUST carry staleness metadata" only over
+`compiled.blocks.filter((b) => (b.tier === 7 || b.tier === 8) && b.status === "PRESENT")`.
+When no tier-7/8 block is PRESENT (e.g. no projection exists for the
+scope at all — tier 8 UNAVAILABLE/MISSING rather than STALE), the loop
+body executes zero iterations and that half of the gate is vacuous.
+The authoritative STALE signal IS asserted unconditionally via
+`GET .../memory/status` (`freshness === "STALE"` for the scope), so the
+gate still proves stale detection end to end — but the compiler-tier
+half only constrains the PRESENT case.
+
+IMPLEMENTER DECISION (recorded before keeping the conditional): forcing
+a PRESENT-but-stale tier 7/8 in the test would require engineering the
+fixture to hold a projection for the exact compiled scope, which is
+setup the gate does not own; the /memory/status assertion is the
+product's authoritative staleness surface (the same one the UI reads).
+The conditional is kept deliberately, documented here.
+
+NEXT: NF-WF-023 (or a follow-up) may pin a dedicated stale-tier case
+with a pre-built projection for the compiled scope so the compiler-tier
+half is unconditional. Do NOT silently strengthen the test to pass
+vacuously without this record.
+
+## GAP-044 — `writer-ui.test.ts` "forced race — autosave conflict" is flaky under full-suite load (2026-10-05)
+
+Status: OPEN (pre-existing test flakiness; not caused by NF-WF-011).
+
+OBSERVED: full `apps/api` suite on the fresh VM: 529/530 pass. The one
+failure is `src/writer-ui.test.ts > forced race — autosave conflict:
+one 200, one 409, no clobber` — `after.content` was "loser text",
+expected "winner text". The test fires two concurrent PUTs with the
+same `expectedVersion` via `Promise.all` and asserts the FIRST array
+element's text landed, but `app.inject` gives no ordering guarantee:
+whichever request the server processes first wins the 200. Re-running
+the file alone: 11/11 green (twice); `-t` filtered: 3/3 green. The
+NF-WF-011 changes do not touch `saveChapter`, the manuscript routes, or
+this test file (only additive `workflow-test-driver.ts` memory port,
+e2e files, docs) — the flakiness is inherent to the test's assumption
+that array position determines the race winner.
+
+NEXT: make the test order-agnostic (assert the 200-winner's text landed
+and the 409-losers's did not, keyed by actual status codes rather than
+array position), or serialize the two PUTs. Owner: whoever touches the
+writer-UI tests next; not NF-WF-011 scope (no product code is wrong —
+the 200/409/no-clobber behavior itself held in every run).

@@ -286,6 +286,70 @@ describe("executeRun", () => {
     expect(steps.every((s) => s.status !== "PENDING")).toBe(true);
   });
 
+  it("branches a CONDITION on a one-level nested json field (NF-WF-006)", async () => {
+    // producer's json outcome is { v: <input flag> }; the CONDITION reads
+    // $steps.producer.json.v — the bounded-correction mechanism.
+    const graph = {
+      steps: [
+        { key: "producer", kind: "TRANSFORM", inputs: { v: "$input.flag" } },
+        {
+          key: "check",
+          kind: "CONDITION",
+          condition: { path: "$steps.producer.json.v", equals: true },
+        },
+        { key: "yes", kind: "TRANSFORM" },
+        { key: "no", kind: "TRANSFORM" },
+      ],
+      edges: [
+        { from: "producer", to: "check" },
+        { from: "check", to: "yes", when: "true" },
+        { from: "check", to: "no", when: "false" },
+      ],
+    };
+    for (const [flag, winner] of [
+      [true, "yes"],
+      [false, "no"],
+    ] as const) {
+      const seed = await seedWorkflow(graph);
+      const runId = await seedRun(seed, graph);
+      await db.workflowRun.update({ where: { id: runId }, data: { input: { flag } } });
+      await executor.executeRun(runId);
+      const steps = await db.workflowStepRun.findMany({ where: { runId } });
+      expect(steps.find((s) => s.stepKey === winner)!.status).toBe("SUCCEEDED");
+      expect(steps.find((s) => s.stepKey === (winner === "yes" ? "no" : "yes"))!.status).toBe(
+        "SKIPPED",
+      );
+    }
+  });
+
+  it("resolves a missing nested field to undefined (takes the false branch)", async () => {
+    const graph = {
+      steps: [
+        { key: "producer", kind: "TRANSFORM", inputs: { v: "$input.flag" } },
+        {
+          key: "check",
+          kind: "CONDITION",
+          condition: { path: "$steps.producer.json.absent", equals: true },
+        },
+        { key: "yes", kind: "TRANSFORM" },
+        { key: "no", kind: "TRANSFORM" },
+      ],
+      edges: [
+        { from: "producer", to: "check" },
+        { from: "check", to: "yes", when: "true" },
+        { from: "check", to: "no", when: "false" },
+      ],
+    };
+    const seed = await seedWorkflow(graph);
+    const runId = await seedRun(seed, graph);
+    await db.workflowRun.update({ where: { id: runId }, data: { input: { flag: true } } });
+    await executor.executeRun(runId);
+    const steps = await db.workflowStepRun.findMany({ where: { runId } });
+    // undefined === true is false: the missing field pins the false branch.
+    expect(steps.find((s) => s.stepKey === "no")!.status).toBe("SUCCEEDED");
+    expect(steps.find((s) => s.stepKey === "yes")!.status).toBe("SKIPPED");
+  });
+
   it("skips the terminal write when stopped for cancellation", async () => {
     const seed = await seedWorkflow(TWO_TRANSFORMS);
     const runId = await seedRun(seed, TWO_TRANSFORMS);

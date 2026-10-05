@@ -4021,3 +4021,133 @@ service, same record shape, inside the transaction as invariant 4
 requires.
 
 **Not committed.** Working tree left for separate review, per instructions.
+
+## 2026-10-05 — NF-WF-006 implemented (chapter generation/review template)
+
+**Contract.** `tasks/NF-WF-006-chapter-generation-review-template.md`
+(frozen, reviewed APPROVE_WITH_FINDINGS in round 2 by a separate
+reviewer after 9 findings were addressed; the 2 round-2 P3 observations
+are already applied in the committed text).
+
+**What was built.**
+- Condition-path extension (the one author-approved machinery change):
+  `packages/validation/workflow-graph.ts` — `CONDITION_PATH_PATTERN`
+  now accepts `$steps.<key>.json.<field>` (one level; rejects deeper
+  nesting and `$steps.<key>.text.<field>`); `CONDITION_BAD_PATH`
+  message describes the extended grammar. `REFERENCE_PATTERN` (step
+  inputs) untouched. `packages/workflow-executor/executor.ts` —
+  `resolveReference` handles the nested form with an
+  `Object.hasOwn`-style own-property guard on the outcome's `json`
+  plain object (mirroring the `$input` handling), else `undefined`.
+- New package `packages/workflow-templates/` (`@novelforge/workflow-templates`;
+  one level, not the contract's proposed two-level nesting, because
+  `pnpm-workspace.yaml` globs `packages/*`):
+  `chapter-generation-review/graph.json` — 20 steps, 21 edges,
+  `maxSteps: 40`; `agents/` — five markdown agent specs
+  (`chapter-planner` DEEP_PLANNER, `chapter-writer` CREATIVE_WRITER,
+  `voice-style-reviewer` CONTINUITY_REVIEWER, `final-reviewer`
+  LONG_CONTEXT_REVIEWER, `chapter-extractor` STRUCTURED_EXTRACTOR);
+  `schemas/` — plan/draft/findings/extraction schemas (extraction
+  citations enforced via `contains`, no `minItems`); `index.ts`
+  exporting the typed template plus `graphsEqual` and a local
+  `canonicalizeJson` (same byte format as NF-WF-005's `snapshot.ts`,
+  pinned by a fixed vector in tests — the package deliberately does
+  not depend on `@novelforge/workflow-executor`).
+- `scripts/seed-chapter-template.ts` (new): drives the PUBLIC API as
+  SUPER_ADMIN (`platform:define`) — idempotent creation of the five
+  PLATFORM agents and the `chapter-generation-review` PLATFORM
+  workflow (key-exists + canonical-JSON byte-equality → no-op; changed
+  graph → NEW `WorkflowVersion`, never mutates v1). Runs standalone
+  via `node --experimental-strip-types`; CLI entry through env vars
+  (`NOVELFORGE_API_URL`, `NOVELFORGE_ADMIN_COOKIE`,
+  `NOVELFORGE_WORKSPACE_ID`).
+- `apps/api/src/chapter-template.test.ts` (new, 12 tests, GAP-028
+  fake gateway — per-step JSON answers keyed off agent instructions;
+  no production AI path): seed idempotency, version immutability,
+  end-to-end run → SUCCEEDED, schema rejection (AGENT contract +
+  VALIDATOR backstop), evidence rejection, bounded correction (both
+  paths, draft-selection assertions), approval park→approve/reject,
+  workspace agent shadowing.
+- `docs/07-workflows/CHAPTER-GENERATION-REVIEW.md` (new): stage table,
+  schemas, correction bound, approval integration, shadowing,
+  condition-path extension, instantiation.
+
+**Verification (this host, scratch DBs only).**
+- `chapter-template.test.ts`: 12/12 — seed creates 5 agents + workflow
+  v1 then no-ops; v2 publish leaves v1 byte-identical and the script
+  publishes v3; pre-v2 run pins v1; e2e SUCCEEDED with all 20 stage
+  rows (rewrite chain SKIPPED, CONDITION steps SUCCEEDED, approve
+  parked with a snapshot covering draft+proposals) then approve →
+  SUCCEEDED / reject → FAILED with reason; invalid plan fails at the
+  AGENT contract with nothing downstream; a slipped-through invalid
+  plan is caught by `validate_plan` with the rejection detail;
+  citationless proposals fail at `extract`; a slipped-through
+  citationless extract is caught by `validate_extract` naming the
+  proposal; needsCorrection=true twice → exactly 2 rewrites then
+  `review_final` on rewrite_2's content; needsCorrection=false →
+  rewrite chain SKIPPED and `review_final` got `write`'s content;
+  workspace `chapter-planner` shadows the platform one.
+- `template.test.ts` (@novelforge/workflow-templates): 9/9.
+- `validation.test.ts`: 61/61 (extension accept/reject cases).
+- `executor.test.ts`: 20/20 (nested CONDITION resolution).
+- Full API suite: 435/435 (18 files; 423 pre-existing + 12 new — no
+  regressions).
+- `pnpm lint` clean; typechecks clean: api, workflow-executor,
+  validation, workflow-templates.
+
+**Deviations from the contract.**
+- GAP-031: the contract pins the condition field charset as
+  `[a-z0-9_-]{1,64}` but its own normative findings-schema/stage list
+  uses camelCase `needsCorrection` — jointly unsatisfiable (reproduced:
+  `validateGraph` rejected the template's own CONDITIONs). Widened the
+  field charset to `[a-zA-Z0-9_-]{1,64}` in both files; step keys stay
+  lowercase-only. Safety unchanged (anchored, one level, own-property
+  guard). The frozen contract text was NOT rewritten.
+- GAP-032: the contract says "four" platform agents in some places but
+  the normative stage list names five agent refs including
+  `chapter-extractor` (STRUCTURED_EXTRACTOR). Implemented five — the
+  normative stage list wins; "four" reads as a stale count.
+- Template package path `packages/workflow-templates/` (not
+  `packages/workflow-templates/chapter-generation-review/`) — the
+  workspace glob is one level.
+- The template package exports its own `canonicalizeJson` rather than
+  importing `@novelforge/workflow-executor` — keeps the package and the
+  standalone seed script free of the executor's dependency chain; the
+  byte format is pinned by a fixed vector in the package tests.
+
+**Independent diff review (read-only, HEAD `372aaff`, contract blob
+`04c0c773`).** Verdict: **CHANGES_REQUESTED** — one material finding:
+- **F1 (P2, fixed).** The contract's required run inputs (`novelId`,
+  `chapterNumber`, `outlineRef`) were referenced only as uninterpolated
+  literal text in instructions and could never reach steps as values:
+  `REFERENCE_PATTERN` rejected the contract's own camelCase input names,
+  and no step bound `$input.*` in `inputs`. Fixed: input-name charset
+  widened to `[a-zA-Z0-9_-]{1,64}` in `REFERENCE_PATTERN` and the
+  `input.` alternative of `CONDITION_PATH_PATTERN` (GAP-031-parallel; the
+  runtime `$input` lookup is `Object.hasOwn`-guarded with no charset
+  check, so the charset never carried a security property);
+  `compile_context`, `plan`, `write`, `rewrite_1`, `rewrite_2` now bind
+  `{ chapterNumber: "$input.chapterNumber", outlineRef: "$input.outlineRef" }`
+  (uninterpolated literals removed); new integration test asserts the
+  rendered `## chapterNumber` / `## outlineRef` values reach the planner
+  and writer. Recorded as **GAP-033** before the workaround; frozen
+  contract not rewritten.
+- **F2 (P3, observation).** The seed script's key-exists check does not
+  compare agent instructions — editing an agent `.md` and re-running
+  leaves the platform agent stale. Documented in the script docstring
+  (operator footgun note).
+
+**Focused re-review of the F1 fix: APPROVE.** Charset widening verified
+minimal (only the two input-name segments; step keys stay lowercase-only;
+no other validation logic touched); all 10 `$input.*` occurrences are
+`inputs` bindings; GAP-033 recorded; docstring note added. One P3
+suggestion applied (symmetric `not.toContain` assertions in the new test).
+
+**Final verification (this host, scratch DBs only; services reinstalled
+natively after a VM replacement mid-task).** `pnpm lint` clean;
+typechecks clean (api, validation, workflow-executor, workflow-templates);
+`validation.test.ts` 61/61; `executor.test.ts` 20/20; workflow-templates
+suite 22/22 (2 files, incl. `validateGraph` on the modified graph);
+`chapter-template.test.ts`
+13/13 (12 + new input-binding test); full API suite **436/436** (18 files,
+no regressions).

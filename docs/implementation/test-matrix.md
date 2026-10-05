@@ -1363,3 +1363,29 @@ duplicate `(run_id, step_key)` insert → 23505; `migrate diff
 --from-migrations --to-schema --script` empty after fixing one drift
 (`decided_at` `TIMESTAMP(3)`, not `TIMESTAMPTZ(6)`); automated re-apply
 check also encoded in `approval-decision.test.ts` ("migration" describe).
+
+## NF-WF-006 chapter generation/review template — 2026-10-05
+
+Uncommitted working tree on HEAD `372aaff`; contract
+`tasks/NF-WF-006-chapter-generation-review-template.md`
+(APPROVE_WITH_FINDINGS round 2; the 2 round-2 P3 observations are
+already applied in the committed text).
+Executed on this host (Ubuntu 24.04.5): PostgreSQL 16.15 + pgvector 0.6.0
+and Redis 7.0.15 installed natively and started manually, scratch
+`novelforge_test_*` databases only. GAP-028: no production AI path —
+the template suite's gateway is faked per agent step.
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Template integration | `npx vitest run src/chapter-template.test.ts` (apps/api, dedicated `novelforge_test_chapter_template` db) | 1 file, **12/12** |
+| Template package | `npx vitest run` (@novelforge/workflow-templates) | 1 file, **9/9** |
+| Validation (condition-path extension) | `npx vitest run validation.test.ts` (@novelforge/validation) | 1 file, **61/61** |
+| Executor (nested resolution) | `npx vitest run executor.test.ts` (@novelforge/workflow-executor) | 1 file, **20/20** |
+| Full API | `npx vitest run` (apps/api) | 18 files, **435/435** (no regressions) |
+| Lint | `pnpm lint` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/api typecheck` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/workflow-executor typecheck` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/validation typecheck` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/workflow-templates typecheck` | exit 0 |
+
+No migration in NF-WF-006 (no schema change).

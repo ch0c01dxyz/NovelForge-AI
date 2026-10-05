@@ -753,3 +753,83 @@ duplicate_object THEN null; END $$;` block — re-runnable, so a partially
 applied deploy converges on retry (GAP-018). Documented in the migration
 file's header. Future migrations introducing a PG enum must use the DO
 block, not `IF NOT EXISTS`.
+
+## GAP-031 — NF-WF-006 contract's condition-path field charset vs its own findings-schema (2026-10-05)
+
+Status: RESOLVED (deviation applied during NF-WF-006 implementation; for the
+separate diff reviewer's attention).
+
+OBSERVED: the reviewed NF-WF-006 contract pins the condition-path extension
+field charset as `[a-z0-9_-]{1,64}` ("same charset as step keys"), but the
+contract's own normative findings-schema — and every normative CONDITION in
+the stage list — uses the camelCase field `needsCorrection`, which that
+charset rejects. The two requirements are jointly unsatisfiable; the
+template's `correct_1`/`correct_2` CONDITIONs would fail `validateGraph`
+with `CONDITION_BAD_PATH` (reproduced in the validation suite before the
+fix).
+
+FIX: the field charset is `[a-zA-Z0-9_-]{1,64}` (uppercase allowed) in both
+`packages/validation/workflow-graph.ts` (`CONDITION_PATH_PATTERN`) and
+`packages/workflow-executor/executor.ts` (`resolveReference`). Step keys
+stay lowercase-only. The safety properties are unchanged: the pattern is
+still anchored, still exactly one level, and the executor still uses an
+`Object.hasOwn` own-property guard (prototype members can never resolve) —
+the charset never carried the security property. The frozen contract text
+was NOT rewritten; this entry is the record of the deviation.
+
+## GAP-032 — NF-WF-006 contract says "four" platform agents but the normative stage list needs five (2026-10-05)
+
+Status: RESOLVED (implementer judgment call during NF-WF-006 implementation;
+for the separate diff reviewer's attention).
+
+OBSERVED: the contract's Scope ("the four platform agent specifications"),
+Outputs ("four PUBLISHED platform agents"), and invariant 8 ("The four
+agents") say four, but the normative 16-stage list names FIVE distinct
+agent refs: `chapter-planner`, `chapter-writer`, `voice-style-reviewer`,
+`final-reviewer`, and `chapter-extractor` (STRUCTURED_EXTRACTOR). The
+delivery plan's "Planner/writer/voice/style/final review" shorthand counts
+only the review stages. With four agents, the `extract` step's ref would be
+unresolvable and every template run would fail at definition resolution.
+
+DECISION: implement FIVE platform agents. The normative stage list is the
+most detailed and most constraining part of the contract; "four" reads as a
+stale count carried over from the delivery plan shorthand. The frozen
+contract text was NOT rewritten; this entry is the record. If the author
+prefers four (e.g. folding extraction into another agent), that is a
+contract amendment for a follow-up.
+
+## GAP-033 — NF-WF-006 contract's camelCase run-input names rejected by REFERENCE_PATTERN; inputs never bound (2026-10-05)
+
+Status: RESOLVED (fixed during NF-WF-006 diff-review remediation; for the
+separate re-reviewer's attention).
+
+OBSERVED: the reviewed NF-WF-006 contract pins required run inputs
+`{ novelId, chapterNumber, outlineRef }` (F6) and states "`compile_context`,
+`plan`, and `write` read these via `$input.*`". Two defects, found by the
+independent diff reviewer:
+1. `REFERENCE_PATTERN` (`packages/validation/workflow-graph.ts`) restricted
+   input names to `[a-z0-9_-]{1,64}`, which REJECTS the contract's own
+   camelCase names (`$input.chapterNumber`, `$input.outlineRef`,
+   `$input.novelId` — reproduced empirically; only lowercase
+   `$input.chapter_number` passed).
+2. No step in `graph.json` bound `$input.*` in its `inputs` — the names
+   appeared only as uninterpolated literal text inside instruction strings
+   (`renderInstruction` pushes instruction text verbatim; only `inputs`
+   bindings are resolved). A real model would have received the literal
+   string "$input.chapterNumber" instead of `1`.
+
+FIX (GAP-031-parallel): the input-name charset is `[a-zA-Z0-9_-]{1,64}`
+(uppercase allowed) in BOTH `REFERENCE_PATTERN` and the `input.`
+alternative of `CONDITION_PATH_PATTERN`. Step keys stay lowercase-only;
+the runtime `$input` lookup (`Object.hasOwn`, no charset check) is
+unchanged, so the charset never carried a security property.
+`compile_context`, `plan`, `write`, `rewrite_1`, `rewrite_2` now bind
+`{ chapterNumber: "$input.chapterNumber", outlineRef: "$input.outlineRef" }`
+in `inputs` (rendered as `## chapterNumber` / `## outlineRef` sections);
+the uninterpolated literals were removed from instruction text. A new
+integration test asserts the planner and writer prompts contain the
+rendered `## chapterNumber` / `## outlineRef` values and no `$input.*`
+literals. `novelId` scoping already works via the run row
+(`executor.ts` `runRow.novelId` → compiler), independent of this fix. The
+frozen contract text was NOT rewritten; this entry is the record of the
+deviation.

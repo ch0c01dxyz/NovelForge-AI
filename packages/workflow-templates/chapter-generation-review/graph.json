@@ -1,0 +1,1191 @@
+{
+  "steps": [
+    {
+      "key": "compile_context",
+      "kind": "RETRIEVAL",
+      "instruction": "Compile the bounded chapter context for the target chapter: approved outline (see ## outlineRef), hard canon, current story/character/relationship/world state, timeline constraints, active threads and promises, recent story memory, relevant historical memory, narrative DNA and style notes, and relevant external references. Bounded selection with provenance and budget; never scan the full manuscript.",
+      "inputs": {
+        "chapterNumber": "$input.chapterNumber",
+        "outlineRef": "$input.outlineRef"
+      }
+    },
+    {
+      "key": "plan",
+      "kind": "AGENT",
+      "ref": "chapter-planner",
+      "instruction": "You are the scene planner. Read the compiled chapter context (## context) and the run inputs. Produce a structured scene plan for the chapter: purpose, cast, objectives, conflict, stakes, permitted revelations, the approved outline reference, and source pins. Planning authority (highest to lowest): explicit author instruction > current approved chapter/scene outline > current arc/saga state > canon > character/relationship/world state > timeline and continuity constraints > recent story memory > relevant historical memory > synopsis > general creativity. The plan must bind to the approved outline (see ## outlineRef); never contradict hard canon silently. Respond with JSON only, matching the plan-schema contract.",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Structured scene plan produced by the chapter-planner agent, bound to the approved outline and source pins.",
+        "properties": {
+          "cast": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "conflict": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "objectives": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "outlineRef": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "permittedRevelations": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "purpose": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sourcePins": {
+            "additionalProperties": true,
+            "properties": {
+              "outlineVersion": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "workflowVersion": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "workflowVersion",
+              "outlineVersion"
+            ],
+            "type": "object"
+          },
+          "stakes": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "cast",
+          "objectives",
+          "conflict",
+          "stakes",
+          "permittedRevelations",
+          "outlineRef",
+          "sourcePins"
+        ],
+        "title": "Chapter scene plan",
+        "type": "object"
+      },
+      "inputs": {
+        "chapterNumber": "$input.chapterNumber",
+        "outlineRef": "$input.outlineRef",
+        "context": "$steps.compile_context.json"
+      }
+    },
+    {
+      "key": "validate_plan",
+      "kind": "VALIDATOR",
+      "inputs": {
+        "subject": "$steps.plan.json"
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Structured scene plan produced by the chapter-planner agent, bound to the approved outline and source pins.",
+        "properties": {
+          "cast": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "conflict": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "objectives": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "outlineRef": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "permittedRevelations": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "purpose": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sourcePins": {
+            "additionalProperties": true,
+            "properties": {
+              "outlineVersion": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "workflowVersion": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "workflowVersion",
+              "outlineVersion"
+            ],
+            "type": "object"
+          },
+          "stakes": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "cast",
+          "objectives",
+          "conflict",
+          "stakes",
+          "permittedRevelations",
+          "outlineRef",
+          "sourcePins"
+        ],
+        "title": "Chapter scene plan",
+        "type": "object"
+      }
+    },
+    {
+      "key": "write",
+      "kind": "AGENT",
+      "ref": "chapter-writer",
+      "instruction": "You are the chapter writer. Write the chapter draft from the scene plan (## plan) and the compiled chapter context (## context). Canon authority: explicit author correction/instruction > approved canon > published chapter facts > world/character/relationship rules > timeline > approved plot plan > agent instructions > references > model creativity. Conflicts must be surfaced, never silently reconciled. Respond with JSON only, matching the draft-schema contract: the full chapter prose plus optional title and scene-break offsets.",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "A chapter draft artifact produced by the chapter-writer agent.",
+        "properties": {
+          "prose": {
+            "minLength": 200,
+            "type": "string"
+          },
+          "sceneBreaks": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "prose"
+        ],
+        "title": "Chapter draft",
+        "type": "object"
+      },
+      "inputs": {
+        "chapterNumber": "$input.chapterNumber",
+        "outlineRef": "$input.outlineRef",
+        "plan": "$steps.plan.json",
+        "context": "$steps.compile_context.json"
+      }
+    },
+    {
+      "key": "validate_draft",
+      "kind": "VALIDATOR",
+      "inputs": {
+        "subject": "$steps.write.json"
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "A chapter draft artifact produced by the chapter-writer agent.",
+        "properties": {
+          "prose": {
+            "minLength": 200,
+            "type": "string"
+          },
+          "sceneBreaks": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "prose"
+        ],
+        "title": "Chapter draft",
+        "type": "object"
+      }
+    },
+    {
+      "key": "review_vs",
+      "kind": "AGENT",
+      "ref": "voice-style-reviewer",
+      "instruction": "You are the voice/style reviewer. Read the draft (## draft) and the compiled context (## context). Check voice, style, and narrative rhythm against the workspace's narrative DNA (tone, cadence, point-of-view discipline, dialogue texture). Emit structured findings; every finding MUST cite its evidence as {source, version, span}. Set needsCorrection=true only when a major or blocking finding requires a rewrite. Respond with JSON only, matching the findings-schema contract.",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Structured review findings with evidence, produced by the voice-style-reviewer and final-reviewer agents. Every finding carries its evidence; needsCorrection drives the bounded-correction CONDITIONs.",
+        "properties": {
+          "findings": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "category": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "evidence": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "source": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "span": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "version": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "version",
+                    "span"
+                  ],
+                  "type": "object"
+                },
+                "remediation": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "rule": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "info",
+                    "minor",
+                    "major",
+                    "blocking"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "category",
+                "severity",
+                "rule",
+                "evidence",
+                "remediation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "needsCorrection": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "findings",
+          "needsCorrection"
+        ],
+        "title": "Review findings",
+        "type": "object"
+      },
+      "inputs": {
+        "draft": "$steps.write.json",
+        "context": "$steps.compile_context.json"
+      }
+    },
+    {
+      "key": "validate_vs",
+      "kind": "VALIDATOR",
+      "inputs": {
+        "subject": "$steps.review_vs.json"
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Structured review findings with evidence, produced by the voice-style-reviewer and final-reviewer agents. Every finding carries its evidence; needsCorrection drives the bounded-correction CONDITIONs.",
+        "properties": {
+          "findings": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "category": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "evidence": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "source": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "span": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "version": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "version",
+                    "span"
+                  ],
+                  "type": "object"
+                },
+                "remediation": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "rule": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "info",
+                    "minor",
+                    "major",
+                    "blocking"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "category",
+                "severity",
+                "rule",
+                "evidence",
+                "remediation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "needsCorrection": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "findings",
+          "needsCorrection"
+        ],
+        "title": "Review findings",
+        "type": "object"
+      }
+    },
+    {
+      "key": "correct_1",
+      "kind": "CONDITION",
+      "condition": {
+        "path": "$steps.review_vs.json.needsCorrection",
+        "equals": true
+      }
+    },
+    {
+      "key": "rewrite_1",
+      "kind": "AGENT",
+      "ref": "chapter-writer",
+      "instruction": "You are the chapter writer revising a draft. You receive the previous draft and structured review findings (## findings); address every finding whose severity is major or blocking, preserving what the reviewers approved. Do not invent new plot elements beyond the permitted revelations. Respond with JSON only, matching the draft-schema contract.",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "A chapter draft artifact produced by the chapter-writer agent.",
+        "properties": {
+          "prose": {
+            "minLength": 200,
+            "type": "string"
+          },
+          "sceneBreaks": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "prose"
+        ],
+        "title": "Chapter draft",
+        "type": "object"
+      },
+      "inputs": {
+        "chapterNumber": "$input.chapterNumber",
+        "outlineRef": "$input.outlineRef",
+        "draft": "$steps.write.json",
+        "findings": "$steps.review_vs.json"
+      }
+    },
+    {
+      "key": "validate_rewrite_1",
+      "kind": "VALIDATOR",
+      "inputs": {
+        "subject": "$steps.rewrite_1.json"
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "A chapter draft artifact produced by the chapter-writer agent.",
+        "properties": {
+          "prose": {
+            "minLength": 200,
+            "type": "string"
+          },
+          "sceneBreaks": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "prose"
+        ],
+        "title": "Chapter draft",
+        "type": "object"
+      }
+    },
+    {
+      "key": "review_1",
+      "kind": "AGENT",
+      "ref": "voice-style-reviewer",
+      "instruction": "You are the voice/style reviewer. Read the draft (## draft) and the compiled context (## context). Check voice, style, and narrative rhythm against the workspace's narrative DNA (tone, cadence, point-of-view discipline, dialogue texture). Emit structured findings; every finding MUST cite its evidence as {source, version, span}. Set needsCorrection=true only when a major or blocking finding requires a rewrite. Respond with JSON only, matching the findings-schema contract.",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Structured review findings with evidence, produced by the voice-style-reviewer and final-reviewer agents. Every finding carries its evidence; needsCorrection drives the bounded-correction CONDITIONs.",
+        "properties": {
+          "findings": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "category": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "evidence": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "source": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "span": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "version": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "version",
+                    "span"
+                  ],
+                  "type": "object"
+                },
+                "remediation": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "rule": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "info",
+                    "minor",
+                    "major",
+                    "blocking"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "category",
+                "severity",
+                "rule",
+                "evidence",
+                "remediation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "needsCorrection": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "findings",
+          "needsCorrection"
+        ],
+        "title": "Review findings",
+        "type": "object"
+      },
+      "inputs": {
+        "draft": "$steps.rewrite_1.json",
+        "context": "$steps.compile_context.json"
+      }
+    },
+    {
+      "key": "validate_review_1",
+      "kind": "VALIDATOR",
+      "inputs": {
+        "subject": "$steps.review_1.json"
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Structured review findings with evidence, produced by the voice-style-reviewer and final-reviewer agents. Every finding carries its evidence; needsCorrection drives the bounded-correction CONDITIONs.",
+        "properties": {
+          "findings": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "category": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "evidence": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "source": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "span": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "version": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "version",
+                    "span"
+                  ],
+                  "type": "object"
+                },
+                "remediation": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "rule": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "info",
+                    "minor",
+                    "major",
+                    "blocking"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "category",
+                "severity",
+                "rule",
+                "evidence",
+                "remediation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "needsCorrection": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "findings",
+          "needsCorrection"
+        ],
+        "title": "Review findings",
+        "type": "object"
+      }
+    },
+    {
+      "key": "correct_2",
+      "kind": "CONDITION",
+      "condition": {
+        "path": "$steps.review_1.json.needsCorrection",
+        "equals": true
+      }
+    },
+    {
+      "key": "rewrite_2",
+      "kind": "AGENT",
+      "ref": "chapter-writer",
+      "instruction": "You are the chapter writer revising a draft. You receive the previous draft and structured review findings (## findings); address every finding whose severity is major or blocking, preserving what the reviewers approved. Do not invent new plot elements beyond the permitted revelations. Respond with JSON only, matching the draft-schema contract.",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "A chapter draft artifact produced by the chapter-writer agent.",
+        "properties": {
+          "prose": {
+            "minLength": 200,
+            "type": "string"
+          },
+          "sceneBreaks": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "prose"
+        ],
+        "title": "Chapter draft",
+        "type": "object"
+      },
+      "inputs": {
+        "chapterNumber": "$input.chapterNumber",
+        "outlineRef": "$input.outlineRef",
+        "draft": "$steps.rewrite_1.json",
+        "findings": "$steps.review_1.json"
+      }
+    },
+    {
+      "key": "validate_rewrite_2",
+      "kind": "VALIDATOR",
+      "inputs": {
+        "subject": "$steps.rewrite_2.json"
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "A chapter draft artifact produced by the chapter-writer agent.",
+        "properties": {
+          "prose": {
+            "minLength": 200,
+            "type": "string"
+          },
+          "sceneBreaks": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "prose"
+        ],
+        "title": "Chapter draft",
+        "type": "object"
+      }
+    },
+    {
+      "key": "review_final",
+      "kind": "AGENT",
+      "ref": "final-reviewer",
+      "instruction": "You are the final reviewer. You verify; you do NOT rewrite. Read the latest available draft: three draft sections are bound (## draft_write, ## draft_rewrite_1, ## draft_rewrite_2); use rewrite_2 if available, else rewrite_1, else write — a section reading '(not available)' means that correction path was not taken. Check canon, lore, continuity, knowledge, outline, and rhythm; every finding MUST cite its evidence as {source, version, span}. This is the last check before human approval: be strict and specific. Respond with JSON only, matching the findings-schema contract.",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Structured review findings with evidence, produced by the voice-style-reviewer and final-reviewer agents. Every finding carries its evidence; needsCorrection drives the bounded-correction CONDITIONs.",
+        "properties": {
+          "findings": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "category": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "evidence": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "source": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "span": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "version": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "version",
+                    "span"
+                  ],
+                  "type": "object"
+                },
+                "remediation": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "rule": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "info",
+                    "minor",
+                    "major",
+                    "blocking"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "category",
+                "severity",
+                "rule",
+                "evidence",
+                "remediation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "needsCorrection": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "findings",
+          "needsCorrection"
+        ],
+        "title": "Review findings",
+        "type": "object"
+      },
+      "inputs": {
+        "draft_write": "$steps.write.json",
+        "draft_rewrite_1": "$steps.rewrite_1.json",
+        "draft_rewrite_2": "$steps.rewrite_2.json",
+        "context": "$steps.compile_context.json"
+      }
+    },
+    {
+      "key": "validate_final",
+      "kind": "VALIDATOR",
+      "inputs": {
+        "subject": "$steps.review_final.json"
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Structured review findings with evidence, produced by the voice-style-reviewer and final-reviewer agents. Every finding carries its evidence; needsCorrection drives the bounded-correction CONDITIONs.",
+        "properties": {
+          "findings": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "category": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "evidence": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "source": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "span": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "version": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "source",
+                    "version",
+                    "span"
+                  ],
+                  "type": "object"
+                },
+                "remediation": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "rule": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "severity": {
+                  "enum": [
+                    "info",
+                    "minor",
+                    "major",
+                    "blocking"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "category",
+                "severity",
+                "rule",
+                "evidence",
+                "remediation"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "needsCorrection": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "findings",
+          "needsCorrection"
+        ],
+        "title": "Review findings",
+        "type": "object"
+      }
+    },
+    {
+      "key": "extract",
+      "kind": "AGENT",
+      "ref": "chapter-extractor",
+      "instruction": "You are the structured extractor. From the latest available final draft (## draft_write, ## draft_rewrite_1, ## draft_rewrite_2 — use rewrite_2 if available, else rewrite_1, else write), extract candidate facts, state changes, events, and relationship changes. These are CANDIDATES ONLY: you do not write canon and you never invent support. Every proposal MUST carry at least one citation {source, span} pointing at the exact draft text that supports it; a proposal without evidence is rejected. Respond with JSON only, matching the extraction-schema contract.",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Candidate facts/state/events extracted from the final chapter artifact. Proposals are CANDIDATES only — nothing here writes canon. Every proposal must carry at least one citation (enforced via `contains`; the schema compiler does not support `minItems`).",
+        "properties": {
+          "proposals": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "citations": {
+                  "contains": {
+                    "properties": {
+                      "source": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "span": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "span"
+                    ],
+                    "type": "object"
+                  },
+                  "items": {
+                    "additionalProperties": true,
+                    "properties": {
+                      "source": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "span": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "span"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "enum": [
+                    "fact",
+                    "state",
+                    "event",
+                    "relationship"
+                  ],
+                  "type": "string"
+                },
+                "text": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "text",
+                "citations"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "proposals"
+        ],
+        "title": "Chapter extraction proposals",
+        "type": "object"
+      },
+      "inputs": {
+        "draft_write": "$steps.write.json",
+        "draft_rewrite_1": "$steps.rewrite_1.json",
+        "draft_rewrite_2": "$steps.rewrite_2.json"
+      }
+    },
+    {
+      "key": "validate_extract",
+      "kind": "VALIDATOR",
+      "inputs": {
+        "subject": "$steps.extract.json"
+      },
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": true,
+        "description": "Candidate facts/state/events extracted from the final chapter artifact. Proposals are CANDIDATES only — nothing here writes canon. Every proposal must carry at least one citation (enforced via `contains`; the schema compiler does not support `minItems`).",
+        "properties": {
+          "proposals": {
+            "items": {
+              "additionalProperties": true,
+              "properties": {
+                "citations": {
+                  "contains": {
+                    "properties": {
+                      "source": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "span": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "span"
+                    ],
+                    "type": "object"
+                  },
+                  "items": {
+                    "additionalProperties": true,
+                    "properties": {
+                      "source": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "span": {
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "span"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "enum": [
+                    "fact",
+                    "state",
+                    "event",
+                    "relationship"
+                  ],
+                  "type": "string"
+                },
+                "text": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "text",
+                "citations"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "proposals"
+        ],
+        "title": "Chapter extraction proposals",
+        "type": "object"
+      }
+    },
+    {
+      "key": "approve",
+      "kind": "HUMAN_APPROVAL",
+      "instruction": "Human approval gate. The author reviews the final chapter draft and the extraction proposals, then approves or rejects through the approval routes. Approval binds the exact draft text and proposals presented (approval snapshot)."
+    }
+  ],
+  "edges": [
+    {
+      "from": "compile_context",
+      "to": "plan"
+    },
+    {
+      "from": "plan",
+      "to": "validate_plan"
+    },
+    {
+      "from": "validate_plan",
+      "to": "write"
+    },
+    {
+      "from": "write",
+      "to": "validate_draft"
+    },
+    {
+      "from": "validate_draft",
+      "to": "review_vs"
+    },
+    {
+      "from": "review_vs",
+      "to": "validate_vs"
+    },
+    {
+      "from": "validate_vs",
+      "to": "correct_1"
+    },
+    {
+      "from": "correct_1",
+      "to": "rewrite_1",
+      "when": "true"
+    },
+    {
+      "from": "correct_1",
+      "to": "review_final",
+      "when": "false"
+    },
+    {
+      "from": "rewrite_1",
+      "to": "validate_rewrite_1"
+    },
+    {
+      "from": "validate_rewrite_1",
+      "to": "review_1"
+    },
+    {
+      "from": "review_1",
+      "to": "validate_review_1"
+    },
+    {
+      "from": "validate_review_1",
+      "to": "correct_2"
+    },
+    {
+      "from": "correct_2",
+      "to": "rewrite_2",
+      "when": "true"
+    },
+    {
+      "from": "correct_2",
+      "to": "review_final",
+      "when": "false"
+    },
+    {
+      "from": "rewrite_2",
+      "to": "validate_rewrite_2"
+    },
+    {
+      "from": "validate_rewrite_2",
+      "to": "review_final"
+    },
+    {
+      "from": "review_final",
+      "to": "validate_final"
+    },
+    {
+      "from": "validate_final",
+      "to": "extract"
+    },
+    {
+      "from": "extract",
+      "to": "validate_extract"
+    },
+    {
+      "from": "validate_extract",
+      "to": "approve"
+    }
+  ],
+  "maxSteps": 40
+}

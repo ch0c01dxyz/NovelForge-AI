@@ -106,15 +106,23 @@ export const ABSOLUTE_STEP_CEILING = 1000;
 const KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 /** `$input.name` or `$steps.key.text` / `$steps.key.json` */
-const REFERENCE_PATTERN = /^\$(input\.[a-z0-9_-]{1,64}|steps\.[a-z0-9_-]{1,64}\.(text|json))$/;
+const REFERENCE_PATTERN = /^\$(input\.[a-zA-Z0-9_-]{1,64}|steps\.[a-z0-9_-]{1,64}\.(text|json))$/;
 
 /**
- * The same reference grammar, anchored for a condition path. Bracket and
- * dot-prefixed variants (`$steps["x"].text`, `$.steps.x.text`) are NOT
- * matched by the runtime resolver, so accepting them here would register a
- * condition that silently compares `undefined` forever.
+ * The condition-path grammar: `$input.<name>`, `$steps.<key>.text`,
+ * `$steps.<key>.json`, or exactly one level of nesting below `.json`:
+ * `$steps.<key>.json.<field>` (NF-WF-006: bounded-correction CONDITIONs
+ * branch on a reviewer's `needsCorrection` flag). The field charset is
+ * `[a-zA-Z0-9_-]{1,64}` — JSON field names are camelCase in this codebase
+ * (e.g. `needsCorrection`), unlike step keys. Deeper nesting
+ * (`$steps.<k>.json.a.b`) and text-nesting (`$steps.<k>.text.<field>`) do
+ * NOT match, and bracket / dot-prefixed variants (`$steps["x"].text`,
+ * `$.steps.x.text`) are NOT matched by the runtime resolver either —
+ * accepting any of them here would register a condition that silently
+ * compares `undefined` forever.
  */
-const CONDITION_PATH_PATTERN = REFERENCE_PATTERN;
+const CONDITION_PATH_PATTERN =
+  /^\$(input\.[a-zA-Z0-9_-]{1,64}|steps\.[a-z0-9_-]{1,64}\.(text|json(\.[a-zA-Z0-9_-]{1,64})?))$/;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -304,8 +312,9 @@ export function validateGraph(
             path: at(at(path, "condition"), "path"),
             code: "CONDITION_BAD_PATH",
             message:
-              'condition.path must be "$input.<name>" or ' +
-              '"$steps.<key>.text"/"$steps.<key>.json"',
+              'condition.path must be "$input.<name>", ' +
+              '"$steps.<key>.text", "$steps.<key>.json", or ' +
+              '"$steps.<key>.json.<field>" (exactly one level of nesting below .json)',
           });
         } else if (!("equals" in condition)) {
           failures.push({

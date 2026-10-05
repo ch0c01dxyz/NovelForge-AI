@@ -594,6 +594,45 @@ describe("validateGraph", () => {
     }
   });
 
+  it("accepts a one-level nested condition path below .json (NF-WF-006)", () => {
+    // Bounded-correction CONDITIONs branch on a reviewer's needsCorrection
+    // flag: `$steps.<key>.json.<field>`, exactly one level.
+    const r = validateGraph({
+      steps: [
+        { key: "review", kind: "TRANSFORM" },
+        {
+          key: "check",
+          kind: "CONDITION",
+          condition: { path: "$steps.review.json.needsCorrection", equals: true },
+        },
+        { key: "yes", kind: "TRANSFORM" },
+        { key: "no", kind: "TRANSFORM" },
+      ],
+      edges: [
+        { from: "review", to: "check" },
+        { from: "check", to: "yes", when: "true" as const },
+        { from: "check", to: "no", when: "false" as const },
+      ],
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("rejects deeper nesting and text-nesting in condition paths (NF-WF-006)", () => {
+    for (const path of ["$steps.a.json.x.y", "$steps.a.text.field", "$steps.a.json."]) {
+      const r = validateGraph({
+        steps: [{ key: "check", kind: "CONDITION", condition: { path, equals: true } }],
+        edges: [],
+      });
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        const failure = r.failures.find((f) => f.code === "CONDITION_BAD_PATH");
+        expect(failure).toBeDefined();
+        // The message must describe the extended grammar, not just the old forms.
+        expect(failure!.message).toContain("$steps.<key>.json.<field>");
+      }
+    }
+  });
+
   it("rejects a condition that could never match", () => {
     // The executor compares with `===`, so an object/array equals is
     // unreachable. Branches are supplied so the branch-shape rule cannot be

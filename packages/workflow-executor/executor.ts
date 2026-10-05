@@ -177,7 +177,8 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
     };
   }
 
-  /** Resolve one `$input.x` / `$steps.k.text` / `$steps.k.json` reference. */
+  /** Resolve one `$input.x` / `$steps.k.text` / `$steps.k.json` /
+   * `$steps.k.json.field` (one level, NF-WF-006) reference. */
   function resolveReference(
     expr: string,
     runInput: Record<string, unknown>,
@@ -191,11 +192,29 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
       const key = expr.slice("$input.".length);
       return Object.hasOwn(runInput, key) ? runInput[key] : undefined;
     }
-    const m = /^\$steps\.([a-z0-9_-]{1,64})\.(text|json)$/.exec(expr);
+    const m = /^\$steps\.([a-z0-9_-]{1,64})\.(text|json)(?:\.([a-zA-Z0-9_-]{1,64}))?$/.exec(expr);
     if (!m) return undefined;
     const outcome = outcomes.get(m[1]!);
     if (!outcome) return undefined;
-    return m[2] === "text" ? outcome.text : outcome.json;
+    if (m[2] === "text") {
+      // Text-nesting ($steps.<k>.text.<field>) is not a resolvable form;
+      // validation rejects it, and the resolver returns undefined here.
+      return m[3] === undefined ? outcome.text : undefined;
+    }
+    const field = m[3];
+    if (field === undefined) return outcome.json;
+    // One-level nested form: own-property lookup on the outcome's json
+    // plain object only, mirroring the $input guard above — prototype
+    // members can never resolve. A missing field, a non-object json, or a
+    // non-own property resolves to undefined (so the CONDITION compares
+    // false under ===, same as any other unresolvable path).
+    const json: unknown = outcome.json;
+    return typeof json === "object" &&
+      json !== null &&
+      !Array.isArray(json) &&
+      Object.hasOwn(json, field)
+      ? (json as Record<string, unknown>)[field]
+      : undefined;
   }
 
   /** Render a step's instruction with its bound inputs appended. */

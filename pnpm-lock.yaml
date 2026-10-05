@@ -235,6 +235,9 @@ importers:
       '@novelforge/workflow-executor':
         specifier: workspace:*
         version: link:../../packages/workflow-executor
+      '@novelforge/workflow-templates':
+        specifier: workspace:*
+        version: link:../../packages/workflow-templates
       bullmq:
         specifier: ^5.0.0
         version: 5.81.5(supports-color@10.2.2)
@@ -532,6 +535,19 @@ importers:
       pg:
         specifier: ^8.23.0
         version: 8.23.0
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@22.20.4)(vite@8.3.0(@types/node@22.20.4)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.1))
+
+  packages/workflow-templates:
+    dependencies:
+      '@novelforge/validation':
+        specifier: workspace:*
+        version: link:../validation
+    devDependencies:
       typescript:
         specifier: ^5.5.0
         version: 5.9.3

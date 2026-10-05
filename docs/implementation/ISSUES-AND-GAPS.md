@@ -833,3 +833,22 @@ literals. `novelId` scoping already works via the run row
 (`executor.ts` `runRow.novelId` → compiler), independent of this fix. The
 frozen contract text was NOT rewritten; this entry is the record of the
 deviation.
+
+## GAP-034 — Server-side runs-by-chapter filter for GET /workflow-runs (NF-WF-007 follow-up, 2026-10-05)
+
+Status: OPEN (follow-up task; recorded per NF-WF-007 Invariant 11 and
+contract Q1 resolution).
+
+OBSERVED: `GET /api/workspaces/:workspaceId/workflow-runs` filters by
+`workflowId` + `limit` only. The NF-WF-007 UI finds runs for a chapter by
+filtering `listRuns` rows client-side on `input.chapterNumber` (the field
+is present on every row, verified). For novels with hundreds of runs this
+is coarse — the client pages through up to `limit` rows to find one
+chapter's runs.
+
+NEXT ACTION: a follow-up task (not NF-WF-007, which was contractually
+forbidden from backend changes) to add an optional `chapterNumber`
+query filter (or an `input.<field>` filter) to the list-runs route, with
+the usual validation/test/review. The UI already isolates the filtering
+in one place (`GenerationPanel` chapterHistory computed), so adopting the
+server filter later is a small change.

@@ -559,3 +559,14 @@ backend MODEL_UNVERIFIED per GAP-013. Contract SHA
   frozen 005 contract is authoritative. Not a 007 defect.
 - **Status after review**: contract remains DRAFT-frozen; implementation
   may proceed. Reviewed 2026-10-05.
+- **Implementation diff review** (independent reviewer, HEAD `9f7a4f1`,
+  2026-10-05): **APPROVE_WITH_FINDINGS** — all 11 invariants verified as
+  pinned; web 41/41, API 447/447 (436 pre-existing + 11 new), lint,
+  vue-tsc, nuxt build green; Invariant 11 holds (no backend changes);
+  GAP-028/GAP-034 respected; Q2 amendment verified. Findings: F1 (P3)
+  dead `pollRun` export — pruned; F2 (P3) outline `<select>` allowed any
+  version vs Invariant 2.2 (APPROVED only) — author decision 2026-10-05:
+  **restrict to APPROVED only**; the select was replaced with a
+  read-only display of the single APPROVED version (backend guarantees
+  at most one per novel); F3 (P3) package.json trailing newline —
+  restored.

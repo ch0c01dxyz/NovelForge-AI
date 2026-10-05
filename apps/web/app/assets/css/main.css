@@ -48,3 +48,16 @@ body {
   outline: 2px solid var(--color-nf-accent-hi);
   outline-offset: 2px;
 }
+
+/* NF-WF-007 Invariant 10: honor prefers-reduced-motion — state changes
+ * render without animation. (No component currently animates; this
+ * guards any future transitions/spinners.) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

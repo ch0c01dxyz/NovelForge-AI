@@ -1389,3 +1389,29 @@ the template suite's gateway is faked per agent step.
 | Typecheck | `pnpm --filter @novelforge/workflow-templates typecheck` | exit 0 |
 
 No migration in NF-WF-006 (no schema change).
+
+## NF-WF-007 writer generate/review/diff/accept UI — 2026-10-05
+
+Uncommitted working tree on HEAD `9f7a4f1`; contract
+`tasks/NF-WF-007-writer-ui.md` (APPROVE_WITH_FINDINGS; F1–F4 applied;
+Q1–Q5 resolved incl. the author Q2 amendment: outline-moved warning
+with highlighted changed parts).
+Executed on this host (Ubuntu 24.04.5): PostgreSQL 16.15 + pgvector 0.6.0
+and Redis 7.0.15 running natively, scratch `novelforge_test_*` databases
+only. GAP-028: no production AI path — the API loop suite uses the fake
+gateway via the test driver; component tests mock at the HTTP/`useApi`
+boundary. No backend changes (Invariant 11).
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Web component tests | `pnpm --filter @novelforge/web test` (vitest + @vue/test-utils + jsdom) | 7 files, **41/41** |
+| API loop tests | `npx vitest run src/writer-ui.test.ts` (apps/api, dedicated `novelforge_test_writer_ui` db) | 1 file, **11/11** |
+| Lint | `pnpm lint` | exit 0 |
+| Typecheck | `pnpm --filter @novelforge/web typecheck` (vue-tsc) | exit 0 |
+| Build | `pnpm --filter @novelforge/web build` (nuxt build) | succeeds |
+
+Not re-run in this task: the full API suite (the web work adds no
+backend changes; only the new writer-ui suite was run). Component-test
+accessibility assertions cover dialog focus semantics and roles;
+`prefers-reduced-motion` and full keyboard-only flows are verified by
+inspection, not automated emulation.

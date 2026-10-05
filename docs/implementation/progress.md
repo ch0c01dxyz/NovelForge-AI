@@ -4151,3 +4151,83 @@ suite 22/22 (2 files, incl. `validateGraph` on the modified graph);
 `chapter-template.test.ts`
 13/13 (12 + new input-binding test); full API suite **436/436** (18 files,
 no regressions).
+
+## 2026-10-05 — NF-WF-007 implemented (writer generate/review/diff/accept UI)
+
+**Contract.** `tasks/NF-WF-007-writer-ui.md` (reviewed APPROVE_WITH_FINDINGS
+by a separate reviewer; F1–F4 applied in text; Q1–Q5 resolved. Author
+amendment 2026-10-05 on Q2: the outline-moved warning ALSO highlights
+which outline parts changed — fetch the current approved outline
+version, diff its content against the run's outline version, highlight
+the changed sections/parts in the non-blocking notice.)
+
+**What was built** (all in `apps/web/app/`, no backend changes per
+Invariant 11):
+- `i18n/en.ts`, `i18n/id.ts` + `composables/useLocale.ts` (en/id keys,
+  English per-key fallback, localStorage persistence, header toggle).
+  Pre-existing writer-page strings migrated to keys.
+- `utils/outlineDiff.ts` (generic JSON diff → changed paths for the Q2
+  notice), `utils/draftSelect.ts` (latest-available draft-selection
+  rule, never fabricates), `utils/lineDiff.ts` (line-granularity draft
+  diff — implementer choice).
+- `composables/useWorkflowRuns.ts` (start with fresh idempotencyKey,
+  statusUrl/getRun polling with monotonic guard, pause when hidden,
+  cancel, decide), `composables/useChapterGeneration.ts`
+  (chapter-scoped loop: selected run, single-read snapshot review,
+  diff pin, Q2 outline-moved check).
+- Components: `GenerationPanel` (start form + run history + parked-run
+  warning with deep link), `RunStatusPanel` (live steps, cancel),
+  `DraftDiffView`, `FindingsPanel` (expandable evidence),
+  `ProposalsPanel` (Candidate Canon banner, no canon action),
+  `ApprovalDialog` (hash echo, reason-required reject, focus trap/Esc/
+  focus return, text-acceptance label), `ApplyBar` (Invariant-6 guards
+  incl. PUBLISHED gate, stale recovery, applied audit note),
+  `OutlineMovedNotice` (Q2: non-blocking + highlighted changed parts).
+- Integrated into the chapter workspace page right rail (generation +
+  run status) and a review area above the editor. Existing
+  chapter-list/editor/autosave/publish behavior preserved.
+- Test harness: vitest + @vue/test-utils + jsdom + @vitejs/plugin-vue
+  (smallest justified addition; `pnpm --filter @novelforge/web test`).
+
+**Verification (this host, scratch DBs only).**
+- Web component tests: 41/41 (7 files) — utils, locale + fallback,
+  apply gating (dirty/stale/published/non-SUCCEEDED), dialog
+  (hash echo, reject-reason required, text-acceptance label, focus trap
+  + Esc), findings evidence expansion, proposals banner + no canon
+  action, outline-moved changed-parts highlight, diff pending state.
+- API loop tests (`apps/api/src/writer-ui.test.ts`, real backend + test
+  driver, fake gateway): 11/11 — core loop (start→park→review→approve→
+  SUCCEEDED→apply→content verified), reject path (FAILED + reason),
+  reject 400 without reason, autosave-conflict race (200+409, no
+  clobber), stale-apply race (409, newer text kept), double decide
+  (200+409 ALREADY_DECIDED), stale approval (409 STALE_APPROVAL, stays
+  parked, fresh hash works), decide matrix (403 no-capability, 404
+  other tenant), cancel→decide (409 RUN_CANCELLED), double-submit
+  (202+200, one row), listRuns input present for client-side filter.
+- `pnpm lint` clean; `pnpm --filter @novelforge/web typecheck`
+  (vue-tsc) clean; `nuxt build` succeeds.
+- Full API suite not re-run in this task (only the new writer-ui
+  suite + the suites it touches were run); the web work adds no
+  backend changes.
+
+**Deviations / new gaps.**
+- GAP-034 (OPEN): server-side runs-by-chapter filter follow-up
+  (contract Q1 resolution; Invariant 11 forbade it in 007).
+- Contract amendment (author, 2026-10-05): Q2 outline-moved warning now
+  highlights changed parts — implemented in `OutlineMovedNotice` +
+  `outlineDiff.ts`, covered by component tests.
+
+**Independent diff review (2026-10-05): APPROVE_WITH_FINDINGS.** All 11
+invariants verified as pinned (real backend, core loop, state coverage,
+evidence, decide-error matrix, apply guards incl. not-PUBLISHED gate,
+autosave 409 preserved, text/canon separated, en/id fallback,
+accessibility, no backend changes). Checks: web 41/41, API full suite
+447/447 (436 pre-existing + 11 new, no regressions), lint clean,
+vue-tsc clean, nuxt build succeeds. GAP-028 respected (test driver/fake
+gateway). Findings, all applied: F1 (P3) dead `pollRun` export pruned
+from `useWorkflowRuns.ts`; F2 (P3) outline start restricted to the
+APPROVED version only per author decision 2026-10-05 (the `<select>`
+became a read-only display; backend guarantees at most one APPROVED
+outline per novel); F3 (P3) `apps/web/package.json` trailing newline
+restored. Web tests re-run after the F1/F2 fixes: 41/41, lint clean,
+vue-tsc clean.

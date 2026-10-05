@@ -1688,3 +1688,57 @@ Manual a11y: `apps/web/a11y/AUDIT-014.md` — automated half green (axe);
 the named screen-reader pass is honestly recorded as PENDING human
 verification (no blind screen-reader access in the implementer
 environment).
+
+## NF-WF-015 rich editor and scene authoring — 2026-10-06
+
+Implementer actor separate from contract author/reviewer. Backend
+MODEL_UNVERIFIED per GAP-013. Scratch DB only
+(`novelforge_test_scenes`). No schema migration (GAP-052 pins this).
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/scenes.test.ts` (apps/api) | **12/12** |
+| `npx vitest run app/components/editor/editor.test.ts` (apps/web) | **18/18** |
+| `npx vitest run app/utils/editorUtils.test.ts` (apps/web) | **10/10** |
+| `npx vitest run app/composables/useSelectionAi.test.ts` (apps/web) | **5/5** |
+| `npx vitest run app/a11y/editor.axe.test.ts` (apps/web) | **2/2**, 0 axe violations (wcag2aa+wcag22aa, en+id) |
+| Full web suite (`npx vitest run`, apps/web) | **117/117** (16 files) |
+| Full API suite (`npx vitest run`, apps/api) | **588/588** (29 files) |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+| `pnpm e2e` (011 loop no-regression) | **20/20** (3 files), `BASELINE-OK: no >2x regression vs committed baseline` |
+
+`scenes.test.ts` coverage: scene CRUD (create/list/update/delete,
+numbering 1..n, reorder by PATCH number with transactional renumber);
+401/403/404 gates; `chapter:update` capability; Zod validation;
+sanitize-on-write (idempotent, `<p>a</p><p>b</p>` → wordCount 2);
+forced-race 409 (expectedVersion) + keep-mine re-PUT; F4 public
+wordCount strip rule; delete → 409 when outline beats reference the
+scene (GAP-055).
+
+Web coverage: RichEditor (plain-text→paragraphs, HTML emit on user
+edit, programmatic setContent silent, restricted schema, aria-label,
+blur); EditorToolbar (real B/I/H2/quote toggles, rewrite-tone emit);
+SelectionAiMenu (real BubbleMenu, six pinned ops, free prompt,
+Esc→focus); AiSuggestionCard (accept/insert/discard, streaming +
+error states, Esc); ConflictBanner (role=alert, three actions);
+SceneNav (breadcrumb, navigator incl. adjacent chapters, CRUD/move
+intents); `selectionResolve` forced-race (stale → insert-after, never
+mis-replace); client/server prompt mirror verbatim; `useSelectionAi`
+transport (pinned task/profile/messages, SSE deltas, 409→noModel,
+selection cap, abort).
+
+Manual a11y: the automated half is green (axe, both locales); the
+named screen-reader pass follows the AUDIT-014.md pattern and is
+PENDING human verification.
+
+Diff review round 2 (2026-10-06, APPROVE_WITH_FINDINGS): reviewer
+fixed R1 (reader `allowedClasses` attribute exception removed; drop
+cap now CSS-only, allowlists identical across server/client/reader)
+and R2 (scene-delete 409 now shows the actionable
+`scenes.deleteBlockedByOutline` en+id; GAP-055 evidence corrected to
+the real `{error:"CONFLICT"}` envelope). Post-fix re-run:
+reader 10/10, editor 18/18, utils 10/10, selection-AI 5/5, axe 2/2
+(45/45); scenes API 12/12 on scratch DB; API `tsc`, web `vue-tsc`,
+`pnpm lint` all clean.

@@ -32,6 +32,25 @@ const saveChapterBody = z.object({
 const setStatusBody = z.object({
   status: z.enum(["IN_REVIEW", "PUBLISHED"]),
 });
+// NF-WF-015 (Invariant 6): minimal scene CRUD. Scenes are structural
+// anchors (title/summary/number) — no scene content, no versioning.
+const sceneScopeParams = chapterParams;
+const sceneParams = chapterParams.extend({ sceneId: uuid });
+const createSceneBody = z.object({
+  title: z.string().trim().min(1).max(200),
+  summary: z.string().trim().max(5000).optional(),
+  number: z.number().int().min(1).optional(),
+});
+const updateSceneBody = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    summary: z.string().trim().max(5000).nullable().optional(),
+    number: z.number().int().min(1).optional(),
+  })
+  .refine(
+    (v) => v.title !== undefined || v.summary !== undefined || v.number !== undefined,
+    { message: "empty patch" },
+  );
 
 // Fastify's default bodyLimit is 1 MB; the save and import routes accept
 // more, so without a per-route limit a valid payload 413s before Zod ever
@@ -145,6 +164,64 @@ export function registerManuscriptRoutes(
       const body = setStatusBody.safeParse(request.body);
       if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       await services.setStatus({ actorUserId, ...params.data, status: body.data.status });
+      return { status: "ok" };
+    },
+  );
+
+  // --- NF-WF-015 scene anchors (minimal CRUD, Invariant 6) ---
+  // Same conventions: session auth, Zod → 400, membership 404 gate,
+  // `chapter:update` capability, the app-wide error handler.
+
+  app.get(
+    "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scenes",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = sceneScopeParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      return services.listScenes({ actorUserId, ...params.data });
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scenes",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = sceneScopeParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = createSceneBody.safeParse(request.body);
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const scene = await services.createScene({
+        actorUserId,
+        ...params.data,
+        ...body.data,
+      });
+      return reply.code(201).send(scene);
+    },
+  );
+
+  app.patch(
+    "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scenes/:sceneId",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = sceneParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = updateSceneBody.safeParse(request.body);
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      return services.updateScene({ actorUserId, ...params.data, ...body.data });
+    },
+  );
+
+  app.delete(
+    "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scenes/:sceneId",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = sceneParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.deleteScene({ actorUserId, ...params.data });
       return { status: "ok" };
     },
   );

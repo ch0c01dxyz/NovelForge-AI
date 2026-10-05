@@ -7,7 +7,7 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: REVIEW_PENDING (round 1: APPROVE_WITH_FINDINGS, findings applied inline)
+Status: REVIEW_PENDING (round 1 contract review: APPROVE_WITH_FINDINGS, findings applied inline; round 2 diff review 2026-10-06: APPROVE_WITH_FINDINGS, R1/R2 fixed inline in the working tree, uncommitted)
 Milestone / capability IDs: M2 (author half); delivery-plan NF-WF-015
 Implementer role / requested and resolved model: (separate actor; backend MODEL_UNVERIFIED per GAP-013)
 Reviewer role / requested and resolved model: (separate actor; backend MODEL_UNVERIFIED per GAP-013)
@@ -720,3 +720,113 @@ implementer may tighten); the `maxTokens` bound for selection requests
 (contract pins ≤ 4_000 ceiling); scene-list ordering beyond
 `number` ascending; the implementer's `DraftDiffView` reuse for the
 Compare action (contract allows it, doesn't mandate it).
+
+### Round 2 — diff review of the implementation (2026-10-06)
+
+Reviewer: separate actor from the contract author, contract reviewer,
+and implementer (diff-reviewer subagent); backends MODEL_UNVERIFIED per
+GAP-013. Reviewed the exact uncommitted working tree on top of
+`b65897c` via `git diff`/`git status` (every changed file read).
+
+**Verdict: APPROVE_WITH_FINDINGS** — two findings applied inline by the
+reviewer to the working tree (no implementer rework, no commit).
+
+**R1 (P2, fixed) — reader allowlist drifted from the Invariant 2
+"no attributes" pin.** The 013 reader page injected
+`class="opening"` into the first `<p>` before sanitizing and allowed
+`allowedClasses: { p: ["opening"] }` — an attribute exception the
+frozen contract does not grant (server allowlist is attribute-free).
+Fix: removed the injection and the `allowedClasses` exception; the
+drop cap is now CSS-only
+(`.nf-reader-prose > p:first-of-type::first-letter` in main.css, same
+declarations and mobile variant as the legacy `.opening` rule).
+Server, client, and reader allowlists are now identical:
+`p, h2, blockquote, strong, em, ul, ol, li, hr, br`, no attributes.
+
+**R2 (P3, fixed) — scene-delete 409 was not actionable as promised.**
+GAP-055's evidence claimed the 409 body names the blocking outline
+nodes; the actual envelope is `409 {error: "CONFLICT"}` with no
+message field, and the client showed the generic
+`scenes.deleteFailed`. Fix: the writer page interprets a 409 on scene
+DELETE (the only 409 that route emits) as the outline-link refusal and
+shows the new actionable `scenes.deleteBlockedByOutline` (en+id);
+GAP-055's evidence text was corrected to match the actual envelope
+(the typed-code claim was also removed — no `SCENE_REFERENCED_BY_OUTLINE`
+exists; the established `CONFLICT` envelope vocabulary is kept).
+
+**R3 (P3, fixed) — GAP-055 ruling recorded:** 409-with-actionable-
+message IS contract-conformant. GAP-052 forbids schema changes, so a
+schema-level cascade/refuse rule is impossible in 015; the refusal is
+the correct conservative choice (the FK is `onDelete: Cascade` —
+silent cascade would destroy planning work), the client now guides
+recovery, and the cascade-vs-refuse schema decision stays open for
+the planning owner (GAP-055 closure check unchanged).
+
+**Verification (reviewer, observed):**
+
+- Q2: implementer picked `sanitize-html@2.18.0` (exact pin, API +
+  web). Sound: isomorphic (htmlparser2, no DOM — SSR-safe on the
+  reader page), `disallowedTagsMode: "discard"` drops tags but keeps
+  inner text inert; idempotent. Bundle-weight concern: client usage is
+  only the read/[slug]/[number] page chunk (Nuxt code-splits it away
+  from the writer bundle) — acceptable, no change. DOMPurify remains
+  a valid alternative but the contract permitted this pick.
+- Invariant 2 allowlist exactness: server `sanitizeChapterHtml`
+  (`apps/api/src/services/manuscript.ts`) = `p, h2, blockquote,
+  strong, em, ul, ol, li, hr, br`, `allowedAttributes: {}`
+  (identical post-R1 on the reader page). `stripHtmlTags` mirrors
+  server/client exactly (each tag → one space;
+  `<p>a</p><p>b</p>` → 2, tested). The F2 block-tag detector
+  `/<(p|h2|blockquote|ul|ol|li|hr)\\b/` matches the contract's regex
+  verbatim.
+- Client/server prompt mirror: all six `systemPrompt` strings are
+  byte-identical between `apps/api/src/services/selection-ai.ts` and
+  `apps/web/app/utils/selectionAiOperations.ts` (a web test imports
+  the server source and asserts verbatim equality — 45/45 web tests
+  pass). Tasks (`selection.rewrite-tone`, `selection.expand`,
+  `selection.more-dialogue`, `selection.show-dont-tell`,
+  `selection.continue-scene`, `selection.free-prompt`), profile
+  `CREATIVE_WRITER`, bounds selection ≤ 2000 / context ≤ 1000 /
+  maxTokens 2000 (≤ 4000 ceiling) all conform. SSE parser matches the
+  route's `event: delta`/`data: {"delta": ...}` framing; 409 →
+  `aiAssist.noModel` (GAP-028 actionable state, no retry loop).
+- Acceptance spot-checks: forced-race API test genuinely forces the
+  race (`Promise.all` of two PUTs with the same expectedVersion →
+  one 200 + one 409; keep-mine re-PUT with fresh version succeeds);
+  forced-race stale-selection tests genuinely force it (`setContent`
+  between capture and Accept → `inserted-after`, no mis-replace).
+  Legacy plain-text → HTML conversion (escaped markup, blank-line
+  paragraphs) is the acceptance checkbox's "load as paragraphs"
+  mechanism — a judgment call, not a contract rewrite. Tiptap v3
+  restricted schema (StarterKit minus code/codeBlock/strike/
+  underline/link, heading levels [2]) matches Invariant 1's
+  manuscript subset; `@tiptap/vue-3@3.31.4` ships `@tiptap/vue-3/menus`
+  (verified installed).
+- Forbidden paths: no schema changes, no new capabilities (reuses
+  `chapter:update` + `generation:create`), ApplyBar stale-apply
+  untouched, no canon/compiler/release-lifecycle changes, save PUT
+  contract untouched.
+- 007 no-regression: 1.5s debounce, `saved|dirty|saving|conflict`
+  states, expectedVersion contract kept; the 409 path is exactly the
+  F3 pin (refetch status → PUBLISHED shows
+  `chapters.blockedPublished` with no banner/keep-mine, else the
+  banner). Generation loop, ApplyBar, publish(), chapter switching
+  untouched.
+- Test evidence (reviewer observed, not re-claimed): API
+  `src/scenes.test.ts` 12/12 green on a scratch DB; web editor 18/18,
+  utils 10/10, selection-AI 5/5, axe 2/2 (0 violations, en+id),
+  reader 10/10 — 45/45 pass in the targeted re-run;
+  `npx tsc --noEmit` (API) exit 0, `npx vue-tsc --noEmit` (web)
+  exit 0 (post-fix), `pnpm lint` (eslint .) exit 0; no
+  `@ts-ignore`/`@ts-expect-error` in new files. The full-suite
+  counts (web 117/117, API 588/588, e2e 20/20) are the
+  implementer's claimed results; the targeted subset re-verified
+  here is consistent with them.
+
+**Open observations (not findings):** (a) the F3 PUBLISHED-
+disambiguation branch in the writer page has no dedicated web test —
+the logic is simple and matches the F3 pin, but a page-level test
+would close the acceptance checkbox's evidence loop; (b) the
+sanitize-html client pick's bundle weight is documented above;
+(c) Q6 "Continue scene" lands after the selection per the Q6 decision
+of record — implemented via the card's Insert-after.

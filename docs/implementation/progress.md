@@ -4651,3 +4651,44 @@ ceiling (see ISSUES-AND-GAPS.md).
 - Klein's max-5 amendment (contract annotated at all "max 3" sites).
 
 **Known gaps (honest):** the named screen-reader pass (NVDA/VoiceOver) is a human-verification item — no blind screen-reader access in this environment; recorded in AUDIT-014.md, not claimed. Backends remain MODEL_UNVERIFIED per GAP-013.
+
+## NF-WF-015 rich editor and scene authoring — implemented 2026-10-06, awaiting independent diff review
+
+Contract `tasks/NF-WF-015-rich-editor-scenes.md` (REVIEW_PENDING, round 1
+APPROVE_WITH_FINDINGS applied inline, Q1–Q7 decided; Q7 flipped Tiptap
+v2→v3 stable per reviewer). Implementer actor separate from
+author/reviewer; backends MODEL_UNVERIFIED per GAP-013. NOT committed —
+working tree left for the diff reviewer, per the task's hard rule.
+
+Implementation (all English artifacts): Tiptap v3 rich editor on the
+writer page replacing the `<textarea>` (6 components in
+`apps/web/app/components/editor/`; `@tiptap/vue-3/menus` BubbleMenu;
+`sanitize-html` Q2 pick, Invariant 2 allowlist pinned); six pinned
+selection-AI operations via the existing generations API
+(`selection.*` tasks, CREATIVE_WRITER profile, streaming suggestion
+card, stale-selection re-resolution, never direct writes);
+autosave kept (1.5s debounce, expectedVersion) with the conflict path
+replaced by ConflictBanner (Keep mine / Load theirs / Compare) +
+F3 409 disambiguation; server-side `sanitizeChapterHtml` on
+`saveChapter`, tag-stripped wordCount, F4 publication wordCount strip
+rule, F2 reader dual-format rendering; scene CRUD routes
+(`chapter:update`, Zod, membership 404 gate, reorder, delete→409 when
+outline beats reference); i18n en+id; vitest-axe 0 violations (en+id).
+
+Corrections with GAP numbers before workarounds: GAP-054 (contract
+claimed `chapters.blockedPublished` in both locale files — disproven,
+keys added en+id), GAP-055 (scene delete refuses 409 when outline
+beats reference it; schema CHECK forbids unlinking, no schema change
+per GAP-052). Legacy plain-text chapters convert to manuscript HTML
+on editor load (blank-line paragraphs; markup escaped) — needed for
+correctness, not a contract rewrite. jsdom test notes: `markRaw` on
+editors passed as mount props (test-utils deep-reactive wrapping
+breaks ProseMirror transactions; production props are shallow),
+`Range#getClientRects/getBoundingClientRect` stubbed (no layout).
+
+Evidence: API scenes 12/12; web new 35/35 (18 component + 10 utils +
+5 transport + 2 axe); full web 117/117 (16 files); full API 588/588
+(29 files); `pnpm e2e` 20/20 BASELINE-OK; `pnpm lint`, API `tsc`,
+web `vue-tsc` clean. GAP-052 closes
+on 015 verification; GAP-053 stays open (canon-evidence /
+discovery-search HTML follow-ups).

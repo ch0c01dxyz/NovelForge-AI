@@ -52,6 +52,8 @@ import type { AuditService } from "./audit.ts";
 import { advanceForMutation, type RevisionTx } from "./revisions.ts";
 import {
   assertPublishReviewGate,
+  countWords,
+  stripHtmlTags,
   type ManuscriptServices,
 } from "./manuscript.ts";
 import {
@@ -840,7 +842,10 @@ export function createPublicationServices({
           number: chapter!.number,
           title: chapter!.title,
           content,
-          wordCount: content.trim() ? content.trim().split(/\s+/).length : 0,
+          // NF-WF-015 (Invariant 2, F4): the pinned version's content is
+          // sanitized HTML — count words, not tags, with the shared strip
+          // rule (the same rule the save path uses).
+          wordCount: countWords(stripHtmlTags(content)),
           publishedVersionNumber: pub.chapterVersion.number,
           publishedAt: pub.publishedAt!.toISOString(),
         },

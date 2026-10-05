@@ -1442,3 +1442,45 @@ owners — NOT 015's implementer. Closure check: closes when the
 evidence-span rule and the discovery full-text query are pinned
 against a defined HTML/strip contract with tests. Recorded before 015
 implementation, per the standing rule.
+
+## GAP-054 — NF-WF-015 contract claimed `chapters.blockedPublished` exists in both locale files; it does not (2026-10-06)
+
+EVIDENCE: the frozen contract (§F3 409 disambiguation) states
+"a PUBLISHED chapter → show `chapters.blockedPublished` (already in
+both locale files)". Verification on 2026-10-06 (`grep` over
+`apps/web/app/i18n/en.ts` and `id.ts`) found NO such key in either
+file — the claim was unsupported. The nearest existing key is
+`apply.blockedPublished`.
+
+IMPACT: without the key, the F3 PUBLISHED branch would render a raw
+key path. The implementer added `chapters.blockedPublished` to both
+locale files (mirroring the `apply.blockedPublished` wording) rather
+than silently rewriting the contract — a GAP-numbered correction per
+the standing rule. STATUS: closed by the addition (both locales
+verified in the 015 web tests via the real i18n resources). Closure
+check: `chapters.blockedPublished` resolves in en+id — verified.
+
+## GAP-055 — NF-WF-015: scene delete must refuse (409) when outline beats reference the scene; schema CHECK forbids unlinking (2026-10-06)
+
+EVIDENCE: `DELETE .../chapters/:chapterId/scenes/:sceneId` initially
+attempted to null out `OutlineNode.sceneId`, but the schema CHECK
+(`OutlineNode_leaf_links_exactly_one`) requires SCENE-kind outline
+nodes to keep `sceneId NOT NULL` — unlinking violates the constraint.
+No schema change is allowed (GAP-052 pins this; constitution §12).
+
+DECISION: the route refuses with 409 (`{error: "CONFLICT"}` — the
+established conflict envelope; there is no typed code on this route and
+the message field is not in the envelope) when outline beats reference
+the scene; the author unlinks via planning's existing
+`deleteOutlineNode` first, then deletes the scene. The writer page
+interprets a 409 on scene DELETE (the only 409 this route emits) as the
+outline-link refusal and shows the actionable `scenes.deleteBlockedByOutline`
+message (en+id) naming the recovery action — no silent failure. The
+alternative (schema `ON DELETE` cascade/refuse rule) is a follow-up
+decision for the planning owner, not 015's implementer.
+
+IMPACT: minimal — delete is recoverable through the existing planning
+UI. STATUS: open pending the schema-cascade-vs-refuse decision;
+015's implementation is complete with the 409. Closure check: closes
+when the planning/schema owner records the cascade-vs-refuse decision
+and the route + tests are updated to match.

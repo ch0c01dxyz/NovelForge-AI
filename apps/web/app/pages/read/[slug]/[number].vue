@@ -12,6 +12,8 @@
 import { useLocale } from "../../../composables/useLocale";
 import { useApi, ApiError } from "../../../composables/useApi";
 import { useReadingProgress } from "../../../composables/useReadingProgress";
+import sanitizeHtml from "sanitize-html";
+import { looksLikeHtml } from "../../../utils/htmlText";
 
 interface ChapterPage {
   number: number;
@@ -47,6 +49,32 @@ const paragraphs = computed(() =>
     .map((p) => p.trim())
     .filter((p) => p.length > 0),
 );
+
+/**
+ * NF-WF-015 (Invariant 2, F2): dual-format rendering of the PINNED
+ * chapter version's content. Content containing block tags renders as
+ * sanitized HTML; plain-text rows never re-saved in HTML keep the legacy
+ * blank-line paragraph split with the drop cap — un-migrated chapters
+ * render exactly as before.
+ *
+ * The pinned content was sanitized on write, but rows written before
+ * 015 were not — so the reader sanitizes too, with the Invariant 2
+ * allowlist mirrored EXACTLY from the server (`sanitizeChapterHtml` in
+ * apps/api/src/services/manuscript.ts): the same ten tags, no
+ * attributes. The drop cap is CSS-only
+ * (`.nf-reader-prose > p:first-of-type::first-letter`) so the allowlist
+ * stays attribute-free.
+ */
+const isHtml = computed(() => looksLikeHtml(chapter.value?.content ?? ""));
+const htmlContent = computed(() => {
+  const content = chapter.value?.content ?? "";
+  if (!isHtml.value) return "";
+  return sanitizeHtml(content, {
+    allowedTags: ["p", "h2", "blockquote", "strong", "em", "ul", "ol", "li", "hr", "br"],
+    allowedAttributes: {},
+    disallowedTagsMode: "discard",
+  });
+});
 
 useHead({
   meta: [{ name: "robots", content: "noindex" }],
@@ -107,7 +135,8 @@ onMounted(async () => {
         <span class="mx-[7px] text-nf-border-strong" aria-hidden="true">·</span>
         {{ t("reader.version", { n: chapter.publishedVersionNumber }) }}
       </p>
-      <div class="nf-reader-prose mt-10">
+      <div v-if="isHtml" class="nf-reader-prose mt-10" v-html="htmlContent" />
+      <div v-else class="nf-reader-prose mt-10">
         <p v-for="(p, i) in paragraphs" :key="i" :class="{ opening: i === 0 }">{{ p }}</p>
       </div>
       <ReaderChapterNav

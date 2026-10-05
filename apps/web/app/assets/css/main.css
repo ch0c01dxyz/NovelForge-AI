@@ -63,7 +63,37 @@ body {
 .nf-reader-prose p {
   margin-bottom: 1.35em;
 }
-.nf-reader-prose p.opening::first-letter {
+/* NF-WF-015: the sanitized-HTML allowlist's other blocks, in the same
+   manuscript voice. */
+.nf-reader-prose h2 {
+  font-size: 1.35em;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.4em 0 0.7em;
+}
+.nf-reader-prose blockquote {
+  border-left: 2px solid var(--color-nf-border-strong);
+  padding-left: 1em;
+  margin: 0 0 1.35em;
+  color: var(--color-nf-text-dim);
+}
+.nf-reader-prose ul,
+.nf-reader-prose ol {
+  margin: 0 0 1.35em;
+  padding-left: 1.5em;
+}
+.nf-reader-prose hr {
+  border: none;
+  border-top: 1px solid var(--color-nf-border);
+  margin: 1.5em 0;
+}
+/* NF-WF-015: the drop cap applies to the first paragraph in both the
+   legacy plain-text path (the `opening` class on the template's first
+   <p>) and the sanitized-HTML path (first <p> child of the v-html
+   container). The HTML path is CSS-only so the Invariant 2 reader
+   allowlist stays attribute-free, exactly like the server's. */
+.nf-reader-prose p.opening::first-letter,
+.nf-reader-prose > p:first-of-type::first-letter {
   float: left;
   font-size: 58px;
   line-height: 0.82;
@@ -75,7 +105,8 @@ body {
   .nf-reader-prose {
     font-size: 16.5px;
   }
-  .nf-reader-prose p.opening::first-letter {
+  .nf-reader-prose p.opening::first-letter,
+  .nf-reader-prose > p:first-of-type::first-letter {
     font-size: 46px;
     padding-top: 4px;
   }

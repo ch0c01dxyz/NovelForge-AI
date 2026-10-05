@@ -1,17 +1,20 @@
 /**
- * @novelforge/api — manuscript services (Phase 2: chapters).
- *
- * Scene CRUD is schema-only in Phase 2 (no API yet); the editor scrolls
- * chapters as free text until the AI/scene features of Phases 3-8 demand
- * a scene write path — YAGNI until then.
+ * @novelforge/api — manuscript services (Phase 2: chapters; NF-WF-015:
+ * scene CRUD + sanitized-HTML chapter content).
  *
  * Chapter content is versioned immutably: every save appends a
  * chapter_versions row and moves the chapter's current pointer; content
  * is never updated in place (blueprint §Versioning: "immutable revision
  * records"). Tenant gate reuses the platform membership check (404 for
  * non-members per ADR-0004).
+ *
+ * NF-WF-015 (Invariant 2): `ChapterVersion.content` carries sanitized
+ * HTML. The server sanitizes on every `saveChapter` write (before the
+ * word count and the version insert) against the pinned allowlist, and
+ * `wordCount` is computed on tag-stripped text.
  */
 import type { PrismaClient } from "@novelforge/database";
+import sanitizeHtml from "sanitize-html";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 // Shared error vocabulary with the platform services; requireCapability
 // throws the auth-package ForbiddenError, which the platform routes'
@@ -121,10 +124,89 @@ export interface ManuscriptServices {
     chapterId: string;
     versionNumber: number;
   }): Promise<{ version: number }>;
+  /** Scene anchors (NF-WF-015, Invariant 6): structural only, no content. */
+  listScenes(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapterId: string;
+  }): Promise<Array<{ id: string; number: number; title: string; summary: string | null }>>;
+  createScene(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapterId: string;
+    title: string;
+    summary?: string | null;
+    /** Desired 1-based position; defaults to max+1. */
+    number?: number | null;
+  }): Promise<{ id: string; number: number; title: string; summary: string | null }>;
+  updateScene(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapterId: string;
+    sceneId: string;
+    title?: string;
+    summary?: string | null;
+    /** Desired 1-based position (reorder, transactional). */
+    number?: number;
+  }): Promise<{ id: string; number: number; title: string; summary: string | null }>;
+  deleteScene(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapterId: string;
+    sceneId: string;
+  }): Promise<void>;
 }
 
-function countWords(text: string): number {
+export function countWords(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+/**
+ * NF-WF-015 (Invariant 2): the shared tag-strip rule. Each tag is
+ * replaced with a space (so `</p><p>` does not fuse words); the result
+ * feeds `countWords`. Used by the save path and reused by the
+ * publication path (`resolvePublicChapter`).
+ */
+export function stripHtmlTags(html: string): string {
+  return html.replace(/<[^>]*>/g, " ");
+}
+
+/**
+ * NF-WF-015 (Invariant 2): the pinned sanitized-HTML allowlist.
+ * `p, h2, blockquote, strong, em, ul, ol, li, hr, br` — no attributes,
+ * no `script`/`style`/`iframe`, no event handlers, no `h1` (chapter
+ * titles are metadata, not prose). `disallowedTagsMode: "discard"` drops
+ * a disallowed tag but keeps its inner text as prose (so a `<script>`
+ * payload becomes inert text, never code). Idempotent:
+ * `sanitize(sanitize(x)) === sanitize(x)`.
+ *
+ * Q2 decision of record: `sanitize-html` (implementer pick; the Invariant
+ * 2 allowlist is pinned here and mirrored by the reader page).
+ */
+const CHAPTER_HTML_ALLOWLIST = [
+  "p",
+  "h2",
+  "blockquote",
+  "strong",
+  "em",
+  "ul",
+  "ol",
+  "li",
+  "hr",
+  "br",
+] as const;
+
+export function sanitizeChapterHtml(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: [...CHAPTER_HTML_ALLOWLIST],
+    allowedAttributes: {},
+    disallowedTagsMode: "discard",
+    allowProtocolRelative: false,
+  });
 }
 
 /**
@@ -308,7 +390,11 @@ export function createManuscriptServices(
         throw new ConflictError("published chapters are immutable; unpublish first");
       }
 
-      const wordCount = countWords(content);
+      // NF-WF-015 (Invariant 2): sanitize on write, BEFORE the word count
+      // and the version insert, so every stored version is clean. The
+      // word count is computed on tag-stripped text (tags are not words).
+      const cleanContent = sanitizeChapterHtml(content);
+      const wordCount = countWords(stripHtmlTags(cleanContent));
       // Version append + pointer move in one transaction.
       const version = await db.$transaction(async (tx) => {
         // Serialize concurrent saves on the same chapter row.
@@ -339,7 +425,7 @@ export function createManuscriptServices(
           data: {
             chapterId,
             number: (last?.number ?? 0) + 1,
-            content,
+            content: cleanContent,
             wordCount,
             note,
             authorId: actorUserId,
@@ -740,6 +826,176 @@ export function createManuscriptServices(
         payload: { chapterId, from: versionNumber, as: version },
       });
       return { version };
+    },
+
+    // --- NF-WF-015 (Invariant 6): minimal scene CRUD -------------------
+    // Scenes are structural anchors (title/summary/number only): no scene
+    // content editing, no scene versioning (GAP-052 follow-up). All four
+    // routes reuse the `chapter:update` capability — no new capabilities.
+    async listScenes({ actorUserId, workspaceId, novelId, chapterId }) {
+      await gate(workspaceId, novelId, actorUserId, "chapter:update");
+      await getChapterOr404(chapterId, novelId);
+      const scenes = await db.scene.findMany({
+        where: { chapterId },
+        orderBy: { number: "asc" },
+        select: { id: true, number: true, title: true, summary: true },
+      });
+      return scenes;
+    },
+
+    async createScene({
+      actorUserId,
+      workspaceId,
+      novelId,
+      chapterId,
+      title,
+      summary,
+      number,
+    }) {
+      await gate(workspaceId, novelId, actorUserId, "chapter:update");
+      await getChapterOr404(chapterId, novelId);
+      // Chapter-row lock serializes numbering against concurrent creates;
+      // max+1 cannot collide under it.
+      const scene = await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
+        let next = number ?? null;
+        if (next === null) {
+          const max = await tx.scene.findFirst({
+            where: { chapterId },
+            orderBy: { number: "desc" },
+            select: { number: true },
+          });
+          next = (max?.number ?? 0) + 1;
+        }
+        try {
+          return await tx.scene.create({
+            data: {
+              chapterId,
+              number: next,
+              title,
+              summary: summary ?? null,
+            },
+            select: { id: true, number: true, title: true, summary: true },
+          });
+        } catch (e: unknown) {
+          // @@unique([chapterId, number]): an explicit number that is
+          // already taken is a client-correctable conflict, not a 500.
+          if ((e as { code?: string })?.code === "P2002") {
+            throw new ConflictError(
+              `scene number ${next} is already used in this chapter`,
+            );
+          }
+          throw e;
+        }
+      });
+      await audit?.record({
+        actorUserId,
+        workspaceId,
+        action: "scene.created",
+        entityType: "Scene",
+        entityId: scene.id,
+        payload: { chapterId, number: scene.number, title },
+      });
+      return scene;
+    },
+
+    async updateScene({
+      actorUserId,
+      workspaceId,
+      novelId,
+      chapterId,
+      sceneId,
+      title,
+      summary,
+      number,
+    }) {
+      await gate(workspaceId, novelId, actorUserId, "chapter:update");
+      await getChapterOr404(chapterId, novelId);
+      const updated = await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
+        const scene = await tx.scene.findFirst({
+          where: { id: sceneId, chapterId },
+          select: { id: true, number: true },
+        });
+        if (!scene) throw new NotFoundError("scene");
+        if (title !== undefined) {
+          await tx.scene.update({ where: { id: sceneId }, data: { title } });
+        }
+        if (summary !== undefined) {
+          await tx.scene.update({
+            where: { id: sceneId },
+            data: { summary: summary ?? null },
+          });
+        }
+        if (number !== undefined && number !== scene.number) {
+          // Reorder: `number` is the desired 1-based position. Read the
+          // current ordering, move the scene, then renumber 1..n in two
+          // passes (negative temps first) so @@unique([chapterId,
+          // number]) never sees a collision mid-write.
+          const rows = await tx.scene.findMany({
+            where: { chapterId },
+            orderBy: [{ number: "asc" }, { id: "asc" }],
+            select: { id: true },
+          });
+          const ids = rows.map((r) => r.id);
+          ids.splice(ids.indexOf(sceneId), 1);
+          const to = Math.max(0, Math.min(number - 1, ids.length));
+          ids.splice(to, 0, sceneId);
+          for (const [i, id] of ids.entries()) {
+            await tx.scene.update({ where: { id }, data: { number: -(i + 1) } });
+          }
+          for (const [i, id] of ids.entries()) {
+            await tx.scene.update({ where: { id }, data: { number: i + 1 } });
+          }
+        }
+        return tx.scene.findUniqueOrThrow({
+          where: { id: sceneId },
+          select: { id: true, number: true, title: true, summary: true },
+        });
+      });
+      await audit?.record({
+        actorUserId,
+        workspaceId,
+        action: "scene.updated",
+        entityType: "Scene",
+        entityId: sceneId,
+        payload: { chapterId, title, number },
+      });
+      return updated;
+    },
+
+    async deleteScene({ actorUserId, workspaceId, novelId, chapterId, sceneId }) {
+      await gate(workspaceId, novelId, actorUserId, "chapter:update");
+      await getChapterOr404(chapterId, novelId);
+      await db.$transaction(async (tx) => {
+        const scene = await tx.scene.findFirst({
+          where: { id: sceneId, chapterId },
+          select: { id: true, title: true },
+        });
+        if (!scene) throw new NotFoundError("scene");
+        // Outline beats plan specific scenes (SCENE-kind nodes carry a
+        // NOT NULL sceneId by CHECK constraint) — deleting the anchor
+        // must not silently destroy planning work via the schema's
+        // onDelete: Cascade. Refuse with an actionable 409 instead; the
+        // author deletes the beats first (planning's deleteOutlineNode),
+        // then the scene. (GAP-055 tracks the schema-level question.)
+        const linked = await tx.outlineNode.count({ where: { sceneId } });
+        if (linked > 0) {
+          throw new ConflictError(
+            `this scene is planned by ${linked} outline beat${linked === 1 ? "" : "s"} — ` +
+              `delete those beats first, then delete the scene`,
+          );
+        }
+        await tx.scene.delete({ where: { id: sceneId } });
+        await audit?.record({
+          actorUserId,
+          workspaceId,
+          action: "scene.deleted",
+          entityType: "Scene",
+          entityId: sceneId,
+          payload: { chapterId, title: scene.title },
+        });
+      });
     },
   };
 }

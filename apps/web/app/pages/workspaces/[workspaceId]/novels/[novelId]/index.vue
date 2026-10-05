@@ -13,10 +13,22 @@
  * (Candidate Canon), snapshot-bound approve/reject, and the guarded
  * apply bar. Every surface drives the real NF-WF-004/005/006 backend.
  */
+import { shallowRef } from "vue";
 import { useChapterGeneration } from "../../../../../composables/useChapterGeneration";
 import { useWorkflowRuns, type RunView } from "../../../../../composables/useWorkflowRuns";
 import { useLocale } from "../../../../../composables/useLocale";
 import { ApiError } from "../../../../../composables/useApi";
+import { useSelectionAi } from "../../../../../composables/useSelectionAi";
+import type { Editor } from "@tiptap/core";
+import {
+  SELECTION_AI_OPERATIONS,
+  type SelectionAiOperationKey,
+} from "../../../../../utils/selectionAiOperations";
+import {
+  captureSelection,
+  applySuggestion,
+} from "../../../../../utils/selectionResolve";
+import { countWords as countWordsStripped, stripHtmlTags } from "../../../../../utils/htmlText";
 import type RunStatusPanel from "../../../../../components/generation/RunStatusPanel.vue";
 import type GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
 
@@ -30,6 +42,12 @@ interface ChapterSummary {
 }
 interface ChapterDetail extends ChapterSummary {
   content: string;
+}
+interface SceneSummary {
+  id: string;
+  number: number;
+  title: string;
+  summary: string | null;
 }
 
 const route = useRoute();
@@ -53,9 +71,9 @@ const saveState = ref<"saved" | "dirty" | "saving" | "conflict">("saved");
 const activeChapter = computed(
   () => chapters.value.find((c) => c.id === activeId.value) ?? null,
 );
-const wordCount = computed(() =>
-  content.value.trim() ? content.value.trim().split(/\s+/).length : 0,
-);
+// NF-WF-015: the footer count uses the server strip rule — tags are not
+// words (`<p>a</p><p>b</p>` → 2).
+const wordCount = computed(() => countWordsStripped(content.value));
 
 const saveLabel = computed(
   () =>
@@ -85,6 +103,27 @@ const decideState = ref<
 const runPanel = ref<InstanceType<typeof RunStatusPanel> | null>(null);
 const generationPanel = ref<InstanceType<typeof GenerationPanel> | null>(null);
 
+// ---------- NF-WF-015 rich editor state ----------
+/** The live Tiptap editor instance (set on RichEditor's editor-ready).
+ * shallowRef: the editor is a stateful class instance — it must not be
+ * made deeply reactive. */
+const editorRef = shallowRef<Editor | null>(null);
+/**
+ * Invariant 5: the conflict the banner is showing — the fresh server
+ * version + content the author's save collided with. Null when resolved.
+ * Autosave pauses while this is non-null.
+ */
+const conflictServer = ref<{ version: number | null; content: string } | null>(null);
+const comparing = ref(false);
+/** Transient author-facing notice (selection AI / stale selection). */
+const aiNotice = ref<string | null>(null);
+/** Scene anchors per chapter id (Invariant 6). */
+const scenesByChapter = ref<Record<string, SceneSummary[]>>({});
+const activeSceneId = ref<string | null>(null);
+/** Viewport anchor for the suggestion card (below the selection). */
+const suggestionAnchor = ref<{ top: number; left: number } | null>(null);
+const selAi = useSelectionAi();
+
 const showReview = computed(
   () =>
     gen.review.value !== null &&
@@ -112,13 +151,14 @@ function onRunUpdated(run: RunView) {
 
 async function loadReviewFor(run: RunView) {
   // Pin the diff against the chapter's server version at review time.
+  // NF-WF-015: the diff view is text-only — strip HTML from the base.
   try {
     const detail = await api<ChapterDetail>(`${base.value}/chapters/${activeId.value}`);
     gen.diffPinnedVersion.value = detail.currentVersion;
-    diffBaseText.value = detail.content;
+    diffBaseText.value = stripHtmlTags(detail.content);
   } catch {
     gen.diffPinnedVersion.value = version.value;
-    diffBaseText.value = content.value;
+    diffBaseText.value = stripHtmlTags(content.value);
   }
   decideState.value = { kind: "ok" };
   await gen.loadReview(workspaceId.value, novelId.value, run);
@@ -242,7 +282,7 @@ async function onReloadRediff() {
   const chapter = activeChapter.value;
   if (chapter) chapter.currentVersion = detail.currentVersion;
   gen.diffPinnedVersion.value = detail.currentVersion;
-  diffBaseText.value = detail.content;
+  diffBaseText.value = stripHtmlTags(detail.content);
   saveState.value = "saved";
 }
 
@@ -288,6 +328,13 @@ async function selectChapter(id: string) {
   gen.selectedRun.value = null;
   gen.clearReview();
   decideState.value = { kind: "ok" };
+  // NF-WF-015: chapter switch clears editor-scoped state too.
+  conflictServer.value = null;
+  comparing.value = false;
+  activeSceneId.value = null;
+  aiNotice.value = null;
+  selAi.reset();
+  suggestionAnchor.value = null;
   // Flush unsaved text for the chapter we're leaving before switching.
   if (saveState.value === "dirty") await saveNow();
   const seq = ++selectSeq;
@@ -299,6 +346,36 @@ async function selectChapter(id: string) {
   version.value = detail.currentVersion;
   saveState.value = "saved";
   error.value = null;
+  // NF-WF-015: load scene anchors for the active chapter + its
+  // neighbours (the SceneNav lists adjacent chapters' scenes).
+  await loadScenesFor([id, ...adjacentChapterIds(id)]);
+}
+
+/** Chapter ids adjacent by number (for the scene navigator). */
+function adjacentChapterIds(id: string): string[] {
+  const sorted = [...chapters.value].sort((a, b) => a.number - b.number);
+  const idx = sorted.findIndex((c) => c.id === id);
+  return [sorted[idx - 1]?.id, sorted[idx + 1]?.id].filter(
+    (x): x is string => !!x,
+  );
+}
+
+async function loadScenesFor(chapterIds: string[]) {
+  const entries = await Promise.all(
+    chapterIds.map(async (chapterId): Promise<[string, SceneSummary[]]> => {
+      try {
+        const scenes = await api<SceneSummary[]>(
+          `${base.value}/chapters/${chapterId}/scenes`,
+        );
+        return [chapterId, scenes];
+      } catch {
+        return [chapterId, []];
+      }
+    }),
+  );
+  for (const [chapterId, scenes] of entries) {
+    scenesByChapter.value[chapterId] = scenes;
+  }
 }
 
 async function createChapter() {
@@ -322,14 +399,27 @@ let selectSeq = 0;
 onUnmounted(() => clearTimeout(timer));
 
 function onInput() {
+  // NF-WF-015: autosave pauses while a version conflict is unresolved —
+  // only the banner's explicit actions proceed.
+  if (saveState.value === "conflict") return;
   saveState.value = "dirty";
   clearTimeout(timer);
   timer = setTimeout(() => void saveNow(), 1500); // 1.5s debounce
 }
 
+/** RichEditor → page: user typed; the editor owns the HTML string. */
+function onEditorInput(html: string) {
+  content.value = html;
+  onInput();
+}
+
+function onEditorBlur() {
+  if (saveState.value === "dirty") void saveNow();
+}
+
 async function saveNow() {
   const chapter = activeChapter.value;
-  if (!chapter || saveState.value === "saving") return;
+  if (!chapter || saveState.value === "saving" || saveState.value === "conflict") return;
   const savingId = chapter.id;
   clearTimeout(timer);
   saveState.value = "saving";
@@ -356,13 +446,197 @@ async function saveNow() {
   } catch (e) {
     if (activeId.value !== savingId) return; // stale save, chapter moved on
     if (e instanceof ApiError && e.status === 409) {
-      // Stale version or published chapter: refetch instead of clobbering.
-      saveState.value = "conflict";
-      await selectChapter(savingId);
+      // NF-WF-015 (Invariant 5, F3): the 409 envelope is identical for a
+      // version conflict and a published-immutable chapter, so
+      // disambiguate by refetching chapter status. PUBLISHED → the
+      // existing unpublish-first message (no banner, no keep-mine);
+      // otherwise the conflict banner (never a silent refetch — 007's
+      // page dropped the author's unsaved text here).
+      try {
+        const detail = await api<ChapterDetail>(`${base.value}/chapters/${savingId}`);
+        if (detail.status === "PUBLISHED") {
+          version.value = detail.currentVersion;
+          error.value = t("chapters.blockedPublished");
+          saveState.value = "dirty"; // keep the author's text; retry on next edit
+        } else {
+          conflictServer.value = {
+            version: detail.currentVersion,
+            content: detail.content,
+          };
+          saveState.value = "conflict";
+        }
+      } catch {
+        saveState.value = "dirty";
+        error.value = t("errors.saveFailed");
+      }
     } else {
       saveState.value = "dirty"; // keep the text; retry on next edit
       error.value = t("errors.saveFailed");
     }
+  }
+}
+
+// ---------- NF-WF-015 conflict resolution (explicit actions) ----------
+async function resolveKeepMine() {
+  if (!activeId.value || !conflictServer.value) return;
+  // Re-PUT the local HTML with the fresh server version as
+  // expectedVersion (overwrites; same `chapter:update` capability).
+  version.value = conflictServer.value.version;
+  conflictServer.value = null;
+  comparing.value = false;
+  saveState.value = "dirty";
+  await saveNow();
+}
+
+async function resolveLoadTheirs() {
+  conflictServer.value = null;
+  comparing.value = false;
+  if (activeId.value) await selectChapter(activeId.value);
+}
+
+function resolveCompare() {
+  comparing.value = true;
+}
+
+// ---------- NF-WF-015 selection AI ----------
+function onEditorReady(ed: Editor) {
+  editorRef.value = ed;
+}
+
+function runSelectionOperation(op: SelectionAiOperationKey, freePrompt?: string) {
+  const ed = editorRef.value;
+  if (!ed) return;
+  const sel = captureSelection(ed);
+  if (!sel) {
+    // Toolbar "Rewrite tone" with a collapsed selection: prompt to select.
+    aiNotice.value = t("editor.selectTextFirst");
+    return;
+  }
+  aiNotice.value = null;
+  try {
+    // Anchor the suggestion card below the selection.
+    const coords = ed.view.coordsAtPos(sel.to);
+    suggestionAnchor.value = {
+      top: coords.bottom + 8,
+      left: Math.max(8, coords.left - 160),
+    };
+  } catch {
+    suggestionAnchor.value = null;
+  }
+  void selAi.run({
+    workspaceId: workspaceId.value,
+    novelId: novelId.value,
+    editor: ed,
+    operation: op,
+    freePrompt,
+  });
+}
+
+function closeSuggestion(refocusEditor: boolean) {
+  selAi.reset();
+  suggestionAnchor.value = null;
+  if (refocusEditor) editorRef.value?.commands.focus();
+}
+
+function onSuggestionAccept() {
+  const ed = editorRef.value;
+  const captured = selAi.captured.value;
+  const suggestion = selAi.result.value;
+  if (!ed || !captured || !suggestion) return;
+  // Stale-selection pin: the editor re-resolves the captured text in the
+  // CURRENT document; a miss falls back to insert-after with a notice.
+  const outcome = applySuggestion(ed, captured, suggestion);
+  if (outcome === "inserted-after") aiNotice.value = t("aiAssist.staleSelection");
+  closeSuggestion(false);
+  // applySuggestion fires onUpdate → onEditorInput → dirty + autosave.
+}
+
+function onSuggestionInsert() {
+  const ed = editorRef.value;
+  const suggestion = selAi.result.value;
+  if (!ed || !suggestion) return;
+  // Q6: "Continue scene" lands after the selection — insert at the cursor.
+  ed.chain().focus().insertContentAt(ed.state.selection.head, suggestion).run();
+  closeSuggestion(false);
+}
+
+// ---------- NF-WF-015 scene CRUD (page prompts, route calls) ----------
+async function onSelectScene(payload: { chapterId: string; sceneId: string }) {
+  if (payload.chapterId !== activeId.value) {
+    await selectChapter(payload.chapterId);
+  }
+  activeSceneId.value = payload.sceneId;
+}
+
+async function onAddScene(payload: { chapterId: string }) {
+  const title = globalThis.prompt(t("scenes.sceneTitlePrompt"));
+  if (!title?.trim()) return;
+  try {
+    await api(`${base.value}/chapters/${payload.chapterId}/scenes`, {
+      method: "POST",
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    await loadScenesFor([payload.chapterId]);
+  } catch {
+    error.value = t("scenes.createFailed");
+  }
+}
+
+async function onRenameScene(payload: { chapterId: string; sceneId: string }) {
+  const scenes = scenesByChapter.value[payload.chapterId] ?? [];
+  const current = scenes.find((s) => s.id === payload.sceneId)?.title ?? "";
+  const title = globalThis.prompt(t("scenes.sceneTitlePrompt"), current);
+  if (title === null || !title.trim() || title.trim() === current) return;
+  try {
+    await api(`${base.value}/chapters/${payload.chapterId}/scenes/${payload.sceneId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title: title.trim() }),
+    });
+    await loadScenesFor([payload.chapterId]);
+  } catch {
+    error.value = t("scenes.updateFailed");
+  }
+}
+
+async function onDeleteScene(payload: { chapterId: string; sceneId: string }) {
+  if (!globalThis.confirm(t("scenes.deleteConfirm"))) return;
+  try {
+    await api(`${base.value}/chapters/${payload.chapterId}/scenes/${payload.sceneId}`, {
+      method: "DELETE",
+    });
+    if (activeSceneId.value === payload.sceneId) activeSceneId.value = null;
+    await loadScenesFor([payload.chapterId]);
+  } catch (e) {
+    // NF-WF-015 (GAP-055): the only 409 this route emits is the
+    // outline-link refusal — name the recovery action.
+    error.value =
+      e instanceof ApiError && e.status === 409
+        ? t("scenes.deleteBlockedByOutline")
+        : t("scenes.deleteFailed");
+  }
+}
+
+async function onMoveScene(payload: {
+  chapterId: string;
+  sceneId: string;
+  direction: "up" | "down";
+}) {
+  const scenes = [...(scenesByChapter.value[payload.chapterId] ?? [])].sort(
+    (a, b) => a.number - b.number,
+  );
+  const idx = scenes.findIndex((s) => s.id === payload.sceneId);
+  if (idx < 0) return;
+  const target = payload.direction === "up" ? idx - 1 : idx + 1;
+  if (target < 0 || target >= scenes.length) return;
+  try {
+    // `number` is the desired 1-based position; the service renumbers.
+    await api(`${base.value}/chapters/${payload.chapterId}/scenes/${payload.sceneId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ number: target + 1 }),
+    });
+    await loadScenesFor([payload.chapterId]);
+  } catch {
+    error.value = t("scenes.updateFailed");
   }
 }
 
@@ -509,9 +783,7 @@ async function publish() {
 
       <main class="flex min-w-0 flex-col bg-nf-bg-0">
         <div class="flex items-center gap-2 border-b border-nf-border bg-nf-bg-1 px-6 py-2">
-          <span class="text-[12.5px] font-semibold text-nf-text-dim">B</span>
-          <span class="font-nf-literary text-[12.5px] font-bold italic text-nf-text-dim">I</span>
-          <span class="text-[12.5px] font-semibold text-nf-text-dim">H2</span>
+          <EditorToolbar :editor="editorRef" @rewrite-tone="() => runSelectionOperation('rewrite-tone')" />
           <div class="flex-1" />
           <span class="flex items-center gap-1.5 text-[12px] tabular-nums text-nf-text-faint">
             <span
@@ -600,7 +872,17 @@ async function publish() {
             <div
               class="mb-2.5 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-nf-accent-hi"
             >
-              {{ t("chapters.chapter") }} {{ activeChapter.number }}
+              <SceneNav
+                :chapters="chapters"
+                :active-chapter-id="activeId"
+                :scenes-by-chapter="scenesByChapter"
+                :active-scene-id="activeSceneId"
+                @select-scene="onSelectScene"
+                @add-scene="onAddScene"
+                @rename-scene="onRenameScene"
+                @delete-scene="onDeleteScene"
+                @move-scene="onMoveScene"
+              />
               <span class="h-px flex-1 bg-gradient-to-r from-nf-border-strong to-transparent" />
             </div>
             <h1 class="mb-2 font-nf-literary text-3xl font-semibold leading-tight">
@@ -609,14 +891,79 @@ async function publish() {
             <div class="mb-8 text-[13px] tabular-nums text-nf-text-faint">
               {{ activeChapter.status }} · {{ wordCount.toLocaleString() }} {{ t("chapters.words") }}
             </div>
-            <textarea
-              v-model="content"
-              rows="18"
-              :aria-label="t('chapters.editorPlaceholder')"
-              class="w-full resize-none border-none bg-transparent font-nf-literary text-[17.5px] leading-[1.85] text-nf-text outline-none placeholder:text-nf-text-faint focus-visible:nf-focus"
-              :placeholder="t('chapters.editorPlaceholder')"
-              @input="onInput"
-              @blur="saveState === 'dirty' && saveNow()"
+            <ConflictBanner
+              v-if="conflictServer"
+              :server-version="conflictServer.version"
+              @keep-mine="resolveKeepMine"
+              @load-theirs="resolveLoadTheirs"
+              @compare="resolveCompare"
+            />
+            <div
+              v-if="comparing && conflictServer"
+              class="mb-8 rounded-xl border border-nf-border bg-nf-bg-1 p-4"
+            >
+              <DraftDiffView
+                :draft-prose="stripHtmlTags(content)"
+                :base-text="stripHtmlTags(conflictServer.content)"
+                :pinned-version="conflictServer.version"
+                :ordinal="1"
+                :total="1"
+              />
+              <button
+                type="button"
+                class="mt-3 rounded-lg border border-nf-border-strong px-3 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+                @click="comparing = false"
+              >
+                {{ t("conflict.closeCompare") }}
+              </button>
+            </div>
+            <p
+              v-if="aiNotice"
+              role="status"
+              class="mb-4 flex items-center gap-2 rounded-lg border border-nf-border bg-nf-bg-1 px-4 py-2.5 text-[13px] text-nf-text-dim"
+            >
+              <span class="flex-1">{{ aiNotice }}</span>
+              <button
+                type="button"
+                class="rounded px-1 text-nf-text-faint hover:text-nf-text focus-visible:nf-focus"
+                :aria-label="t('common.close')"
+                @click="aiNotice = null"
+              >
+                ✕
+              </button>
+            </p>
+            <ClientOnly>
+              <RichEditor
+                :model-value="content"
+                :aria-label="t('chapters.editorPlaceholder')"
+                @update:modelValue="onEditorInput"
+                @editor-ready="onEditorReady"
+                @blur="onEditorBlur"
+              />
+              <template #fallback>
+                <div class="font-nf-literary text-[17.5px] leading-[1.85] text-nf-text">
+                  {{ stripHtmlTags(content) }}
+                </div>
+              </template>
+            </ClientOnly>
+            <SelectionAiMenu
+              :editor="editorRef"
+              @run-operation="(op: SelectionAiOperationKey) => runSelectionOperation(op)"
+              @run-free-prompt="(prompt: string) => runSelectionOperation('free-prompt', prompt)"
+            />
+            <AiSuggestionCard
+              v-if="selAi.activeRequest.value"
+              :operation="selAi.activeRequest.value.operation"
+              :operation-label-key="
+                SELECTION_AI_OPERATIONS[selAi.activeRequest.value.operation].labelKey
+              "
+              :streaming="selAi.streaming.value"
+              :result="selAi.result.value"
+              :error-key="selAi.errorKey.value"
+              :anchor="suggestionAnchor"
+              @accept="onSuggestionAccept"
+              @insert="onSuggestionInsert"
+              @discard="() => closeSuggestion(true)"
             />
           </div>
           <p v-else-if="!loading" class="px-6 py-10 text-center text-sm text-nf-text-faint">

@@ -1297,3 +1297,28 @@ tables (`["publications"]`, plus `["chapters"]` where the chapter row
 changes). The contract's intent — one transaction, one revision, no extra
 snapshot — is preserved; restore semantics are unchanged (novel status was
 never restorable). Documented in the service header.
+
+## GAP-049 — NF-WF-013 adds three additive extensions to NF-WF-012's frozen public API shapes (2026-10-06)
+
+OBSERVED during NF-WF-013 contract review: NF-WF-012 froze the public API
+shapes in §"Contract with NF-WF-013" ("013 must implement exactly these
+shapes; any deviation is a contract violation"). The 013 contract
+deliberately ships three ADDITIVE extensions beyond the frozen shapes:
+
+1. `author: { id, displayName }` on `GET /api/public/novels/:slug` (the
+   novel byline — 012's shape has no byline).
+2. `prevChapter` / `nextChapter` on
+   `GET /api/public/novels/:slug/chapters/:number` (chapter navigation).
+3. A third route, `GET /api/public/authors/:authorId` (author page),
+   which 012's shapes never pinned.
+
+DECISION (contract, not code yet): the extensions are 013-owned and
+additive — every 012-pinned field is present and unchanged, so nothing
+012 promised is broken. Independent contract reviewer judged them
+LEGITIMATE, not violations of 012's freeze: 012 explicitly assigns
+"navigation" to 013 (`resolvePublicChapter` interface + GAP-046 code
+note), the delivery-plan task title literally includes "author routes"
+(`docs/implementation/DELIVERY-PLAN.md:147`), and the pinned fields are
+untouched. Recorded here BEFORE any implementation per the standing
+rule (GAP-045 precedent); the frozen 012 contract text is untouched
+(annotate, don't rewrite).

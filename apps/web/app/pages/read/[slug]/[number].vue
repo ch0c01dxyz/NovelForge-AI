@@ -11,6 +11,7 @@
  */
 import { useLocale } from "../../../composables/useLocale";
 import { useApi, ApiError } from "../../../composables/useApi";
+import { useReadingProgress } from "../../../composables/useReadingProgress";
 
 interface ChapterPage {
   number: number;
@@ -28,6 +29,7 @@ interface NavLink {
 const route = useRoute();
 const { api } = useApi();
 const { t } = useLocale();
+const { markRead } = useReadingProgress();
 
 const slug = computed(() => String(route.params.slug ?? ""));
 const number = computed(() => Number(route.params.number));
@@ -64,6 +66,9 @@ onMounted(async () => {
     chapter.value = data.chapter;
     prevChapter.value = data.prevChapter;
     nextChapter.value = data.nextChapter;
+    // Reading progress (NF-WF-014, Invariant 5): write only on a
+    // successful (200) load of the PUBLISHED chapter — never on 404.
+    markRead(slug.value, number.value);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
       notFound.value = true;

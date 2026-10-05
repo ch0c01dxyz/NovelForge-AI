@@ -10,6 +10,7 @@
  */
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
+import { useReadingProgress } from "../../composables/useReadingProgress";
 
 interface PublicNovel {
   id: string;
@@ -26,6 +27,7 @@ interface PublishedChapter {
 const route = useRoute();
 const { api } = useApi();
 const { t } = useLocale();
+const { getProgress } = useReadingProgress();
 
 const slug = computed(() => String(route.params.slug ?? ""));
 const novel = ref<PublicNovel | null>(null);
@@ -33,6 +35,18 @@ const chapters = ref<PublishedChapter[]>([]);
 const loading = ref(true);
 const notFound = ref(false);
 const error = ref<string | null>(null);
+
+/** "You stopped at chapter N" marker (NF-WF-014, Invariant 5) — the
+ * stored chapter number, resolved lazily against the published list.
+ * If the stored chapter is no longer published, no marker is shown
+ * (the entry is dropped; no "removed" oracle). */
+const stoppedAt = computed(() => {
+  const entry = getProgress(slug.value);
+  if (!entry) return null;
+  return chapters.value.some((c) => c.number === entry.chapterNumber)
+    ? entry.chapterNumber
+    : null;
+});
 
 useHead({
   meta: [{ name: "robots", content: "noindex" }],
@@ -85,6 +99,9 @@ onMounted(async () => {
       </p>
       <section aria-label="chapters" class="mt-10">
         <h2 class="nf-section-label">{{ t("reader.chapters") }}</h2>
+        <p v-if="stoppedAt !== null" class="mt-3 text-[13px] text-nf-text-dim">
+          {{ t("progress.stoppedAtNovel", { n: stoppedAt }) }}
+        </p>
         <p v-if="chapters.length === 0" class="mt-4 text-sm text-nf-text-dim">
           {{ t("reader.noChapters") }}
         </p>

@@ -381,7 +381,7 @@ publiclyListed(novel) :=
   genres` guarded by the existing `novel:update` capability
   (`packages/auth/authorization.ts:19`), body
   `{ genres: [<taxonomy keys>] }` (Zod: array of known keys,
-  max 3, deduped; unknown keys → 400). The taxonomy itself is a
+  max 3 (**Klein's 2026-10-06 amendment: max 5, not 3 — see the amendment note at the top of this contract**), deduped; unknown keys → 400). The taxonomy itself is a
   single frozen constant in code (e.g.
   `apps/api/src/discovery/genres.ts` or in the service) with
   en/id labels in the i18n resources — the UI renders chips from
@@ -389,13 +389,13 @@ publiclyListed(novel) :=
   listing/search, in no genre facet).
 - The exact taxonomy list is Q3's product input; the mechanism
   above (column + capability-guarded route + frozen constant +
-  max 3) is normative. **Q3 RESOLVED 2026-10-06 by Klein**: the
+  max 5 (**Klein's 2026-10-06 amendment: max 5, not 3 — see the amendment note at the top of this contract**)) is normative. **Q3 RESOLVED 2026-10-06 by Klein**: the
   taxonomy is pinned in `docs/implementation/genre-taxonomy.md`
   (research + merges + EN/ID descriptions) with the 33 trope
   items analyzed one-by-one in
   `docs/implementation/trope-research.md` (none promoted to
   genre — verdicts 32 NO, 0 YES). The final canonical genre
-  list (18, max 3/novel): `fantasy`, `high_fantasy`,
+  list (18, max 5/novel (**Klein's 2026-10-06 amendment: max 5, not 3 — see the amendment note at the top of this contract**)): `fantasy`, `high_fantasy`,
   `urban_fantasy`, `progression_fantasy`, `xianxia`, `wuxia`,
   `litrpg`, `science_fiction`, `romance`, `family`, `action`,
   `adventure`, `mystery`, `thriller`, `horror`, `historical`,
@@ -567,7 +567,7 @@ Member (the only member route this task touches):
 
 - `PATCH /api/workspaces/:workspaceId/novels/:novelId/genres` →
   200 `{ genres: [...] }`; requires `novel:update`
-  (`authorization.ts:19`); body `{ genres: [keys] }` (max 3,
+  (`authorization.ts:19`); body `{ genres: [keys] }` (max 3 (**Klein's 2026-10-06 amendment: max 5, not 3 — see the amendment note at the top of this contract**),
   known keys only; invalid → 400; unknown novel → 404; 403
   without capability — the existing member error conventions).
 
@@ -621,7 +621,7 @@ the 012 predicates are reused, never re-implemented.
       take no auth, have no 401 path, and return identical
       responses with and without a session cookie.
 - [ ] Genre authoring: member with `novel:update` sets genres
-      (max 3, known keys); without the capability → 403;
+      (max 3 (**Klein's 2026-10-06 amendment: max 5, not 3 — see the amendment note at the top of this contract**), known keys); without the capability → 403;
       unknown key → 400; the public listing reflects the change.
 - [ ] Reading progress: chapter page writes
       `{chapterNumber, updatedAt}` to localStorage on 200 (never
@@ -783,6 +783,12 @@ at review before implementation.)
   `docs/implementation/genre-taxonomy.md`. Reviewer judgment on
   the readiness header's Q1–Q7 note: Q1–Q9 stay open as decided
   except Q3 resolved.
+
+- **Amendment 2026-10-06 (Klein): max genres per novel is 5, not
+  3.** This supersedes the contract's "max 3" everywhere it is
+  pinned (Invariant 4, the Zod validation, the UI multi-select,
+  i18n copy, tests). The mechanism (column + capability-guarded
+  route + frozen constant) is unchanged; only the limit changes.
 
 ## Backend verification (contract author)
 

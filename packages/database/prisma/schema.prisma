@@ -170,6 +170,11 @@ model Novel {
   status      NovelStatus    @default(DRAFT)
   createdById String         @map("created_by_id") @db.Uuid
   createdBy   User           @relation("NovelCreator", fields: [createdById], references: [id])
+  /// NF-WF-014: reader-facing discovery taxonomy (max 5 canonical keys
+  /// per Klein's 2026-10-06 amendment, author-set; frozen constant in
+  /// apps/api/src/discovery/genres.ts).
+  /// Private writing preferences live in NarrativeDnaProfile (not exposed).
+  genres      String[]       @default([])
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
   settings    NovelSettings?

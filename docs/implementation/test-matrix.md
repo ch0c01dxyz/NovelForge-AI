@@ -1641,3 +1641,50 @@ tests covering the release path and both 409 codes. GAP-046 CLOSED.
 Deviations: GAP-049 (additive shape extensions, recorded before
 implementation). No schema changes, no new capabilities, no public
 search/listing.
+
+## NF-WF-014 browse/search/genre discovery + reading progress — 2026-10-06
+
+Implementer actor separate from contract author/reviewer. Backend
+MODEL_UNVERIFIED per GAP-013. Scratch DBs only
+(`novelforge_test_public_discovery`, `novelforge_test_migcheck`).
+Migration `20261006_nf_wf_014_genres_discovery` verified from-empty:
+`genres TEXT[] NOT NULL DEFAULT '{}'` + GIN indexes
+`novels_title_ts_gin`, `chapter_versions_content_ts_gin`.
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/public-discovery.test.ts` (apps/api) | **15/15** |
+| `npx vitest run src/public-routes.test.ts` (apps/api, 013 no-regression) | **14/14** |
+| Full API suite (`npx vitest run`, apps/api) | **576/576** (28 files) |
+| `npx vitest run app/composables/useReadingProgress.test.ts` (apps/web) | **7/7** |
+| `npx vitest run app/components/discovery/discovery.test.ts` (apps/web) | **7/7** |
+| `npx vitest run app/a11y/discovery.axe.test.ts` (apps/web) | **10/10**, 0 axe violations (wcag2aa+wcag22aa, en+id) |
+| Full web suite (`npx vitest run`, apps/web) | **82/82** (12 files) |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+| `pnpm e2e` (011 loop no-regression) | **20/20** (3 files), `BASELINE-OK: no >2x regression vs committed baseline` |
+
+`public-discovery.test.ts` coverage: published-only listing (DRAFT /
+SCHEDULED-only / ARCHIVED excluded; publishedChapterCount counts
+PUBLISHED only); anonymous-identical with/without cookie; keyset cursor
+pagination (recent/title/chapters sorts, invalid cursor → 400);
+genre filter (unknown key → 400); genre facets count-desc, draft
+genres excluded; member genre route (max 5, dedupe, unknown key → 400;
+401/403/404); search published-only, no-oracle triple
+(draft-title/unpublished-phrase/gibberish → identical
+`200 { results: [] }`), unpublish → immediate disappearance,
+corpus = PUBLISHED pin (v1 phrase gone after re-publish of v2),
+empty/over-long q → 400, type=novel/chapter filters, snippets
+bounded with `<mark>`-only escaping.
+
+Web coverage: `useReadingProgress` chapter-granular `{chapterNumber,
+updatedAt}` on the versioned key, overwrite/newest-first/drop,
+corrupt-storage tolerance, **zero network calls**; NovelCard /
+GenreChips / SearchBox (debounce + Escape) / ContinueReading (404
+entries dropped silently, no "removed" oracle).
+
+Manual a11y: `apps/web/a11y/AUDIT-014.md` — automated half green (axe);
+the named screen-reader pass is honestly recorded as PENDING human
+verification (no blind screen-reader access in the implementer
+environment).

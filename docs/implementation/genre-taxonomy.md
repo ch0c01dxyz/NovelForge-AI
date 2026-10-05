@@ -1,7 +1,8 @@
 # Genre Taxonomy — NF-WF-014 Q3
 
 **Status:** researched 2026-10-06, proposed for Klein's approval. The frozen code
-constant (`Novel.genres`, max 3 per novel) should be built from the **Genre**
+constant (`Novel.genres`, max 5 per novel — Klein's 2026-10-06 amendment,
+up from 3) should be built from the **Genre**
 layer below. All descriptions are written to help an author shape the *kisah*
 (the tale) — what the label promises a reader, what story elements it implies,
 and what it pairs well or poorly with.
@@ -14,7 +15,8 @@ rests on platform practice, not dictionary definitions.
 
 ## Final canonical genre list (the frozen code constant)
 
-`Novel.genres` (max 3 per novel) is built from exactly these 18 canonical
+`Novel.genres` (max 5 per novel — Klein's 2026-10-06 amendment, up
+from 3) is built from exactly these 18 canonical
 codes. Per Klein's 2026-10-06 decisions (see §"Decisions by Klein"), no trope
 was promoted — the trope layer is analyzed item-by-item in
 [`trope-research.md`](trope-research.md) with the verdict **none promoted**.
@@ -77,8 +79,9 @@ folksonomy is the anti-pattern — do not collapse everything into one list.
 
 Recommended for NovelForge:
 
-1. **Genre** — controlled, closed, max 3 per novel (the frozen code constant
-   from the NF-WF-014 contract). 18 categories below.
+1. **Genre** — controlled, closed, max 5 per novel (Klein's 2026-10-06
+   amendment, up from 3; the frozen code constant from the NF-WF-014
+   contract). 18 categories below.
 2. **Tone** — optional multi-select, small closed set (5). Emotional register.
 3. **Trope tags** — controlled vocabulary, author-assignable, multi (33
    recommended below; implementable as a follow-up layer).

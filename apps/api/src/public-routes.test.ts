@@ -540,9 +540,14 @@ describe("search/AI exclusion", () => {
     expect(r2.body).toEqual({ error: "UNAUTHENTICATED" });
   });
 
-  it("no /api/public/search route exists", async () => {
+  it("the /api/public/search route is 014-owned and stays anonymous", async () => {
+    // NF-WF-014 introduced GET /api/public/search (published-only,
+    // anonymous). This replaces the old "no /api/public/search route
+    // exists" assertion: the route exists, is anonymous, and has no
+    // oracle behavior (empty query is a 400, not a leak).
     const res = await api("GET", "/api/public/search");
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "INVALID_INPUT" });
   });
 });
 

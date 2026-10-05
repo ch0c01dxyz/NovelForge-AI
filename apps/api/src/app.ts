@@ -48,6 +48,8 @@ import { createPublicationQueue, type PublicationQueue } from "./services/public
 import { createPublicationServices } from "./services/publication.ts";
 import { registerPublicationRoutes } from "./publication-routes.ts";
 import { registerPublicReaderRoutes } from "./public-routes.ts";
+import { registerPublicDiscoveryRoutes } from "./public-discovery-routes.ts";
+import { createPublicDiscoveryServices } from "./services/public-discovery.ts";
 import { createMemoryQueue, type MemoryQueue } from "./services/memory-queue.ts";
 import { createMemoryServices } from "./services/memory.ts";
 import { registerMemoryRoutes } from "./memory-routes.ts";
@@ -230,6 +232,12 @@ export async function buildApp(
     });
     registerPublicationRoutes(app, { auth, services: publicationServices });
     registerPublicReaderRoutes(app, { services: publicationServices });
+    // NF-WF-014: the anonymous public discovery routes (listing, genre
+    // facets, published-only search) plus the single member genre
+    // route. Anonymous routes take no auth (no 401 path); the member
+    // route gets auth for its session check.
+    const discoveryServices = createPublicDiscoveryServices({ db: options.db });
+    registerPublicDiscoveryRoutes(app, { auth, services: discoveryServices });
     const aiServices = createAiServices({
       db: options.db,
       registry: createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY),

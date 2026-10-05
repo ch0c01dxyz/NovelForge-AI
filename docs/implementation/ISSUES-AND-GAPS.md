@@ -1335,3 +1335,38 @@ note), the delivery-plan task title literally includes "author routes"
 untouched. Recorded here BEFORE any implementation per the standing
 rule (GAP-045 precedent); the frozen 012 contract text is untouched
 (annotate, don't rewrite).
+
+## GAP-050 — VM replaced again during NF-WF-014; Postgres/Redis reinstalled, test-role password resynced (2026-10-06)
+
+OBSERVED during NF-WF-014 implementation: the host VM was replaced a
+second time (GAP-036 precedent — same class of event), wiping the
+manually-started PostgreSQL 16 + pgvector and Redis 7 instances. The
+platform's own `apt-get update` (pid 1329) was wedged with zero socket
+connections for 5+ minutes, blocking reinstall (the 011 reviewer hit the
+same; killed it, same remedy). After killing the wedged apt-get and
+reinstalling natively (`postgresql-16`, `postgresql-16-pgvector`,
+`redis-server`), the fresh cluster's `novelforge_test` role password
+("test", set during reinstall) did not match the repo-root `.env`
+`DATABASE_URL` password, so every API test failed with 28P01
+"password authentication failed". Resynced the role password to the
+`.env` value via `su postgres` (peer auth; value never printed).
+
+STATUS: resolved for this task — Postgres 16.15 + pgvector 0.6.0 and
+Redis 7.0.15 running on localhost:5432/:6379; discovery tests 15/15
+green. Recorded BEFORE the workaround per the standing rule. No data
+loss (scratch DBs only). Follow-up: none — environment-only.
+
+## GAP-051 — NF-WF-014 manual screen-reader pass pending human verification (2026-10-06)
+
+OBSERVED during NF-WF-014 diff review: the WCAG 2.2 AA audit's automated
+half (vitest-axe, wcag2aa+wcag22aa, en+id) is green with zero violations
+on all discovery surfaces. The manual checklist at
+`apps/web/a11y/AUDIT-014.md` honestly marks the screen-reader pass
+(NVDA + Firefox / VoiceOver + Safari) as PENDING HUMAN VERIFICATION —
+no blind screen-reader access exists in the implementation environment,
+so the implementer could not complete it. This is NOT a "no known AA
+failures may ship" violation (there are no KNOWN failures), but the
+manual item is incomplete and must be done by a human with a named
+screen reader before ship. STATUS: open; owner: a human auditor at/after
+release verification (NF-WF-023 scope). Recorded before any completion
+claim per the standing rule.

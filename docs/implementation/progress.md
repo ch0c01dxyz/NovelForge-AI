@@ -4620,3 +4620,34 @@ ceiling (see ISSUES-AND-GAPS.md).
 - GAP-046: 007 novel page publishes via PATCH with no Publication row and no actionable 409 handling for IN_REVIEW-source refusals — follow-up; 013 migrates the page to the new route.
 - GAP-047: worker cannot import `apps/api` (module boundary); worker carries a minimal `advanceHeadLow` mirroring `advanceHead`'s LOW path. Proposes shared-package extraction as follow-up. Fire remains idempotent via UNIQUE(branchId, number).
 - GAP-048: contract's `tables: […, "novels"]` restore listing is unimplementable — `novels` is deliberately outside restore scope; novel flips ride the same transaction/revision but stay unlisted.
+---
+
+## NF-WF-014 — Browse/search/genre discovery + reading progress (2026-10-06)
+
+**Implementer:** separate actor from contract author and reviewer. Backend MODEL_UNVERIFIED per GAP-013. Working tree NOT committed — left for the separate diff reviewer.
+
+**Contract:** `tasks/NF-WF-014-browse-search-progress.md` (reviewed APPROVE_WITH_FINDINGS; review record filled). Q3 RESOLVED 2026-10-06 by Klein (canonical 18-genre list pinned in `docs/implementation/genre-taxonomy.md`); Q1–Q2/Q4–Q9 stay open as decided. **Amendment 2026-10-06 (Klein): max genres per novel is 5, not 3** — recorded in the contract file (Invariant 4 / Q3 sites annotated, not rewritten).
+
+**Deliverables:**
+- `packages/database/prisma/migrations/20261006_nf_wf_014_genres_discovery/migration.sql` (new): additive — `novels.genres TEXT[] NOT NULL DEFAULT '{}'` + two functional GIN indexes (`novels_title_ts_gin` on `to_tsvector('english', title)`, `chapter_versions_content_ts_gin` on `to_tsvector('english', content)`). Verified on scratch DB: column + both indexes present.
+- `packages/database/prisma/schema.prisma`: `Novel.genres String[] @default([])` with doc comment.
+- `apps/api/src/discovery/genres.ts` (new): frozen `GENRE_TAXONOMY` (18 keys, en/id labels from genre-taxonomy.md), `GENRE_KEYS`, `MAX_GENRES_PER_NOVEL = 5`, `areKnownGenreKeys`.
+- `apps/api/src/services/public-discovery.ts` (new): `listPublicNovels` (raw SQL `$queryRawUnsafe`, positional params; 012 `isPubliclyVisible` lifted into the SQL; keyset cursor pagination on (sortKey,id) for recent|title|chapters; genre filter `$1 = ANY(genres)`; invalid cursor → INVALID_CURSOR), `publicGenreFacets` (unnest + visibility predicate, zero-count keys omitted), `searchPublic` (corpus = PUBLISHED pins via `chapterVersionId` only, never currentVersionId; novel hits on title/displayName tsvector; chapter hits on pinned content/chapter title; `ts_headline` StartSel/StopSel `<mark>`, MaxFragments=1 MinWords=10 MaxWords=25; `<mark>`-only HTML escaping at the API boundary; type=all merges rank-desc, ties by recency; no early branches — identical `200 { results: [] }` for draft titles/unpublished phrases/gibberish), `setNovelGenres` (novel-first gate: non-member 404 → unknown novel 404 → `novel:update`; dedupe + known-keys + ≤5).
+- `apps/api/src/public-discovery-routes.ts` (new): 3 anonymous routes (`GET /api/public/novels`, `/api/public/genres`, `/api/public/search`; Zod query validation; no auth, no 401 path) + member `PATCH /api/workspaces/:workspaceId/novels/:novelId/genres` (session 401 → gate 404 → capability 403 → Zod 400). Registered in `app.ts` after `registerPublicReaderRoutes`. No new capabilities.
+- Web: `app/pages/browse/index.vue` (search-as-section — the pinned implementer choice; continue-reading, genre facets, sort select, keyset load-more, loading/error/empty states; noindex meta), `app/components/discovery/{NovelCard,GenreChips,SearchBox,ContinueReading}.vue` (all §15 design tokens), `app/composables/useReadingProgress.ts` (device-local `nf:reading-progress:v1`, `{chapterNumber, updatedAt}`, chapter-granular, zero network calls), chapter page writes progress on 200 only, novel page "you stopped at chapter N" marker, i18n `discover:`/`progress:`/`genre:` keys en+id.
+- `apps/web/a11y/AUDIT-014.md` (new): manual checklist (keyboard, named screen reader, contrast, 360/768/1024/1440, reduced motion, 200% zoom, lang, live regions).
+- Tests: `apps/api/src/public-discovery.test.ts` (15 tests), `apps/web/app/composables/useReadingProgress.test.ts` (7), `apps/web/app/components/discovery/discovery.test.ts` (7), `apps/web/app/a11y/discovery.axe.test.ts` (10 axe tests, wcag2aa+wcag22aa, en+id). Plus one assertion update in `apps/api/src/public-routes.test.ts` (013's "no /api/public/search route exists" → replaced: the route is 014-owned, anonymous, 400 on empty query).
+- `vitest-axe` added to apps/web devDependencies.
+
+**Verification (2026-10-06):**
+- `pnpm lint`: clean. Typechecks clean: `apps/api` (tsc), `apps/web` (vue-tsc).
+- Discovery API tests: **15/15** (published-only listing incl. SCHEDULED exclusion, anonymous-identical, cursor pagination all 3 sorts, genre filter, facets count-desc, genre authoring 5-max/dedupe/401/403/404, search published-only + no-oracle triple + unpublish disappearance + pin-not-current + 400s + type filters).
+- Web: new **24/24** (7 progress incl. zero-network assertion, 7 discovery components incl. silent 404-drop, 10 axe en+id with **0 violations**); full web suite **82/82** (12 files).
+- Full API suite: **576/576** (28 files) — incl. the updated 013 assertion (14/14).
+- `pnpm e2e`: **20/20** green (3 files), 011 no-regression.
+
+**Deviations (recorded BEFORE workarounds):**
+- GAP-050: VM replaced a second time (GAP-036 class); Postgres/Redis reinstalled natively; wedged platform apt-get (zero sockets, 5+ min) killed; `novelforge_test` role password resynced to repo-root `.env` `DATABASE_URL`.
+- Klein's max-5 amendment (contract annotated at all "max 3" sites).
+
+**Known gaps (honest):** the named screen-reader pass (NVDA/VoiceOver) is a human-verification item — no blind screen-reader access in this environment; recorded in AUDIT-014.md, not claimed. Backends remain MODEL_UNVERIFIED per GAP-013.

@@ -1437,6 +1437,7 @@ the HTTP/`useApi` boundary.
 | Full API suite | `npx vitest run` (apps/api) | 20 files, **462/462** (447 pre-existing + 15 new; no regressions) |
 | Full web suite | `npx vitest run` (apps/web) | 8 files, **48/48** (41 pre-existing + 7 new) |
 | story-versioning | `npx vitest run` (packages/story-versioning) | 1 file, **17/17** |
+| Typecheck story-versioning | `npx tsc --noEmit` (packages/story-versioning) | exit 0 |
 | Lint | `pnpm lint` | exit 0 |
 | Typecheck api | `pnpm --filter @novelforge/api typecheck` | exit 0 |
 | Typecheck database | `pnpm --filter @novelforge/database typecheck` | exit 0 |
@@ -1452,3 +1453,34 @@ capabilities + tenant isolation, double-decide). GAP-035 (F5
 half-registration in `COVERED_TABLES`) was found by these tests and
 fixed before the full-suite run. The locked-CAS `ConflictError` is
 mapped to 409 `STALE_APPLICATION` in the approve path.
+
+## NF-WF-009 revision-derived chapter/arc memory — 2026-10-05
+
+`tasks/NF-WF-009-revision-derived-memory.md` at `f18600f` (reviewed
+CHANGES_REQUESTED; F1–F9 applied in text; Q1–Q6 adjudicated). Implementer
+actor separate from contract author/reviewer; backend MODEL_UNVERIFIED
+per GAP-013; NOT committed.
+
+| Check | Command | Result |
+| New API tests | `npx vitest run src/memory.test.ts` (apps/api, dedicated `novelforge_test_memory` db) | 1 file, **16/16** (15 implementer + 1 reviewer regression) |
+| New worker tests | `npx vitest run src/memory-jobs.test.ts` (apps/worker) | 1 file, **2/2** |
+| Full API suite | `npx vitest run` (apps/api) | 21 files, **478/478** (462 pre-existing + 16 new; no regressions) |
+| Full worker suite | `npx vitest run` (apps/worker) | 3 files, **21 passed / 1 skipped** (19 passed + 1 skipped pre-existing + 2 new) |
+| Lint | `pnpm lint` | exit 0 |
+| Typecheck memory | `npx tsc --noEmit` (packages/memory) | exit 0 |
+| Typecheck api | `npx tsc --noEmit` (apps/api) | exit 0 |
+| Typecheck worker | `npx tsc --noEmit` (apps/worker) | exit 0 |
+| Typecheck story-versioning | `npx tsc --noEmit` (packages/story-versioning) | exit 0 |
+| Migration | fresh `prisma migrate deploy` on scratch DB | applies clean (GAP-037: renamed to `20261006_…` so it sorts after `20261006_m1_story_versioning`) |
+
+Verification notes: the 15 API tests cover durable rebuild
+byte-identical/dedup, forced STALE, forced FAILED (attempts increment),
+MISSING, superseded-fact as-of semantics, REJECTED-proposal exclusion,
+settleRev, the 3 routes (auth 401/404, simulation refusal, enqueue,
+as-of by chapter/revision, cross-branch 400, unsettled 400), and the 003
+compiler tiers 7/8 (PRESENT with freshness metadata / UNAVAILABLE with
+reason). The pre-existing 003 compiler test asserting the old
+"owned by NF-WF-009" reason text was updated per the contract. No AI
+paths in 009 (GAP-028 inapplicable — structural-only). The C1/C6
+invariants were updated for the 34th covered table (`memory_projections`
+→ `story_intelligence` projection, Q2: no eighth projection).

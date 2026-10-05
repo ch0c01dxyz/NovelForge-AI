@@ -17,6 +17,7 @@
     "@novelforge/character-intelligence": "workspace:*",
     "@novelforge/config": "workspace:*",
     "@novelforge/database": "workspace:*",
+    "@novelforge/memory": "workspace:*",
     "@novelforge/narrative-rhythm": "workspace:*",
     "@novelforge/planning": "workspace:*",
     "@novelforge/relationship-intelligence": "workspace:*",

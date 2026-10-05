@@ -78,13 +78,15 @@ describe("compileContext (pure)", () => {
     expect(compiled.canDispatch).toBe(true);
   });
 
-  it("tiers 7 and 8 are UNAVAILABLE with the owning task named, never an empty PRESENT block", () => {
+  it("tiers 7 and 8 are UNAVAILABLE with the actual state named, never an empty PRESENT block", () => {
     const compiled = compileContext(baseInput(), emptyCompilerRows());
     for (const tier of [TIERS.RECENT_MEMORY, TIERS.HISTORICAL_MEMORY]) {
       const b = compiled.blocks.find((x) => x.tier === tier)!;
       expect(b.status).toBe("UNAVAILABLE");
       expect(b.rows).toEqual([]);
-      expect(b.provenance.reason).toMatch(/NF-WF-009/);
+      // NF-WF-009: the reason describes the actual state (MISSING
+      // projection / unconfigured port), not a future owning task.
+      expect(b.provenance.reason).toMatch(/MISSING/);
     }
     // No block may claim PRESENT with zero rows.
     for (const b of compiled.blocks) {

@@ -138,6 +138,7 @@ model Workspace {
   checkpoints  Checkpoint[]
   restores     RestoreOperation[]
   rebuildIntents DerivedRebuildIntent[]
+  memoryProjections MemoryProjection[]
 
   @@map("workspaces")
 }
@@ -199,6 +200,7 @@ model Novel {
   checkpoints  Checkpoint[]
   restores     RestoreOperation[]
   rebuildIntents DerivedRebuildIntent[]
+  memoryProjections MemoryProjection[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -2507,6 +2509,7 @@ model Revision {
   branchHeads       NovelBranch[]        @relation("BranchHead")
   restoresTargeting RestoreOperation[]   @relation("RestoreTarget")
   rebuildIntents    DerivedRebuildIntent[]
+  memoryProjections MemoryProjection[]
 
   @@unique([branchId, number])
   @@index([novelId, createdAt])
@@ -2655,4 +2658,47 @@ model DerivedRebuildIntent {
 
   @@unique([projection, sourceRevisionId])
   @@map("derived_rebuild_intents")
+}
+
+/// Revision-derived memory (NF-WF-009): a durable projection of a novel's
+/// structural memory (chapter/arc scopes) at a source revision. Memory is
+/// a projection, never truth (constitution §2.2, §8): rows are derived
+/// from canon tables + revision change sets, pinned to a source revision,
+/// and invalidated through DerivedRebuildIntent. Structural-only in 009
+/// (no summary columns; the follow-up adds them under Invariant 6's gate).
+///
+/// One row per build attempt, keyed by (novelId, scope, sourceRevisionId)
+/// — the dedup key mirroring DerivedRebuildIntent's. FAILED rows keep
+/// lastError and are never auto-deleted. Freshness (FRESH/STALE/FAILED/
+/// MISSING) is DERIVED per Invariant 2, not stored. Rollback-safe: dropping
+/// this table loses no truth (memory is rebuildable).
+model MemoryProjection {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String            @map("workspace_id") @db.Uuid
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId          String            @map("novel_id") @db.Uuid
+  novel            Novel             @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// "chapter:<chapterId>" (L1/L2) or "arc:<arcId>" (L3/L4).
+  scope            String
+  sourceRevisionId String            @map("source_revision_id") @db.Uuid
+  sourceRevision   Revision          @relation(fields: [sourceRevisionId], references: [id], onDelete: Cascade)
+  buildStatus      MemoryBuildStatus @map("build_status") @default(OK)
+  lastError        String?           @map("last_error") @db.Text
+  attempts         Int               @default(1)
+  /// Deterministic structural content: { facts, threads, promises }.
+  structural       Json
+  /// Chapter numbers whose settled state is included, ascending.
+  chapterCoverage  Int[]             @map("chapter_coverage")
+  builtAt          DateTime          @default(now()) @map("built_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+
+  @@unique([novelId, scope, sourceRevisionId])
+  @@index([novelId, scope])
+  @@map("memory_projections")
+}
+
+/// Build outcome for a MemoryProjection row (NF-WF-009, F1).
+enum MemoryBuildStatus {
+  OK
+  FAILED
 }

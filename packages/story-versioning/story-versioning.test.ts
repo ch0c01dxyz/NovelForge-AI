@@ -34,8 +34,8 @@ import {
 } from "./impact.ts";
 
 describe("C1 coverage set", () => {
-  it("has exactly the 33 tables the contract names", () => {
-    expect(COVERED_TABLE_NAMES).toHaveLength(33);
+  it("has exactly the 34 tables the contract names (33 + NF-WF-009 memory_projections)", () => {
+    expect(COVERED_TABLE_NAMES).toHaveLength(34);
     // The exact membership, not a spot check: a table dropped from this list
     // would make validateSnapshotComplete accept a payload that omits it, and
     // restore would then delete every row of it.
@@ -59,6 +59,7 @@ describe("C1 coverage set", () => {
         "characters",
         "causal_edges",
         "meaningful_interactions",
+        "memory_projections",
         "narrative_dna_profiles",
         "narrative_policies",
         "outline_nodes",

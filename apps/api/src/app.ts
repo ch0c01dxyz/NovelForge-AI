@@ -44,6 +44,9 @@ import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
 import { createWorkflowQueue, type WorkflowQueue } from "./services/workflow-queue.ts";
+import { createMemoryQueue, type MemoryQueue } from "./services/memory-queue.ts";
+import { createMemoryServices } from "./services/memory.ts";
+import { registerMemoryRoutes } from "./memory-routes.ts";
 import { createRetrievalServices } from "./services/retrieval.ts";
 import { createCanonServices } from "./services/canon.ts";
 import { createCanonApplicationServices } from "./services/canon-applications.ts";
@@ -112,6 +115,13 @@ export interface BuildAppOptions {
    * worker suite against real Redis. Production omits this and the shared
    * `workflow-runs` queue is constructed.
    */
+  /**
+   * Queue seam for the memory rebuild route. Tests supply a fake so no test
+   * needs a live BullMQ exchange; the handler is covered in the worker
+   * suite against real Redis. Production omits this and the shared
+   * `memory-rebuild` queue is constructed.
+   */
+  memoryQueue?: MemoryQueue;
   workflowQueue?: WorkflowQueue;
 }
 
@@ -299,6 +309,22 @@ export async function buildApp(
     registerRevisionRoutes(app, {
       auth,
       services: createRevisionServices({ db: options.db, audit }),
+    });
+
+    // NF-WF-009: revision-derived chapter/arc memory. The rebuild route
+    // enqueues through the one shared `memory-rebuild` queue; the worker
+    // runs the deterministic rebuild off the request thread. Tests may
+    // inject a fake; only a queue we created is closed here.
+    const ownMemoryQueue = options.memoryQueue === undefined;
+    const memoryQueue = options.memoryQueue ?? createMemoryQueue(env.REDIS_URL);
+    if (ownMemoryQueue) {
+      app.addHook("onClose", async () => {
+        await memoryQueue.close();
+      });
+    }
+    registerMemoryRoutes(app, {
+      auth,
+      memory: createMemoryServices({ db: options.db, queue: memoryQueue }),
     });
 
     // NF-WF-004: the one shared `workflow-runs` queue. The run route

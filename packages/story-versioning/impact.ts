@@ -171,6 +171,13 @@ const TABLE_PROJECTION: Readonly<Record<string, Projection>> = {
   narrative_dna_profiles: "narrative",
   narrative_policies: "narrative",
   antagonists: "narrative",
+  // NF-WF-009: memory_projections is derived FROM story-intelligence
+  // sources (canon facts, threads, promises). It maps to the
+  // story_intelligence projection (Q2: no eighth projection). A rebuild
+  // writing this table does not invalidate story_intelligence itself —
+  // memory is downstream — but the C6 invariant requires every covered
+  // table to belong to exactly one projection, and this is its family.
+  memory_projections: "story_intelligence",
 };
 
 /** The projection a covered table belongs to. Unknown tables have none. */

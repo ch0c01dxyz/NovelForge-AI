@@ -188,6 +188,12 @@ export interface CompilerRows {
    * output; not part of the prompt text.
    */
   referenceMeta?: { retrievers: string[]; withheldCount: number };
+  /**
+   * NF-WF-009: the recalled chapter/recent/arc memory for tiers 7/8.
+   * Null when the memory port is absent or the chapter has no settled
+   * memory; tiers 7/8 then compile UNAVAILABLE, never an empty PRESENT.
+   */
+  memory: import("@novelforge/memory").RecallNovelResult | null;
 }
 
 export function emptyCompilerRows(): CompilerRows {
@@ -202,6 +208,7 @@ export function emptyCompilerRows(): CompilerRows {
     causal: [],
     dna: null,
     references: [],
+    memory: null,
   };
 }
 
@@ -268,6 +275,14 @@ export interface TierProvenance {
   /** A droppable block lost rows to the char budget — recorded, not silent. */
   truncated?: boolean;
   droppedCount?: number;
+  /**
+   * NF-WF-009: freshness metadata for tiers 7/8 (Invariant 2). Present
+   * whenever a memory block is PRESENT, so the caller sees whether the
+   * projection reflects the head or is stale/failed.
+   */
+  freshness?: import("@novelforge/memory").MemoryFreshness;
+  sourceRevisionId?: string | null;
+  chapterCoverage?: number[];
 }
 
 export interface CompiledBlock {
@@ -453,6 +468,21 @@ export interface CompilerHeadPort {
   readHeadRevisionId(novelId: string): Promise<string | null>;
 }
 
+/**
+ * NF-WF-009 memory port. Optional: when absent, tiers 7/8 compile
+ * UNAVAILABLE with the reason "memory not configured" (a deployment
+ * without the memory wiring fails open on memory, not on the compile —
+ * memory is derived, never required for generation).
+ */
+export interface CompilerMemoryPort {
+  recallNovel(args: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    chapter: number;
+  }): Promise<import("@novelforge/memory").RecallNovelResult>;
+}
+
 export interface CompilerPorts {
   canon?: CompilerCanonPort;
   planning?: CompilerPlanningPort;
@@ -461,6 +491,7 @@ export interface CompilerPorts {
   narrative?: CompilerNarrativePort;
   retrieval?: CompilerRetrievalPort;
   head?: CompilerHeadPort;
+  memory?: CompilerMemoryPort;
 }
 
 // ---------------------------------------------------------------------------
@@ -753,19 +784,106 @@ export function compileContext(
     },
   );
 
-  // Tiers 7 and 8 — no backing store (NF-WF-009 owns them). Declared
-  // UNAVAILABLE with an explicit reason, never an empty PRESENT block and
-  // never a fabricated summary (invariant 10).
-  for (const tier of [TIERS.RECENT_MEMORY, TIERS.HISTORICAL_MEMORY]) {
-    blocks.push(
-      block(tier, "UNAVAILABLE", [], "", isMandatory(tier), {
-        reason:
-          "no memory/summary store exists; hierarchical memory (L2–L5) is owned by NF-WF-009",
-        storyPosition: input.storyPosition,
-        headRevisionId: input.headRevisionId,
-      }),
-    );
-  }
+  // Tiers 7 and 8 — NF-WF-009 revision-derived memory. PRESENT with
+  // freshness metadata, UNAVAILABLE with an explicit reason, never an
+  // empty PRESENT block and never a fabricated summary (invariant 10,
+  // Q1: summary is always null/SKIPPED in 009).
+  //
+  // - Port absent (deployment without memory wiring) → UNAVAILABLE
+  //   "memory not configured".
+  // - No projection for the scope (MISSING) → UNAVAILABLE with the
+  //   explicit MISSING reason.
+  // - FRESH/STALE/FAILED → PRESENT with freshness + sourceRevisionId +
+  //   chapterCoverage in provenance (staleness is metadata, not silence).
+  const memoryTier = (
+    tier: number,
+    memBlocks: import("@novelforge/memory").MemoryBlock[],
+    missing: boolean,
+  ): void => {
+    if (!rows.memory || missing) {
+      blocks.push(
+        block(tier, "UNAVAILABLE", [], "", isMandatory(tier), {
+          reason:
+            "no memory projection for this chapter (MISSING): no rebuild has materialized it, or the memory port is not configured",
+          storyPosition: input.storyPosition,
+          headRevisionId: input.headRevisionId,
+        }),
+      );
+      return;
+    }
+    const lines: string[] = [];
+    const selectedIds: string[] = [];
+    let freshness: import("@novelforge/memory").MemoryFreshness | undefined;
+    let sourceRevisionId: string | null = null;
+    const coverage: number[] = [];
+    for (const b of memBlocks) {
+      if (!freshness) freshness = b.freshness;
+      if (!sourceRevisionId) sourceRevisionId = b.sourceRevisionId;
+      coverage.push(...b.chapterCoverage);
+      for (const f of b.structural.facts) {
+        lines.push(`- [mem-fact:${f.factId}] ${f.predicate}: ${f.statement}`);
+        selectedIds.push(f.factId);
+      }
+      for (const t of b.structural.threads) {
+        lines.push(`- [mem-thread:${t.threadId}] ${t.title}: ${t.status}`);
+        selectedIds.push(t.threadId);
+      }
+      for (const p of b.structural.promises) {
+        lines.push(`- [mem-promise:${p.promiseId}] ${p.title}: ${p.status}`);
+        selectedIds.push(p.promiseId);
+      }
+    }
+    if (lines.length === 0) {
+      // A projection exists but is structurally empty at this revision.
+      // That is a fact about the canon (no facts/threads/promises), not a
+      // missing store — EMPTY, not UNAVAILABLE.
+      blocks.push(
+        block(tier, "EMPTY", [], "", isMandatory(tier), {
+          freshness,
+          sourceRevisionId,
+          chapterCoverage: [...new Set(coverage)].sort((a, b) => a - b),
+          storyPosition: input.storyPosition,
+          headRevisionId: input.headRevisionId,
+        }),
+      );
+      return;
+    }
+    const text = lines.join("\n");
+    if (text.length > budgetLeft && isMandatory(tier)) {
+      blocks.push(
+        block(tier, "OVERFLOWED", [], "", true, {
+          reason: `mandatory block "${TIER_NAMES[tier]}" needs ${text.length} chars beyond the remaining ${budgetLeft} of budget`,
+          storyPosition: input.storyPosition,
+          headRevisionId: input.headRevisionId,
+        }),
+      );
+    } else {
+      const fitted = text.length <= budgetLeft;
+      if (fitted) budgetLeft -= text.length;
+      blocks.push(
+        block(tier, "PRESENT", [], fitted ? text : "", isMandatory(tier), {
+          freshness,
+          sourceRevisionId,
+          chapterCoverage: [...new Set(coverage)].sort((a, b) => a - b),
+          selectedIds,
+          storyPosition: input.storyPosition,
+          headRevisionId: input.headRevisionId,
+          ...(fitted ? {} : { truncated: true }),
+        }),
+      );
+    }
+  };
+
+  // Tier 7: L1 (this chapter) + L2 (recent chapters).
+  const recentBlocks = rows.memory
+    ? [rows.memory.chapterMemory, ...rows.memory.recentMemory].filter(
+        (b): b is import("@novelforge/memory").MemoryBlock => b !== null,
+      )
+    : [];
+  memoryTier(TIERS.RECENT_MEMORY, recentBlocks, recentBlocks.length === 0);
+  // Tier 8: L3/L4 (arc).
+  const arcBlocks = rows.memory?.arcMemory ? [rows.memory.arcMemory] : [];
+  memoryTier(TIERS.HISTORICAL_MEMORY, arcBlocks, arcBlocks.length === 0);
 
   // Tier 9 — Narrative DNA, per-novel singleton.
   if (novelLess) {
@@ -1064,6 +1182,23 @@ export async function fetchAndCompileContext(
   rows.events = eventsResult.events;
   rows.causal = causalResult.edges;
   rows.dna = dnaResult;
+
+  // NF-WF-009: memory is optional and never fails the compile closed.
+  // The port is absent in deployments without the memory wiring, and a
+  // chapter with no settled projection recalls null blocks — both compile
+  // UNAVAILABLE at tiers 7/8, never an empty PRESENT.
+  if (ports.memory) {
+    try {
+      rows.memory = await ports.memory.recallNovel({
+        actorUserId: input.actorUserId,
+        workspaceId: input.workspaceId,
+        novelId,
+        chapter: storyPosition,
+      });
+    } catch {
+      rows.memory = null;
+    }
+  }
 
   // Tier 4 at the story position (invariant 5): per-character bounded reads
   // over the already-bounded cast. Character names are carried for rendering;

@@ -906,3 +906,66 @@ NF-WF-008 working tree does not touch: `app/pages/sign-in.vue` (2) and
 `useChapterGeneration.ts`, i18n) typecheck clean, and `pnpm
 --filter @novelforge/web build` succeeds. Left for the owning task;
 not widened here.
+
+## GAP-037 — NF-WF-009 migration needed `revisions` before it existed (migration ordering, 2026-10-05)
+
+Status: FIXED (renamed migration; recorded per standing rule before the
+workaround).
+
+OBSERVED: the `20261005_nf_wf_009_memory_projections` migration's
+`memory_projections.source_revision_id → revisions(id)` FK failed on a
+fresh `migrate deploy` with `42P01: relation "revisions" does not exist`.
+The `revisions` table is created by `20261006_m1_story_versioning`,
+which sorts AFTER `20261005_nf_wf_009_memory_projections`
+alphabetically. Migration names are date-prefixed, but the 009
+migration was authored (2026-10-05) before the story-versioning
+migration's date prefix (2026-10-06).
+
+FIX: renamed the migration directory to
+`20261006_nf_wf_009_memory_projections` (`20261006_nf…` sorts after
+`20261006_m1…`). Verified with a fresh `migrate deploy` on a scratch
+DB. Lesson: a migration's date prefix must reflect its dependency
+order, not its authoring date — a new table with an FK to another new
+table must sort after the migration that creates the referenced table.
+
+## NF-WF-009 F3 follow-up — full-lineage memory (not in 009 scope, 2026-10-05)
+
+Status: OPEN (contract F3; Invariant 6 gates the follow-up).
+
+The 009 contract is STRUCTURAL-ONLY (Q1): `summary: null`,
+`summaryStatus: "SKIPPED"` always. Model-assisted summaries and the
+full-lineage memory (L5 global novel, L6 historical archive with
+summarization) are a separate follow-up task gated by Invariant 6.
+The rebuild route refuses `{simulation: true}` with 400
+`SIMULATION_SOURCE_REFUSED` (Invariant 8 enforceable scope); canon is
+safe by the 008 boundary.
+
+## NF-WF-009 intent-lifecycle gap — no consumer moves DerivedRebuildIntent rows (2026-10-05)
+
+Status: OPEN (found at diff review; behavioral no-op today — see below).
+
+OBSERVED: the 009 contract's Invariant 4 says "the worker moves
+intents `PENDING → RUNNING → FRESH`/`FAILED` (intent-level mirror of
+the outcome)". The implementation never reads or writes
+`DerivedRebuildIntent`: staleness is derived against the main-branch
+head (no intent read), and rebuilds are enqueued by the explicit
+rebuild route / BullMQ jobs (no intent read). Verified by the
+reviewer: `grep -rln DerivedRebuildIntent apps packages` (excluding
+generated/test) finds only the writer side (`apps/api/src/services/revisions.ts`
+writes; nothing consumes).
+
+WHY NO-OP TODAY: no intent consumer exists for ANY projection in the
+platform — NF-WF-008 only writes intents; nothing consumes them. And
+memory has no projection name by the Q2 decision, so there is no
+correct intent set for the memory worker to move without touching
+other projections' intents (which belong to the canon/manuscript/
+story-intelligence rebuild machinery). Nothing in 009's behavior
+(staleness derivation, status API, rebuild, freshness) reads intents,
+so nothing is silently wrong.
+
+NEXT: either implement platform-wide intent consumption (a follow-up
+task covering all seven projections, with per-projection workers and
+locking so two consumers don't fight over one row), or amend the 009
+contract text to describe the head-derived staleness + manual-trigger
+model actually shipped. Do NOT silently edit the frozen contract —
+amend with the review record.

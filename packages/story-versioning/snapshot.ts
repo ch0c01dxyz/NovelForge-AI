@@ -108,6 +108,11 @@ export const COVERED_TABLES: readonly CoveredTable[] = [
   { key: "synopses", restoreTarget: true },
   // Story intelligence
   { key: "timeline_events", restoreTarget: true },
+  // Memory (NF-WF-009): revision-pinned derived projections. Covered so
+  // restore sees them, but they are rebuildable — never truth. A restore
+  // to revision R drops projections pinned newer than R, which is the
+  // coherent behavior (freshness is derived against the head anyway).
+  { key: "memory_projections", restoreTarget: true },
 ] as const;
 
 /** Every covered table name, in FK-dependency order. */

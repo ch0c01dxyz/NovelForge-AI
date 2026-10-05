@@ -12,6 +12,7 @@
   "dependencies": {
     "@novelforge/config": "workspace:*",
     "@novelforge/database": "workspace:*",
+    "@novelforge/memory": "workspace:*",
     "@novelforge/workflow-executor": "workspace:*",
     "bullmq": "^5.0.0",
     "ioredis": "^5.4.0"

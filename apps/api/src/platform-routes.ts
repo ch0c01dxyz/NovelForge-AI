@@ -22,6 +22,7 @@ import { InvalidDefinitionError } from "./services/definitions.ts";
 import { HeadConflictError } from "./services/context-compiler.ts";
 import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 import { CanonApplicationError } from "./services/canon-applications.ts";
+import { MemoryError } from "./services/memory.ts";
 
 const slug = z
   .string()
@@ -101,6 +102,12 @@ export async function registerPlatformRoutes(
           ? { currentHeadRevisionId: error.currentHeadRevisionId }
           : {}),
       });
+    }
+    // NF-WF-009: typed memory refusals (SIMULATION_SOURCE_REFUSED,
+    // INVALID_INPUT) carry the machine-readable code as the envelope's
+    // error field. Checked before the generic 400 fallthrough.
+    if (error instanceof MemoryError) {
+      return reply.code(error.statusCode).send({ error: error.code });
     }
     if (error instanceof ConflictError) {
       return reply.code(409).send({

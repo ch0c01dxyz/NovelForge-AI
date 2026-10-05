@@ -4297,7 +4297,7 @@ Tests:
   reject, review entry point present/absent. 7/7.
 - Full API suite: 462/462 (447 pre-existing + 15 new), no regressions.
 - Web suite: 48/48 (41 pre-existing + 7 new).
-- story-versioning: 17/17.
+- story-versioning: 17/17 (updated C1/C6 for the 34th table + projection mapping).
 - `pnpm lint` clean (2 pre-existing unused-var errors in
   `canon-applications.ts` fixed: dead `resolveChapterVersionId`
   duplicate + unused `runInput` destructure).
@@ -4322,3 +4322,97 @@ state; F2 (P3) `"STALE"` removed from the UI verdict union; F3 (P3)
 `VALID_FROM_CHAPTER_REQUIRED` + `INLINE_ENTITY_KIND_MISMATCH` added to
 the contract's approve error table. Web tests re-run after fixes:
 48/48, lint clean.
+
+## 2026-10-05 — NF-WF-009 implemented (revision-derived chapter/arc memory and historical retrieval)
+
+**Contract:** `tasks/NF-WF-009-revision-derived-memory.md` at `f18600f`
+(reviewed CHANGES_REQUESTED; F1–F9 applied in text; Q1–Q6 adjudicated;
+review record filled).
+
+**Implementation (implementer actor, separate from contract author and
+reviewer; backend MODEL_UNVERIFIED per GAP-013; NOT committed — working
+tree left for the diff reviewer).**
+
+New package `@novelforge/memory` (`packages/memory/`): deterministic
+structural rebuild core shared by API and worker.
+- `constants.ts`: `MEMORY_REBUILD_QUEUE_NAME`, `MEMORY_REBUILD_MAX_ATTEMPTS=5`,
+  `MEMORY_REBUILD_RETRY_BASE_MS=1000`, `MEMORY_RECENT_CHAPTERS_DEFAULT=10`,
+  scope helpers (`chapter:`, `arc:`).
+- `settle.ts`: `manuscriptRev` (greatest main-branch revision touching the
+  chapter's chapter-version rows via change-set search), `canonApplyRev`
+  (greatest main-branch revision with a CanonApplication→APPLIED UPDATE
+  whose run has `input.chapterNumber=N`; batch-fetched, no N+1),
+  `settleRev` (max of present terms; null when manuscriptRev absent — F2).
+- `freshness.ts`: `deriveFreshness` (newest row by source-revision number
+  vs main head → MISSING/FAILED/FRESH/STALE; r.number > H → STALE) and
+  `deriveAsOfFreshness` (newest row ≤ R.number within the branch — F4).
+- `rebuild.ts`: `buildStructuralMemory` (facts filtered by validity window
+  vs chapter context + `createdAt <= R.createdAt` + as-of status via
+  successor creation time; threads/promises by creation time; sorted,
+  deterministic) and `processRebuild` (dedup on existing OK; FAILED rows
+  with `lastError`/`attempts` — never a false success; byte-identical
+  re-runs — Invariant 3).
+- STRUCTURAL-ONLY (Q1): `summary: null`, `summaryStatus: "SKIPPED"` always.
+
+Prisma: `MemoryProjection` model + `MemoryBuildStatus` enum
+(`@@unique([novelId, scope, sourceRevisionId])`); migration
+`20261006_nf_wf_009_memory_projections` (GAP-030 DO-block convention;
+renamed from `20261005_…` — GAP-037: the `revisions` table is created by
+`20261006_m1_story_versioning`, so the 009 migration must sort after it).
+Registered in `TABLE_SCOPE` (`revisions.ts`) and `COVERED_TABLES`
+(`snapshot.ts`, GAP-035 lesson) as a rebuildable projection.
+
+Backend (`apps/api`):
+- `services/memory.ts`: `recallNovel` (chapter L1 + recent L2 bounded by
+  10 + arc L3/L4 via outline nodes; as-of by revisionId with cross-branch
+  400), `getMemoryStatus`, `triggerRebuild` (BullMQ enqueue, deterministic
+  jobIds; `{simulation: true}` → 400 `SIMULATION_SOURCE_REFUSED` — F3),
+  `readAsOf` (chapter → settleRev; revisionId → branch check).
+- `services/memory-queue.ts`: the one shared `memory-rebuild` Queue
+  (F6 retry policy); `memory-routes.ts`: 3 routes
+  (`GET …/memory/status`, `POST …/memory/rebuild` → 202,
+  `GET …/memory/as-of`) with `novel:read` / `novel:update` (F5);
+  `MemoryError` mapped in the central handler.
+- 003 compiler: optional `memory` port on `CompilerPorts`; tiers 7/8 now
+  consume `recallNovel` — PRESENT with freshness/sourceRevisionId/
+  chapterCoverage provenance, UNAVAILABLE with the actual-state reason
+  when MISSING/unconfigured (the old "owned by NF-WF-009" text replaced
+  per contract), never an empty PRESENT block.
+
+Worker (`apps/worker`): `memory-jobs.ts` `startMemoryWorkerApp` (BullMQ
+Worker on `memory-rebuild`, runs `processRebuild`; malformed jobs throw;
+graceful degradation when Redis is down); wired into `index.ts`
+alongside the heartbeat and workflow workers.
+
+Tests (`apps/api/src/memory.test.ts`, dedicated `novelforge_test_memory`
+DB; `apps/worker/src/memory-jobs.test.ts`):
+- Durable rebuild byte-identical on re-run (dedup); forced STALE on head
+  advance; forced FAILED (bad scope → FAILED row, attempts increment,
+  freshness FAILED); MISSING derivation.
+- Superseded-fact as-of semantics; REJECTED proposals never become facts.
+- `settleRev` greatest-touching-revision + null when untouched.
+- Routes: 401/404 auth (ADR-0004), simulation refusal (no rows, no
+  enqueue), enqueue shape, as-of by chapter/revisionId, cross-branch 400,
+  unsettled-chapter 400, status listing.
+- Compiler: tier 7 PRESENT with FRESH metadata + fact text; tier 8
+  UNAVAILABLE with MISSING reason; tiers 7/8 UNAVAILABLE when the port is
+  absent. Updated the pre-existing 003 test asserting the old reason text.
+- API 16/16 new (15 implementer + 1 reviewer regression: as-of never
+  returns a row newer than the requested revision); worker 2/2 new.
+
+Verification:
+- `pnpm lint` clean.
+- Typechecks: `@novelforge/memory`, `@novelforge/api`,
+  `@novelforge/worker`, `@novelforge/story-versioning` clean.
+- Full API suite: 478/478 (462 pre-existing + 16 new), no regressions.
+- Worker suite: 21 passed / 1 skipped (19 passed + 1 skipped pre-existing + 2 new).
+
+Reviewer changes (2026-10-05): fixed as-of row selection — `readBlock`
+now uses `deriveAsOfFreshness` (previously dead code) when `revisionId`
+is given, so `GET memory/as-of` never returns a row newer than the
+requested revision (Invariant 7); added the regression test; corrected
+counts here. Reviewer backend MODEL_UNVERIFIED per GAP-013.
+
+Gaps recorded: GAP-037 (migration ordering, fixed); F3 full-lineage
+follow-up (OPEN, Invariant 6 gate); intent-lifecycle gap below. No AI
+paths in 009 (GAP-028 inapplicable — structural-only).

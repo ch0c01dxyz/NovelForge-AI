@@ -214,6 +214,7 @@ const TABLE_SCOPE: Readonly<Record<string, string>> = {
   story_thread_events: `"thread_id" IN (SELECT "id" FROM "story_threads" WHERE "novel_id" = $1)`,
   synopses: `"novel_id" = $1`,
   timeline_events: `"novel_id" = $1`,
+  memory_projections: `"novel_id" = $1`,
 };
 
 /**

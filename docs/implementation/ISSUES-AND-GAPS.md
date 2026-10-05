@@ -1484,3 +1484,21 @@ UI. STATUS: open pending the schema-cascade-vs-refuse decision;
 015's implementation is complete with the 409. Closure check: closes
 when the planning/schema owner records the cascade-vs-refuse decision
 and the route + tests are updated to match.
+
+## GAP-056 — NF-WF-016: `StoryThreadEvent` is schema-only; no route links story events to threads (2026-10-06)
+
+EVIDENCE: `model StoryThreadEvent` (`packages/database/prisma/schema.prisma:1852`, event↔thread evidence link, `@@unique[threadId, eventId]`) has no app-code WRITES and no route creates, lists, or deletes event↔thread links. The only app-code read is the health check's stale-thread query (`db.storyThreadEvent.findMany` at `apps/api/src/services/story-health.ts:363`), plus the restore scope mapping in `apps/api/src/services/revisions.ts:214` (verified by backend recon + independent reviewer spot-check against HEAD `8bc8a12`).
+
+IMPACT: the timeline/thread workspace (016) cannot show or edit which events support a thread; threads stay free-floating in the UI. Note: the `evaluateHealth` stale-thread finding reads whatever links exist, so the HealthPanel renders that finding with its evidence as-is. STATUS: deferred-follow-up — NF-WF-016 contract review (2026-10-06) decided Q3 = defer (inventing link semantics would silently redefine what a link means for the compiler; needs the story-model owner's design). The 016 UI must not invent the relation. Closure check: closes when the link/unlink route pair exists with tests under a follow-up task.
+
+## GAP-057 — NF-WF-016: no API to attach evidence to a canon fact after creation (2026-10-06)
+
+EVIDENCE: `POST .../canon/facts` (`apps/api/src/canon-routes.ts:291`, `createFactBody` :45-64) accepts at most ONE optional `source` citation at creation (`services/canon.ts:800-877` validates the span and writes one `CanonFactSource` row); `unlinkSource` (`DELETE .../facts/:factId/sources/:sourceId`, canon-routes.ts:370) removes one. There is no add-source route — a fact created without a citation can never gain one, and a fact with one citation can never gain a second (verified against HEAD `8bc8a12`).
+
+IMPACT: 016's acceptance ("authorable facts ... with evidence") cannot be fully met by UI alone — the UI can require the single citation at creation, but multi-citation evidence needs a backend addition. STATUS: open — NF-WF-016 contract review (2026-10-06) decided Q2 = yes: 016 adds the additive `POST .../facts/:factId/sources` route (same evidence-span validation as createFact, audit `canon.fact-source-added`, `advanceForMutation` tables `["canon_fact_sources"]`); closes on implementation with span-validation tests. Closure check: closes when the route exists with span-validation tests, or the deferral is recorded.
+
+## GAP-058 — NF-WF-016: no character update route; character↔storyEntity link has no writer (2026-10-06)
+
+EVIDENCE: `character-routes.ts` (346 lines) exposes only `POST/GET .../characters` (:86/:104) and `DELETE .../characters/:characterId` (:120) plus sub-resource routes — no PUT/PATCH, and no `character.update` exists in any API service (verified by independent contract reviewer against HEAD `8bc8a12`). Separately, `Character.storyEntityId` is set only by the one-time migration backfill on exact `(novel_id, key)` match (`packages/database/prisma/migrations/20261006_m1_story_versioning/migration.sql:298`; 010 Invariant 2) — no route or service writes it.
+
+IMPACT: 016's authoring UI cannot edit a character's name/summary (corrections go through delete + recreate, matching the platform's append-only pattern) and must display the story-entity link read-only. The frozen 016 contract pins both out explicitly (Invariant 1.1). STATUS: open follow-up. Closure check: closes when an update-character route (with capability gate and tests) exists, or the append-only pattern is re-affirmed as the deliberate design by the author.

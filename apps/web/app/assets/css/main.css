@@ -49,6 +49,68 @@ body {
   outline-offset: 2px;
 }
 
+/*
+ * Reader prose (NF-WF-013): the design's manuscript voice, applied to the
+ * public chapter page. Mirrors docs/design/writer-workspace/index.html
+ * `.prose`: literary serif 17.5px/1.85, drop cap on the opening paragraph.
+ */
+.nf-reader-prose {
+  font-family: var(--font-nf-literary);
+  font-size: 17.5px;
+  line-height: 1.85;
+  color: var(--color-nf-text);
+}
+.nf-reader-prose p {
+  margin-bottom: 1.35em;
+}
+.nf-reader-prose p.opening::first-letter {
+  float: left;
+  font-size: 58px;
+  line-height: 0.82;
+  padding: 6px 10px 0 0;
+  font-weight: 600;
+  color: var(--color-nf-text);
+}
+@media (max-width: 479.98px) {
+  .nf-reader-prose {
+    font-size: 16.5px;
+  }
+  .nf-reader-prose p.opening::first-letter {
+    font-size: 46px;
+    padding-top: 4px;
+  }
+}
+
+/*
+ * Chapter overline (NF-WF-013): accent-hi uppercase label with the fade
+ * line — the design's single allowed surface gradient.
+ */
+.nf-overline {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-nf-accent-hi);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nf-overline::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--color-nf-border-strong), transparent);
+}
+
+/* Section label: 10.5px uppercase tracked, per the design's type scale. */
+.nf-section-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-nf-text-faint);
+}
+
 /* NF-WF-007 Invariant 10: honor prefers-reduced-motion — state changes
  * render without animation. (No component currently animates; this
  * guards any future transitions/spinners.) */

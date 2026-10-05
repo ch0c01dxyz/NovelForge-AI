@@ -47,6 +47,7 @@ import { createWorkflowQueue, type WorkflowQueue } from "./services/workflow-que
 import { createPublicationQueue, type PublicationQueue } from "./services/publication-queue.ts";
 import { createPublicationServices } from "./services/publication.ts";
 import { registerPublicationRoutes } from "./publication-routes.ts";
+import { registerPublicReaderRoutes } from "./public-routes.ts";
 import { createMemoryQueue, type MemoryQueue } from "./services/memory-queue.ts";
 import { createMemoryServices } from "./services/memory.ts";
 import { registerMemoryRoutes } from "./memory-routes.ts";
@@ -219,15 +220,16 @@ export async function buildApp(
     const audit = createAuditService(options.db);
     // NF-WF-012: publication release routes. Registered after `audit`
     // exists so the service can share the one audit instance.
-    registerPublicationRoutes(app, {
-      auth,
-      services: createPublicationServices({
-        db: options.db,
-        audit,
-        queue: publicationQueue,
-        manuscripts: manuscriptServices,
-      }),
+    // NF-WF-013: the anonymous public reader routes share this instance
+    // (anonymous by construction — no auth object passed to them).
+    const publicationServices = createPublicationServices({
+      db: options.db,
+      audit,
+      queue: publicationQueue,
+      manuscripts: manuscriptServices,
     });
+    registerPublicationRoutes(app, { auth, services: publicationServices });
+    registerPublicReaderRoutes(app, { services: publicationServices });
     const aiServices = createAiServices({
       db: options.db,
       registry: createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY),

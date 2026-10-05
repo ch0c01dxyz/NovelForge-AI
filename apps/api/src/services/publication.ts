@@ -126,6 +126,94 @@ export interface PublicationServices {
     novelSlug: string;
     chapterNumber: number;
   }): Promise<{ novelId: string; chapterId: string; pinnedVersionId: string } | null>;
+  /**
+   * NF-WF-013: novel-first public resolvers (additive; the frozen 012
+   * `resolvePublicChapter` above is untouched).
+   *
+   * 013's chapter route resolves the novel FIRST by slug (earliest-created
+   * ACTIVE wins — exactly the novel route's resolution), then looks up the
+   * chapter within THAT novel only. This is the "equivalent pin-based
+   * lookup" the 013 contract allows: content still comes from the PINNED
+   * chapterVersionId, never currentVersionId.
+   */
+  resolvePublicNovelBySlug(input: {
+    novelSlug: string;
+  }): Promise<{
+    id: string;
+    title: string;
+    slug: string;
+    author: { id: string; displayName: string };
+  } | null>;
+  listPublishedChapters(input: {
+    novelId: string;
+  }): Promise<Array<{ number: number; title: string; publishedAt: string }>>;
+  resolvePublicChapterNovelFirst(input: {
+    novelSlug: string;
+    chapterNumber: number;
+  }): Promise<{
+    novelId: string;
+    chapterId: string;
+    chapter: {
+      number: number;
+      title: string;
+      content: string;
+      wordCount: number;
+      publishedVersionNumber: number;
+      publishedAt: string;
+    };
+    prevChapter: { number: number; title: string } | null;
+    nextChapter: { number: number; title: string } | null;
+  } | null>;
+  resolvePublicAuthor(input: {
+    authorId: string;
+  }): Promise<{
+    author: { id: string; displayName: string };
+    novels: Array<{
+      id: string;
+      title: string;
+      slug: string;
+      publishedChapterCount: number;
+    }>;
+  } | null>;
+}
+
+/** NF-WF-013: earliest-created ACTIVE novel for a slug; null when none. */
+async function resolvePublicNovelBySlug(db: NovelForgeDb, novelSlug: string) {
+  const novel = await db.novel.findFirst({
+    where: { slug: novelSlug, status: "ACTIVE" },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      createdBy: { select: { id: true, displayName: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!novel) return null;
+  return {
+    id: novel.id,
+    title: novel.title,
+    slug: novel.slug,
+    author: { id: novel.createdBy.id, displayName: novel.createdBy.displayName },
+  };
+}
+
+/** NF-WF-013: PUBLISHED chapters of a novel, ordered by number ascending. */
+async function listPublishedChapters(db: NovelForgeDb, novelId: string) {
+  const rows = await db.chapter.findMany({
+    where: { novelId, publication: { status: "PUBLISHED" } },
+    select: {
+      number: true,
+      title: true,
+      publication: { select: { publishedAt: true } },
+    },
+    orderBy: { number: "asc" },
+  });
+  return rows.map((r) => ({
+    number: r.number,
+    title: r.title,
+    publishedAt: r.publication!.publishedAt!.toISOString(),
+  }));
 }
 
 export function createPublicationServices({
@@ -709,6 +797,117 @@ export function createPublicationServices({
         }
       }
       return null;
+    },
+
+    // NF-WF-013 additive public-reader helpers (anonymous routes).
+    async resolvePublicNovelBySlug({ novelSlug }) {
+      return resolvePublicNovelBySlug(db, novelSlug);
+    },
+
+    async listPublishedChapters({ novelId }) {
+      return listPublishedChapters(db, novelId);
+    },
+
+    async resolvePublicChapterNovelFirst({ novelSlug, chapterNumber }) {
+      // Novel-first: resolve the winning novel exactly like the novel
+      // route does, then look up the chapter within THAT novel only.
+      const novel = await resolvePublicNovelBySlug(db, novelSlug);
+      if (!novel) return null;
+      const chapter = await db.chapter.findFirst({
+        where: { novelId: novel.id, number: chapterNumber },
+        select: {
+          id: true,
+          number: true,
+          title: true,
+          publication: {
+            select: {
+              status: true,
+              publishedAt: true,
+              chapterVersion: { select: { id: true, number: true, content: true } },
+            },
+          },
+        },
+      });
+      const pub = chapter?.publication;
+      if (!pub || pub.status !== "PUBLISHED") return null;
+      const content = pub.chapterVersion.content;
+      const published = await listPublishedChapters(db, novel.id);
+      const idx = published.findIndex((c) => c.number === chapterNumber);
+      return {
+        novelId: novel.id,
+        chapterId: chapter.id,
+        chapter: {
+          number: chapter!.number,
+          title: chapter!.title,
+          content,
+          wordCount: content.trim() ? content.trim().split(/\s+/).length : 0,
+          publishedVersionNumber: pub.chapterVersion.number,
+          publishedAt: pub.publishedAt!.toISOString(),
+        },
+        prevChapter:
+          idx > 0
+            ? {
+                number: published[idx - 1]!.number,
+                title: published[idx - 1]!.title,
+              }
+            : null,
+        nextChapter:
+          idx >= 0 && idx < published.length - 1
+            ? {
+                number: published[idx + 1]!.number,
+                title: published[idx + 1]!.title,
+              }
+            : null,
+      };
+    },
+
+    async resolvePublicAuthor({ authorId }) {
+      const user = await db.user.findUnique({
+        where: { id: authorId },
+        select: { id: true, displayName: true },
+      });
+      if (!user) return null;
+      const novels = await db.novel.findMany({
+        where: {
+          createdById: authorId,
+          status: "ACTIVE",
+          chapters: { some: { publication: { status: "PUBLISHED" } } },
+        },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          chapters: {
+            where: { publication: { status: "PUBLISHED" } },
+            select: { publication: { select: { publishedAt: true } } },
+          },
+        },
+      });
+      if (novels.length === 0) return null;
+      const rows = novels.map((n) => {
+        const first = n.chapters
+          .map((c) => c.publication!.publishedAt!.getTime())
+          .sort((a, b) => a - b)[0];
+        return {
+          id: n.id,
+          title: n.title,
+          slug: n.slug,
+          publishedChapterCount: n.chapters.length,
+          firstPublishedAt: first,
+        };
+      });
+      // Author page ordering: earliest publishedAt first (pinned here;
+      // the contract's recommended choice).
+      rows.sort((a, b) => (a.firstPublishedAt ?? 0) - (b.firstPublishedAt ?? 0));
+      return {
+        author: { id: user.id, displayName: user.displayName },
+        novels: rows.map(({ id, title, slug, publishedChapterCount }) => ({
+          id,
+          title,
+          slug,
+          publishedChapterCount,
+        })),
+      };
     },
   };
 }

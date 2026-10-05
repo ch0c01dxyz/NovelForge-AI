@@ -174,6 +174,30 @@ export const en = {
     loadManuscriptFailed: "Could not load the manuscript.",
     publishFailed: "Publish failed.",
     publishForbidden: "You do not have permission to publish.",
+    publishReviewStale:
+      "The text changed since the last review. Revalidate the final text, then publish again.",
+    publishHardViolation:
+      "The final-text review failed. Fix the flagged issues and re-review before publishing.",
+  },
+  reader: {
+    loading: "Loading…",
+    loadFailed: "Could not load.",
+    notFoundTitle: "Not found",
+    notFoundBody: "This novel, chapter, or author is not publicly available.",
+    chapters: "Chapters",
+    noChapters: "No published chapters yet.",
+    byAuthor: "by",
+    novelOverline: "Published novel",
+    authorOverline: "Author",
+    backToNovel: "Back to the novel",
+    prevChapter: "Previous chapter",
+    nextChapter: "Next chapter",
+    chapterMeta: "Chapter {n} · {words} words",
+    chapterOverline: "Chapter {n}",
+    wordCount: "{n} words",
+    version: "Version {n}",
+    publishedNovels: "Published novels",
+    chapterCount: "{n} chapters",
   },
 } as const;
 

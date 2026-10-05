@@ -1256,6 +1256,19 @@ to the new route and add the 409-code branches with en/id messages. The
 author-preview loop, not the release path. Not a workaround — no web code
 changed.
 
+RESOLVED 2026-10-06 by NF-WF-013 implementation (implementer actor,
+backend MODEL_UNVERIFIED per GAP-013): `publish()` in
+`apps/web/app/pages/workspaces/[workspaceId]/novels/[novelId]/index.vue`
+now calls `POST .../chapters/:chapterId/publication/publish` (was PATCH
+`/status`); 409 `REVIEW_STALE` → `t("errors.publishReviewStale")` and
+409 `HARD_POLICY_VIOLATION` → `t("errors.publishHardViolation")`
+(actionable en/id messages added to both locale files); 403 →
+`t("errors.publishForbidden")` preserved; everything else →
+`t("errors.publishFailed")`; success keeps local `chapter.status =
+"PUBLISHED"`. The 011 e2e loop's PATCH publish is untouched. Verified by
+code-diff review + 012's publication API tests (17/17, covering the
+release path and both 409 codes) + locale-key presence. GAP CLOSED.
+
 ## GAP-047 — Worker-local C3 head-advance duplicates advanceHead's LOW path (2026-10-05)
 
 OBSERVED during NF-WF-012 implementation: the publication fire transition

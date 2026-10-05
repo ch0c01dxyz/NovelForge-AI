@@ -390,16 +390,30 @@ async function publish() {
   // is what gets frozen, so a failed save must abort the publish.
   if (saveState.value !== "saved") return;
   try {
-    await api(`${base.value}/chapters/${chapter.id}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: "PUBLISHED" }),
+    // NF-WF-013 (GAP-046): publish through the 012 release path, which
+    // creates the Publication row the public reader resolves. The
+    // extended review gate (GAP-045) guards this path, so 409 refusals
+    // get actionable messages.
+    await api(`${base.value}/chapters/${chapter.id}/publication/publish`, {
+      method: "POST",
     });
     chapter.status = "PUBLISHED";
   } catch (e) {
-    error.value =
-      e instanceof ApiError && e.status === 403
-        ? t("errors.publishForbidden")
-        : t("errors.publishFailed");
+    if (e instanceof ApiError) {
+      if (e.status === 403) {
+        error.value = t("errors.publishForbidden");
+        return;
+      }
+      if (e.code === "REVIEW_STALE") {
+        error.value = t("errors.publishReviewStale");
+        return;
+      }
+      if (e.code === "HARD_POLICY_VIOLATION") {
+        error.value = t("errors.publishHardViolation");
+        return;
+      }
+    }
+    error.value = t("errors.publishFailed");
   }
 }
 </script>

@@ -4543,6 +4543,28 @@ ceiling (see ISSUES-AND-GAPS.md).
 
 ---
 
+## NF-WF-013 — Public reader/novel/author routes and UI (2026-10-06)
+
+**Implementer:** separate actor from contract author and reviewer. Backend MODEL_UNVERIFIED per GAP-013. Working tree NOT committed — left for the separate diff reviewer.
+
+**Deliverables:**
+- `apps/api/src/public-routes.ts` (new): 3 anonymous routes (`GET /api/public/novels/:slug`, `/api/public/novels/:slug/chapters/:number`, `/api/public/authors/:authorId`). No auth object, no `requireActor`, no 401 path; Zod validation → 400 INVALID_INPUT; the app-wide error handler in `platform-routes.ts` (no second handler). Shapes are the frozen 012 contract plus the three GAP-049-recorded additive extensions (author byline on the novel shape, prevChapter/nextChapter on the chapter shape, the author route).
+- `apps/api/src/services/publication.ts`: additive helpers `resolvePublicNovelBySlug`, `listPublishedChapters`, `resolvePublicChapterNovelFirst` (novel-first per contract P2-1 — the frozen 012 `resolvePublicChapter` is untouched), `resolvePublicAuthor`; wordCount rule `content.trim() ? content.trim().split(/\s+/).length : 0`.
+- `apps/api/src/app.ts`: `registerPublicReaderRoutes` shares the publication services instance; anonymous by construction.
+- Web: `app/pages/read/[slug].vue`, `app/pages/read/[slug]/[number].vue`, `app/pages/read/authors/[authorId].vue` (all with `<meta name="robots" content="noindex">` per Q2, loading/404/empty states), `app/components/reader/ReaderChapterNav.vue`, en/id `reader.*` keys + `errors.publishReviewStale`/`errors.publishHardViolation`.
+- GAP-046: the 007 novel page's `publish()` now calls `POST .../chapters/:chapterId/publication/publish`; 409 `REVIEW_STALE` → `t("errors.publishReviewStale")`, 409 `HARD_POLICY_VIOLATION` → `t("errors.publishHardViolation")`; 403 → `t("errors.publishForbidden")` preserved; success keeps local PUBLISHED. The 011 e2e loop's PATCH publish is untouched (author-preview path, per GAP-046's decision). GAP-046 CLOSED.
+
+**Verification (all run 2026-10-06, implementer):**
+- `apps/api/src/public-routes.test.ts`: **14/14** (exact shapes; 9 invisible cases → identical `404 {error:"NOT_FOUND"}`; same response with/without cookie; slug collision → earliest-created ACTIVE wins and chapter route novel-first; version pinning across unpublish→edit→review→re-publish; author route 404s; retrieval/AI routes stay 401; no `/api/public/search`; spoiler-boundary leak scan).
+- Web `reader.test.ts`: **10/10**; full web suite **58/58** (9 files). `vue-tsc --noEmit` clean.
+- `pnpm lint`: clean. `npx tsc --noEmit` (apps/api): clean.
+- Full API suite: **561/561** (27 files), incl. 012 publication tests and the 011 no-regression loop paths.
+- `pnpm e2e` (011 author-preview loop): **20/20**, `BASELINE-OK: no >2x regression` — the PATCH-publish author-preview path is untouched.
+
+**Deviations (recorded BEFORE workarounds):** GAP-046 closed (migration as the contract prescribed); GAP-049 (additive shape extensions, recorded 2026-10-06 before implementation). No other deviations; no new capabilities, no new error codes beyond the pinned NOT_FOUND/INVALID_INPUT, no schema changes.
+
+---
+
 ## NF-WF-011 — Author-preview E2E + bounded long-novel fixture (2026-10-05)
 
 **Implementer:** separate actor from contract author and reviewer. Backend MODEL_UNVERIFIED per GAP-013.

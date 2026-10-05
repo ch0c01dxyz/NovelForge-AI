@@ -295,7 +295,18 @@ If Engram is unavailable, report it, record the issue in ISSUES-AND-GAPS.md,
 and preserve a concise fallback handoff in the existing task/progress record.
 Do not claim automatic capture of `/clear` without a verified harness hook.
 
-## 15. Final principle
+## 15. Design system
+
+`docs/design/writer-workspace` is the foundational design of the
+project, with the shared tokens in `docs/design/DESIGN-TOKENS.md`.
+Every UI surface follows it — writer workspace, public reader pages,
+and any future screens: the same design language, colors, typography,
+spacing, components and interaction patterns. Design decisions are
+inherited from it, not reinvented per task. Any intentional departure
+from the foundational design is a documented author decision recorded
+with its scope before implementation.
+
+## 16. Final principle
 
 > The LLM writes and reasons. NovelForge remembers, validates,
 > simulates, versions, and protects the story.

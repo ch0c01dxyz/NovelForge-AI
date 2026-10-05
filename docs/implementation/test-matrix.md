@@ -1595,3 +1595,49 @@ No AI paths in 012 (GAP-028 inapplicable — deterministic rules only).
 Deviations: GAP-045 (010 gate extension), GAP-046 (007 novel page
 follow-up), GAP-047 (worker-local `advanceHeadLow`), GAP-048
 (`tables: […, "novels"]` unimplementable — novels outside restore scope).
+
+## NF-WF-013 public reader/novel/author routes and UI — 2026-10-06
+
+Implementer actor separate from contract author/reviewer. Backend
+MODEL_UNVERIFIED per GAP-013. Scratch DBs only
+(`novelforge_test_public_reader`).
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/public-routes.test.ts` (apps/api) | **14/14** |
+| `npx vitest run app/components/reader/reader.test.ts` (apps/web) | **10/10** |
+| Full web suite (`npx vitest run`, apps/web) | **58/58** (9 files) |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+| Full API suite (`npx vitest run`, apps/api) | **561/561** (27 files) |
+| `pnpm e2e` (011 loop no-regression) | **20/20** (3 files), `BASELINE-OK: no >2x regression vs committed baseline` |
+
+`public-routes.test.ts` coverage: exact 012+ GAP-049 shapes (novel +
+author byline, PUBLISHED-only chapters ordered asc, pinned chapter
+content + wordCount + pinnedVersionNumber, PUBLISHED-only prev/next,
+author + published novels); identical `404 {error:"NOT_FOUND"}` for
+unknown slug / DRAFT novel / ARCHIVED novel / draft / IN_REVIEW /
+SCHEDULED / UNPUBLISHED / out-of-range chapter / unknown author /
+author-with-no-public-novels; same response with and without a session
+cookie; slug collision across two workspaces → earliest-created ACTIVE
+novel wins on both the novel and chapter routes (novel-first);
+unpublish → edit → review → re-publish serves the new pin and never
+the old; 400 INVALID_INPUT for empty slug / non-numeric chapter number
+/ non-uuid authorId; unauthenticated retrieval + AI routes stay 401;
+no `/api/public/search`; spoiler-boundary leak scan (no canon, review,
+workflow, schedule, outline, synopsis, email in responses).
+
+`reader.test.ts` coverage: all three pages render real API data at the
+`useApi` boundary; novel page (title, byline, chapter list, empty and
+404 states); chapter page (pinned content, meta, prev/next nav, no
+search input, no AI content, 404); author page (displayName + novels,
+404); `ReaderChapterNav` link hrefs and missing-side behavior.
+
+GAP-046 verification: code-diff review of the migrated `publish()`
+(POST release path; 409 REVIEW_STALE/HARD_POLICY_VIOLATION branches
+with the new en/id keys; 403 preserved) + 012's 17/17 publication API
+tests covering the release path and both 409 codes. GAP-046 CLOSED.
+Deviations: GAP-049 (additive shape extensions, recorded before
+implementation). No schema changes, no new capabilities, no public
+search/listing.

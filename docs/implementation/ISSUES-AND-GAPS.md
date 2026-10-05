@@ -1370,3 +1370,75 @@ manual item is incomplete and must be done by a human with a named
 screen reader before ship. STATUS: open; owner: a human auditor at/after
 release verification (NF-WF-023 scope). Recorded before any completion
 claim per the standing rule.
+
+## GAP-052 — NF-WF-015: Scene rows are schema-only; no app code creates scenes (2026-10-06)
+
+OBSERVED during NF-WF-015 contract authoring (backend verification):
+`packages/database/prisma/schema.prisma:325-344` defines the `Scene`
+model (`chapterId`, `number` unique per chapter, `title`, `summary`,
+`outlineNodes`), but no application code creates Scene rows —
+`db.scene.create` appears only in generated Prisma client docs
+(`packages/database/generated/prisma/models/Scene.ts`); the Phase 2
+manuscript service header (`apps/api/src/services/manuscript.ts:4-6`)
+states "Scene CRUD is schema-only in Phase 2 (no API yet); the editor
+scrolls chapters as free text until the AI/scene features of Phases 3-8
+demand a scene write path". Scene links exist only as FK targets for
+outline nodes (`createOutlineNode` accepts an optional `sceneId`,
+`apps/api/src/services/planning.ts:405-434`), and no web UI references
+scenes at all.
+
+IMPACT: the NF-WF-015 delivery-plan acceptance includes "scene
+navigation", but there is nothing to navigate — any scene UI ships dead
+unless 015 also defines how scenes come into existence. The contract
+routes this to Q5 (minimal scene CRUD in 015 scope vs. a follow-up
+task); the author's recommendation is minimal CRUD (create/rename/
+reorder/delete within a chapter, no scene content editing — scenes stay
+structural anchors, chapter content stays the editable unit, "scene
+versions deferred" unchanged). STATUS: open; owner: the NF-WF-015
+contract reviewer (must confirm or flip Q5 before implementation).
+Recorded before the contract pins any scene behavior, per the standing
+rule.
+
+RESOLUTION (2026-10-06, NF-WF-015 contract review round 1): Q5
+CONFIRMED — minimal scene CRUD (title/summary/number only; no scene
+content, no versioning; reuses `chapter:update`; additive routes under
+manuscript conventions) is IN 015 scope. Reason: scene navigation
+without scene creation ships dead UI; the minimal CRUD is the smallest
+scope that makes the delivery-plan acceptance ("scene navigation")
+real, with no schema change and no new capabilities. Closure check:
+closes when 015 implements the scene routes + navigation and the
+contract's scene acceptance checkboxes pass with evidence. The
+scene-versions follow-up stays deferred (Phase 2 note unchanged).
+
+## GAP-053 — NF-WF-015: downstream consumers of HTML chapter content need follow-ups (2026-10-06)
+
+OBSERVED during NF-WF-015 contract review (independent verification,
+repo @ `baaeaa2`): 015 pins sanitized-HTML `ChapterVersion.content`.
+Two frozen-surface consumers read the raw content and interact with
+HTML in ways 015 deliberately does not change (canon/discovery
+semantics are forbidden paths in 015):
+
+1. Canon evidence (008): `services/canon.ts:2562-2567` reads
+   `ChapterVersion.content` raw for `verifySpan(text, start, end)`.
+   On HTML rows, spans are raw-content offsets — any consumer that
+   computes spans on tag-stripped text will mis-verify. Related:
+   `services/canon-applications.ts:1227` pins fact sources with
+   `version.content.includes(firstQuote)` — a quote whose words are
+   split by inline tags (e.g. `<strong>the</strong> dark forest` vs
+   quote "the dark forest") fails the match and yields a null pin.
+2. Discovery search (014): `services/public-discovery.ts:393-405`
+   builds `to_tsvector('english', cv.content)` and
+   `ts_headline('english', cv.content, ...)` on the RAW content —
+   HTML tags become index lexemes (false matches on words like
+   "strong"/"blockquote") and raw tags can appear in highlighted
+   snippets.
+
+IMPACT: neither breaks 015's frozen acceptance, and both are
+edge-case quality degradations rather than correctness failures (the
+write path, the 013 reader, and both word counts are pinned to strip
+in 015). STATUS: open; owner: a follow-up task under NF-WF-017's
+orbit (which takes the HTML format as frozen input) or the 008/014
+owners — NOT 015's implementer. Closure check: closes when the
+evidence-span rule and the discovery full-text query are pinned
+against a defined HTML/strip contract with tests. Recorded before 015
+implementation, per the standing rule.

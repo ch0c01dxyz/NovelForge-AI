@@ -112,18 +112,25 @@ conflicts, archived states, and bulk-operation recovery.
 
 ## C1. Coverage set
 
-The **covered set** is the 31 tables holding chapter-consumed story state.
+The **covered set** is the 36 tables holding chapter-consumed story state.
 Everything else is **outside scope** and restore must say so.
 
 | Group | Covered tables |
 |---|---|
-| Manuscript | `chapters`, `chapter_versions`, `scenes` |
-| Canon | `story_entities`, `canon_facts`, `canon_fact_sources`, `canon_proposals` |
+| Manuscript | `chapters`, `chapter_versions`, `scenes`, `publications`¹ |
+| Canon | `story_entities`, `canon_facts`, `canon_fact_sources`, `canon_proposals`, `canon_applications`, `canon_application_items` |
 | Planning | `synopses`, `sagas`, `outline_nodes`, `outline_versions`, `planning_horizons` |
-| Story intelligence | `story_events`, `timeline_events`, `story_threads`, `story_thread_events`, `story_promises`, `causal_edges` |
+| Story intelligence | `story_events`, `timeline_events`, `story_threads`, `story_thread_events`, `story_promises`, `causal_edges`, `memory_projections` |
 | Character | `characters`, `character_states`, `character_knowledge`, `character_arcs`, `character_arc_milestones` |
 | Relationship | `relationship_stances`, `bonds`, `bond_members`, `bond_transitions`, `meaningful_interactions` |
-| Narrative | `narrative_dna_profiles`, `narrative_policies`, `antagonists` |
+| Narrative | `narrative_dna_profiles`, `narrative_policies`, `antagonists`, `final_text_reviews` |
+
+¹ `publications` (NF-WF-012) is covered with `restoreTarget: false`: the
+release lifecycle is not story state. Restoring a checkpoint never deletes
+or re-inserts publication rows — restoring a pre-publish checkpoint does
+not unpublish, and restoring a post-publish checkpoint does not resurrect a
+cancelled publication. The pinned `chapterVersionId` always resolves because
+chapter versions are never deleted (Invariant 4).
 
 Outside scope, each with its own authorized workflow (ADR-0013 §5, §7):
 

@@ -1538,3 +1538,60 @@ Deviations: GAP-038 (IMPOSSIBLE_PREREQUISITE self-establishment —
 fixed), GAP-039 (SCALE never FAILs — open follow-up), plus the
 author-decided setStatus behavior change (documented in
 ISSUES-AND-GAPS.md, not a deviation).
+
+## NF-WF-012 publication release contract — 2026-10-05
+
+Implementer actor separate from contract author/reviewer. Backend
+MODEL_UNVERIFIED per GAP-013. Scratch DBs only
+(`novelforge_test_publication`, `novelforge_test_publication_worker`,
+`novelforge_test_012_backfill`).
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/publication.test.ts` (apps/api) | **17/17** |
+| `npx vitest run src/publication-jobs.test.ts` (apps/worker) | **11/11** |
+| `./packages/database/test-backfill-012.sh` | **8/8** |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api, apps/worker, packages/workflow-executor, packages/story-versioning, packages/database) | Exit 0 |
+| Full API suite (`npx vitest run`, apps/api) | First run 545/547: the 2 failures were `state-consumers.test.ts` cases asserting 010's pre-012 IN_REVIEW→PUBLISHED-ungated behavior, which NF-WF-012 deliberately supersedes (GAP-045). Cases updated to the new gated behavior (32/32 green); full-suite re-run **547/547** (26 files) |
+| `pnpm e2e` (011 loop no-regression) | **20/20** (3 files), `BASELINE-OK: no >2x regression vs committed baseline` |
+
+`publication.test.ts` coverage: publish 200 + PUBLISHED pin + novel
+DRAFT→ACTIVE; 401/404/403 negatives; no receipt → 409 REVIEW_STALE;
+FAIL receipt → 409 HARD_POLICY_VIOLATION; Invariant 3 gate on both
+DRAFT→PUBLISHED and IN_REVIEW→PUBLISHED; re-publish → 409
+ALREADY_PUBLISHED; unpublish flip (chapter IN_REVIEW, visibility fails,
+editing reopens); re-publish replaces the pin; schedule 201 + delayed
+job + no receipt required; 400 past/unparseable `scheduledFor`; reschedule
+replaces time + old job; cancel removes the job; 409 ALREADY_PUBLISHED on
+schedule of published; 409 NOT_SCHEDULED on cancel of non-scheduled;
+archive (public 404, schedules cancelled, member routes unchanged) +
+unarchive; archive capability `novel:archive`; pin immutability (public
+resolution serves the pinned version after a new version saves);
+archived/draft novels expose nothing; restore of a post-publish
+checkpoint does not resurrect a cancelled publication (Invariant 8).
+
+`publication-jobs.test.ts` coverage: fire success (row PUBLISHED,
+chapter PUBLISHED, novel ACTIVE, audit); fire pins the fire-time version;
+fire refusal on unreviewed new version (REVIEW_STALE) and FAIL receipt
+(HARD_POLICY_VIOLATION) → UNPUBLISHED + `publication.unpublished` audit
+with `lapsedSchedule`; noop on non-SCHEDULED / not-yet-due rows;
+well-formed revision chain (parent link, monotonic number, branch head,
+Chapter:UPDATE + Publication:UPDATE items — GAP-047 mitigation);
+reconciliation re-enqueues missing jobs (delay 0 if due, remaining delay
+if future), removes retained failed jobs before re-enqueueing (P2-6),
+leaves delayed/waiting/active/completed jobs alone; worker app degrades
+gracefully without Redis and rejects malformed job data.
+
+Backfill test coverage: pre-012 PUBLISHED chapter (007-page legacy) gets
+exactly one PUBLISHED row pinning `current_version_id` + main-branch head
+revision + `published_at`; DRAFT chapters untouched; the 012 migration SQL
+re-applies cleanly with no new rows (the UNIQUE backing index raises
+`duplicate_table`, not `duplicate_object` — caught by this test and
+fixed in the migration).
+
+No PUBLISHED→PUBLISHED transition exists (manuscript immutability guard).
+No AI paths in 012 (GAP-028 inapplicable — deterministic rules only).
+Deviations: GAP-045 (010 gate extension), GAP-046 (007 novel page
+follow-up), GAP-047 (worker-local `advanceHeadLow`), GAP-048
+(`tables: […, "novels"]` unimplementable — novels outside restore scope).

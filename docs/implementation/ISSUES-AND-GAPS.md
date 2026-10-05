@@ -754,6 +754,19 @@ applied deploy converges on retry (GAP-018). Documented in the migration
 file's header. Future migrations introducing a PG enum must use the DO
 block, not `IF NOT EXISTS`.
 
+REFINEMENT (NF-WF-012, 2026-10-05): catching only `duplicate_object` is
+NOT enough for `ALTER TABLE ... ADD CONSTRAINT`. The 012 migration's
+re-apply test (`packages/database/test-backfill-012.sh`) found that a
+UNIQUE constraint's backing index raises SQLSTATE 42P07
+(`duplicate_table` — `relation "publications_chapter_id_key" already
+exists`), which `EXCEPTION WHEN duplicate_object` does NOT catch; the
+re-apply died half-applied. Fix (applied in the 012 migration, verified
+by the re-apply test): `EXCEPTION WHEN duplicate_object OR
+duplicate_table THEN null;` on every ADD CONSTRAINT DO-block. FK
+constraints raise 42710 (`duplicate_object`); UNIQUE/PKEY backing
+indexes raise 42P07 (`duplicate_table`). Future migrations must catch
+both.
+
 ## GAP-031 — NF-WF-006 contract's condition-path field charset vs its own findings-schema (2026-10-05)
 
 Status: RESOLVED (deviation applied during NF-WF-006 implementation; for the
@@ -1196,3 +1209,91 @@ and the 409-losers's did not, keyed by actual status codes rather than
 array position), or serialize the two PUTs. Owner: whoever touches the
 writer-UI tests next; not NF-WF-011 scope (no product code is wrong —
 the 200/409/no-clobber behavior itself held in every run).
+
+## GAP-045 — NF-WF-012 deliberately supersedes NF-WF-010's IN_REVIEW→PUBLISHED carve-out (2026-10-05)
+
+OBSERVED during NF-WF-012 contract authoring: the 010 contract explicitly
+carved the IN_REVIEW→PUBLISHED transition out of the final-text-review
+gate ("IN_REVIEW→PUBLISHED and the PUBLISHED→IN_REVIEW 'unpublish' path
+keep their pre-010 behavior", `apps/api/src/services/manuscript.ts:404-406`).
+That carve-out leaves a hole 012 cannot accept: an author can save a NEW
+(unreviewed) chapter version while IN_REVIEW and publish it through the
+ungated IN_REVIEW→PUBLISHED path — the public would see text no review
+ever approved, contradicting "immutable public version" and constitution
+§11 ("Revalidate the final edited text; any later edit invalidates
+approvals/reviews tied to the previous version").
+
+DECISION (contract, not code yet): NF-WF-012 Invariant 3 extends the gate —
+any transition whose target is PUBLISHED (from DRAFT or IN_REVIEW)
+requires a PASS `FinalTextReview` receipt for the chapter's
+`currentVersionId`. PUBLISHED→IN_REVIEW stays ungated. This is an explicit,
+owned product behavior change by NF-WF-012, recorded here before any
+implementation, for the separate contract reviewer to scrutinize. The
+011 author-preview loop (step 6, DRAFT→PUBLISHED with a PASS receipt) is
+the no-regression guard. Not a workaround — no code changed; the frozen
+010 contract text is untouched (annotate, don't rewrite).
+
+## GAP-046 — Novel page still publishes via PATCH /status; no Publication row, no actionable 409s (2026-10-05)
+
+OBSERVED during NF-WF-012 implementation: the NF-WF-007 novel page's
+`publish()` calls `PATCH .../chapters/:id/status { status: "PUBLISHED" }`
+(`apps/web/app/pages/workspaces/[workspaceId]/novels/[novelId]/index.vue:385-406`).
+That route (manuscript.setStatus) does NOT create a Publication row, so a
+chapter "published" from the novel page has `chapters.status = PUBLISHED`
+but no release record — NF-WF-013's reader (which resolves Publication
+rows) will not see it. Additionally, the page's publish error handling
+branches only on 403 vs a generic `errors.publishFailed`; it does not
+surface 409 `REVIEW_STALE` / `HARD_POLICY_VIOLATION` with an actionable
+message ("revalidate the final text", constitution §11) — `ApiError.code`
+carries the envelope code, so the branch is possible, just not wired.
+
+DECISION: out of NF-WF-012 scope (the contract's Invariant 3 obligation is
+"verify ... or record a follow-up GAP"; the Allowed scope lists no web
+files). The new `POST .../publication/publish` route is the release path.
+NF-WF-013 (or a follow-up) should migrate the novel page's publish action
+to the new route and add the 409-code branches with en/id messages. The
+011 e2e loop also publishes via PATCH and stays green — it is an
+author-preview loop, not the release path. Not a workaround — no web code
+changed.
+
+## GAP-047 — Worker-local C3 head-advance duplicates advanceHead's LOW path (2026-10-05)
+
+OBSERVED during NF-WF-012 implementation: the publication fire transition
+runs in `apps/worker`, which must not import `apps/api/src`
+(workflow-jobs.ts module-boundary rule), but the fire is a covered
+mutation and C3 requires the head CAS. `advanceHead` /
+`advanceForMutation` live in `apps/api/src/services/revisions.ts` and
+cannot be shared without a package refactor. The worker therefore carries
+a minimal local `advanceHeadLow` (`apps/worker/src/publication-jobs.ts`)
+mirroring advanceHead's LOW path (branch lock → head CAS → revision →
+branch head update → change set → rebuild intents via
+`projectionsForTables`).
+
+RISK: any divergence between the two is a bug. Mitigations in place:
+the mirror is documented at the definition site; the
+`UNIQUE(branchId, number)` constraint turns a race into a deterministic
+conflict, never silent corruption; the fire path is idempotent and
+low-frequency; a test asserts the worker-produced revision chain shape
+(parent links, monotonic numbers, change-set items).
+
+NEXT: extract the head-advance into a shared package
+(e.g. `packages/story-versioning`) so both sides use one implementation.
+That refactor touches every C3 mutation's critical path and needs its
+own task + the full suite green — deliberately not done inside NF-WF-012.
+
+## GAP-048 — Contract's `tables: [..., "novels"]` pin unimplementable; novel flip rides the transaction unlisted (2026-10-05)
+
+OBSERVED during NF-WF-012 implementation: the contract pins
+`advanceForMutation` with `tables: ["publications"]` plus `["chapters"]` /
+`["novels"]` "where those rows change". But `novels` is deliberately
+outside restore scope (`apps/api/src/services/revisions.ts:161`: "restore
+rewinds story state, not identity") and `advanceHead` refuses uncovered
+tables with 409 — listing `"novels"` would throw on every publish/archive.
+
+DECISION (not a workaround — forced by a hard code constraint): the novel
+DRAFT→ACTIVE / ACTIVE→ARCHIVED flips run inside the same transaction and
+revision as the publication mutation, but `tables` lists only covered
+tables (`["publications"]`, plus `["chapters"]` where the chapter row
+changes). The contract's intent — one transaction, one revision, no extra
+snapshot — is preserved; restore semantics are unchanged (novel status was
+never restorable). Documented in the service header.

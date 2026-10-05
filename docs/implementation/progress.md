@@ -4567,3 +4567,34 @@ ceiling (see ISSUES-AND-GAPS.md).
 - GAP-044: pre-existing flaky race test in `writer-ui.test.ts` (see verification).
 
 **GAP-010:** partially closes (bounded fixture + measurements + thresholds established; 2,500-chapter load is NF-WF-023 scope).
+
+---
+
+## NF-WF-012 — Publication release contract and version-pinned lifecycle (2026-10-05)
+
+**Implementer:** separate actor from contract author and reviewer. Backend MODEL_UNVERIFIED per GAP-013. Working tree NOT committed — left for the separate diff reviewer.
+
+**Deliverables:**
+- `packages/database/prisma/schema.prisma`: `PublicationStatus` enum (SCHEDULED/PUBLISHED/UNPUBLISHED) + `Publication` model (one row per chapter via `@@unique([chapterId])`; `chapterVersionId`/`revisionId` onDelete Restrict; chapter/novel Cascade).
+- Migration `20261006_nf_wf_012_publications`: GAP-030 idempotent DO-blocks (incl. `duplicate_object OR duplicate_table` — the UNIQUE backing index raises 42P07, found by the re-apply test), backfill (`INSERT … WHERE NOT EXISTS`) pinning pre-existing PUBLISHED chapters to `current_version_id` + head revision + `published_at = chapters.updated_at`.
+- `apps/api/src/services/publication.ts` (new): `schedulePublication` / `publishChapter` / `unpublishChapter` / `cancelScheduledPublication` / `archiveNovel` / `unarchiveNovel` / `getPublicationStatus` + 013 handoff shapes `isPubliclyVisible` / `resolvePublicChapter` (no-oracle 404; earliest-created ACTIVE novel wins on slug collision).
+- `apps/api/src/services/publication-queue.ts` (new): BullMQ `publication` queue factory (jobId = publication id; remove-first on every enqueue path — rows are reused so a retained completed/failed job would make `add()` a silent no-op).
+- `apps/api/src/publication-routes.ts` (new): 7 routes (schedule 201 / reschedule / cancel-schedule / publish / unpublish / GET status / novel archive / unarchive). Capabilities from the real vocabulary: schedule/publish/cancel = `chapter:publish`, unpublish = `chapter:update`, archive/unarchive = `novel:archive` (first consumer).
+- `services/policy-errors.ts`: `PublicationError` (ALREADY_PUBLISHED / NOT_SCHEDULED / NOVEL_ARCHIVED) → 409 `{error: CODE}`; `manuscript.ts` gate extended to IN_REVIEW→PUBLISHED per GAP-045 (supersedes 010's carve-out); shared `assertPublishReviewGate` exported for the publication service.
+- `packages/workflow-executor/ports.ts` + `index.ts`: `PUBLICATION_QUEUE_NAME`, `PUBLICATION_JOB_NAME`, `PublicationJobData` (shared API↔worker queue protocol).
+- `apps/worker/src/publication-jobs.ts` (new): `fireScheduledPublication` (idempotent; deterministic refusal → UNPUBLISHED + audit, job succeeds; transient → throws, row stays SCHEDULED), `reconcileScheduledPublications` (scans ALL SCHEDULED rows; missing/failed → remove-first then re-enqueue with remaining delay; delayed/waiting/active/completed → leave), `startPublicationWorkerApp` (owns the single startup pass; degrades gracefully without Redis).
+- `services/revisions.ts` TABLE_SCOPE += `publications`; `packages/story-versioning/snapshot.ts` COVERED_TABLES += `{ key: "publications", restoreTarget: false }` (Invariant 8); `impact.ts` maps `publications: "manuscript"`. `docs/03-domain/STORY-VERSIONING.md` covered set updated 31→36 tables (incl. pre-existing drift: `canon_applications`/`canon_application_items` from 008, `memory_projections` from 009, `final_text_reviews` from 010).
+
+**Verification (2026-10-05):**
+- `apps/api/src/publication.test.ts`: **17/17** (publish + auth negatives + Invariant-3 both paths + re-publish pin replace + unpublish flip + schedule/cancel/reschedule + 400/409 codes + archive/unarchive + visibility/pinning + restore Invariant 8).
+- `apps/worker/src/publication-jobs.test.ts`: **11/11** (fire success/refused/noop, fire-time pin, revision-chain shape, reconciliation matrix incl. failed-job remove-first, startup wiring + Redis-unavailable degradation).
+- `packages/database/test-backfill-012.sh`: **8/8** (pre-012 PUBLISHED chapter pinned to current_version_id + head revision + published_at; DRAFT untouched; migration re-apply converges).
+- `pnpm lint`: clean. Typechecks clean: apps/api, apps/worker, packages/workflow-executor, packages/story-versioning, packages/database.
+- Full API suite: first run **545/547** — the 2 failures were the two `state-consumers.test.ts` cases asserting 010's pre-012 behavior (IN_REVIEW→PUBLISHED ungated). NF-WF-012 deliberately supersedes this (GAP-045, reviewer-judged legitimate); the two cases were updated to assert the new gated behavior and now pass 32/32. Full-suite re-run **547/547 green** (26 files).
+- `pnpm e2e`: **20/20 green** (3 files), incl. `BASELINE-OK: no >2x regression vs committed baseline` — 011 no-regression confirmed with 012 in the tree.
+
+**Deviations (recorded BEFORE workarounds):**
+- GAP-045: 010's `setStatus` gate extended to IN_REVIEW→PUBLISHED (frozen 010 contract untouched; judged legitimate by the 012 reviewer).
+- GAP-046: 007 novel page publishes via PATCH with no Publication row and no actionable 409 handling for IN_REVIEW-source refusals — follow-up; 013 migrates the page to the new route.
+- GAP-047: worker cannot import `apps/api` (module boundary); worker carries a minimal `advanceHeadLow` mirroring `advanceHead`'s LOW path. Proposes shared-package extraction as follow-up. Fire remains idempotent via UNIQUE(branchId, number).
+- GAP-048: contract's `tables: […, "novels"]` restore listing is unimplementable — `novels` is deliberately outside restore scope; novel flips ride the same transaction/revision but stay unlisted.

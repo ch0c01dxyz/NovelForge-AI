@@ -219,6 +219,10 @@ const TABLE_SCOPE: Readonly<Record<string, string>> = {
   // so restore sees them, but rebuildable (a re-review regenerates any
   // receipt).
   final_text_reviews: `"novel_id" = $1`,
+  // NF-WF-012: publication release records. Covered so the head CAS
+  // accepts them; restoreTarget: false (above) means restores never
+  // rewind publication (Invariant 8).
+  publications: `"novel_id" = $1`,
 };
 
 /**

@@ -707,7 +707,7 @@ describe("reviewFinalText + setStatus gate", () => {
     expect(count).toBe(1);
   });
 
-  it("the gate applies ONLY to transitions out of DRAFT — IN_REVIEW→PUBLISHED keeps pre-010 behavior (Invariant 4)", async () => {
+  it("the gate now also covers IN_REVIEW→PUBLISHED — new version without receipt is gated (NF-WF-012, GAP-045)", async () => {
     const owner = await seedUser("rev9@t.io");
     const ids = await seedNovel(owner.userId, "rev9");
     const ch = await mkChapter({ userId: owner.userId, ...ids }, "Ch 1");
@@ -720,15 +720,16 @@ describe("reviewFinalText + setStatus gate", () => {
     expect(v1.body.verdict).toBe("PASS");
     const toReview = await setStatus(owner.cookie, ids, ch.chapterId, "IN_REVIEW");
     expect(toReview.status).toBe(200);
-    // New version after review → no receipt for the current version. The
-    // chapter is no longer in DRAFT, so IN_REVIEW→PUBLISHED is NOT gated
-    // (pre-010 behavior) — it must succeed.
+    // New version after review → no receipt for the current version.
+    // NF-WF-012 (GAP-045) extends the gate to IN_REVIEW→PUBLISHED, so it
+    // must now refuse.
     await manuscript.saveChapter({ ...S({ ...ids, userId: owner.userId }), chapterId: ch.chapterId, content: "revised prose", note: undefined, expectedVersion: 1 });
     const publish = await setStatus(owner.cookie, ids, ch.chapterId, "PUBLISHED");
-    expect(publish.status).toBe(200);
+    expect(publish.status).toBe(409);
+    expect(publish.body.error).toBe("REVIEW_STALE");
   });
 
-  it("IN_REVIEW→PUBLISHED is ungated even with a FAIL receipt for the current version (pre-010 behavior)", async () => {
+  it("IN_REVIEW→PUBLISHED is gated on a FAIL receipt for the current version (NF-WF-012, GAP-045)", async () => {
     const owner = await seedUser("rev10@t.io");
     const ids = await seedNovel(owner.userId, "rev10");
     const ch = await mkChapter({ userId: owner.userId, ...ids }, "Ch 1");
@@ -745,12 +746,15 @@ describe("reviewFinalText + setStatus gate", () => {
       where: { chapterVersionId: ch.versionId },
       data: { verdict: "FAIL", hardViolations: [{ rule: "COOLDOWN_VIOLATION" }] },
     });
-    // The chapter is not in DRAFT: the unpublish path and re-publish keep
-    // their pre-010 behavior — both ungated despite the FAIL receipt.
+    // The chapter is not in DRAFT: the unpublish path keeps its pre-010
+    // behavior (PUBLISHED→IN_REVIEW is ungated), but NF-WF-012 (GAP-045)
+    // extends the gate to IN_REVIEW→PUBLISHED — the re-publish must now
+    // refuse on the FAIL receipt.
     const unpub = await setStatus(owner.cookie, ids, ch.chapterId, "IN_REVIEW");
     expect(unpub.status).toBe(200);
     const repub = await setStatus(owner.cookie, ids, ch.chapterId, "PUBLISHED");
-    expect(repub.status).toBe(200);
+    expect(repub.status).toBe(409);
+    expect(repub.body.error).toBe("HARD_POLICY_VIOLATION");
   });
 });
 

@@ -44,6 +44,9 @@ import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
 import { createWorkflowQueue, type WorkflowQueue } from "./services/workflow-queue.ts";
+import { createPublicationQueue, type PublicationQueue } from "./services/publication-queue.ts";
+import { createPublicationServices } from "./services/publication.ts";
+import { registerPublicationRoutes } from "./publication-routes.ts";
 import { createMemoryQueue, type MemoryQueue } from "./services/memory-queue.ts";
 import { createMemoryServices } from "./services/memory.ts";
 import { registerMemoryRoutes } from "./memory-routes.ts";
@@ -127,6 +130,13 @@ export interface BuildAppOptions {
    */
   memoryQueue?: MemoryQueue;
   workflowQueue?: WorkflowQueue;
+  /**
+   * Queue seam for the publication routes. Tests supply a fake so no test
+   * needs a live BullMQ exchange; the handler is covered in the worker
+   * suite against real Redis. Production omits this and the shared
+   * `publication` queue is constructed.
+   */
+  publicationQueue?: PublicationQueue;
 }
 
 export async function buildApp(
@@ -177,19 +187,47 @@ export async function buildApp(
         audit: createAuditService(options.db),
       }),
     });
-    registerManuscriptRoutes(app, {
-      auth,
-      services: createManuscriptServices(options.db, createAuditService(options.db), {
+    const manuscriptServices = createManuscriptServices(
+      options.db,
+      createAuditService(options.db),
+      {
         // A chapter delete blocked by a canon citation is a rejected write,
         // not a server fault; the constraint name it cannot carry is logged.
         error: (message, meta) => app.log.error(meta, message),
-      }),
+      },
+    );
+    registerManuscriptRoutes(app, {
+      auth,
+      services: manuscriptServices,
     });
+    // NF-WF-012: the one shared `publication` queue. Schedule/reschedule
+    // enqueue a delayed fire-job (jobId = publication id); cancel removes
+    // it; the worker executes and reconciles. Tests may inject a fake;
+    // only a queue we created is closed here.
+    const ownPublicationQueue = options.publicationQueue === undefined;
+    const publicationQueue =
+      options.publicationQueue ?? createPublicationQueue(env.REDIS_URL);
+    if (ownPublicationQueue) {
+      app.addHook("onClose", async () => {
+        await publicationQueue.close();
+      });
+    }
     // One audit + one AI services instance shared by the AI routes and the
     // workflow executor: a workflow step must reach a model through the
     // same generation path as a direct request (CLAUDE.md §18), so the
     // executor is given `aiServices.generate` rather than its own client.
     const audit = createAuditService(options.db);
+    // NF-WF-012: publication release routes. Registered after `audit`
+    // exists so the service can share the one audit instance.
+    registerPublicationRoutes(app, {
+      auth,
+      services: createPublicationServices({
+        db: options.db,
+        audit,
+        queue: publicationQueue,
+        manuscripts: manuscriptServices,
+      }),
+    });
     const aiServices = createAiServices({
       db: options.db,
       registry: createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY),

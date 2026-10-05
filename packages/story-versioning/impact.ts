@@ -184,6 +184,11 @@ const TABLE_PROJECTION: Readonly<Record<string, Projection>> = {
   // narrative family is the closest — receipts are produced by the
   // narrative-policy consumer, not by story-intelligence derivation.
   final_text_reviews: "narrative",
+  // NF-WF-012: publications are release records, not derived state —
+  // nothing rebuilds from them. C6 still requires exactly one projection;
+  // the manuscript family is the closest (the chapter lifecycle), matching
+  // chapters/chapter_versions.
+  publications: "manuscript",
 };
 
 /** The projection a covered table belongs to. Unknown tables have none. */

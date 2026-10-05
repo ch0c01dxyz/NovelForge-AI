@@ -23,7 +23,7 @@ import { HeadConflictError } from "./services/context-compiler.ts";
 import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 import { CanonApplicationError } from "./services/canon-applications.ts";
 import { MemoryError } from "./services/memory.ts";
-import { PolicyError } from "./services/policy-errors.ts";
+import { PolicyError, PublicationError } from "./services/policy-errors.ts";
 
 const slug = z
   .string()
@@ -116,6 +116,14 @@ export async function registerPlatformRoutes(
     // ConflictError branch below (which can only emit CONFLICT) — the
     // same position as CanonApplicationError/MemoryError.
     if (error instanceof PolicyError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-012: typed publication-lifecycle refusals (ALREADY_PUBLISHED,
+    // NOT_SCHEDULED, NOVEL_ARCHIVED) carry the machine-readable code as
+    // the envelope's error field. Checked BEFORE the generic ConflictError
+    // branch below (which can only emit CONFLICT) — the same position as
+    // PolicyError/CanonApplicationError/MemoryError.
+    if (error instanceof PublicationError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
     if (error instanceof ConflictError) {

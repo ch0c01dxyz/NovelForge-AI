@@ -127,6 +127,46 @@ function countWords(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
+/**
+ * NF-WF-012 (Invariant 3, GAP-045): the publish review gate as a shared
+ * helper. Any transition whose TARGET is PUBLISHED requires a PASS
+ * `FinalTextReview` receipt keyed to the chapter's current version —
+ * whether the source is DRAFT or IN_REVIEW. The receipt's verdict is the
+ * whole contract (the 010 precedent): no receipt → 409 REVIEW_STALE;
+ * FAIL verdict → 409 HARD_POLICY_VIOLATION.
+ *
+ * Used by `setStatus` (manuscript) and the publication service
+ * (`publishChapter`, fire-time check) so both paths enforce the same
+ * rule. Takes a live `db` or a transaction client — the publication
+ * service calls it inside its locked transaction.
+ */
+export async function assertPublishReviewGate(
+  db: PrismaClient,
+  currentVersionId: string,
+): Promise<void> {
+  const receipt = await db.finalTextReview.findUnique({
+    where: { chapterVersionId: currentVersionId },
+    select: { verdict: true, hardViolations: true },
+  });
+  if (!receipt) {
+    throw new PolicyError(
+      "REVIEW_STALE",
+      `chapter has no final-text review receipt for its current version — review it before publishing`,
+    );
+  }
+  if (receipt.verdict === "FAIL") {
+    const rules = Array.isArray(receipt.hardViolations)
+      ? (receipt.hardViolations as Array<{ rule?: unknown }>)
+          .map((v) => v.rule)
+          .filter((r): r is string => typeof r === "string")
+      : [];
+    throw new PolicyError(
+      "HARD_POLICY_VIOLATION",
+      `final-text review failed${rules.length > 0 ? `: ${rules.join(", ")}` : ""} — see the review receipt for evidence`,
+    );
+  }
+}
+
 export function createManuscriptServices(
   db: PrismaClient,
   audit?: AuditService,
@@ -395,55 +435,41 @@ export function createManuscriptServices(
       if (status === "PUBLISHED" && !chapter.currentVersion) {
         throw new ConflictError("cannot publish a chapter with no content");
       }
-      // NF-WF-010: the final-text review gate (Invariant 4). Any
-      // transition out of DRAFT requires a PASS receipt for the chapter's
-      // current version — the receipt is keyed by chapterVersionId, so a
-      // version mismatch (the author edited after review) reads as "no
-      // receipt for the current version" (constitution §11). This IS an
-      // explicit product behavior change owned by 010. Transitions that do
-      // NOT leave DRAFT are explicitly NOT gated (the setStatus contract
-      // is otherwise unchanged): IN_REVIEW→PUBLISHED and the
-      // PUBLISHED→IN_REVIEW "unpublish" path keep their pre-010 behavior.
-      // (The route only accepts IN_REVIEW|PUBLISHED as the target status,
-      // so "out of DRAFT" is exactly `chapter.status === "DRAFT"`.)
+      // NF-WF-010: the final-text review gate (Invariant 4), extended by
+      // NF-WF-012 (Invariant 3, GAP-045). Any transition OUT of DRAFT
+      // requires a PASS receipt for the chapter's current version — the
+      // receipt is keyed by chapterVersionId, so a version mismatch (the
+      // author edited after review) reads as "no receipt for the current
+      // version" (constitution §11). This IS an explicit product behavior
+      // change owned by 010.
+      //
+      // NF-WF-012 supersedes 010's carve-out for the PUBLISHED target
+      // only: any transition whose TARGET is PUBLISHED (from DRAFT or
+      // IN_REVIEW) requires the receipt. The carve-out left a hole — an
+      // author could save a NEW (unreviewed) version while IN_REVIEW and
+      // publish it through the ungated IN_REVIEW→PUBLISHED path, so the
+      // public would see text no review ever approved. The
+      // PUBLISHED→IN_REVIEW "unpublish" path stays ungated.
+      // (The route only accepts IN_REVIEW|PUBLISHED as the target status.)
       //
       // The gate reads the receipt directly (no service call): the
       // receipt's verdict is the whole contract here, and the typed
       // PolicyError carries the machine-readable code (mapped before the
       // generic ConflictError branch, like CanonApplicationError).
-      if (chapter.status === "DRAFT") {
+      if (chapter.status === "DRAFT" || status === "PUBLISHED") {
         if (chapter.currentVersionId) {
-          const receipt = await db.finalTextReview.findUnique({
-            where: { chapterVersionId: chapter.currentVersionId },
-            select: { verdict: true, hardViolations: true },
-          });
-          if (!receipt) {
-            throw new PolicyError(
-              "REVIEW_STALE",
-              `chapter has no final-text review receipt for its current version — review it before leaving DRAFT`,
-            );
-          }
-          if (receipt.verdict === "FAIL") {
-            const rules = Array.isArray(receipt.hardViolations)
-              ? (receipt.hardViolations as Array<{ rule?: unknown }>)
-                  .map((v) => v.rule)
-                  .filter((r): r is string => typeof r === "string")
-              : [];
-            throw new PolicyError(
-              "HARD_POLICY_VIOLATION",
-              `final-text review failed${rules.length > 0 ? `: ${rules.join(", ")}` : ""} — see the review receipt for evidence`,
-            );
-          }
+          await assertPublishReviewGate(db, chapter.currentVersionId);
         } else {
-          // No version at all: nothing to review. The PUBLISHED path is
-          // already refused above; IN_REVIEW of an empty chapter reads as
-          // a stale (missing) review rather than a silent pass.
+          // No version at all: nothing to review. The PUBLISHED target is
+          // already refused above ("cannot publish a chapter with no
+          // content"); IN_REVIEW of an empty chapter reads as a stale
+          // (missing) review rather than a silent pass.
           throw new PolicyError(
             "REVIEW_STALE",
             `chapter has no content version to review — save a version and review it before leaving DRAFT`,
           );
         }
-      } // end out-of-DRAFT gate
+      } // end review gate
       // A status change is a covered mutation like any other and takes the
       // head CAS (C3 LOW). `chapters.status` is deliberately NOT in the
       // snapshot payload (C7) — restore never rewinds publication — so the

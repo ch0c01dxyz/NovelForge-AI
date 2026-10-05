@@ -157,6 +157,37 @@ export interface DebugPort {
 export const WORKFLOW_QUEUE_NAME = "workflow-runs";
 
 /**
+ * NF-WF-012: the one BullMQ queue for scheduled publications. The API
+ * enqueues delayed fire-jobs (jobId = publication id); the worker
+ * executes them deterministically (no AI — GAP-028 does not block it).
+ * Defined here alongside WORKFLOW_QUEUE_NAME so the API and the worker
+ * share one source of truth (the NF-WF-012 contract pins the location).
+ */
+export const PUBLICATION_QUEUE_NAME = "publication";
+
+/**
+ * NF-WF-012: the BullMQ job name for a scheduled publication fire. The
+ * worker's processor handles every job on the publication queue; the
+ * name is informational (observability) — the jobId (= publication id)
+ * is the dedupe/cancellation key.
+ */
+export const PUBLICATION_JOB_NAME = "fire";
+
+/**
+ * NF-WF-012: the BullMQ job payload for a scheduled publication fire.
+ * The job executes a stored intent: authorization was checked at
+ * schedule time, so the worker does not re-authorize — the scheduler
+ * (publishedById, stored on the row) is recorded as the actor.
+ */
+export interface PublicationJobData {
+  publicationId: string;
+  novelId: string;
+  chapterId: string;
+  /** UTC ISO-8601 the schedule was created for. */
+  scheduledFor: string;
+}
+
+/**
  * Job defaults for the `workflow-runs` queue (NF-WF-004 invariant 1):
  * - `attempts: 1` — no BullMQ-level retry; recovery is the sweeper's job.
  * - `removeOnComplete: 1000` / `removeOnFail: 5000` — bounded Redis

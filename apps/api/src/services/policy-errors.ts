@@ -24,3 +24,27 @@ export class PolicyError extends Error {
     this.code = code;
   }
 }
+
+/**
+ * NF-WF-012: typed publication-lifecycle refusals.
+ *
+ * `PublicationError` follows the `PolicyError` precedent (NF-WF-010): a
+ * typed error carrying the machine-readable code, mapped by the platform
+ * error handler BEFORE the generic `ConflictError` branch (which can only
+ * emit `CONFLICT`). Lives in this leaf module (no service imports) so the
+ * publication service can throw it without import cycles.
+ */
+export type PublicationErrorCode =
+  | "ALREADY_PUBLISHED" // schedule/publish a chapter that already has a PUBLISHED publication
+  | "NOT_SCHEDULED" // cancel a schedule for a chapter with no SCHEDULED publication
+  | "NOVEL_ARCHIVED"; // schedule/publish on an ARCHIVED novel
+
+export class PublicationError extends Error {
+  readonly code: PublicationErrorCode;
+  readonly statusCode = 409 as const;
+  constructor(code: PublicationErrorCode, message: string) {
+    super(message);
+    this.name = "PublicationError";
+    this.code = code;
+  }
+}

@@ -5,15 +5,18 @@
  * orchestrator stop drains and closes queues/connections rather than killing
  * mid-job. Exit non-zero only on hard startup failure.
  *
- * Runs three workers side by side:
+ * Runs four workers side by side:
  * - the heartbeat worker (Redis connectivity proof, degrades gracefully);
  * - the `workflow-runs` worker (NF-WF-004: durable workflow execution).
  * - the `memory-rebuild` worker (NF-WF-009: structural memory rebuilds).
+ * - the `publication` worker (NF-WF-012: scheduled publication fires +
+ *   startup reconciliation of scheduled publications).
  */
 import { loadEnv } from "@novelforge/config";
 import { startWorkerApp, type WorkerLogger } from "./worker.ts";
 import { startWorkflowWorkerApp } from "./workflow-jobs.ts";
 import { startMemoryWorkerApp } from "./memory-jobs.ts";
+import { startPublicationWorkerApp } from "./publication-jobs.ts";
 
 const logger: WorkerLogger = {
   info: (msg, meta) => console.log(JSON.stringify({ level: "info", msg, ...meta })),
@@ -25,6 +28,7 @@ const env = loadEnv();
 const app = await startWorkerApp(env, logger);
 const workflows = await startWorkflowWorkerApp(env, logger);
 const memory = await startMemoryWorkerApp(env, logger);
+const publication = await startPublicationWorkerApp(env, logger);
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
@@ -32,6 +36,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   logger.info("shutdown signal received", { signal });
   try {
+    await publication.stop();
     await memory.stop();
     await workflows.stop();
     await app.stop();
@@ -50,4 +55,5 @@ logger.info("worker started", {
   proven: app.proven,
   workflowsStarted: workflows.started,
   memoryStarted: memory.started,
+  publicationStarted: publication.started,
 });

@@ -117,6 +117,14 @@ export const COVERED_TABLES: readonly CoveredTable[] = [
   // restore sees them; a re-review regenerates any receipt, so rollback
   // is always SAFE.
   { key: "final_text_reviews", restoreTarget: true },
+  // Publication release records (NF-WF-012, Invariant 8): the release
+  // lifecycle is not story state. restoreTarget: false — like chapters/
+  // chapter_versions, restores never delete or re-insert publication rows:
+  // restoring a pre-publish checkpoint does not unpublish, and restoring
+  // a post-publish checkpoint does not resurrect a cancelled publication.
+  // The pinned chapterVersionId always resolves because versions are
+  // never deleted (Invariant 4).
+  { key: "publications", restoreTarget: false },
 ] as const;
 
 /** Every covered table name, in FK-dependency order. */

@@ -311,6 +311,9 @@ importers:
       '@novelforge/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      '@novelforge/story-versioning':
+        specifier: workspace:*
+        version: link:../../packages/story-versioning
       '@novelforge/workflow-executor':
         specifier: workspace:*
         version: link:../../packages/workflow-executor

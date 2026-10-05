@@ -51,6 +51,8 @@ export interface ReviewModel {
   }>;
   /** The outline version id the run started from (run input outlineRef). */
   runOutlineRef: string | null;
+  /** The chapter number the run targeted (run input chapterNumber). */
+  chapterNumber: number | null;
 }
 
 export interface OutlineMovedInfo {
@@ -140,6 +142,7 @@ export function useChapterGeneration() {
     });
 
     const runOutlineRef = runInputValue(run, "outlineRef");
+    const runChapterNumber = runInputValue(run, "chapterNumber");
     return {
       runId: run.id,
       snapshot,
@@ -148,6 +151,7 @@ export function useChapterGeneration() {
       findings,
       proposals,
       runOutlineRef: typeof runOutlineRef === "string" ? runOutlineRef : null,
+      chapterNumber: typeof runChapterNumber === "number" ? runChapterNumber : null,
     };
   }
 

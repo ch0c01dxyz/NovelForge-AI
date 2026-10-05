@@ -73,6 +73,9 @@ export type Operation = (typeof OPERATIONS)[number];
 /** The HIGH set, spelled once. Everything else in `OPERATIONS` is LOW. */
 const HIGH_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "proposal.approve",
+  // NF-WF-008: batch canon application mints facts and supersedes, exactly
+  // like proposal.approve — HIGH by the same test.
+  "canon.application.approve",
   "outlineVersion.approve",
   "outline.supersede",
   "chapters.import",
@@ -142,6 +145,8 @@ const TABLE_PROJECTION: Readonly<Record<string, Projection>> = {
   canon_facts: "canon",
   canon_fact_sources: "canon",
   canon_proposals: "canon",
+  canon_applications: "canon",
+  canon_application_items: "canon",
   synopses: "planning",
   sagas: "planning",
   outline_nodes: "planning",

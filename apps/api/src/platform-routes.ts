@@ -21,6 +21,7 @@ import {
 import { InvalidDefinitionError } from "./services/definitions.ts";
 import { HeadConflictError } from "./services/context-compiler.ts";
 import { ApprovalDecisionError } from "./services/workflow-runs.ts";
+import { CanonApplicationError } from "./services/canon-applications.ts";
 
 const slug = z
   .string()
@@ -85,6 +86,20 @@ export async function registerPlatformRoutes(
       return reply.code(409).send({
         error: "CONFLICT",
         code: error.decisionCode,
+      });
+    }
+    // NF-WF-008: typed canon-application refusals carry the
+    // machine-readable application code as the envelope's error field,
+    // so the UI can branch on it via ApiError.code. Checked before the
+    // generic ConflictError branch below.
+    if (error instanceof CanonApplicationError) {
+      return reply.code(error.statusCode).send({
+        error: error.code,
+        // Only a head-expectation mismatch observed a head, and only that
+        // refusal gets the recovery field (C4, GAP-022).
+        ...(error.currentHeadRevisionId !== undefined
+          ? { currentHeadRevisionId: error.currentHeadRevisionId }
+          : {}),
       });
     }
     if (error instanceof ConflictError) {

@@ -4231,3 +4231,94 @@ became a read-only display; backend guarantees at most one APPROVED
 outline per novel); F3 (P3) `apps/web/package.json` trailing newline
 restored. Web tests re-run after the F1/F2 fixes: 41/41, lint clean,
 vue-tsc clean.
+
+## 2026-10-05 — NF-WF-008 implemented (contracted extraction and canonical proposal application)
+
+**Contract:** `tasks/NF-WF-008-canonical-proposal-application.md` at
+`8d28995` (reviewed CHANGES_REQUESTED; F1–F6 applied in text; Q1–Q6
+adjudicated; review record filled).
+
+**Implementation (implementer actor, separate from contract author and
+reviewer; backend MODEL_UNVERIFIED per GAP-013; NOT committed — working
+tree left for the diff reviewer).**
+
+Backend (`apps/api`):
+- New service `src/services/canon-applications.ts`: `createApplication`
+  (contracts claims, validates evidence spans against the draft step's
+  `prose` outcome, classifies vs live canon, pins the head; row born
+  `VALIDATED`), `getApplication` (review + audit trail),
+  `revalidateApplication` (`STALE → VALIDATED`), `approveApplication`
+  (advisory + locked-CAS head check, re-classify in-transaction,
+  supersede→insert→link→decide order, pre-minted ids,
+  `advanceForMutation` before writes, HIGH → PRE_MUTATION checkpoint +
+  snapshot + rebuild intents; locked-CAS `ConflictError` mapped to 409
+  `STALE_APPLICATION`), `rejectApplication`. Simulation runs refused
+  with 400 `SIMULATION_REFUSED` (`run.input.simulation === true`, no
+  schema change). `CanonApplicationError` carries machine codes served
+  as `{error: CODE}` via a dedicated branch in `platform-routes.ts`
+  (before the generic `ConflictError` branch).
+- 5 routes in `canon-routes.ts` (capabilities
+  `canon:read`/`canon:manage`/`canon:approve`).
+- Prisma: `CanonApplication` / `CanonApplicationItem` models + additive
+  idempotent migration
+  `20261005_nf_wf_008_canon_applications` (DO-block for `CREATE TYPE`,
+  GAP-030 convention).
+- F5 completed: both tables in `TABLE_SCOPE` (revisions.ts) AND
+  `COVERED_TABLES` (story-versioning `snapshot.ts`; the latter was
+  missed in the working tree and found by the new tests — GAP-035),
+  both mapped to the `canon` projection in `impact.ts`.
+
+UI (`apps/web`):
+- New `CanonApplicationReview.vue` dialog: per-claim contracting
+  (entity picker incl. inline-new, predicate, object, validFromChapter
+  defaulting to the run's chapterNumber per Q3), verdict chips,
+  CONFLICT side-by-side with the live fact + explicit confirmation
+  checkbox, impact preview (supersedes note), approve/reject with the
+  full decide-error mapping (STALE → revalidate affordance), applied
+  state with per-item fact links + audit note, banner state reflection.
+- `ProposalsPanel.vue` extended (Q6): the NF-WF-008 banner gains the
+  "Review for canon" entry point; no per-proposal promote action.
+- en/id locale keys (`canonReview.*`, `proposals.reviewForCanon`),
+  English fallback, raw English codes as the last-resort fallback.
+
+Tests:
+- `apps/api/src/canon-application.test.ts`: 15 API tests driving the
+  006 template via `workflow-test-driver.ts` (fake gateway, GAP-028;
+  deterministic prose ≥200 chars to satisfy the write contract):
+  evidence validation, UNSUPPORTED blocking, simulation refusal,
+  duplicate claimIndex, EXTRACTION_NOT_FOUND, forced conflict +
+  supersede windows, VALID_FROM_CHAPTER_REQUIRED, duplicate blocking,
+  stale→revalidate→approve, atomic rollback, audit trail, exact fact
+  source offsets, text/canon separation, capabilities + tenant
+  isolation, double-decide. 15/15.
+- `apps/web/app/components/generation/CanonApplicationReview.test.ts`:
+  7 component tests mocking at the `useApi` boundary: contracting
+  defaults, verdict chips, conflict confirmation gate, STALE→revalidate,
+  reject, review entry point present/absent. 7/7.
+- Full API suite: 462/462 (447 pre-existing + 15 new), no regressions.
+- Web suite: 48/48 (41 pre-existing + 7 new).
+- story-versioning: 17/17.
+- `pnpm lint` clean (2 pre-existing unused-var errors in
+  `canon-applications.ts` fixed: dead `resolveChapterVersionId`
+  duplicate + unused `runInput` destructure).
+- Typechecks: `@novelforge/api`, `@novelforge/database`,
+  `@novelforge/story-versioning` clean; `@novelforge/web` has 3
+  pre-existing errors in untouched files (`sign-in.vue`, `index.vue`)
+  — recorded, not widened.
+- `pnpm --filter @novelforge/web build` succeeds.
+
+Gaps recorded: GAP-035 (F5 half-registration, fixed), GAP-036 (VM
+service restart wiped PG/Redis; native reinstall), pre-existing web
+typecheck errors noted.
+
+**Independent diff review (2026-10-05): APPROVE_WITH_FINDINGS.** All 11
+invariants verified as pinned. Checks: API 462/462 (20 files, incl.
+untouched `canon.test.ts` — existing proposal flow unchanged), web
+48/48, story-versioning 17/17, lint clean, typechecks clean (3 web
+errors verified pre-existing in untouched `index.vue`/`sign-in.vue`),
+nuxt build succeeds. GAP-028 respected. Findings, all applied: F1 (P3)
+`STALE` documented in the contract as a detected-not-persisted logical
+state; F2 (P3) `"STALE"` removed from the UI verdict union; F3 (P3)
+`VALID_FROM_CHAPTER_REQUIRED` + `INLINE_ENTITY_KIND_MISMATCH` added to
+the contract's approve error table. Web tests re-run after fixes:
+48/48, lint clean.

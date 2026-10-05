@@ -538,7 +538,13 @@ async function publish() {
               :total="gen.review.value.draft.total"
             />
             <FindingsPanel :findings="gen.review.value.findings" />
-            <ProposalsPanel :proposals="gen.review.value.proposals" />
+            <ProposalsPanel
+              :proposals="gen.review.value.proposals"
+              :workspace-id="workspaceId"
+              :novel-id="novelId"
+              :run-id="gen.review.value.runId"
+              :chapter-number="gen.review.value.chapterNumber"
+            />
 
             <p
               v-if="decideMessage()"

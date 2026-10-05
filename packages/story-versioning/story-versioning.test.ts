@@ -34,8 +34,8 @@ import {
 } from "./impact.ts";
 
 describe("C1 coverage set", () => {
-  it("has exactly the 31 tables the contract names", () => {
-    expect(COVERED_TABLE_NAMES).toHaveLength(31);
+  it("has exactly the 33 tables the contract names", () => {
+    expect(COVERED_TABLE_NAMES).toHaveLength(33);
     // The exact membership, not a spot check: a table dropped from this list
     // would make validateSnapshotComplete accept a payload that omits it, and
     // restore would then delete every row of it.
@@ -45,6 +45,8 @@ describe("C1 coverage set", () => {
         "bond_members",
         "bond_transitions",
         "bonds",
+        "canon_application_items",
+        "canon_applications",
         "canon_fact_sources",
         "canon_facts",
         "canon_proposals",
@@ -102,6 +104,8 @@ describe("C1 coverage set", () => {
       ["canon_facts", "canon_fact_sources"],
       ["chapter_versions", "canon_fact_sources"],
       ["canon_facts", "canon_proposals"],
+      ["canon_applications", "canon_application_items"],
+      ["canon_facts", "canon_application_items"],
       ["chapters", "story_events"],
       ["story_events", "causal_edges"],
       ["characters", "character_arcs"],

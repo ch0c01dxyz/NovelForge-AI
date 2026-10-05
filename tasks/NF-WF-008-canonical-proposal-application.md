@@ -346,7 +346,7 @@ deliberate and pre-existing, not introduced here.
 | `POST /api/workspaces/:workspaceId/novels/:novelId/canon/applications` | `canon:manage` | `{ runId: uuid, extractStepKey?: string, items: [{ claimIndex: int>=0, entity: { id: uuid } \| { kind: STORY_ENTITY_KINDS, name: string(1–300) }, predicate: string(1–200), object: { entityId: uuid } \| { text: string(1–2000) }, validFromChapter?: int(0–100000)\|null }] }` | 201 `{ id, status: "VALIDATED", headRevisionId, items: [{ id, claimIndex, kind, text, entityId\|null, entityName, predicate, object, validFromChapter, evidence: [{ inputName, quote, start, end }], verdict, verdictReasons: string[], conflictsWith?: { factId, statement } }] }` | 400 `INVALID_INPUT`, `SIMULATION_REFUSED`; 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 404 `EXTRACTION_NOT_FOUND` |
 | `GET /api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId` | `canon:read` | — | 200 full review state: application + items (as above) + `impact` (per item: `supersedesFactId \| null`) + `textDecision` (the run's 005 outcome, context only) + `decidedBy`, `decidedAt` when decided | 401/403/404 `APPLICATION_NOT_FOUND` |
 | `POST /api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId/revalidate` | `canon:manage` | — | 200 `{ id, status: "VALIDATED", headRevisionId, items: [...] }` (fresh verdicts; status returns to VALIDATED from STALE) | 401/403/404; 409 `ALREADY_DECIDED` |
-| `POST /api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId/approve` | `canon:approve` | `{ itemIds: uuid[1..], confirmConflicts?: boolean, expectedHeadRevisionId?: uuid\|null }` | 200 `{ applicationId, status: "APPLIED", headRevisionId, appliedItems: [{ itemId, factId, entityId, supersededFactId \| null }], invalidatedScopes: uuid[] }` | 400 `INVALID_INPUT`; 401/403; 404; 409 `STALE_APPLICATION`, `ALREADY_DECIDED`, `UNSUPPORTED_ITEM_SELECTED`, `DUPLICATE_ITEM_SELECTED`, `CONFLICT_NOT_CONFIRMED` |
+| `POST /api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId/approve` | `canon:approve` | `{ itemIds: uuid[1..], confirmConflicts?: boolean, expectedHeadRevisionId?: uuid\|null }` | 200 `{ applicationId, status: "APPLIED", headRevisionId, appliedItems: [{ itemId, factId, entityId, supersededFactId \| null }], invalidatedScopes: uuid[] }` | 400 `INVALID_INPUT`; 401/403; 404; 409 `STALE_APPLICATION`, `ALREADY_DECIDED`, `UNSUPPORTED_ITEM_SELECTED`, `DUPLICATE_ITEM_SELECTED`, `CONFLICT_NOT_CONFIRMED`, `VALID_FROM_CHAPTER_REQUIRED` (CONFLICT item selected without `validFromChapter` — existing window rule), `INLINE_ENTITY_KIND_MISMATCH` (inline entity name collides with an existing entity of a different kind) |
 | `POST /api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId/reject` | `canon:approve` | `{ note?: string(≤2000) }` | 204 | 401/403/404; 409 `ALREADY_DECIDED` |
 
 Notes:
@@ -369,15 +369,18 @@ Notes:
   headRevisionId?, textDecision?, createdById, decidedById?,
   decidedAt?, createdAt }` (no `DRAFT` — creation runs validation
   synchronously and returns `VALIDATED` directly; no route ever
-  produces a draft state)
+  produces a draft state. `STALE` is a **detected-not-persisted**
+  logical state: the 409 `STALE_APPLICATION` is raised ephemerally at
+  approve time with no state change (Invariant 4); the enum retains
+  the value for forward compatibility, but no transition writes it.)
 - `CanonApplicationItem { id, applicationId, claimIndex, kind, text,
   entityId?, inlineEntityKind?, inlineEntityName?, predicate,
   objectEntityId?, objectText?, validFromChapter?,
   evidence: Json, verdict, verdictReasons: String[],
   conflictsWithFactId?, canonFactId?, createdAt }`
-- Status transitions: `VALIDATED → STALE` (head moved, detected at
-  approve or via revalidate); `STALE → VALIDATED` (via revalidate
-  only, with fresh verdicts); `VALIDATED → APPLIED` /
+- Status transitions (logical): `VALIDATED → STALE` (head moved,
+  detected at approve); `STALE → VALIDATED` (via revalidate, which
+  re-runs validation and persists `VALIDATED`); `VALIDATED → APPLIED` /
   `VALIDATED → REJECTED` (terminal). No other transitions.
 
 ### UI surface (thin; extends the NF-WF-007 page)
@@ -527,3 +530,19 @@ backend MODEL_UNVERIFIED per GAP-013. Contract SHA
   the 007 ProposalsPanel review area.
 - **Status after review**: contract DRAFT-frozen with findings
   applied; implementation may proceed. Reviewed 2026-10-05.
+- **Implementation diff review** (independent reviewer, HEAD
+  `8d28995`, 2026-10-05): **APPROVE_WITH_FINDINGS** — all 11
+  invariants verified as pinned (author-driven contracting, evidence
+  vs `prose`, conflicts + in-transaction re-check, stale basis +
+  revalidate, text/canon separation, atomic apply, audit trail,
+  simulation refusal, impact preview + invalidation intent, no scope
+  creep, server-side auth). Checks: API 462/462 (20 files, incl.
+  untouched `canon.test.ts`), web 48/48, story-versioning 17/17,
+  lint clean, typechecks clean (3 web errors verified pre-existing
+  in untouched files), nuxt build succeeds. GAP-028 respected (test
+  driver/fake gateway); GAP-035 (COVERED_TABLES) and GAP-036 (VM
+  reinstall) recorded before workarounds. Findings, all applied:
+  F1 (P3) `STALE` documented as detected-not-persisted logical state
+  in the data model; F2 (P3) `"STALE"` removed from the UI verdict
+  union; F3 (P3) `VALID_FROM_CHAPTER_REQUIRED` and
+  `INLINE_ENTITY_KIND_MISMATCH` added to the approve error table.

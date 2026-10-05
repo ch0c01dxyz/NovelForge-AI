@@ -20,6 +20,7 @@ import {
   STORY_ENTITY_KINDS,
   type CanonServices,
 } from "./services/canon.ts";
+import type { CanonApplicationServices } from "./services/canon-applications.ts";
 
 const uuid = z.string().uuid();
 const novelParams = z.object({ workspaceId: uuid, novelId: uuid });
@@ -110,6 +111,55 @@ const flagBody = z.object({
   reason: z.string().trim().max(2000).optional(),
 });
 
+// --- Contracted extraction applications (NF-WF-008) ---
+
+const applicationParams = z.object({
+  workspaceId: uuid,
+  novelId: uuid,
+  applicationId: uuid,
+});
+
+/**
+ * The author's contracting for one extract claim: binds the claim
+ * (identified by its index in the extract outcome's proposals[]) to
+ * (entity, predicate, object, validFromChapter). The entity is an existing
+ * id or an inline {kind, name} (created inside the apply transaction).
+ */
+const applicationItemBody = z.object({
+  claimIndex: z.number().int().min(0),
+  entity: z.union([
+    z.object({ id: uuid }),
+    z.object({
+      kind: z.enum(STORY_ENTITY_KINDS),
+      name: z.string().trim().min(1).max(300),
+    }),
+  ]),
+  predicate: z.string().trim().min(1).max(200),
+  object: z.union([
+    z.object({ entityId: uuid }),
+    z.object({ text: z.string().trim().min(1).max(2000) }),
+  ]),
+  validFromChapter: z.number().int().min(0).max(100_000).nullable().optional(),
+});
+
+const createApplicationBody = z.object({
+  runId: uuid,
+  extractStepKey: z.string().trim().min(1).max(64).optional(),
+  items: z.array(applicationItemBody).min(1),
+});
+
+const applicationApproveBody = z.object({
+  itemIds: z.array(uuid).min(1),
+  confirmConflicts: z.boolean().optional(),
+  /**
+   * The head the caller's plan was built against (C12.1 tri-state): omitted
+   * asserts nothing, `null` asserts "no head yet", a uuid compares.
+   * Advisory — the application's pinned head is authoritative inside the
+   * apply transaction.
+   */
+  expectedHeadRevisionId: uuid.nullable().optional(),
+});
+
 /**
  * Discriminated on `kind`. The four slice-2 kinds are ACCEPTED here and
  * answered with an explicit not-implemented marker — refusing them at the
@@ -142,6 +192,7 @@ const askQuery = z.object({
 export interface CanonRoutesOptions {
   auth: AuthService;
   services: CanonServices;
+  applications: CanonApplicationServices;
 }
 
 /**
@@ -163,7 +214,7 @@ export function checkModePair(
 
 export function registerCanonRoutes(
   app: FastifyInstance,
-  { auth, services }: CanonRoutesOptions,
+  { auth, services, applications }: CanonRoutesOptions,
 ): void {
   const requireActor = async (
     request: FastifyRequest,
@@ -405,6 +456,104 @@ export function registerCanonRoutes(
         workspaceId: params.data.workspaceId,
         proposalId: params.data.proposalId,
         ...body.data,
+      });
+      return reply.code(204).send();
+    },
+  );
+
+  // --- Contracted extraction applications (NF-WF-008) ---
+  //
+  // Novel-scoped, matching the rest of the canon router: the application
+  // service resolves tenant scope from the STORED row, so a cross-tenant id
+  // fails as a 404 exactly as a nonexistent one does. The pre-existing
+  // proposal approve/reject routes are workspace-scoped (ADR-0008 §6) — the
+  // asymmetry is deliberate and pre-existing, not introduced here.
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/applications",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = createApplicationBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const created = await applications.createApplication({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        ...body.data,
+      });
+      return reply.code(201).send(created);
+    },
+  );
+
+  app.get(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = applicationParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      return applications.getApplication({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        applicationId: params.data.applicationId,
+      });
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId/revalidate",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = applicationParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      return applications.revalidateApplication({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        applicationId: params.data.applicationId,
+      });
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId/approve",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = applicationParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = applicationApproveBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      return applications.approveApplication({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        applicationId: params.data.applicationId,
+        ...body.data,
+      });
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/applications/:applicationId/reject",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = applicationParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = rejectBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await applications.rejectApplication({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        applicationId: params.data.applicationId,
+        ...(body.data.note !== undefined ? { note: body.data.note } : {}),
       });
       return reply.code(204).send();
     },

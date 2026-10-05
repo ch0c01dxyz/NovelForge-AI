@@ -20,6 +20,7 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 | NF-WF-005 | **IMPLEMENTED + PUSHED 2026-10-05** (contract APPROVE round 3; independent diff review APPROVE, no findings; 15 API + 4 executor + 2 auth tests new/green, full API 423/423, lint + all typechecks clean; migration verified from-empty/re-apply/drift-clean; GAP-003 closed with acceptance evidence; GAP-030 recorded) | Done |
 | NF-WF-006 | **IMPLEMENTED + PUSHED 2026-10-05** (contract APPROVE_WITH_FINDINGS round 2, round-2 P3s applied; independent diff review CHANGES_REQUESTED on F1 (input charset+binding) → fixed (GAP-033) + focused re-review APPROVE; full API 436/436, validation 61/61, executor 20/20, template 9/9, lint + typechecks clean; GAP-031/032/033 recorded) | Done |
 | NF-WF-007 | **IMPLEMENTED + REVIEWED 2026-10-05** (contract APPROVE_WITH_FINDINGS; independent diff review APPROVE_WITH_FINDINGS, F1–F3 applied: dead `pollRun` pruned, outline start restricted to APPROVED only per author decision, newline restored; web 41/41, API 447/447, lint + vue-tsc + nuxt build clean; GAP-034 open for the server-side runs filter follow-up; no backend changes) | Done |
+| NF-WF-008 | **IMPLEMENTED + REVIEWED 2026-10-05** (contract `8d28995` reviewed CHANGES_REQUESTED, F1–F6 applied; independent diff review APPROVE_WITH_FINDINGS, F1–F3 applied: STALE documented as detected-not-persisted, verdict union fixed, error table completed; API 462/462, web 48/48, story-versioning 17/17, lint clean, nuxt build succeeds; GAP-035/GAP-036 recorded) | Done |
 
 Current sequence: [DELIVERY-PLAN](../implementation/DELIVERY-PLAN.md).
 Current assignment policy (author, 2026-10-05): model-neutral. Use the model
@@ -267,9 +268,10 @@ matched no phase in this repo's roadmap — it came from a different
 numbering scheme — and has been corrected. Reader-facing access is tracked
 under Phase 13/M4–M5 below; its runtime gap remains open.
 
-LLM fact extraction remains open (NF-WF-008), with final-artifact, proposal,
-revision and approval dependencies. The orchestrator alone does not establish
-a safe automatic canonical application/consolidation path.
+Contracted extraction application is implemented (NF-WF-008, pending
+separate diff review): the 006 template's extraction feeds a
+contract-then-validate-then-approve canon application flow with
+deterministic evidence validation, head pinning, and atomic apply.
 
 ## Known gaps carried forward
 

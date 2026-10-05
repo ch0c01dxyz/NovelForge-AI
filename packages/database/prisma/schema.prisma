@@ -68,6 +68,8 @@ model User {
   createdFactSources  CanonFactSource[] @relation("CanonFactSourceCreator")
   proposedCanon       CanonProposal[]  @relation("CanonProposalAuthor")
   decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
+  createdApplications CanonApplication[] @relation("CanonApplicationCreator")
+  decidedApplications CanonApplication[] @relation("CanonApplicationDecider")
   decidedApprovals    WorkflowApprovalDecision[] @relation("WorkflowApprovalDecider")
   storyEvents         StoryEvent[]     @relation("StoryEventCreator")
   timelineEvents      TimelineEvent[]  @relation("TimelineEventCreator")
@@ -118,6 +120,7 @@ model Workspace {
   retrievals   RetrievalAudit[]
   canonFacts   CanonFact[]
   proposals    CanonProposal[]
+  canonApplications CanonApplication[]
   storyEvents  StoryEvent[]
   timelineEvents TimelineEvent[]
   storyThreads StoryThread[]
@@ -173,6 +176,7 @@ model Novel {
   entities    StoryEntity[]
   canonFacts  CanonFact[]
   proposals   CanonProposal[]
+  applications CanonApplication[]
   synopses    Synopsis[]
   sagas       Saga[]
   outlineNodes OutlineNode[]
@@ -1215,6 +1219,8 @@ model StoryEntity {
   objectOf    CanonFact[]     @relation("CanonFactObjectEntity")
   proposals   CanonProposal[]
   proposedObjectOf CanonProposal[] @relation("CanonProposalObjectEntity")
+  applicationItems CanonApplicationItem[]
+  applicationObjectOf CanonApplicationItem[] @relation("CanonApplicationItemObjectEntity")
   characters  Character[]     @relation("CharacterStoryEntity")
 
   @@unique([novelId, key])
@@ -1289,6 +1295,8 @@ model CanonFact {
   sources              CanonFactSource[]
   conflictsWith        CanonProposal[] @relation("CanonProposalConflict")
   approvedProposal     CanonProposal?  @relation("CanonProposalFact")
+  applicationConflicts CanonApplicationItem[] @relation("CanonApplicationItemConflict")
+  applicationItems     CanonApplicationItem[] @relation("CanonApplicationItemFact")
   knownBy              CharacterKnowledge[] @relation("KnowledgeOfFact")
 
   @@index([novelId, entityId, predicate])
@@ -1405,6 +1413,119 @@ model CanonProposal {
   @@index([proposedById])
   @@index([decidedById])
   @@map("canon_proposals")
+}
+
+/// Status of a contracted extraction application (NF-WF-008).
+///
+/// No DRAFT: creation runs validation synchronously and returns VALIDATED
+/// directly. STALE means the canon head moved after validation — revalidate
+/// (which re-runs evidence + conflict checks) returns it to VALIDATED.
+enum CanonApplicationStatus {
+  VALIDATED
+  STALE
+  APPLIED
+  REJECTED
+}
+
+/// Per-claim verdict inside a canon application (NF-WF-008).
+///
+/// APPLICABLE — evidence valid, no duplicate, no conflict.
+/// CONFLICT — a live fact for the same (entity, predicate) carries a
+///   different object; selectable only with explicit confirmation.
+/// DUPLICATE — identical to live canon; never selectable.
+/// UNSUPPORTED — zero resolvable citations; BLOCKED from approval, kept
+///   visible (never silently dropped).
+enum CanonApplicationItemVerdict {
+  APPLICABLE
+  CONFLICT
+  DUPLICATE
+  UNSUPPORTED
+}
+
+/// A batch of contracted claims derived from ONE extraction (one run's
+/// `extract` step outcome), moving toward canon through explicit,
+/// auditable gates (NF-WF-008).
+///
+/// This table is batch bookkeeping, not a second canon store: the facts
+/// themselves land in the existing `canon_facts` table. Rows are audit
+/// history and are never deleted (rollback refuses when APPLIED rows
+/// exist).
+model CanonApplication {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, as on CanonFact/CanonProposal.
+  workspaceId String @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId String @map("novel_id") @db.Uuid
+  novel   Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// The 006-template run whose `extract` step produced the proposals.
+  /// No FK: the run is immutable execution history, and the application
+  /// must survive definition housekeeping.
+  runId String @map("run_id") @db.Uuid
+  /// Step key of the extraction step (default "extract").
+  extractStepKey String @map("extract_step_key")
+  status CanonApplicationStatus @default(VALIDATED)
+  /// Canon head revision pinned at validation time (Invariant 4).
+  headRevisionId String? @map("head_revision_id") @db.Uuid
+  /// The run's NF-WF-005 text decision, read-only context (Invariant 5).
+  textDecision String? @map("text_decision")
+  createdById String @map("created_by_id") @db.Uuid
+  createdBy   User @relation("CanonApplicationCreator", fields: [createdById], references: [id])
+  decidedById String? @map("decided_by_id") @db.Uuid
+  decidedBy   User? @relation("CanonApplicationDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt DateTime? @map("decided_at")
+  /// Rejection note (optional; the decision is the point).
+  decisionNote String? @map("decision_note")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  items CanonApplicationItem[]
+
+  @@index([novelId, status])
+  @@index([workspaceId, status])
+  @@index([runId])
+  @@index([createdById])
+  @@map("canon_applications")
+}
+
+/// One contracted claim inside a CanonApplication (NF-WF-008).
+///
+/// `entityId` is set when the author bound an existing entity; the
+/// `inlineEntity*` pair when the author named a new one (created inside
+/// the apply transaction). `evidence` is JSON:
+/// `[{ inputName, quote, start, end }]` — the validated spans against the
+/// immutable extraction artifact.
+model CanonApplicationItem {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String @map("application_id") @db.Uuid
+  application CanonApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  /// Index into the extract outcome's `proposals[]` array.
+  claimIndex Int @map("claim_index")
+  kind String
+  text String
+  entityId String? @map("entity_id") @db.Uuid
+  entity StoryEntity? @relation(fields: [entityId], references: [id], onDelete: Restrict)
+  inlineEntityKind String? @map("inline_entity_kind")
+  inlineEntityName String? @map("inline_entity_name")
+  predicate String
+  objectEntityId String? @map("object_entity_id") @db.Uuid
+  objectEntity StoryEntity? @relation("CanonApplicationItemObjectEntity", fields: [objectEntityId], references: [id], onDelete: Restrict)
+  objectText String? @map("object_text")
+  validFromChapter Int? @map("valid_from_chapter")
+  evidence Json @default("[]")
+  verdict CanonApplicationItemVerdict
+  verdictReasons String[] @map("verdict_reasons")
+  conflictsWithFactId String? @map("conflicts_with_fact_id") @db.Uuid
+  conflictsWithFact CanonFact? @relation("CanonApplicationItemConflict", fields: [conflictsWithFactId], references: [id], onDelete: SetNull)
+  /// The fact minted by approval, if this item was applied.
+  canonFactId String? @unique @map("canon_fact_id") @db.Uuid
+  canonFact CanonFact? @relation("CanonApplicationItemFact", fields: [canonFactId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([applicationId, claimIndex])
+  @@index([applicationId])
+  @@index([entityId])
+  @@index([verdict])
+  @@map("canon_application_items")
 }
 
 // ==================== Planning (Phase 7, slice 1) ====================

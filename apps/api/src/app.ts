@@ -46,6 +46,7 @@ import { createWorkflowRunServices } from "./services/workflow-runs.ts";
 import { createWorkflowQueue, type WorkflowQueue } from "./services/workflow-queue.ts";
 import { createRetrievalServices } from "./services/retrieval.ts";
 import { createCanonServices } from "./services/canon.ts";
+import { createCanonApplicationServices } from "./services/canon-applications.ts";
 import { createOrchestratorServices } from "./services/orchestrator.ts";
 import { createGatewayRegistry } from "./ai-registry.ts";
 
@@ -217,7 +218,11 @@ export async function buildApp(
       // constraint name it cannot carry is logged here instead.
       dbg: { error: (message, meta) => app.log.error(meta, message) },
     });
-    registerCanonRoutes(app, { auth, services: canonServices });
+    const canonApplicationServices = createCanonApplicationServices({
+      db: options.db,
+      audit,
+    });
+    registerCanonRoutes(app, { auth, services: canonServices, applications: canonApplicationServices });
 
     // AI Orchestrator (milestone): the caller names an agent + instruction and
     // the orchestrator resolves definitions, compiles context, and runs the

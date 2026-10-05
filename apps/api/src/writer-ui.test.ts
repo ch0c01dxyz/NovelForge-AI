@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
 import { generateSessionToken, hashSessionToken } from "@novelforge/auth";
-import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
+import type { AIGateway, GatewayRecord, GenerateRequest } from "@novelforge/ai-core";
 import pg from "pg";
 import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
@@ -80,7 +80,7 @@ function fakeCreateGateway(_rec: GatewayRecord): AIGateway {
     async listModels() {
       return [{ modelId: "fake-writer", capabilities: ["chat"] }];
     },
-    async generate(req) {
+    async generate(req: GenerateRequest) {
       const system = typeof req.messages[0]?.content === "string" ? req.messages[0].content : "";
       let payload: unknown;
       if (system.includes("scene planner")) {

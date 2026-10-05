@@ -852,3 +852,57 @@ query filter (or an `input.<field>` filter) to the list-runs route, with
 the usual validation/test/review. The UI already isolates the filtering
 in one place (`GenerationPanel` chapterHistory computed), so adopting the
 server filter later is a small change.
+
+## GAP-035 — NF-WF-008 F5 registration missed `COVERED_TABLES` (found during implementer verification, 2026-10-05)
+
+Status: FIXED during NF-WF-008 implementation (implementer actor; backend MODEL_UNVERIFIED per GAP-013).
+
+OBSERVED: the working-tree NF-WF-008 implementation registered
+`canon_applications` / `canon_application_items` in `TABLE_SCOPE`
+(`apps/api/src/services/revisions.ts`) per contract F5, but NOT in
+`COVERED_TABLES` (`packages/story-versioning/snapshot.ts`) — and
+`advanceHead` gates on `isCoveredTable` (the `COVERED_TABLES` set), not
+on `TABLE_SCOPE`. Every `approveApplication` therefore failed with 409
+`{error:"CONFLICT"}` ("outside story restore scope:
+canon_applications"), surfacing only at apply time. Found by the
+implementer's new API tests (all 5 apply-path tests failed identically).
+
+FIX: added both tables to `COVERED_TABLES` (`restoreTarget: true`, like
+`canon_proposals`), mapped both to the `canon` projection in
+`TABLE_PROJECTION` (`packages/story-versioning/impact.ts`), and updated
+`story-versioning.test.ts` (31 → 33 tables + parent→child edges
+`canon_applications → canon_application_items`,
+`canon_facts → canon_application_items`). The restore/snapshot paths
+iterate the coverage set generically, so no further changes were needed.
+Verified: API 15/15 new tests pass, story-versioning 17/17, full API
+suite 462/462, lint clean.
+
+LESSON: F5-style "register in the revision scope" requirements must name
+BOTH registries (`TABLE_SCOPE` for scoping, `COVERED_TABLES` for the
+gate) — a contract that names only one invites exactly this half
+registration.
+
+## GAP-036 — VM service restart wiped PostgreSQL/Redis mid-task (environment obstacle, 2026-10-05)
+
+Status: WORKED AROUND (native reinstall; recorded per standing rule
+before any completion claim).
+
+OBSERVED: a service restart replaced the VM environment mid-task,
+removing the natively installed PostgreSQL 16 + pgvector and Redis.
+Reinstalled natively via apt (`postgresql-16`,
+`postgresql-16-pgvector`, `redis-server`); removed `mirror.cogentco.com`
+from apt sources again (it stalls `apt-get update`; kept `.bak`);
+removed a stale apt lock with no holder; started `pg_ctlcluster 16
+main`; ensured role/db `novelforge_test`; `redis-server --daemonize
+yes` → PONG. All test DBs remain scratch `novelforge_test_*` only, per
+policy. No Docker (project policy).
+
+## Note — pre-existing web typecheck errors (not NF-WF-008, 2026-10-05)
+
+`npx vue-tsc --noEmit` in `apps/web` reports 3 errors in files the
+NF-WF-008 working tree does not touch: `app/pages/sign-in.vue` (2) and
+`app/pages/index.vue` (1). All NF-WF-008 web files
+(`CanonApplicationReview.vue`, `ProposalsPanel.vue`,
+`useChapterGeneration.ts`, i18n) typecheck clean, and `pnpm
+--filter @novelforge/web build` succeeds. Left for the owning task;
+not widened here.

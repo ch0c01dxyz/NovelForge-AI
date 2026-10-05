@@ -1415,3 +1415,40 @@ backend changes; only the new writer-ui suite was run). Component-test
 accessibility assertions cover dialog focus semantics and roles;
 `prefers-reduced-motion` and full keyboard-only flows are verified by
 inspection, not automated emulation.
+
+## NF-WF-008 contracted extraction and canonical proposal application — 2026-10-05
+
+Uncommitted working tree on HEAD `8d28995`; contract
+`tasks/NF-WF-008-canonical-proposal-application.md` (reviewed
+CHANGES_REQUESTED; F1–F6 applied in text; Q1–Q6 adjudicated).
+Implementer actor separate from contract author and reviewer; backend
+MODEL_UNVERIFIED per GAP-013.
+Executed on this host (Ubuntu 24.04.5): PostgreSQL 16.15 + pgvector 0.6.0
+and Redis 7.0.15 running natively (reinstalled after a service restart
+wiped them — GAP-036), scratch `novelforge_test_*` databases only.
+GAP-028: no production AI path — the API suite drives the 006 template
+via `workflow-test-driver.ts` (fake gateway); component tests mock at
+the HTTP/`useApi` boundary.
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| New API tests | `npx vitest run src/canon-application.test.ts` (apps/api, dedicated `novelforge_test_canon_application` db) | 1 file, **15/15** |
+| New component tests | `npx vitest run app/components/generation/CanonApplicationReview.test.ts` (apps/web) | 1 file, **7/7** |
+| Full API suite | `npx vitest run` (apps/api) | 20 files, **462/462** (447 pre-existing + 15 new; no regressions) |
+| Full web suite | `npx vitest run` (apps/web) | 8 files, **48/48** (41 pre-existing + 7 new) |
+| story-versioning | `npx vitest run` (packages/story-versioning) | 1 file, **17/17** |
+| Lint | `pnpm lint` | exit 0 |
+| Typecheck api | `pnpm --filter @novelforge/api typecheck` | exit 0 |
+| Typecheck database | `pnpm --filter @novelforge/database typecheck` | exit 0 |
+| Typecheck story-versioning | `pnpm --filter @novelforge/story-versioning typecheck` | exit 0 |
+| Typecheck web | `pnpm --filter @novelforge/web typecheck` (vue-tsc) | 3 pre-existing errors in untouched files (`sign-in.vue`, `index.vue`); all NF-WF-008 files clean |
+| Build | `pnpm --filter @novelforge/web build` (nuxt build) | succeeds |
+
+Verification notes: the 15 API tests cover every acceptance checkbox
+(unsupported blocking, exact evidence offsets, forced conflict +
+supersede windows, duplicate blocking, stale→revalidate, atomic
+rollback, audit trail, simulation refusal, text/canon separation,
+capabilities + tenant isolation, double-decide). GAP-035 (F5
+half-registration in `COVERED_TABLES`) was found by these tests and
+fixed before the full-suite run. The locked-CAS `ConflictError` is
+mapped to 409 `STALE_APPLICATION` in the approve path.

@@ -4,12 +4,14 @@ import { ref, computed, watch, onUnmounted, nextTick } from "vue";
  * Proposals panel (NF-WF-007 output #5): extraction proposals as
  * Candidate Canon (Invariant 8).
  *
- * Each proposal renders with its citations[] under an explicit banner:
- * "Not canon. Applying proposals to canon is a separate step
- * (NF-WF-008)." This UI MUST NOT offer any "promote to canon" / "apply
- * proposal" action.
+ * Each proposal renders with its citations[] under an explicit banner.
+ * NF-WF-008 extends this panel: the banner gains the "Review for canon"
+ * entry point, which opens the CanonApplicationReview dialog — the only
+ * path from extraction to canon. This panel itself still offers no
+ * per-proposal "promote to canon" action.
  */
 import { useLocale } from "../../composables/useLocale";
+import CanonApplicationReview from "./CanonApplicationReview.vue";
 
 export interface Proposal {
   kind: string;
@@ -19,9 +21,16 @@ export interface Proposal {
 
 defineProps<{
   proposals: Proposal[];
+  /** NF-WF-008: when present, the banner offers the review entry point. */
+  workspaceId?: string;
+  novelId?: string;
+  runId?: string;
+  chapterNumber?: number | null;
 }>();
 
 const { t } = useLocale();
+const reviewOpen = ref(false);
+const applicationState = ref<"APPLIED" | "REJECTED" | null>(null);
 </script>
 
 <template>
@@ -32,12 +41,36 @@ const { t } = useLocale();
       {{ t("proposals.title") }}
     </h2>
 
-    <p
+    <div
       role="note"
       class="rounded-lg border border-nf-accent/40 bg-nf-accent/10 px-3 py-2 text-[12px] leading-relaxed text-nf-accent-hi"
     >
-      {{ t("proposals.banner") }}
-    </p>
+      <p>{{ t("proposals.banner") }}</p>
+      <p v-if="applicationState === 'APPLIED'" class="mt-1 font-medium">
+        {{ t("canonReview.status.APPLIED") }}
+      </p>
+      <p v-else-if="applicationState === 'REJECTED'" class="mt-1 font-medium">
+        {{ t("canonReview.status.REJECTED") }}
+      </p>
+      <button
+        v-if="workspaceId && novelId && runId && proposals.length"
+        class="mt-1.5 underline underline-offset-2 hover:text-nf-text focus-visible:nf-focus"
+        @click="reviewOpen = true"
+      >
+        {{ t("proposals.reviewForCanon") }}
+      </button>
+    </div>
+
+    <CanonApplicationReview
+      v-if="reviewOpen && workspaceId && novelId && runId"
+      :workspace-id="workspaceId"
+      :novel-id="novelId"
+      :run-id="runId"
+      :chapter-number="chapterNumber ?? null"
+      :proposals="proposals"
+      @close="reviewOpen = false"
+      @decided="applicationState = $event"
+    />
 
     <p v-if="!proposals.length" class="text-[12.5px] text-nf-text-faint">
       {{ t("proposals.none") }}

@@ -74,6 +74,11 @@ export const COVERED_TABLES: readonly CoveredTable[] = [
   { key: "chapter_versions", restoreTarget: false },
   { key: "canon_fact_sources", restoreTarget: true },
   { key: "canon_proposals", restoreTarget: true },
+  // Contracted extraction applications (NF-WF-008): the application and its
+  // items are canon-affecting state — an approval decision must be visible
+  // to story restore, exactly like canon_proposals.
+  { key: "canon_applications", restoreTarget: true },
+  { key: "canon_application_items", restoreTarget: true },
   // Story intelligence
   { key: "story_events", restoreTarget: true },
   { key: "causal_edges", restoreTarget: true },

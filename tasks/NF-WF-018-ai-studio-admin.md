@@ -7,7 +7,9 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: REVIEW_PENDING
+Status: IMPLEMENTED (2026-10-06: 018A/018B/018C all diff-reviewed and
+committed; children A: AI Studio, B: platform administration, C: usage,
+failure, and evaluation receipts)
 Milestone / capability IDs: M2 (platform half); delivery-plan NF-WF-018
 Implementer role / requested and resolved model: (separate actors per child;
 backend MODEL_UNVERIFIED per GAP-013)

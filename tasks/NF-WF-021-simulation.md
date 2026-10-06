@@ -120,16 +120,17 @@ re-application) and GAP-077 (container replacement) apply.
 ## Child split
 
 Per the delivery-plan multi-child rule (`:160`, the 017/018/019/020
-pattern), NF-WF-021 splits into three independently reviewable
+pattern), NF-WF-021 splits into four independently reviewable
 children. Each child has its own contract section below, its own
 implementer, its own diff review, and its own commit. Completion of
-NF-WF-021 requires all three.
+NF-WF-021 requires all four.
 
 | Child | Scope | Independent verifiability |
 |---|---|---|
 | **021A — Primitives and prerequisites** | The computational primitive vocabulary (SimulationRun, Scenario, Tick, SimulationEntity, SimulationEvent); the prerequisite checklist (branch, snapshot, canon pin, module activation); the run lifecycle API (create/configure/start/step/stop) | Verifiable without causality or civilization: create a run, advance ticks, inspect state; prerequisites enforced (missing branch → 400, etc.) |
 | **021B — Causal evidence and uncertainty as proposals** | CausalLink (why an event happened); the uncertainty mechanism (divergent outcomes become Proposal objects, not silent picks); integration with the CanonProposal pattern | Verifiable without civilization: force a divergent tick, assert a proposal is created (not auto-resolved); causal chains queryable |
 | **021C — Civilization validation scenario** | The end-to-end proof: settlement simulation with population/resources/infrastructure; the concrete scenario (policy decision → projected outcomes); validates 021A+021B in a real domain | Verifiable as a whole: run the civilization scenario, assert the outputs match the pinned expectations; the scenario exercises primitives, prerequisites, causality, and proposals |
+| **021D — Simulation Center UI** | The unified web UI for the simulation module: run list/create/detail + step controls (021A), causal chain visualization + proposal review/decide (021B), civilization guided walkthrough (021C). §15 design; en+id; axe zero | Verifiable via web tests: navigate Simulation Center, create run, step ticks, view causal chain, review/decide proposal, walk through irrigation scenario; axe zero violations |
 
 **Justification.** 021A is the foundation — it defines what a simulation
 *is* computationally and what it needs to run. Its review focus is the
@@ -516,6 +517,68 @@ civilization-specific tables, they must be additive and reviewed.)
 - [ ] UI: guided walkthrough; en+id; axe zero.
 - [ ] Determinism: re-running the scenario with the same seed produces
   identical ticks (byte-identical state JSON).
+
+## Child 021D — Simulation Center UI
+
+### Goal
+
+Build the unified web UI for the simulation module — the Simulation
+Center. This consolidates the UI scope deferred from 021A, 021B, and
+021C (GAP-085, GAP-087, 021B F1) into a single coherent surface
+following the foundational design (§15).
+
+### Scope (pinned)
+
+**021A surfaces:**
+- Run list (status filter, branch, scenario; pagination)
+- Create dialog (branch picker, scenario config: name, seed, tick limit)
+- Run detail (current tick, status badge, state inspector showing
+  entities and their attributes, step/pause/resume/abort controls)
+- Tick history (tick list with stateBefore/stateAfter diff view)
+
+**021B surfaces:**
+- Causal chain visualization (event → causes, recursive ancestry,
+  DIRECT/ENABLING/PREVENTING badges)
+- Proposal review (alternatives side-by-side with evidence,
+  confidence, rationale field; approve/reject with explicit choice —
+  no silent default)
+- Counterfactual panel (PREVENTING links for a selected event)
+
+**021C surfaces:**
+- Civilization guided walkthrough (setup → run → drought at tick 5 →
+  proposal at tick 10 → decision → outcomes at tick 20), with the
+  causal chain and population/food charts
+- The walkthrough drives the 021C `irrigation-scenario` domain
+  functions (or 021A/021B routes with the civilization scenario —
+  implementer chooses; document the choice)
+
+### Design, i18n, a11y
+
+- §15 foundational design (`docs/design/writer-workspace` +
+  `DESIGN-TOKENS.md`); no new design language
+- en+id parity: reuse the existing `simulation.*` i18n keys added by
+  021A/021B; add keys only for labels the backends did not cover
+  (document additions in the handoff)
+- axe zero violations (vitest-axe, same harness as 014/015/018)
+
+### Routes
+
+No new API routes — 021D consumes 021A's run lifecycle routes and
+021B's causal/proposal routes. If a route is missing for a UI need,
+the implementer records a GAP (do not add routes in 021D scope).
+
+### Acceptance — 021D
+
+- [ ] Run list/create/detail renders; create → configure → start →
+  step → pause/resume/abort all work from the UI (against 021A routes).
+- [ ] Causal chain visualization renders DIRECT/ENABLING/PREVENTING
+  links for a tick's events (against 021B routes).
+- [ ] Proposal review shows alternatives side-by-side; approve/reject
+  requires explicit choice; decided proposal resumes the run.
+- [ ] Civilization walkthrough completes setup → drought → proposal →
+  decision → outcomes with charts.
+- [ ] en+id parity for all new strings.
+- [ ] axe zero violations on all new pages/components.
 
 ## Acceptance and verification (parent)
 

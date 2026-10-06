@@ -138,6 +138,37 @@ describe("capability model", () => {
     expect(can("ADMIN", "workspace:delete")).toBe(false);
   });
 
+  // ---- NF-WF-021 simulation capabilities (Q7) ----
+  // Simulation is a distinct workspace-scoped domain: reusing
+  // revision:manage would grant simulation-runners the power to rewind
+  // story history. Explicit assertions, for the same reason as the canon
+  // block above.
+
+  it("simulation capabilities are workspace-scoped, never platform capabilities", () => {
+    for (const c of ["simulation:read", "simulation:manage"] as const) {
+      expect(PLATFORM_ONLY_CAPABILITIES.has(c)).toBe(false);
+      expect(canPlatform("SUPER_ADMIN", c)).toBe(false);
+    }
+  });
+
+  it("simulation:read is held by OWNER, ADMIN, AUTHOR and EDITOR — not VIEWER", () => {
+    expect(can("OWNER", "simulation:read")).toBe(true);
+    expect(can("ADMIN", "simulation:read")).toBe(true);
+    expect(can("AUTHOR", "simulation:read")).toBe(true);
+    // An editor is a continuity reviewer: they may inspect simulation
+    // outcomes, but running simulations is the author's act.
+    expect(can("EDITOR", "simulation:read")).toBe(true);
+    expect(can("VIEWER", "simulation:read")).toBe(false);
+  });
+
+  it("simulation:manage is held by OWNER, ADMIN and AUTHOR only", () => {
+    expect(can("OWNER", "simulation:manage")).toBe(true);
+    expect(can("ADMIN", "simulation:manage")).toBe(true);
+    expect(can("AUTHOR", "simulation:manage")).toBe(true);
+    expect(can("EDITOR", "simulation:manage")).toBe(false);
+    expect(can("VIEWER", "simulation:manage")).toBe(false);
+  });
+
   it("every role has at least novel:read; all mapped capabilities are valid", () => {
     for (const r of ROLES) {
       expect(ROLE_CAPABILITIES[r].has("novel:read")).toBe(true);

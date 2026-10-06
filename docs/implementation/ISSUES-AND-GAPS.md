@@ -1767,3 +1767,65 @@ IMPACT: the Recovery Center UI exists but is unreachable from the novel workspac
 NEXT ACTION: parent joint-wiring decision — whether 020B's commit (or a later wiring task) mounts the components into the novel workspace page, given all three children contribute Recovery Center surfaces and a joint wiring is cleaner than three separate mounts. No code change by the fix actor (per the F5 instruction: do NOT mount anything).
 
 STATUS: OPEN — recorded 2026-10-06 by the 020B fix actor (diff-review finding F5, P3).
+
+## GAP-084 — 021B implementer: `simulation:read`/`simulation:manage` capabilities added by 021B (021A not yet implemented) (2026-10-06)
+
+EVIDENCE: 021B implementer (2026-10-06): the NF-WF-021 contract Q7 (CONFIRMED by the contract reviewer) pins `simulation:read`/`simulation:manage` as warranted new capabilities with an explicit role mapping, and assigns their introduction to 021A ("Capabilities enforced (Q7)"). However, 021A is not implemented yet (no simulation tables, no capabilities in `authorization.ts`, verified by grep 2026-10-06). 021B's routes require authorization; leaving them unauthenticated or using `revision:*` would violate the contract (Q7 explicitly rejects reusing `revision:manage` as semantically wrong).
+
+IMPACT: 021B adds the two Q7-pinned capabilities to `packages/auth/authorization.ts` with the exact Q7 role mapping (OWNER/ADMIN/AUTHOR: both; EDITOR: read-only; VIEWER: neither). This is contract-authorized (Q7 CONFIRMED), not an invented capability. 021A's implementer/diff reviewer should confirm the addition matches 021A's expectations; no duplicate addition should occur.
+
+NEXT ACTION: 021A implementer verifies the capability definitions on integration; 021A diff reviewer confirms no conflict. If 021A was planned to define them differently, reconcile before 021A commits.
+
+STATUS: OPEN — recorded 2026-10-06 by the 021B implementer before the workaround (standing rule).
+
+## GAP-085 — 021C implementer: civilization walkthrough UI not built (deferred pending 021A Simulation Center) (2026-10-06)
+
+EVIDENCE: 021C implementer (2026-10-06): the NF-WF-021 contract §021C specifies "Web UI: Simulation Center: the civilization scenario as a guided walkthrough (setup → run → drought → proposal → decision → outcomes), with the causal chain and population/food charts. §15 design; en+id; axe." The 021C scenario logic (deterministic tick rules, causal links, proposal pause/resume) is implemented and tested in `packages/story-simulation/` (16/16 tests green), but no Vue walkthrough component was built.
+
+IMPACT: the 021C UI acceptance checkbox ("UI: guided walkthrough; en+id; axe zero") is NOT met. The scenario is validated as a domain fixture + test suite, not as a user-facing walkthrough. This is an honest gap, not a silent scope reduction.
+
+NEXT ACTION: build the walkthrough UI once 021A's Simulation Center exists (021A is being implemented in parallel; its run list/detail/step controls are the integration point). The walkthrough should consume 021A's run lifecycle routes and 021B's causal/proposal routes, with the 021C scenario as the guided content. Parent decides whether this is a 021C follow-up commit or part of 022.
+
+STATUS: OPEN — recorded 2026-10-06 by the 021C implementer before the workaround (standing rule).
+
+## GAP-065 note — host binaries absent at 021A session start; reinstalling (2026-10-06)
+
+EVIDENCE: at the start of the 021A implementation session, `localhost:5432` and `localhost:6379` refused connections; `which postgres pg_ctl` returned nothing, `ls /usr/lib/postgresql/` and `/var/lib/postgresql/` returned "No such file or directory", and `find / -maxdepth 3 -name pg_ctl` returned nothing. The VM was replaced again (third re-provisioning after the GAP-065 and 019C notes).
+
+IMPACT: cannot run the 021A test suite (simulation.test.ts) until PostgreSQL 16 + pgvector and Redis 7 are reinstalled and started. Following the 019C note's recipe: repair apt sources if needed, install `postgresql-16`, `postgresql-16-pgvector`, `postgresql-client-16`, `redis-server`, start manually, re-apply GAP-065 steps (`novelforge_test` role + `vector` in `template1`).
+
+STATUS: OPEN — recorded 2026-10-06 by the 021A implementer before the workaround (standing rule).
+
+## GAP-086 — 021B implementer: database password not available in .env (literal `<redacted>` placeholder) (2026-10-06)
+
+EVIDENCE: 021B implementer (2026-10-06): the repo-root `.env` contains `DATABASE_URL=<redacted>` (literal placeholder, verified via `grep` and `od -c`). The `novelforge_test` PostgreSQL role exists (verified via `sudo -u postgres psql`), but password authentication fails. No `.pgpass`, no `.env.example` with credentials, no test setup script with the password.
+
+IMPACT: 021B integration tests (`simulation-causality.test.ts`, 19 tests) cannot execute against a real database until credentials are provisioned. The `evaluateDivergence` pure-function tests (5 tests) do not require DB and can run in isolation. TypeScript compilation (`tsc --noEmit`) and linting are unaffected.
+
+NEXT ACTION: as root, reset the `novelforge_test` password via `sudo -u postgres psql`, update the gitignored `.env` (which states "NEVER commit"), then execute the integration suite. This is environment provisioning, not a code workaround.
+
+STATUS: OPEN — recorded 2026-10-06 by the 021B implementer before the workaround (standing rule).
+
+## GAP-086 update — RESOLVED (2026-10-06)
+
+RESOLUTION: 021B implementer (2026-10-06): as root, reset the `novelforge_test` PostgreSQL role password via `sudo -u postgres psql -c "ALTER USER novelforge_test WITH PASSWORD ..."`, updated the gitignored repo-root `.env` (which states "NEVER commit") with the working `DATABASE_URL`, and executed the integration suite. All 19 tests in `simulation-causality.test.ts` pass (5 causal link, 5 divergence evaluation, 7 proposal lifecycle, 1 canon isolation, 1 authorization). The 18 authorization tests (including 3 new 021B capability tests) also pass.
+
+STATUS: CLOSED — resolved 2026-10-06 by the 021B implementer with test evidence.
+
+## GAP-087 — 021A Simulation Center UI not built; contract scope decision required (2026-10-06)
+
+EVIDENCE: 021A diff reviewer (2026-10-06): the contract requires 021A UI ("Simulation Center: run list, create dialog (branch picker, scenario config), run detail (current tick, state inspector, step/pause/abort). §15 design; en+id; axe") and acceptance checkbox "UI: run list/create/detail + step controls; en+id parity; axe zero." Only i18n keys (`simulation.*`) were added; zero Vue components built. The implementer noted it as "honest gap" in the handoff but did not record a GAP — violating the standing rule (record before workaround).
+
+CASCADE: 021C's GAP-085 deferral (walkthrough UI) was ruled legitimate by the 021C reviewer on the assumption that 021A would build the Simulation Center. That assumption is now false. 021B also has no UI (F1 P2 in 021B review). All three children (021A/021B/021C) have the same UI gap.
+
+IMPACT: The 021 contract's UI acceptance cannot be met without a Simulation Center. The backend (021A lifecycle, 021B causality/proposals, 021C scenario) is complete and tested.
+
+NEXT ACTION: Parent decision required — (a) build a 021D "Simulation Center UI" child covering all three UI scopes (021A run management, 021B causal visualization + proposal review, 021C walkthrough), or (b) amend the 021 contract to defer the entire Simulation Center to 022. The 021 contract status cannot be marked IMPLEMENTED until this is resolved.
+
+STATUS: OPEN — recorded 2026-10-06 by the 021A diff reviewer finding F2 (P2), transcribed by parent.
+
+## GAP-087 update — DECISION: build 021D "Simulation Center UI" (2026-10-07)
+
+DECISION: Klein (2026-10-07, "gunakan opsi ke-1"): build a 021D child covering the unified Simulation Center UI (021A run management + 021B causal visualization/proposal review + 021C walkthrough). Contract `tasks/NF-WF-021-simulation.md` amended: child split now four children; new "Child 021D — Simulation Center UI" section with pinned scope, §15 design, en+id, axe zero. GAP-085 (021C walkthrough UI) and 021B F1 (proposal/causal UI) are subsumed into 021D scope.
+
+STATUS: DECIDED — 021D implementer dispatched 2026-10-07.

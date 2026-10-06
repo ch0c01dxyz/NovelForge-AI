@@ -62,6 +62,14 @@ export const CAPABILITIES = [
   // administrator is not the restorer of every tenant's canon.
   "revision:read", // read revision, checkpoint and restore history
   "revision:manage", // create a checkpoint; apply a restore, which rewinds story state
+  // Story simulation (M6, NF-WF-021). Workspace-scoped like canon/revision:
+  // a simulation is one tenant's non-destructive world exploration, so
+  // neither capability is platform-only. Q7-pinned (contract reviewer
+  // CONFIRMED): reusing revision:manage would be semantically wrong — it
+  // means "rewind story state", while simulations never rewind. Added by
+  // 021B (GAP-084: 021A not yet implemented); 021A to confirm on integration.
+  "simulation:read", // read simulation runs, ticks, events, causal chains, proposals
+  "simulation:manage", // create/configure/start/step runs; create/decide proposals
   // Platform-scoped catalog. Only a platform administrator may define the
   // shared agent/skill/workflow catalog every workspace can read.
   "platform:define",
@@ -143,6 +151,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // its story truth: rewinding state is an administrative act.
     "revision:read",
     "revision:manage",
+    // ADMIN may run simulations: exploring world consequences is an
+    // administrative act (NF-WF-021 Q7).
+    "simulation:read",
+    "simulation:manage",
   ]),
   AUTHOR: new Set<Capability>([
     "novel:create",
@@ -176,6 +188,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // checkpoint and rewinding to one are both authoring acts (CLAUDE.md §5).
     "revision:read",
     "revision:manage",
+    // The author owns the story's simulated futures: running a simulation
+    // and deciding its proposals are authoring acts (NF-WF-021 Q7).
+    "simulation:read",
+    "simulation:manage",
   ]),
   EDITOR: new Set<Capability>([
     "novel:read",
@@ -200,6 +216,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // when a fact changed; applying a restore rewinds story state and stays
     // the author's act, so EDITOR gets revision:read and NOT revision:manage.
     "revision:read",
+    // An editor may inspect simulation outcomes (causal chains, proposals)
+    // as a continuity reviewer, but running simulations and deciding
+    // proposals are the author's acts (NF-WF-021 Q7).
+    "simulation:read",
   ]),
   VIEWER: new Set<Capability>(["novel:read", "chapter:read"]),
 };

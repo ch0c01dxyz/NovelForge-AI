@@ -34,6 +34,8 @@ import { registerRelationshipRoutes } from "./relationship-routes.ts";
 import { registerStoryRoutes } from "./story-routes.ts";
 import { registerNarrativeRoutes } from "./narrative-routes.ts";
 import { registerRevisionRoutes } from "./revision-routes.ts";
+import { registerSimulationRoutes } from "./simulation-routes.ts";
+import { registerCausalityRoutes } from "./simulation-causality-routes.ts";
 import { createCharacterServices } from "./services/characters.ts";
 import { createRelationshipServices } from "./services/relationships.ts";
 import { createStoryServices } from "./services/story.ts";
@@ -42,6 +44,8 @@ import { createPlanningServices } from "./services/planning.ts";
 import { createPlatformServices } from "./services/platform.ts";
 import { createManuscriptServices } from "./services/manuscript.ts";
 import { createRevisionServices } from "./services/revisions.ts";
+import { createSimulationServices } from "./services/simulation.ts";
+import { createCausalityServices } from "./services/simulation-causality.ts";
 import { readHeadRevisionId } from "./services/revisions.ts";
 import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
@@ -463,6 +467,21 @@ export async function buildApp(
     registerRevisionRoutes(app, {
       auth,
       services: createRevisionServices({ db: options.db, audit }),
+    });
+
+    // NF-WF-021A: simulation run lifecycle. Simulations run on branches
+    // (020B) and never write to canon tables (Invariant 1).
+    registerSimulationRoutes(app, {
+      auth,
+      services: createSimulationServices({ db: options.db }),
+    });
+
+    // NF-WF-021B: causal evidence and uncertainty as proposals. Causal
+    // chains are explicit and queryable (Invariant 5); uncertainty is
+    // surfaced as proposals, never silently resolved (Invariant 2, §5).
+    registerCausalityRoutes(app, {
+      auth,
+      services: createCausalityServices(options.db),
     });
 
     // NF-WF-009: revision-derived chapter/arc memory. The rebuild route

@@ -1769,4 +1769,72 @@ export const id = {
       },
     },
   },
+  simulation: {
+    title: "Pusat Simulasi",
+    runs: "Jalannya simulasi",
+    create: "Simulasi baru",
+    noRuns: "Belum ada jalannya simulasi.",
+    status: "Status",
+    currentTick: "Tick saat ini",
+    actions: {
+      configure: "Konfigurasi",
+      start: "Mulai",
+      step: "Langkah",
+      pause: "Jeda",
+      resume: "Lanjutkan",
+      abort: "Batalkan",
+    },
+    statusLabels: {
+      DRAFT: "Draf",
+      CONFIGURED: "Dikonfigurasi",
+      RUNNING: "Berjalan",
+      PAUSED: "Dijeda",
+      PAUSED_PROPOSAL: "Dijeda untuk proposal",
+      COMPLETED: "Selesai",
+      FAILED: "Gagal",
+      ABORTED: "Dibatalkan",
+    },
+    errors: {
+      NO_BRANCH: "Branch diperlukan. Buat branch terlebih dahulu.",
+      NO_SNAPSHOT: "Snapshot checkpoint diperlukan. Buat checkpoint terlebih dahulu.",
+      MODULE_NOT_ENABLED: "Modul simulasi belum diaktifkan untuk novel ini.",
+      INVALID_STATUS_TRANSITION: "Tindakan ini tidak diizinkan pada status saat ini.",
+      RUN_NOT_FOUND: "Jalannya simulasi tidak ditemukan.",
+    },
+    // NF-WF-021B: bukti kausal dan ketidakpastian sebagai proposal.
+    causality: {
+      title: "Rantai kausal",
+      kinds: {
+        DIRECT: "Penyebab langsung",
+        ENABLING: "Kondisi pemungkin",
+        PREVENTING: "Dicegah",
+      },
+      noCauses: "Tidak ada penyebab tercatat untuk peristiwa ini.",
+      counterfactuals: "Kontrafaktual",
+    },
+    proposal: {
+      title: "Proposal",
+      noProposals: "Belum ada proposal.",
+      trigger: "Pemicu",
+      triggers: {
+        THRESHOLD_SPAN: "Rentang ambang",
+        NO_DOMINANT_OUTCOME: "Tidak ada hasil dominan",
+        COUNTERFACTUAL_UNCERTAINTY: "Ketidakpastian kontrafaktual",
+      },
+      actions: {
+        approve: "Setujui",
+        reject: "Tolak",
+      },
+      statusLabels: {
+        PROPOSED: "Diusulkan",
+        APPROVED: "Disetujui",
+        REJECTED: "Ditolak",
+      },
+      errors: {
+        PROPOSAL_ALREADY_DECIDED: "Proposal ini sudah diputuskan.",
+        INVALID_ALTERNATIVE: "Alternatif yang dipilih tidak ada dalam proposal.",
+        NO_OPEN_PROPOSAL: "Tidak ada proposal terbuka untuk jalannya ini.",
+      },
+    },
+  },
 } as const;

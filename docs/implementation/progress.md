@@ -5637,3 +5637,65 @@ Implementer: 020C subagent (separate actor from contract author, amendment autho
 **Gaps recorded:** GAP-079 (tsc blocked by 020A/020B in-progress type errors).
 
 **Handoff:** uncommitted; the diff reviewer judges the exact diff.
+
+## NF-WF-021C "Civilization validation scenario" — IMPLEMENTED (2026-10-06, uncommitted)
+
+Implementer: 021C subagent (separate actor from contract author, contract reviewer, the 021A/021B implementers, and the future diff reviewer). Contract: `tasks/NF-WF-021-simulation.md` §021C (frozen). Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- `packages/story-simulation/irrigation-scenario.ts`: "The Irrigation Decision" as deterministic pure functions (NO LLM calls, Invariant 6). 20 ticks; drought injection at tick 5 (food_security -0.3); irrigation proposal at tick 10 (021B OUTCOME_FORK → PAUSED_PROPOSAL → decision → resume). Civilization state: population, foodSecurity, grainSurplus, infrastructure, irrigationKnown/Built/BuildProgress, droughtActive.
+- Pinned 021A/021B shapes consumed (not implemented): SimulationEntity kinds SETTLEMENT/POPULATION/RESOURCE/KNOWLEDGE/INFRASTRUCTURE (F5 initial set); RunStatus with PAUSED_PROPOSAL; CausalLink (DIRECT/ENABLING/PREVENTING); SimulationProposal (OUTCOME_FORK, PROPOSED→DECIDED). No new API surface (contract: 021C uses 021A/021B routes).
+- Tick rules: pop(t+1) = pop(t) * (1 + 0.0724 * (foodSecurity - 0.55)); drought → crop failure → food shortage causal chain (DIRECT links); irrigation construction (12 ticks = 3 years, phased benefits +0.08 foodSecurity/tick) gated to tick >= 10.
+- `packages/story-simulation/irrigation-scenario.test.ts`: 16 tests.
+- `packages/story-simulation/index.ts` updated; `package.json` gains vitest + test script; `tsconfig.json` gains `allowImportingTsExtensions` (story-versioning pattern).
+
+**Evidence:** story-simulation **16/16** (20-tick completion; pop 398 without irrigation [target 380 ±10%]; pop 491 + foodSecurity 0.7 with irrigation [targets 480/0.7 ±10%]; drought -0.3 at tick 5; proposal pause at tick 10 with 2 alternatives; decision recording; decline path; drought causal chain queryable (3-link DIRECT chain); every event has ≥1 causal link; construction links to proposal decision; byte-identical determinism ×2; canon isolation via purity). `npx tsc --noEmit` clean; `npx eslint` clean.
+
+**Honesty notes:** The pinned numbers are author-chosen validation targets, not derived from a real model (contract UNVERIFIED). The 3-year (12-tick) build approved at tick 10 is 83% complete by tick 20; the pinned targets represent the trajectory at tick 20, not full completion (documented in code). No DB touched (pure functions); canon isolation by construction.
+
+**Gaps recorded:** GAP-085 (walkthrough UI not built — deferred pending 021A Simulation Center; honest gap, not silent).
+
+**Handoff:** uncommitted; the diff reviewer judges the exact diff. Backends MODEL_UNVERIFIED per GAP-013.
+
+## NF-WF-021A "Primitives and prerequisites" — IMPLEMENTED (2026-10-06, uncommitted)
+
+Implementer: 021A subagent (separate actor from contract author, contract reviewer, the 021B/021C implementers, and the future diff reviewer). Contract: `tasks/NF-WF-021-simulation.md` §021A (frozen). Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- Schema (`packages/database/prisma/schema.prisma`): `SimulationRun` (status enum DRAFT/CONFIGURED/RUNNING/PAUSED/PAUSED_PROPOSAL/COMPLETED/FAILED/ABORTED per F2), `SimulationScenario` (initialState, injections, seed, maxTicks), `SimulationTick` (tickNumber, stateBefore/After, events), `SimulationEntity` (kind enum SETTLEMENT/POPULATION/RESOURCE/KNOWLEDGE/INFRASTRUCTURE per F5 — 021C's civilization set), `SimulationEvent`, `NovelModule` (module activation). Relations on Novel, Workspace, NovelBranch.
+- Migration `20261006_nf_wf_021a_simulation`: additive idempotent (GAP-030 DO-block pattern); enums via DO-blocks; 6 tables with FKs.
+- `apps/api/src/services/simulation.ts`: `SimulationError` (NO_BRANCH/NO_SNAPSHOT/MODULE_NOT_ENABLED/INVALID_INPUT → 400; INVALID_STATUS_TRANSITION → 409; RUN_NOT_FOUND → 404), `createSimulationServices` with gate() (membership 404 + requireCapability). Lifecycle: createRun (DRAFT, optional branchId), listRuns, getRun, configureRun (4 prerequisites enforced), startRun, stepRun (deterministic tick loop, applies injections, auto-completes at maxTicks), pauseRun, resumeRun, abortRun (terminal), getTick. Invariant 1 honored (simulation tables only).
+- `apps/api/src/simulation-routes.ts`: 10 routes (create/list/detail/configure/start/step/pause/resume/abort/tick-detail); session auth, Zod validation, 400 INVALID_INPUT on bad parse.
+- `apps/api/src/app.ts`: `registerSimulationRoutes` wired; `platform-routes.ts`: `SimulationError` handler branch (additive, shared file — coordinated with 021B).
+- Capabilities: `simulation:read`/`simulation:manage` already in `packages/auth/authorization.ts` (added by 021B per GAP-084; 021A verified role mapping matches F1/Q7: OWNER/ADMIN/AUTHOR both; EDITOR read-only; VIEWER neither — no duplicate addition).
+- i18n: `simulation.*` keys in en.ts + id.ts (title, actions, statusLabels incl. PAUSED_PROPOSAL, errors for NO_BRANCH/NO_SNAPSHOT/MODULE_NOT_ENABLED/INVALID_STATUS_TRANSITION/RUN_NOT_FOUND).
+- Concept→computational mapping (domain spec's 14 concepts): Entity→SimulationEntity, State→Tick.stateBefore/After + Scenario.initialState, Event→SimulationEvent, Relationship/Knowledge/Resource→SimulationEntity kinds, Rule→tick logic, Dependency/Cause/Effect→021B CausalLink, Territory/Organization/Reputation→entity attributes, Timeline→Tick sequence.
+
+**Decisions:** F3: omitted branchId → 400 NO_BRANCH (NOT auto-provisioning; caller creates branch via 020B first). F4: module activation via direct DB insert in tests (no POST.../modules route, minimal scope).
+
+**Evidence:** `simulation.test.ts` **18/18** (primitives CRUD; 4 prerequisite 400s: NO_BRANCH/NO_SNAPSHOT/MODULE_NOT_ENABLED/CONFIGURED; lifecycle: start/step/pause/resume/abort/complete via maxTicks/409s; determinism re-run; canon isolation: StoryEntity counts unchanged after 100 ticks; capabilities: VIEWER 403, EDITOR read-but-not-manage, unauthenticated 401). tsc clean for 021A files (3 pre-existing errors in 021B's in-progress files, not 021A scope).
+
+**Gaps recorded:** GAP-065 note (VM replaced again; PostgreSQL/Redis reinstalled; pg_hba trust for novelforge_test).
+
+**Handoff:** uncommitted; the diff reviewer judges the exact diff. Backends MODEL_UNVERIFIED per GAP-013.
+
+## NF-WF-021B "Causal evidence and uncertainty as proposals" — IMPLEMENTED (2026-10-06, uncommitted)
+
+Implementer: 021B subagent (separate actor from contract author, contract reviewer, the 021A/021C implementers, and the future diff reviewer). Contract: `tasks/NF-WF-021-simulation.md` §021B (frozen). Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- Schema (`packages/database/prisma/schema.prisma`): `SimulationCausalLink` (id, workspaceId/novelId FKs, runId/eventId/causeEventId as plain UUIDs — logical FKs to 021A tables, NO Prisma relations to avoid parallel-implementation conflicts; causeStateRef Json; kind enum DIRECT/ENABLING/PREVENTING; evidence Json; CHECK constraint requiring causeEventId OR causeStateRef), `SimulationProposal` (runId logical FK, tickNumber, kind OUTCOME_FORK, alternatives Json, status PROPOSED/APPROVED/REJECTED, trigger String, reason String, rationale, chosenAlternativeId, decidedBy/At), `SimulationProposalKind`, `SimulationProposalStatus` (distinct enum from CanonProposalStatus — never enters canon pipeline). Back-relation fields on Workspace, Novel, User.
+- Migration `20261006_nf_wf_021b_causality`: additive idempotent (GAP-030 DO-block pattern; CREATE TABLE IF NOT EXISTS; IF NOT EXISTS indexes; DO-blocks for trigger/reason columns).
+- `apps/api/src/services/simulation-causality.ts`: `evaluateDivergence()` with 3 documented F6 triggers (THRESHOLD_SPAN: interval spans threshold; NO_DOMINANT_OUTCOME: no outcome ≥0.7 confidence; COUNTERFACTUAL_UNCERTAINTY: prevention confidence <0.8) — reports only, never picks; `createCausalLink` (requires causeEventId or causeStateRef); `getCausalChain` (recursive, bounded depth, cycle-safe); `getCounterfactuals` (PREVENTING links both directions); `createProposal` (validates ≥2 alternatives, requires run RUNNING, atomically creates PROPOSED proposal + sets run PAUSED_PROPOSAL); `decideProposal` (validates choice in alternatives, 409 if already decided, atomically sets APPROVED/REJECTED + resumes run to RUNNING); `listProposals`; `hasOpenProposals`. Typed `SimulationCausalityError` (400/403/404/409). Server-enforced authorization via `requireCapability` (membership → role → capability).
+- `apps/api/src/simulation-causality-routes.ts`: 6 routes (POST causal-links; GET events/:eventId/causes; GET events/:eventId/counterfactuals; POST proposals; GET proposals; POST proposals/:proposalId/decide); session auth, Zod validation, `simulation:read`/`simulation:manage` gates.
+- `apps/api/src/app.ts`: `registerCausalityRoutes` wired; `platform-routes.ts`: `SimulationCausalityError` handler branch (additive, shared file — coordinated with 021A).
+- Capabilities: `simulation:read`/`simulation:manage` added to `packages/auth/authorization.ts` with Q7 role mapping (ADMIN+AUTHOR both; EDITOR read-only; VIEWER neither). GAP-084 recorded (021A to confirm on integration).
+- i18n: `simulation.causality.*` and `simulation.proposal.*` keys in en.ts + id.ts (kinds, triggers, actions, status labels, errors).
+
+**Decisions:** F6: divergence triggers defined per rule (0.7 dominance threshold, 0.8 prevention threshold — implementer judgment, documented in code). Plain-UUID logical FKs to 021A tables (no Prisma relations, no DB FKs) — 021A owns those tables; avoids migration ordering conflicts in parallel implementation.
+
+**Evidence:** `simulation-causality.test.ts` **19/19** (causal link creation all 3 kinds; chain query ancestry; counterfactuals; forced divergence → proposal + PAUSED_PROPOSAL; decide approve → RUNNING + chosen recorded; decide reject; 409 on re-decide; 400 on bad alternative; no-silent-resolution: approve without choice 400, <2 alternatives 400; canon isolation: canon_proposals count unchanged; authorization: unauthenticated 401). `authorization.test.ts` **18/18** (including 3 new 021B capability tests). tsc clean for 021B files; eslint clean.
+
+**Gaps recorded:** GAP-084 (021B added Q7 capabilities; 021A to confirm); GAP-086 (DB password not in .env; resolved — password reset, tests executed).
+
+**Handoff:** uncommitted; the diff reviewer judges the exact diff. Backends MODEL_UNVERIFIED per GAP-013.

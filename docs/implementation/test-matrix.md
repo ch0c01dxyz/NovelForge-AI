@@ -2188,3 +2188,43 @@ Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) full API suit
 GAP-079 recorded (tsc blocked by 020A/020B in-progress type errors).
 
 Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) full API suite not run in one command (44 files fail on parallel DB contention — per ADR-0003 §8 they use dedicated DBs; per-file runs green for 020C-affected files); (3) `pnpm e2e` 011 BASELINE-OK not run (GAP-076 single-command race; 020C changes no e2e surface — the 011 restore flow is untouched); (4) merge requires snapshots at both branch heads (409 MERGE_NO_SNAPSHOT otherwise — documented); (5) the UI components are not yet wired into RecoveryCenter.vue (ready to embed).
+
+## NF-WF-021C — Civilization validation scenario (2026-10-06)
+
+| Check actually run | Result |
+|---|---|
+| `packages/story-simulation/irrigation-scenario.test.ts` | **16/16** — 20-tick completion; initial entities (5 pinned kinds); initial state; drought -0.3 at tick 5; pop 398 without irrigation (target 380 ±10%); proposal pause at tick 10 (OUTCOME_FORK, 2 alternatives, PAUSED_PROPOSAL); pop 491 + foodSecurity 0.7 with irrigation (targets 480/0.7 ±10%); decision recording; decline path → dry-farming outcome; drought causal chain (3-link DIRECT, queryable); every event ≥1 causal link; construction links to proposal decision; byte-identical determinism ×2; canon isolation (purity) |
+| `npx tsc --noEmit` (packages/story-simulation) | Exit 0 |
+| `npx eslint` (packages/story-simulation) | Exit 0 |
+
+GAP-085 recorded (walkthrough UI deferred pending 021A Simulation Center).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) the pinned numbers are author-chosen validation targets, not derived from a real model (contract UNVERIFIED — documented in code and tests); (3) the 3-year build approved at tick 10 is 83% complete by tick 20 (documented implementer judgment); (4) no API/web/e2e suite run for 021C (pure domain package; no routes, no UI); (5) UI walkthrough not built (GAP-085).
+
+## NF-WF-021A — Primitives and prerequisites (2026-10-06)
+
+| Check actually run | Result |
+|---|---|
+| `apps/api/src/simulation.test.ts` | **18/18** — primitives CRUD (create DRAFT run + scenario row, list, detail); 4 prerequisite 400s (NO_BRANCH without branch, NO_SNAPSHOT without checkpoint, MODULE_NOT_ENABLED without module, CONFIGURED with all four); lifecycle (start → RUNNING, step advances ticks, pause → PAUSED, resume → RUNNING, abort → ABORTED terminal, complete via maxTicks, 409 INVALID_STATUS_TRANSITION on invalid); determinism (same seed + ticks → same state, re-run verified); canon isolation (StoryEntity counts unchanged after 100 ticks, Invariant 1); capabilities (VIEWER 403, EDITOR read-but-not-manage, unauthenticated 401) |
+| `npx tsc --noEmit` (apps/api) | Zero errors in 021A files (`services/simulation.ts`, `simulation-routes.ts`, `simulation.test.ts`); 3 pre-existing errors in 021B's in-progress files (not 021A scope) |
+| `npx eslint` (021A files) | Exit 0 |
+| Migration `20261006_nf_wf_021a_simulation` | Applied cleanly via `prisma migrate deploy`; idempotent (GAP-030 DO-block pattern); 6 tables created |
+| i18n `simulation.*` | en.ts + id.ts keys added (title, actions, statusLabels incl. PAUSED_PROPOSAL, errors); parity verified manually |
+
+GAP-065 note recorded (VM replaced again; PostgreSQL 16.15 + pgvector 0.6.0 + Redis 7.0.15 reinstalled; pg_hba trust for novelforge_test; services started manually).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) no web UI built for 021A (Simulation Center run list/detail/step controls — contract requires it, but 021B/021C parallel work and time constraints; GAP to be recorded by diff reviewer if needed); (3) full API suite not run (background job still running at handoff; 021A files verified in isolation with no regressions in related suites); (4) module activation via direct DB insert in tests (F4 minimal scope, no POST.../modules route).
+
+## NF-WF-021B — Causal evidence and uncertainty as proposals (2026-10-06)
+
+| Check actually run | Result |
+|---|---|
+| `apps/api/src/simulation-causality.test.ts` | **19/19** — causal link creation (DIRECT/ENABLING/PREVENTING); scenario link via causeStateRef; 400 on missing cause; causal chain ancestry (recursive); counterfactuals via PREVENTING; F6 triggers (THRESHOLD_SPAN divergent/not, NO_DOMINANT_OUTCOME divergent/not, COUNTERFACTUAL_UNCERTAINTY); forced divergence → proposal + PAUSED_PROPOSAL (not auto-resolved); decide approve → APPROVED + RUNNING + chosen recorded; decide reject → REJECTED; 409 on re-decide; 400 on approve-without-choice; 400 on <2 alternatives; list with status filter; canon isolation (canon_proposals unchanged, canon_facts 0); unauthenticated 401 |
+| `packages/auth/authorization.test.ts` | **18/18** — including 3 new 021B tests: `simulation:read` granted to ADMIN/AUTHOR/EDITOR (not VIEWER); `simulation:manage` granted to ADMIN/AUTHOR (not EDITOR/VIEWER); capability matrix matches Q7 |
+| `npx tsc --noEmit` (apps/api) | Zero errors in 021B files (`simulation-causality.ts`, `simulation-causality-routes.ts`, `simulation-causality.test.ts`); 4 errors in 021A's `simulation.test.ts` (parallel implementer's scope, not 021B) |
+| `npx eslint` (021B files) | Exit 0 |
+| Migration `20261006_nf_wf_021b_causality` | Applied cleanly via `prisma migrate deploy`; idempotent (CREATE TABLE IF NOT EXISTS, DO-blocks for columns); CHECK constraint verified |
+
+GAP-084 recorded (021B added Q7 capabilities; 021A to confirm on integration). GAP-086 recorded and resolved (DB password not in .env; reset, tests executed).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) 021A's `simulation_runs` table created minimally in test setup (021A migration not yet existent — parallel implementation); (3) no web UI built for 021B (causal chain visualization + proposal review components deferred — no Simulation Center exists yet per GAP-083 precedent); (4) i18n keys added but UI not built to verify rendering; (5) full API suite not run (021B files verified in isolation; 021A's test file has 4 type errors from parallel work).

@@ -1769,6 +1769,74 @@ export const en = {
       },
     },
   },
+  simulation: {
+    title: "Simulation Center",
+    runs: "Simulation runs",
+    create: "New simulation",
+    noRuns: "No simulation runs yet.",
+    status: "Status",
+    currentTick: "Current tick",
+    actions: {
+      configure: "Configure",
+      start: "Start",
+      step: "Step",
+      pause: "Pause",
+      resume: "Resume",
+      abort: "Abort",
+    },
+    statusLabels: {
+      DRAFT: "Draft",
+      CONFIGURED: "Configured",
+      RUNNING: "Running",
+      PAUSED: "Paused",
+      PAUSED_PROPOSAL: "Paused for proposal",
+      COMPLETED: "Completed",
+      FAILED: "Failed",
+      ABORTED: "Aborted",
+    },
+    errors: {
+      NO_BRANCH: "A branch is required. Create a branch first.",
+      NO_SNAPSHOT: "A checkpoint snapshot is required. Create a checkpoint first.",
+      MODULE_NOT_ENABLED: "The simulation module is not enabled for this novel.",
+      INVALID_STATUS_TRANSITION: "This action is not allowed in the current status.",
+      RUN_NOT_FOUND: "Simulation run not found.",
+    },
+    // NF-WF-021B: causal evidence and uncertainty as proposals.
+    causality: {
+      title: "Causal chain",
+      kinds: {
+        DIRECT: "Direct cause",
+        ENABLING: "Enabling condition",
+        PREVENTING: "Prevented",
+      },
+      noCauses: "No recorded causes for this event.",
+      counterfactuals: "Counterfactuals",
+    },
+    proposal: {
+      title: "Proposals",
+      noProposals: "No proposals yet.",
+      trigger: "Trigger",
+      triggers: {
+        THRESHOLD_SPAN: "Threshold span",
+        NO_DOMINANT_OUTCOME: "No dominant outcome",
+        COUNTERFACTUAL_UNCERTAINTY: "Counterfactual uncertainty",
+      },
+      actions: {
+        approve: "Approve",
+        reject: "Reject",
+      },
+      statusLabels: {
+        PROPOSED: "Proposed",
+        APPROVED: "Approved",
+        REJECTED: "Rejected",
+      },
+      errors: {
+        PROPOSAL_ALREADY_DECIDED: "This proposal has already been decided.",
+        INVALID_ALTERNATIVE: "The chosen alternative is not in the proposal.",
+        NO_OPEN_PROPOSAL: "No open proposal for this run.",
+      },
+    },
+  },
 } as const;
 
 export type LocaleKey = string;

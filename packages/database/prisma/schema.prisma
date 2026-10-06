@@ -70,6 +70,8 @@ model User {
   createdFactSources  CanonFactSource[] @relation("CanonFactSourceCreator")
   proposedCanon       CanonProposal[]  @relation("CanonProposalAuthor")
   decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
+  /// NF-WF-021B: simulation proposals decided by this user.
+  decidedSimulationProposals SimulationProposal[] @relation("SimulationProposalDecider")
   createdApplications CanonApplication[] @relation("CanonApplicationCreator")
   decidedApplications CanonApplication[] @relation("CanonApplicationDecider")
   decidedApprovals    WorkflowApprovalDecision[] @relation("WorkflowApprovalDecider")
@@ -166,6 +168,12 @@ model Workspace {
   rebuildIntents DerivedRebuildIntent[]
   memoryProjections MemoryProjection[]
   finalTextReviews FinalTextReview[]
+  /// NF-WF-021A: simulation runs in this workspace.
+  simulationRuns SimulationRun[]
+  /// NF-WF-021B: causal links for simulation events in this workspace.
+  simulationCausalLinks SimulationCausalLink[]
+  /// NF-WF-021B: uncertainty proposals for simulation runs in this workspace.
+  simulationProposals SimulationProposal[]
 
   @@map("workspaces")
 }
@@ -264,6 +272,17 @@ model Novel {
   /// NF-WF-019C: NEW_CHAPTER notification rows for this novel
   /// (Cascade; private to each recipient).
   notifications    Notification[]
+  /// NF-WF-021A: simulation runs for this novel (Cascade; simulation state
+  /// is isolated from canon per Invariant 1 — simulations NEVER write to
+  /// canon tables).
+  simulationRuns   SimulationRun[]
+  /// NF-WF-021A: per-novel module activation records (021A defines the
+  /// table; only the `simulation` module is used in 021).
+  modules          NovelModule[]
+  /// NF-WF-021B: causal links for simulation events in this novel.
+  simulationCausalLinks SimulationCausalLink[]
+  /// NF-WF-021B: uncertainty proposals for simulation runs in this novel.
+  simulationProposals SimulationProposal[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -2561,6 +2580,9 @@ model NovelBranch {
   /// NF-WF-020B: novels currently checked out on this branch (reverse of
   /// Novel.currentBranch).
   checkedOutByNovels Novel[] @relation("NovelCurrentBranch")
+  /// NF-WF-021A: simulation runs on this branch (SetNull; a run records
+  /// whether its branch is simulation-dedicated).
+  simulationRuns SimulationRun[]
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
@@ -3101,4 +3123,239 @@ model NotificationPreference {
 
   @@unique([userId, type])
   @@map("notification_preferences")
+}
+
+/// NF-WF-021A: computational primitives for the simulation module.
+/// Simulations NEVER write to canon tables (Invariant 1); all simulation
+/// state lives in these dedicated tables. The domain spec's 14 conceptual
+/// primitives (Entity, State, Event, Relationship, Knowledge, Resource,
+/// Rule, Dependency, Cause, Effect, Territory, Organization, Reputation,
+/// Timeline) map to the 5 computational tables below; see
+/// docs/implementation/progress.md (021A section) for the mapping.
+model SimulationRun {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String   @map("novel_id") @db.Uuid
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// The 020B branch the simulation runs on. Nullable: a run created
+  /// without a branch stays DRAFT until configure; configure 400s NO_BRANCH
+  /// (contract F3 — the 021A implementer does NOT auto-provision).
+  branchId    String?  @map("branch_id") @db.Uuid
+  branch      NovelBranch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  /// Whether the branch is simulation-dedicated (created via 020B
+  /// createBranch for this run). Recorded, not enforced (contract Q6).
+  isSimulationBranch Boolean @default(false) @map("is_simulation_branch")
+  status      SimulationRunStatus @default(DRAFT)
+  currentTick Int      @default(0) @map("current_tick")
+  maxTicks    Int      @default(20) @map("max_ticks")
+  /// Deterministic seed (Invariant 6: same seed + same ticks = same state).
+  seed        String   @default("default")
+  /// Prerequisite pins (all required before RUNNING; recorded at configure).
+  snapshotId      String? @map("snapshot_id") @db.Uuid
+  canonRevisionId String? @map("canon_revision_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  scenario   SimulationScenario?
+  ticks      SimulationTick[]
+  entities   SimulationEntity[]
+  events     SimulationEvent[]
+
+  @@index([novelId, status])
+  @@map("simulation_runs")
+}
+
+/// NF-WF-021A: run lifecycle states. PAUSED_PROPOSAL is the 021B
+/// uncertainty mechanism (contract F2 — pinned here so 021B works).
+enum SimulationRunStatus {
+  DRAFT
+  CONFIGURED
+  RUNNING
+  PAUSED
+  PAUSED_PROPOSAL
+  COMPLETED
+  ABORTED
+}
+
+/// NF-WF-021A: initial conditions + event injections for a run.
+model SimulationScenario {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId        String   @unique @map("run_id") @db.Uuid
+  run          SimulationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  /// Initial world state (JSON object; the tick-0 stateBefore).
+  initialState Json     @map("initial_state") @db.JsonB
+  /// Tick-number → list of event injections, e.g. {"5": [{...drought...}]}.
+  injections   Json     @default("{}") @db.JsonB
+  seed         String   @default("default")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("simulation_scenarios")
+}
+
+/// NF-WF-021A: a discrete time step with before/after state.
+model SimulationTick {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId       String   @map("run_id") @db.Uuid
+  run         SimulationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  tickNumber  Int      @map("tick_number")
+  stateBefore Json     @map("state_before") @db.JsonB
+  stateAfter  Json     @map("state_after") @db.JsonB
+  /// Events that fired during this tick (JSON list).
+  events      Json     @default("[]") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([runId, tickNumber])
+  @@map("simulation_ticks")
+}
+
+/// NF-WF-021A: a simulated counterpart (NOT a canon entity — Invariant 1).
+/// Kinds pinned per contract F5: 021C's civilization kinds are the initial
+/// set (SETTLEMENT, POPULATION, RESOURCE, KNOWLEDGE, INFRASTRUCTURE).
+model SimulationEntity {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId       String   @map("run_id") @db.Uuid
+  run         SimulationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  kind        SimulationEntityKind
+  attributes  Json     @db.JsonB
+  tickCreated Int      @map("tick_created")
+  tickRetired Int?     @map("tick_retired")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  events      SimulationEvent[]
+
+  @@index([runId, kind])
+  @@map("simulation_entities")
+}
+
+/// NF-WF-021A: entity kinds (contract F5 — extensible per-domain).
+enum SimulationEntityKind {
+  SETTLEMENT
+  POPULATION
+  RESOURCE
+  KNOWLEDGE
+  INFRASTRUCTURE
+}
+
+/// NF-WF-021A: something that happened in the simulation.
+model SimulationEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId      String   @map("run_id") @db.Uuid
+  run        SimulationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  tickNumber Int      @map("tick_number")
+  kind       String
+  entityId   String?  @map("entity_id") @db.Uuid
+  entity     SimulationEntity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  payload    Json     @db.JsonB
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([runId, tickNumber])
+  @@map("simulation_events")
+}
+
+/// NF-WF-021A: per-novel module activation. 021A defines the table; only
+/// the `simulation` module is used in 021 (UI is follow-up). Tests enable
+/// via direct DB insert (contract F4).
+model NovelModule {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId    String   @map("novel_id") @db.Uuid
+  novel      Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  moduleName String   @map("module_name")
+  enabledAt  DateTime @default(now()) @map("enabled_at")
+
+  @@unique([novelId, moduleName])
+  @@map("novel_modules")
+}
+
+/// NF-WF-021B: causal evidence for the simulation module (Invariant 5).
+/// Every SimulationEvent records WHY it happened as explicit CausalLink
+/// rows (not inferred post-hoc). runId/eventId/causeEventId are logical
+/// FKs to 021A's simulation_runs/simulation_events (plain UUIDs, no Prisma
+/// relation — 021A owns those tables; 021B parallelizes against the pinned
+/// shapes). The workspace/novel FKs are real (tenant boundary + cascade).
+model SimulationCausalLink {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId      String   @map("novel_id") @db.Uuid
+  novel        Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// Logical FK to 021A simulation_runs.id (no DB FK — 021A owns the table).
+  runId        String   @map("run_id") @db.Uuid
+  /// Logical FK to 021A simulation_events.id (no DB FK).
+  eventId      String   @map("event_id") @db.Uuid
+  /// Logical FK to 021A simulation_events.id; null when the cause is a
+  /// state reference or the initial scenario (see causeStateRef).
+  causeEventId String?  @map("cause_event_id") @db.Uuid
+  /// When causeEventId is null: a JSON reference to the causing state
+  /// (e.g. {"kind": "scenario", "scenarioId": "..."} or
+  /// {"kind": "state", "tickNumber": 0, "path": "food_security"}).
+  causeStateRef Json?   @map("cause_state_ref") @db.JsonB
+  kind         SimulationCausalKind
+  /// Why this cause produced/enabled/prevented the event (rule id,
+  /// confidence, rule inputs — the evidence, not a bare assertion).
+  evidence     Json     @db.JsonB
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([runId, eventId])
+  @@index([runId, causeEventId])
+  @@map("simulation_causal_links")
+}
+
+/// NF-WF-021B: causal link kinds (contract Q3 — three kinds sufficient).
+enum SimulationCausalKind {
+  DIRECT
+  ENABLING
+  PREVENTING
+}
+
+/// NF-WF-021B: uncertainty as proposals (Invariant 2, constitution §5).
+/// When a tick rule encounters multiple plausible outcomes, it does NOT
+/// pick one — it creates a SimulationProposal and the run pauses
+/// (PAUSED_PROPOSAL) until decided. DISTINCT from CanonProposal: these
+/// never enter the canon pipeline (Invariant 8). runId is a logical FK
+/// to 021A simulation_runs.id (plain UUID, no DB FK — 021A owns it).
+model SimulationProposal {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String   @map("novel_id") @db.Uuid
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// Logical FK to 021A simulation_runs.id (no DB FK).
+  runId       String   @map("run_id") @db.Uuid
+  tickNumber  Int      @map("tick_number")
+  kind        SimulationProposalKind @default(OUTCOME_FORK)
+  /// The alternatives: [{ id, outcome, evidence, confidence }].
+  /// The tick rule MUST NOT pick one; the author decides.
+  alternatives Json    @db.JsonB
+  status      SimulationProposalStatus @default(PROPOSED)
+  /// F6 divergence trigger that created this proposal (THRESHOLD_SPAN,
+  /// NO_DOMINANT_OUTCOME, COUNTERFACTUAL_UNCERTAINTY).
+  trigger     String
+  /// Human-readable reason for the divergence (from evaluateDivergence).
+  reason      String
+  /// Author's rationale for the decision (optional, recorded).
+  rationale   String?
+  /// The chosen alternative's id (set on decide).
+  chosenAlternativeId String? @map("chosen_alternative_id")
+  decidedById String?  @map("decided_by_id") @db.Uuid
+  decidedBy   User?    @relation("SimulationProposalDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt   DateTime? @map("decided_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([runId, status])
+  @@map("simulation_proposals")
+}
+
+/// NF-WF-021B: proposal kinds. Only OUTCOME_FORK is pinned (contract);
+/// the enum is extensible for future uncertainty kinds.
+enum SimulationProposalKind {
+  OUTCOME_FORK
+}
+
+/// NF-WF-021B: proposal lifecycle (mirrors CanonProposalStatus but is a
+/// DISTINCT enum — SimulationProposals never enter the canon pipeline).
+enum SimulationProposalStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
 }

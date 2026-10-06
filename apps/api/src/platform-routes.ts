@@ -38,6 +38,13 @@ import { ExportError } from "./services/export-render.ts";
 // conflicts vs. preconditions distinctly. Same position as the other
 // typed-error branches.
 import { MergeError } from "./services/revisions.ts";
+// NF-WF-021A: typed simulation refusals (NO_BRANCH, NO_SNAPSHOT,
+// MODULE_NOT_ENABLED → 400; INVALID_STATUS_TRANSITION → 409) carry the
+// machine-readable code as the envelope's error field. Same position as
+// the other typed-error branches.
+import { SimulationError } from "./services/simulation.ts";
+// NF-WF-021B: typed causality/proposal refusals.
+import { SimulationCausalityError } from "./services/simulation-causality.ts";
 
 const slug = z
   .string()
@@ -180,6 +187,22 @@ export async function registerPlatformRoutes(
     // envelope's error field. Same position as the other typed-error
     // branches.
     if (error instanceof SelectiveRestoreError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-021A: typed simulation refusals (NO_BRANCH, NO_SNAPSHOT,
+    // MODULE_NOT_ENABLED → 400; INVALID_STATUS_TRANSITION → 409;
+    // RUN_NOT_FOUND → 404) carry the machine-readable code as the
+    // envelope's error field. Same position as the other typed-error
+    // branches.
+    if (error instanceof SimulationError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-021B: typed causality/proposal refusals (INVALID_INPUT → 400;
+    // NOT_FOUND → 404; PROPOSAL_ALREADY_DECIDED, NO_OPEN_PROPOSAL,
+    // INVALID_ALTERNATIVE → 400/409) carry the machine-readable code as the
+    // envelope's error field. Same position as the other typed-error
+    // branches.
+    if (error instanceof SimulationCausalityError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
     if (error instanceof ConflictError) {

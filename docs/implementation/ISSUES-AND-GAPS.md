@@ -1680,4 +1680,14 @@ IMPACT: CI red for 7 consecutive main-branch pushes; the C1 coverage-set pin (wh
 
 NEXT ACTION: update the two assertions to pin the deliberate 012 state — 36 tables with `publications` in the membership list, and non-restore-targets `["chapter_versions", "chapters", "publications"]` with the 012 Invariant 8 rationale. Test-only change; no behavior change; the pinning purpose is preserved (any future silent add/drop still fails).
 
-STATUS: OPEN — fix applied 2026-10-06; closes when CI is green on the fix commit.
+STATUS: CLOSED — CI run 37439640306 on commit `1efeedf` completed with conclusion `success` (2026-10-06); the 7-run red streak is over.
+
+## GAP-076 — `pnpm e2e` full-suite run has a setup race: `getE2E()` terminates all test-DB backends while the long-novel fixture build is still running (2026-10-06)
+
+EVIDENCE: three `pnpm e2e` runs on this host (2026-10-06, 019A implementer). Runs 1–3 failed with `PrismaClientKnownRequestError` code `57P01` ("terminating connection due to administrator command") mid-fixture-build (`long-novel.measure.test.ts` → `buildLongNovelFixture` → `advanceHead`). PostgreSQL log shows `FATAL: terminating connection due to administrator command` on `novelforge_test_e2e` backends. Root cause: `apps/api/src/e2e/setup.ts` `getE2E()` runs `SELECT pg_terminate_backend(pid) ... WHERE datname = 'novelforge_test_e2e'` then DROP/CREATE before every test file's `beforeAll`. The long-novel fixture build (up to 600 s) plus the gates file's own `ensureFixture` mean a second `getE2E()` invocation can land while the first file's build is still using the DB — the terminate kills the in-flight build. Isolated runs are green: `gates.test.ts` alone **10/10** (260 s), `author-preview.loop.test.ts` **3/3**. Previous tasks' "20/20 BASELINE-OK" presumably won the timing lottery (fixture build finished before the next file's setup).
+
+IMPACT: `pnpm e2e` as a single command is flaky on this host; per-file runs are reliable. No product-code regression — the 019A changes are additive routes/columns and cannot terminate DB connections.
+
+NEXT ACTION: make `getE2E()` setup race-safe (e.g. a file lock / single setup per worker run, or skip the terminate when the caller is the same OS process tree). Owner: whoever next touches the e2e harness (suggested: NF-WF-023 or a harness-hardening follow-up).
+
+STATUS: OPEN — recorded 2026-10-06 by the 019A implementer.

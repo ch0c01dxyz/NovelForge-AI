@@ -2,7 +2,7 @@
 
 Status: accepted execution sequence; runtime gates remain open.
 Decision: [ADR-0013](../adr/ADR-0013-workflow-delivery-and-recovery-foundation.md).
-Last revised: 2026-10-05. New implementation prose and handoffs use English.
+Last revised: 2026-10-07. New implementation prose and handoffs use English.
 
 ## Goal and boundaries
 
@@ -22,7 +22,11 @@ the single [ISSUES-AND-GAPS](ISSUES-AND-GAPS.md) register. The capability
 ledger and task queue below describe scope/dependencies; they reference issue
 IDs rather than becoming competing issue logs.
 
-## Current baseline
+## Current execution override — 2026-10-07
+
+Use CURRENT's post-sync dispatch: the reviewed NF-WF-025 repair is included in this commit; proceed to current-host NF-WF-023 release verification and dependency-ready issue contracts. Code is committed through NF-WF-024 at baseline 72b3948. Older queue statuses below are historical planning context, not redispatch instructions. GAP-100/101 block live what-if/semantic application acceptance; GAP-098 remains open. Do not claim milestone completion from implementation commits.
+
+## Historical baseline
 
 Existing code provides identity/tenancy, versioned manuscript, gateway/model
 infrastructure, generic versioned workflows, references/retrieval, canon,

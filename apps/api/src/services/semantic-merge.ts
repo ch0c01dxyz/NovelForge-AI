@@ -144,8 +144,8 @@ function tryS2(change: MergeChange): SemanticRule | null {
       }
       bothChanged.push(key);
     } else if (sChanged || tChanged) {
-      // Changed on exactly one side: fine, but the unchanged side must
-      // equal base (it does by construction here). No constraint.
+      // S2 proves only prose disjointness; other fields must be unchanged.
+      return null;
     }
     // Fields where source and target differ from EACH OTHER but one
     // equals base are handled by S3/disjointness; S2 requires the

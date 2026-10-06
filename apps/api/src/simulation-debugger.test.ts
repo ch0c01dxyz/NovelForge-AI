@@ -625,3 +625,40 @@ describe("024B replay", () => {
     expect(r2.statusCode).toBe(403);
   });
 });
+
+describe("debugger lifecycle regressions", () => {
+  it("reports a final-tick breakpoint without reopening a completed run", async () => {
+    const fx = await seedFixture();
+    const runId = await createRunningRun(fx, { initialState: { population: 500 }, injections: {}, maxTicks: 1 });
+    expect((await api("POST", simUrl(fx, `/${runId}/breakpoints`), fx.cookie, {
+      kind: "TICK", predicate: { tickNumber: 1 },
+    })).statusCode).toBe(201);
+    const res = await api("POST", simUrl(fx, `/${runId}/debug-step`), fx.cookie);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ runStatus: "COMPLETED", breakpointHit: { kind: "TICK" } });
+    expect((await db.simulationRun.findUniqueOrThrow({ where: { id: runId } })).status).toBe("COMPLETED");
+  });
+
+  it("observes a real proposal pause without advancing or replacing approval state", async () => {
+    const fx = await seedFixture();
+    const runId = await createRunningRun(fx, { initialState: { population: 500 }, injections: {} });
+    expect((await api("POST", simUrl(fx, `/${runId}/breakpoints`), fx.cookie, {
+      kind: "ON_PROPOSAL",
+    })).statusCode).toBe(201);
+    const proposed = await api("POST", simUrl(fx, `/${runId}/proposals`), fx.cookie, {
+      tickNumber: 0,
+      alternatives: [
+        { id: "a", outcome: {}, evidence: {}, confidence: 0.6 },
+        { id: "b", outcome: {}, evidence: {}, confidence: 0.4 },
+      ],
+      trigger: "NO_DOMINANT_OUTCOME", reason: "debugger regression",
+    });
+    expect(proposed.statusCode).toBe(201);
+    const before = await db.simulationTick.count({ where: { runId } });
+    const res = await api("POST", simUrl(fx, `/${runId}/debug-step`), fx.cookie);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ runStatus: "PAUSED_PROPOSAL", breakpointHit: { kind: "ON_PROPOSAL" } });
+    expect(await db.simulationTick.count({ where: { runId } })).toBe(before);
+    expect((await db.simulationRun.findUniqueOrThrow({ where: { id: runId } })).status).toBe("PAUSED_PROPOSAL");
+  });
+});

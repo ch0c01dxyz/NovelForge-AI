@@ -73,6 +73,14 @@ describe("S1 — byte-identical change", () => {
 });
 
 describe("S2 — disjoint text spans", () => {
+  it("does not clear coupled metadata changes alongside disjoint prose", () => {
+    expect(analyzeMergeChange(conflictChange({
+      base: { content: "One. Two.", status: "DRAFT", statusReason: "" },
+      sourceVersion: { content: "Uno. Two.", status: "PUBLISHED", statusReason: "" },
+      targetVersion: { content: "One. Dos.", status: "DRAFT", statusReason: "needs review" },
+    }))).toBeNull();
+  });
+
   const baseText =
     "Aria walked into the hall. The candles flickered. She drew her sword. The crowd gasped.";
 

@@ -1,6 +1,7 @@
 # NF-WF-024 — Advanced Intelligence and Measured Optimization
 
-Status: IMPLEMENTED (2026-10-07, commit 55998d0)
+Status: IMPLEMENTATION PRESENT / ACCEPTANCE BLOCKED (2026-10-07).
+Implementation commit: 55998d0. GAP-098, GAP-100 and GAP-101 prevent full contract acceptance; NF-WF-023 release checks are not currently proven green. The prior IMPLEMENTED label described code delivery, not acceptance.
 
 ## Normative vs informative
 

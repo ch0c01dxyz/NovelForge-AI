@@ -6,7 +6,21 @@ exist; integrated product delivery remains PARTIAL**. Historical phase/test
 results below describe their original scope, not completion of all retained
 requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
-## Active dispatch snapshot — 2026-10-05
+## Current dispatch — 2026-10-07
+
+Synced baseline: `72b3948`, clean before this audit. Implementation commits now extend through NF-WF-024. The older entries below preserve historical evidence; their "uncommitted", "PLANNED" and "commit next" instructions are superseded by this dispatch snapshot, not current worktree state. They do not prove present-host acceptance.
+
+Next: current-host NF-WF-023 release verification. The reviewed NF-WF-025 repair is included in this commit. GAP-099–104 record findings. Live what-if and semantic apply remain blocked on GAP-100/101; release acceptance and GAP-098 remain open. Engram hook supplies no authoritative identity; attributed saves are unavailable and this record is the fallback.
+
+### NF-WF-025 verification receipts — current Windows host
+
+- Existing Docker PostgreSQL `nf-pg-5433` and Redis reused; database integration used only disposable `novelforge_test_simulation_debugger`. No production database reset or Docker reinstall.
+- Red before repair: semantic regression incorrectly returned S2; final-tick debugger returned PAUSED; real proposal debug-step returned 409.
+- Green after repair: semantic merge 23/23; debugger HTTP/database suite 12/12; story-versioning 26/26; what-if accessibility 3/3 (mock key strings, not proof of translated en/id rendering). Lint exit 0.
+- Separate reviewer: review_workflow_docs APPROVE, no blocking findings. Proposal observation is API-only; no UI completeness claim. Full release battery/e2e not run in this repair.
+- `pnpm typecheck`: exit 0 across the workspace, including API/worker/web.
+
+## Historical dispatch snapshot — 2026-10-05
 
 | Task | Current scope/status | Next action |
 |---|---|---|

@@ -103,7 +103,7 @@ describe("selective domain vocabulary", () => {
   });
 
   it("maps 33 covered tables; the 3 unmapped are pinned separately", () => {
-    const mapped = new Set(Object.values(SELECTIVE_DOMAINS).flat());
+    const mapped = new Set<string>(Object.values(SELECTIVE_DOMAINS).flat());
     expect(mapped.size).toBe(33);
     const covered = new Set(COVERED_TABLE_NAMES);
     for (const t of mapped) {

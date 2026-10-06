@@ -1,6 +1,8 @@
 # NF-WF-023 — Production Operations and Release Verification
 
-Status: PLANNED
+Status: IMPLEMENTATION PRESENT / RELEASE ACCEPTANCE OPEN (2026-10-07).
+Operations implementation is committed in 4edf1e8; the historical release battery did not complete. Rerun the battery on the current host after NF-WF-025. Do not dispatch a duplicate implementation or infer green release gates.
+Historical contract status: PLANNED.
 
 ## Normative vs informative
 

@@ -31,20 +31,9 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** submit the drafted
-[NF-WF-003 — chapter context compiler](tasks/NF-WF-003-chapter-context-compiler.md)
-contract (**PLANNED**, not dispatchable) for separate review after the
-2026-10-05 GAP-026 amendments. Use the refreshed manifest, then dispatch only
-after actual approval; earlier rounds do not approve changed portions.
-The author scope decision is resolved: **full tiered compiler**.
-001 design and children 002A–D have recorded reviews; do not restart them.
-[002F — foundation acceptance](tasks/NF-WF-002F-foundation-acceptance.md)
-returned **VERIFIED 2026-10-04 for the evidenced M1 foundation scope only**:
-that is self-verification by the implementing model, not an independent review,
-so GAP-013 stays OPEN, and full cross-domain recovery stays OPEN under GAP-004.
-002E stays PLANNED until a consumer is designed; do not create an outbox
-speculatively. Read CURRENT and the single issue register for
-evidence/limitations; queue pointers are not test receipts.
+**Current next task:** rerun NF-WF-023 release verification on the current host. The reviewed [NF-WF-025 — post-sync regression repair](tasks/NF-WF-025-post-sync-regression-repair.md) is included in this commit; its bounded tests and separate review are complete. The synced baseline is `72b3948` (2026-10-07), with implementation commits through NF-WF-024; do not redispatch NF-WF-003 from historical PLANNED pointers. Implementation commits are not integrated acceptance evidence.
+
+Prioritize GAP-099–104 in the [single issue register](docs/implementation/ISSUES-AND-GAPS.md). After these repairs, rerun NF-WF-023 release checks on the current host and resolve GAP-028 (production workflow executor wiring), GAP-094–096 (reconciliation), and GAP-098 (optimization acceptance). GAP-100 (live what-if branch/context integration) and GAP-101 (semantic preview/apply parity) require reviewed contracts before mutation changes. Full platform release remains unverified.
 
 ## New-host environment preparation
 
@@ -52,7 +41,7 @@ Follow [environment preflight](docs/11-deployment/ENVIRONMENT-PREFLIGHT.md).
 Ubuntu: mandatory native dependency/service setup; no Docker installation.
 Windows: reuse the author's running Docker environment/data; no stack reset.
 Verify host-specific endpoints and use separate disposable test databases.
-Environment readiness does not bypass the pending NF-WF-003 contract review.
+Environment readiness does not bypass task review or release acceptance gates.
 
 ## Project language
 

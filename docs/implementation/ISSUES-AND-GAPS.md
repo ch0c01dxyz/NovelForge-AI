@@ -1991,3 +1991,67 @@ RESOLUTION: Documented in `docs/implementation/benchmarks/024C.md`. The 024C "me
 SEVERITY: P3 (documentation of a contract scope decision; no functional impact).
 STATUS: OPEN — 2026-10-07. Owner: 024C implementer (documented); future optimization work (if a bottleneck emerges) is a follow-up.
 CLOSURE CHECK: Either (a) a safe ≥15% optimization is found and landed with before/after, or (b) the 024 contract is amended to scope "measured cost" to token budgets.
+
+
+## Post-sync audit — 2026-10-07 (baseline 72b3948)
+
+### GAP-099 — Active handoff and acceptance status drift
+
+Status: RESOLVED (bounded dispatch correction), 2026-10-07. Owner: NF-WF-025. START-HERE still
+starts NF-WF-003 contract review; CURRENT mixes PLANNED/no-contract/uncommitted
+claims with committed 003–024 source. 023's battery report stops at lint, while
+024 is globally IMPLEMENTED despite unfulfilled GAP-098 and its green-023 gate.
+Remedy: reconcile active pointers with Git/task/receipt evidence, preserve old
+records as historical, and make release blockers/next work explicit.
+Closure evidence: startup/progress/delivery pointers and task 003/023/024 annotations reconciled against Git commits; separate reviewer APPROVE for the repair diff. Historical receipts retained; release acceptance remains open.
+
+### GAP-100 — What-if live comparisons cannot configure their runs
+
+Status: BLOCKED / P1. Owner: NF-WF-024A follow-up. whatif.ts creates each run
+without branchId; simulation.configureRun requires it and throws NO_BRANCH.
+HTTP/UI callers do not provide the evaluation-only stubGenerator. Every normal
+comparison therefore aborts. Fix requires explicit branch ownership/provisioning
+contract; recommend an author-selected isolated simulation branch with valid
+checkpoint/module prerequisites, rather than a silent main-branch fallback.
+Do not infer live success from stub evaluations. Closure: composed real service/
+route test of two outlines, no canon mutation, valid isolation, failure recovery.
+
+### GAP-101 — Semantic preview and apply disagree
+
+Status: BLOCKED / P2. Owner: NF-WF-024C follow-up. Semantic preview clears
+conflicts and advertises canApply, but apply route/service has no mode and
+recomputes conservative conflicts. Existing buildMergedPayload takes whole
+source rows, so simply forwarding mode would lose target S2/S3 edits.
+Remedy: reject unsupported semantic application explicitly until a reviewed
+resolved-row builder and locked mode-aware apply preserve both sides.
+Closure: preview/apply agreement with S1/S2/S3 merged-content assertions,
+coupled-field refusals, stale-head/rollback/checkpoint and conservative regressions.
+
+### GAP-102 — Semantic S2 clears coupled metadata conflicts
+
+Status: RESOLVED, 2026-10-07. Owner: NF-WF-025.
+Reproduction: base content='One. Two.', status=DRAFT, statusReason=''; source
+content='Uno. Two.', status=PUBLISHED; target content='One. Dos.',
+statusReason='needs review'. analyzeMergeChange returns S2; tryS2 permits
+one-sided non-prose changes and bypasses S3's coupled-field denylist.
+Fix: enforce S2's documented requirement that all non-prose fields remain
+unchanged. Verification: added adversarial test failed with S2 before repair; semantic suite now 23/23, separate reviewer APPROVE.
+
+### GAP-103 — Debugger breakpoints override terminal/approval states
+
+Status: RESOLVED, 2026-10-07. Owner: NF-WF-025.
+A breakpoint on the last tick writes PAUSED after simulation.stepRun already
+completed the run. Real createProposal writes PAUSED_PROPOSAL atomically, but
+debugStep refuses that status before inspecting ON_PROPOSAL; its test bypasses
+the real path with raw insertion. Remedy: report hits without reopening terminal
+runs or replacing approval pauses; condition debugger pause writes on RUNNING.
+Closure: final-tick breakpoint and real proposal-path regression tests; no new
+tick/unauthorized continuation, pause/approval and concurrent-status preservation.
+Verification: two new HTTP regressions failed before repair and pass after; debugger suite 12/12 on dedicated scratch DB in existing nf-pg-5433. RUNNING-only conditional pause reviewed independently. PAUSED_PROPOSAL observation is API evidence only; current UI has no debug-step button in that status.
+
+### GAP-104 — Post-sync verification and accessibility fixture failures
+- Status: RESOLVED, 2026-10-07. Owner: NF-WF-025.
+- Evidence: local `pnpm lint` fails on unused `axe`; `pnpm typecheck` fails on a narrowed Set in dependency-edges.test.ts. What-if accessibility mock exposes get/post although production useApi exposes api, so fixtures can silently audit the error state.
+- Resolution: mock corrected to api; error-state absence and divergence rendering asserted; unused import removed and Set widened to string for cross-domain membership assertions. Verification: pnpm lint and pnpm typecheck exit 0; story-versioning 26/26 and what-if accessibility 3/3. Separate reviewer APPROVE. These accessibility fixtures do not prove both translated locales.
+
+Current boundary (2026-10-07): GAP-021 remains OPEN; runtime hook still supplies no authoritative identity. No attributed Engram save was attempted or claimed. NF-WF-025/CURRENT hold the fallback.

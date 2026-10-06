@@ -1,8 +1,8 @@
 # Task NF-WF-003: shared chapter context compiler and identity/source pins
 
-Status: **PLANNED** — not dispatchable. The author scope decision is RESOLVED
-("Full tiered compiler", see "Scope decision"). Do not start coding from this
-file until it is separately reviewed.
+Current status annotation (2026-10-07): implementation committed in 494a796. This historical contract is not a new dispatch. Verify implementation/review receipts and current acceptance separately; see NF-WF-025 and GAP-099.
+
+Historical pre-implementation status: **PLANNED**, pending separate contract review. The author scope decision was resolved ("Full tiered compiler"). Preserve the frozen manifest as historical review evidence.
 Project language: English for all authored/revised project artifacts and
 generated project content; follow the constitution for provenance and overrides.
 Milestone / capability IDs: M1 / G-02 (chapter context), per

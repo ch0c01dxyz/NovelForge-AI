@@ -1,6 +1,6 @@
 /**
  * Accessibility tests (NF-WF-024A): zero axe violations (wcag2aa +
- * wcag22aa tags) on the What-if panel, in both locales.
+ * wcag22aa tags) on the What-if panel with locale-independent key fixtures.
  *
  * useLocale is mocked with a key-returning t; the shape and semantics
  * asserted by axe do not depend on the resolved strings. useApi is
@@ -10,7 +10,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { ref, computed, watch, onMounted } from "vue";
-import { axe, configureAxe } from "vitest-axe";
+import { configureAxe } from "vitest-axe";
 import WhatIfPanel from "../app/components/simulation/WhatIfPanel.vue";
 
 // Vue auto-imports are Nuxt-provided; stub them for the vitest harness.
@@ -35,7 +35,10 @@ const getMock = vi.fn();
 const postMock = vi.fn();
 
 vi.mock("../app/composables/useApi", () => ({
-  useApi: () => ({ get: getMock, post: postMock }),
+  useApi: () => ({
+    api: (url: string, init?: { method?: string }) =>
+      init?.method === "POST" ? postMock(url, init) : getMock(url, init),
+  }),
 }));
 
 const axeAudit = configureAxe({ rules: {} });
@@ -66,6 +69,7 @@ describe("whatif panel a11y", () => {
   it("has zero axe violations (empty state)", async () => {
     const wrapper = mountPanel();
     await flushPromises();
+    expect(wrapper.find('[data-testid="whatif-list-error"]').exists()).toBe(false);
     const results = await axeAudit(wrapper.element);
     expect(results.violations).toEqual([]);
   });
@@ -75,6 +79,7 @@ describe("whatif panel a11y", () => {
     await flushPromises();
     await wrapper.find('[data-testid="whatif-create-open"]').trigger("click");
     await flushPromises();
+    expect(wrapper.find('[data-testid="whatif-list-error"]').exists()).toBe(false);
     const results = await axeAudit(wrapper.element);
     expect(results.violations).toEqual([]);
   });
@@ -109,7 +114,9 @@ describe("whatif panel a11y", () => {
     });
     const wrapper = mountPanel();
     await flushPromises();
+    expect(wrapper.find('[data-testid="whatif-list-error"]').exists()).toBe(false);
     const results = await axeAudit(wrapper.element);
+    expect(wrapper.find('[data-testid="whatif-divergence-timeline"]').exists()).toBe(true);
     expect(results.violations).toEqual([]);
   });
 });

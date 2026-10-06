@@ -363,11 +363,12 @@ export function createDebuggerServices({
     runId: string,
     tickNumber: number,
     stateAfter: unknown,
+    onlyOnProposal = false,
   ): Promise<BreakpointHit | null> {
     // Watch entries (watch=true) are observe-only — they feed the watch
     // strip but never pause the run (contract §"Watch list").
     const breakpoints = await db.simulationBreakpoint.findMany({
-      where: { runId, enabled: true, watch: false },
+      where: { runId, enabled: true, watch: false, ...(onlyOnProposal ? { kind: "ON_PROPOSAL" } : {}) },
       orderBy: { createdAt: "asc" },
     });
 
@@ -593,6 +594,20 @@ export function createDebuggerServices({
       await gate(workspaceId, novelId, actorUserId, "simulation:manage");
       const run = await getRunOrThrow(workspaceId, novelId, runId);
 
+      if (run.status === "PAUSED_PROPOSAL") {
+        // Observe the approval boundary without advancing or changing its status.
+        const tick = await db.simulationTick.findFirst({
+          where: { runId, tickNumber: run.currentTick },
+        });
+        return {
+          tickNumber: run.currentTick,
+          stateAfter: tick?.stateAfter ?? null,
+          breakpointHit: await checkBreakpoints(workspaceId, novelId, runId, run.currentTick, tick?.stateAfter, true),
+          runStatus: run.status,
+          pauseReason: run.pauseReason,
+        };
+      }
+
       if (run.status !== "RUNNING") {
         throw new SimulationError(
           "INVALID_STATUS_TRANSITION",
@@ -637,16 +652,17 @@ export function createDebuggerServices({
         // Pause with reason (021A PAUSED status reused — no new
         // PAUSED_BREAKPOINT status per contract). The pause_reason is
         // debugger metadata, not simulation history (Invariant 5).
-        await db.simulationRun.update({
-          where: { id: run.id },
+        await db.simulationRun.updateMany({
+          where: { id: run.id, status: "RUNNING" },
           data: { status: "PAUSED", pauseReason: hit.reason },
         });
+        const refreshed = await getRunOrThrow(workspaceId, novelId, runId);
         return {
           tickNumber: tick.tickNumber,
           stateAfter: tick.stateAfter,
           breakpointHit: hit,
-          runStatus: "PAUSED",
-          pauseReason: hit.reason,
+          runStatus: refreshed.status,
+          pauseReason: refreshed.pauseReason,
         };
       }
 

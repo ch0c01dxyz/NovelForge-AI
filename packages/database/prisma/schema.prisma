@@ -178,10 +178,14 @@ model Workspace {
   finalTextReviews FinalTextReview[]
   /// NF-WF-021A: simulation runs in this workspace.
   simulationRuns SimulationRun[]
+  /// NF-WF-024A: what-if comparisons in this workspace.
+  whatifComparisons WhatifComparison[]
   /// NF-WF-021B: causal links for simulation events in this workspace.
   simulationCausalLinks SimulationCausalLink[]
   /// NF-WF-021B: uncertainty proposals for simulation runs in this workspace.
   simulationProposals SimulationProposal[]
+  /// NF-WF-024B: debugger breakpoints for simulation runs in this workspace.
+  simulationBreakpoints SimulationBreakpoint[]
   /// NF-WF-022A: closure ledger entries in this workspace.
   endgameLedgers EndgameLedger[]
   /// NF-WF-022A: ending gate approvals in this workspace.
@@ -292,6 +296,9 @@ model Novel {
   /// is isolated from canon per Invariant 1 — simulations NEVER write to
   /// canon tables).
   simulationRuns   SimulationRun[]
+  /// NF-WF-024A: what-if comparisons for this novel (Cascade; inspect-only,
+  /// never enter canon/memory/approval pipelines).
+  whatifComparisons WhatifComparison[]
   /// NF-WF-021A: per-novel module activation records (021A defines the
   /// table; only the `simulation` module is used in 021).
   modules          NovelModule[]
@@ -299,6 +306,8 @@ model Novel {
   simulationCausalLinks SimulationCausalLink[]
   /// NF-WF-021B: uncertainty proposals for simulation runs in this novel.
   simulationProposals SimulationProposal[]
+  /// NF-WF-024B: debugger breakpoints for simulation runs in this novel.
+  simulationBreakpoints SimulationBreakpoint[]
   /// NF-WF-022A: closure ledger entries for this novel.
   endgameLedgers EndgameLedger[]
   /// NF-WF-022A: ending gate approvals for this novel.
@@ -3181,6 +3190,11 @@ model SimulationRun {
   /// Prerequisite pins (all required before RUNNING; recorded at configure).
   snapshotId      String? @map("snapshot_id") @db.Uuid
   canonRevisionId String? @map("canon_revision_id") @db.Uuid
+  /// NF-WF-024B: WHY the run paused (breakpoint hit description). The run
+  /// reuses the 021A PAUSED status (no new PAUSED_BREAKPOINT status per
+  /// contract); this column records the pause reason. Null when not
+  /// paused-by-debugger.
+  pauseReason String? @map("pause_reason")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -3215,9 +3229,43 @@ model SimulationScenario {
   /// Tick-number → list of event injections, e.g. {"5": [{...drought...}]}.
   injections   Json     @default("{}") @db.JsonB
   seed         String   @default("default")
+  /// NF-WF-024A: run kind. 'STANDARD' (021 default) or 'WHATIF'
+  /// (narrative-level what-if across outline versions). WHATIF runs are
+  /// excluded from 021D's Simulation Center list (read-path isolation).
+  kind         String?  @default("STANDARD")
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("simulation_scenarios")
+}
+
+/// NF-WF-024A: a persisted what-if comparison across 2+ outline versions.
+/// Links 021A SimulationRuns (kind='WHATIF'). Inspect-only: there is no
+/// approve/promote operation on a comparison (024 Invariant 1).
+model WhatifComparison {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId           String   @map("novel_id") @db.Uuid
+  novel             Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// Outline versions being compared (2+, any status — 024A Q2).
+  outlineVersionIds Json     @default("[]") @map("outline_version_ids") @db.JsonB
+  /// 021A SimulationRun ids (one per outline version), kind='WHATIF'.
+  runIds            Json     @default("[]") @map("run_ids") @db.JsonB
+  /// Divergence points: [{ tickNumber, chapterIndex, kind, summary,
+  /// outlineVersionIds: [...] }].
+  divergencePoints  Json     @default("[]") @map("divergence_points") @db.JsonB
+  /// Cost bounds (024 Invariant 3): declared up front, enforced server-side.
+  maxChapters       Int      @default(3) @map("max_chapters")
+  tokenBudget       Int      @map("token_budget")
+  tokenSpent        Int      @default(0) @map("token_spent")
+  /// DRAFT → READY (runs created) → RUNNING → COMPLETED |
+  /// INCOMPLETE_BUDGET_EXHAUSTED | ABORTED
+  status            String   @default("DRAFT")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([novelId])
+  @@map("whatif_comparisons")
 }
 
 /// NF-WF-021A: a discrete time step with before/after state.
@@ -3377,6 +3425,45 @@ model SimulationProposal {
 /// the enum is extensible for future uncertainty kinds.
 enum SimulationProposalKind {
   OUTCOME_FORK
+}
+
+/// NF-WF-024B: simulation debugger breakpoints. Breakpoints pause; watch
+/// observes; replay re-executes deterministically. The debugger NEVER
+/// mutates simulation history (024 Invariant 5 / 021 Invariant 6) — there
+/// is no "edit state and continue" operation.
+/// runId is a logical FK to 021A simulation_runs.id (plain UUID, no DB FK
+/// — 021A owns the table; 024B parallelizes against the pinned shapes,
+/// following the 021B pattern). The workspace/novel FKs are real (tenant
+/// boundary + cascade).
+model SimulationBreakpoint {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String   @map("novel_id") @db.Uuid
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// Logical FK to 021A simulation_runs.id (no DB FK).
+  runId       String   @map("run_id") @db.Uuid
+  kind        SimulationBreakpointKind
+  /// Predicate JSON. TICK: {"tickNumber": N}. PREDICATE: {"path": "...",
+  /// "op": ">", "value": ...}. ON_PROPOSAL: null.
+  predicate   Json?    @db.JsonB
+  /// Watch entries are PREDICATE-kind breakpoints with watch=true
+  /// (contract §Migration). The watch strip shows the predicate's path
+  /// value across ticks.
+  watch       Boolean  @default(false)
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([runId])
+  @@index([runId, enabled])
+  @@map("simulation_breakpoints")
+}
+
+/// NF-WF-024B: breakpoint kinds (contract §Scope, pinned).
+enum SimulationBreakpointKind {
+  TICK
+  PREDICATE
+  ON_PROPOSAL
 }
 
 /// NF-WF-021B: proposal lifecycle (mirrors CanonProposalStatus but is a

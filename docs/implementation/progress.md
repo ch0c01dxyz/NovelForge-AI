@@ -5809,3 +5809,19 @@ Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) component tes
    - Finding: **GAP-091** (P3) — `simulation_entities` is a dead table (migrated, never queried); no isolation risk.
 
 **Honest limitations:** (1) backends MODEL_UNVERIFIED per GAP-013; (2) verification scripts were temporary (evidence in this entry + handoff); (3) isolation negative tests were service-level per the contract's permitted equivalent.
+
+## NF-WF-024B — Simulation debugger (2026-10-07)
+
+Implementer: 024B subagent (separate actor from contract author, contract reviewer, the 024A/024C implementers, and the future 024B diff reviewer). Contract: `tasks/NF-WF-024-advanced-intelligence.md` §024B. Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- Prisma: `SimulationBreakpointKind` enum (TICK/PREDICATE/ON_PROPOSAL), `SimulationBreakpoint` (runId logical FK, kind, predicate JSONB, watch boolean, enabled; back-relations on Workspace/Novel); `pauseReason` nullable TEXT on `SimulationRun` (021A PAUSED reused — no new PAUSED_BREAKPOINT status per contract).
+- Migration `20261007_nf_wf_024b_debugger` (GAP-030: DO-block enum + column add, CREATE TABLE IF NOT EXISTS, IF NOT EXISTS indexes, additive only).
+- `apps/api/src/services/simulation.ts` — extracted pure `computeTick(stateBefore, tickNumber, injections)` (behavior-preserving refactor; the single source of truth for tick semantics used by both 021A stepRun and 024B replay, so fidelity holds by construction).
+- `apps/api/src/services/simulation-debugger.ts` — `DebuggerError` (INVALID_INPUT → 400; RUN_NOT_FOUND/BREAKPOINT_NOT_FOUND → 404; INVALID_STATUS_TRANSITION/REPLAY_OUT_OF_RANGE → 409); `createBreakpoint`/`listBreakpoints`/`deleteBreakpoint` (simulation:manage for mutations, simulation:read for list; watch entries must be PREDICATE-kind); `replayRun` (simulation:read; deterministic re-execution 1..toTick via shared `computeTick`, NON-PERSISTING, returns replayed state + fidelity proof via canonical JSON comparison); `getWatchValues` (simulation:read; watch strip data); `debugStep` (simulation:manage; steps 1 tick via 021A stepRun, checks enabled non-watch breakpoints, pauses with pause_reason on hit). Predicate ops: >, <, >=, <=, ==, != (deterministic, no LLM). Watch breakpoints are observe-only (never pause).
+- `apps/api/src/simulation-debugger-routes.ts` — 6 routes (POST/GET/DELETE breakpoints, POST replay, GET watch, POST debug-step); session auth, Zod, 404-for-non-members. `platform-routes.ts` — DebuggerError handler branch. `app.ts` — route registration.
+- `apps/api/src/simulation-debugger.test.ts` — 10 integration tests (dedicated `novelforge_test_simulation_debugger` DB): breakpoint CRUD, 400 invalid predicates, 403 capabilities, **3/3 fault-injection scenarios** (attribute crash → PREDICATE fires at tick 12; missing injection → watch flatline + replay byte-identical; proposal storm → ON_PROPOSAL pauses with 3 listed), replay byte-identical across full run, 409 out-of-range, EDITOR read-only. 10/10 PASS.
+- Web: `simulationApi.ts` (+024B types/methods), `SimulationDebugger.vue` (breakpoint editor/list, watch strip, replay slider with fidelity badge, event trace via 021B CausalChainView, debug-step with pause-reason banner); `simulation.vue` — new "Debugger" tab. i18n `simulation.debugger.*` (~45 keys, en+id parity). Tests: `simulation-center.test.ts` +3 (12/12); `simulation-center.axe.test.ts` +2 (9/9 zero violations); vue-tsc clean; eslint clean.
+- Invariant 0: 021A (18/18) + 021B + 024B (47/47) green; refactor behavior-preserving. Invariant 5: replay non-persisting (tick count unchanged asserted); no state-edit operation (service exposes none — grep-verified in review).
+
+**Honest limitations:** (1) backends MODEL_UNVERIFIED per GAP-013; (2) component tests mock at HTTP boundary per Q5; (3) 024A/024C parallel files have pre-existing tsc errors (not 024B scope).

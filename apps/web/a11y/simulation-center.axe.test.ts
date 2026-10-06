@@ -258,3 +258,80 @@ describe("Simulation Center axe", () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// NF-WF-024B: SimulationDebugger axe.
+// ---------------------------------------------------------------------------
+
+import SimulationDebugger from "../app/components/simulation/SimulationDebugger.vue";
+
+describe("024B SimulationDebugger axe", () => {
+  beforeEach(() => {
+    apiMock.mockReset();
+    apiMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/breakpoints")) {
+        return {
+          breakpoints: [
+            {
+              id: "bp-1",
+              runId: "run-1",
+              kind: "PREDICATE",
+              predicate: { path: "population", op: "<", value: 100 },
+              watch: true,
+              enabled: true,
+              createdAt: "2026-10-07T00:00:00Z",
+            },
+          ],
+        };
+      }
+      if (url.endsWith("/watch")) {
+        return {
+          watches: [
+            {
+              breakpointId: "bp-1",
+              path: "population",
+              values: [
+                { tickNumber: 1, value: 500 },
+                { tickNumber: 2, value: 480 },
+              ],
+            },
+          ],
+        };
+      }
+      return {
+        run: {
+          id: "run-1",
+          novelId: "novel-1",
+          branchId: "branch-1",
+          isSimulationBranch: true,
+          status: "PAUSED",
+          currentTick: 5,
+          maxTicks: 20,
+          seed: "seed-1",
+          snapshotId: "snap-1",
+          canonRevisionId: "rev-1",
+          createdAt: "2026-10-06T00:00:00Z",
+          scenario: null,
+        },
+      };
+    });
+  });
+
+  it("debugger (with breakpoints + watch) has zero violations", async () => {
+    const wrapper = mount(SimulationDebugger, {
+      props: { workspaceId: "ws-1", novelId: "novel-1", runId: "run-1" },
+    });
+    await flushPromises();
+    const results = await axe(wrapper.element, WCAG22_AA);
+    expect(results.violations).toEqual([]);
+  });
+
+  it("debugger (no run) has zero violations", async () => {
+    const wrapper = mount(SimulationDebugger, {
+      props: { workspaceId: "ws-1", novelId: "novel-1", runId: null },
+    });
+    await flushPromises();
+    const results = await axe(wrapper.element, WCAG22_AA);
+    expect(results.violations).toEqual([]);
+  });
+});

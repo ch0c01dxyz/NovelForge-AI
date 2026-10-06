@@ -1,6 +1,12 @@
 # IDEA DRAFT — "What-if" story simulation across outline versions
 
-Status: DRAFT IDEA (not a contract; no implementation). Captured 2026-10-05
+Status: SUPERSEDED by NF-WF-024A (2026-10-07) — promoted from draft to
+feature. The six open questions are answered in
+`tasks/NF-WF-024-advanced-intelligence.md` (Child 024A). This document
+is preserved as historical record per AGENTS.md §10 (annotate superseded
+decisions instead of silently rewriting history).
+
+Original status: DRAFT IDEA (not a contract; no implementation). Captured 2026-10-05
 from the NF-WF-007 review F2 author decision.
 
 ## Origin

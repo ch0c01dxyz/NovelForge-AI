@@ -665,6 +665,11 @@ export interface MergeChange {
    * risky (one of the 9 contract-pinned semantic edges).
    */
   warning?: string;
+  /**
+   * NF-WF-024C: for a CONFLICT narrowed to CLEAN by semantic analysis,
+   * the proving rule (S1/S2/S3). Absent on all other changes.
+   */
+  semanticRule?: "S1" | "S2" | "S3";
 }
 
 /** The read-only result of `previewMerge`. */
@@ -1170,6 +1175,12 @@ export interface RevisionServices {
     sourceBranchId: string;
     /** Omitted → the checked-out branch (020B tracking). */
     targetBranchId?: string;
+    /**
+     * NF-WF-024C: `conservative` (default) = 020C behavior unchanged;
+     * `semantic` = CONFLICT changes re-examined by the deterministic
+     * S1/S2/S3 rules, narrowing to CLEAN only with proof.
+     */
+    mode?: "conservative" | "semantic";
   }): Promise<MergePreview>;
 
   /**
@@ -2417,9 +2428,28 @@ export function createRevisionServices({
     // NF-WF-020C: conservative merge + bulk recovery.
     // ------------------------------------------------------------------
 
-    async previewMerge({ actorUserId, workspaceId, novelId, sourceBranchId, targetBranchId }) {
+    async previewMerge({ actorUserId, workspaceId, novelId, sourceBranchId, targetBranchId, mode }) {
       await gate(workspaceId, novelId, actorUserId, "revision:read");
-      return computeMergePreview(db, novelId, sourceBranchId, targetBranchId);
+      const preview = await computeMergePreview(db, novelId, sourceBranchId, targetBranchId);
+      // NF-WF-024C: semantic mode narrows CONFLICT → CLEAN only with proof
+      // (S1/S2/S3). Default (conservative) returns 020C behavior unchanged.
+      if (mode === "semantic") {
+        const { applySemanticMerge } = await import("./semantic-merge.ts");
+        const changes = applySemanticMerge(preview.changes);
+        const summary = {
+          clean: changes.filter((c) => c.kind === "CLEAN").length,
+          conflict: changes.filter((c) => c.kind === "CONFLICT").length,
+          deletedModified: changes.filter((c) => c.kind === "DELETED_MODIFIED").length,
+          orphanRisk: changes.filter((c) => c.kind === "ORPHAN_RISK").length,
+        };
+        return {
+          ...preview,
+          changes,
+          summary,
+          canApply: summary.conflict === 0 && summary.deletedModified === 0,
+        };
+      }
+      return preview;
     },
 
     async applyMerge({

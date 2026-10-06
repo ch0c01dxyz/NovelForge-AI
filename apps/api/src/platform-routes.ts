@@ -43,8 +43,12 @@ import { MergeError } from "./services/revisions.ts";
 // machine-readable code as the envelope's error field. Same position as
 // the other typed-error branches.
 import { SimulationError } from "./services/simulation.ts";
+// NF-WF-024A: typed what-if refusals.
+import { WhatifError } from "./services/whatif.ts";
 // NF-WF-021B: typed causality/proposal refusals.
 import { SimulationCausalityError } from "./services/simulation-causality.ts";
+// NF-WF-024B: typed debugger refusals.
+import { DebuggerError } from "./services/simulation-debugger.ts";
 import { EndgameError } from "./services/endgame.ts";
 import { EndgameCallbackError } from "./services/endgame-callbacks.ts";
 
@@ -199,12 +203,28 @@ export async function registerPlatformRoutes(
     if (error instanceof SimulationError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
+    // NF-WF-024A: typed what-if refusals (INVALID_INPUT,
+    // OUTLINE_VERSION_NOT_FOUND, BUDGET_EXCEEDED → 400;
+    // INVALID_STATUS_TRANSITION → 409; COMPARISON_NOT_FOUND → 404) carry
+    // the machine-readable code as the envelope's error field. Same
+    // position as the other typed-error branches.
+    if (error instanceof WhatifError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
     // NF-WF-021B: typed causality/proposal refusals (INVALID_INPUT → 400;
     // NOT_FOUND → 404; PROPOSAL_ALREADY_DECIDED, NO_OPEN_PROPOSAL,
     // INVALID_ALTERNATIVE → 400/409) carry the machine-readable code as the
     // envelope's error field. Same position as the other typed-error
     // branches.
     if (error instanceof SimulationCausalityError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-024B: typed debugger refusals (INVALID_INPUT → 400;
+    // RUN_NOT_FOUND / BREAKPOINT_NOT_FOUND → 404;
+    // INVALID_STATUS_TRANSITION / REPLAY_OUT_OF_RANGE → 409) carry the
+    // machine-readable code as the envelope's error field. Same position
+    // as the other typed-error branches.
+    if (error instanceof DebuggerError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
     // NF-WF-022A: typed endgame refusals (INVALID_INPUT → 400;

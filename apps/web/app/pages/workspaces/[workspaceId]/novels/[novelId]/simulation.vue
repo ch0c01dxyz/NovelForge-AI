@@ -66,6 +66,16 @@
       <CivilizationWalkthrough />
     </div>
 
+    <!-- Debugger tab (024B) -->
+    <div v-if="activeTab === 'debugger'" role="tabpanel">
+      <SimulationDebugger
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+        :run-id="selectedRunId"
+        @run-updated="loadRuns"
+      />
+    </div>
+
     <SimulationRunCreate
       :open="createOpen"
       :workspace-id="workspaceId"
@@ -81,9 +91,11 @@
 /**
  * NF-WF-021D: Simulation Center page.
  *
- * Two tabs: "Runs" (021A run list/create/detail + step controls, 021B
- * causal chain + proposal review for the selected run) and "Walkthrough"
- * (021C civilization guided demo, driven by the domain functions).
+ * Three tabs: "Runs" (021A run list/create/detail + step controls, 021B
+ * causal chain + proposal review for the selected run), "Walkthrough"
+ * (021C civilization guided demo, driven by the domain functions), and
+ * "Debugger" (024B: breakpoints, watch, time-travel replay, event trace
+ * for the selected run).
  *
  * §15 foundational design; en+id; axe.
  */
@@ -97,6 +109,7 @@ import SimulationRunDetail from "../../../../../components/simulation/Simulation
 import CausalChainView from "../../../../../components/simulation/CausalChainView.vue";
 import ProposalReview from "../../../../../components/simulation/ProposalReview.vue";
 import CivilizationWalkthrough from "../../../../../components/simulation/CivilizationWalkthrough.vue";
+import SimulationDebugger from "../../../../../components/simulation/SimulationDebugger.vue";
 
 const route = useRoute();
 const { t } = useLocale();
@@ -106,8 +119,8 @@ const simApi = useSimulationApi();
 const workspaceId = computed(() => String(route.params.workspaceId ?? ""));
 const novelId = computed(() => String(route.params.novelId ?? ""));
 
-const tabs = [{ key: "runs" }, { key: "walkthrough" }] as const;
-const activeTab = ref<"runs" | "walkthrough">("runs");
+const tabs = [{ key: "runs" }, { key: "walkthrough" }, { key: "debugger" }] as const;
+const activeTab = ref<"runs" | "walkthrough" | "debugger">("runs");
 
 const runs = ref<SimulationRunShape[]>([]);
 const runsLoading = ref(true);

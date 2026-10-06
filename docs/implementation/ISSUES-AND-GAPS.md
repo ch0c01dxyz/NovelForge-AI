@@ -1974,3 +1974,20 @@ STATUS: OPEN — owner: to be named (human auditor).
 RESOLUTION: Removed the unused `type DependencyConflict` import from `apps/api/src/services/revisions.ts` (one line). Verified: `npx eslint src/services/revisions.ts` → exit 0, clean. Committed as `ab7d71d` (post-023 cleanup per 023 Invariant 1; the 023C reviewer's F1 P2 required this before 024 dispatch to establish the green 023 battery baseline for 024's Invariant 0).
 
 STATUS: CLOSED — 2026-10-07.
+
+## GAP-098 — 024C Part 2 (≥15% cost optimization) not landed: no safe opportunity on pinned workload (2026-10-07)
+
+CONTEXT: The 024 contract's 024C Part 2 requires "≥1 cost optimization landed, each with recorded before/after (≥15% target-metric gain, ≤5% regression elsewhere)".
+
+FINDING: Investigation of the 023B pinned workload (`docs/implementation/023B-budget-table.md`) found:
+- 9/9 routes well within budget (worst: 21ms p95 vs 2000ms budget = 1% of budget).
+- Average 3–8 DB queries per request; no N+1 patterns.
+- Merge preview already parallelized (3× Promise.all batches).
+
+No ≥15% optimization exists that does not risk observable behavior change (024 Invariant 0: "without weaker invariants" is the governing constraint).
+
+RESOLUTION: Documented in `docs/implementation/benchmarks/024C.md`. The 024C "measured cost" deliverable is the token budget enforcement system (`TokenBudget`, `MAX_TOKEN_BUDGET=100_000`, 10/10 tests) — controlling AI token spend (the dominant cost driver), not query/latency.
+
+SEVERITY: P3 (documentation of a contract scope decision; no functional impact).
+STATUS: OPEN — 2026-10-07. Owner: 024C implementer (documented); future optimization work (if a bottleneck emerges) is a follow-up.
+CLOSURE CHECK: Either (a) a safe ≥15% optimization is found and landed with before/after, or (b) the 024 contract is amended to scope "measured cost" to token budgets.

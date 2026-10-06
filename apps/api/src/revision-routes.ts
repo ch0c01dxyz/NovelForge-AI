@@ -111,8 +111,11 @@ const switchBranchBody = z.object({
 // NF-WF-020C: merge preview/apply bodies. `targetBranchId` defaults to the
 // checked-out branch (020B tracking); omitted asserts no expectation on the
 // target head, while `expectedHeadRevisionId: null` asserts "no head yet".
+// NF-WF-024C: preview accepts optional `mode` ("conservative" default,
+// "semantic" = deterministic S1/S2/S3 narrowing of CONFLICT → CLEAN).
 const mergePreviewBody = z.object({
   targetBranchId: uuid.optional(),
+  mode: z.enum(["conservative", "semantic"]).optional(),
 });
 const mergeApplyBody = z.object({
   targetBranchId: uuid.optional(),
@@ -361,6 +364,7 @@ export function registerRevisionRoutes(
         ...(body.data.targetBranchId === undefined
           ? {}
           : { targetBranchId: body.data.targetBranchId }),
+        ...(body.data.mode === undefined ? {} : { mode: body.data.mode }),
       });
       return reply.send({ preview });
     },

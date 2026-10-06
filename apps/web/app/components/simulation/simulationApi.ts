@@ -1,13 +1,13 @@
 /**
  * NF-WF-021D: Simulation Center API client.
  *
- * Thin typed wrapper around the 021A run lifecycle routes and 021B
- * causal/proposal routes. No new API routes are added in 021D scope —
- * this module only consumes the existing backend surface.
+ * Thin typed wrapper around the 021A run lifecycle routes, 021B
+ * causal/proposal routes, and 024B debugger routes.
  *
  * Route shapes mirror:
  * - apps/api/src/simulation-routes.ts (021A)
  * - apps/api/src/simulation-causality-routes.ts (021B)
+ * - apps/api/src/simulation-debugger-routes.ts (024B)
  */
 import { useApi } from "../../composables/useApi";
 
@@ -35,6 +35,8 @@ export interface SimulationRunShape {
   seed: string;
   snapshotId: string | null;
   canonRevisionId: string | null;
+  /** NF-WF-024B: why the run paused (breakpoint hit). Null unless paused by debugger. */
+  pauseReason: string | null;
   createdAt: string;
 }
 
@@ -104,6 +106,61 @@ export interface ProposalSummary {
   rationale: string | null;
   chosenAlternativeId: string | null;
   createdAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// 024B shapes (mirror apps/api/src/services/simulation-debugger.ts)
+// ---------------------------------------------------------------------------
+
+export type BreakpointKind = "TICK" | "PREDICATE" | "ON_PROPOSAL";
+
+export interface BreakpointPredicate {
+  path: string;
+  op: ">" | "<" | ">=" | "<=" | "==" | "!=";
+  value: unknown;
+}
+
+export interface BreakpointShape {
+  id: string;
+  runId: string;
+  kind: BreakpointKind;
+  predicate: unknown | null;
+  watch: boolean;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface BreakpointHit {
+  breakpointId: string;
+  kind: BreakpointKind;
+  tickNumber: number;
+  reason: string;
+  proposals?: Array<{ id: string; tickNumber: number; trigger: string }>;
+}
+
+export interface ReplayResult {
+  runId: string;
+  toTick: number;
+  replayedState: Record<string, unknown>;
+  fidelity: {
+    matches: boolean;
+    replayedCanonical: string;
+    storedCanonical: string;
+  };
+}
+
+export interface WatchValue {
+  breakpointId: string;
+  path: string;
+  values: Array<{ tickNumber: number; value: unknown }>;
+}
+
+export interface DebugStepResult {
+  tickNumber: number;
+  stateAfter: unknown;
+  breakpointHit: BreakpointHit | null;
+  runStatus: SimulationRunStatus;
+  pauseReason: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -310,6 +367,91 @@ export function useSimulationApi() {
     return res;
   }
 
+  // --- 024B: debugger ---
+
+  async function listBreakpoints(
+    workspaceId: string,
+    novelId: string,
+    runId: string,
+  ): Promise<BreakpointShape[]> {
+    const res = await api<{ breakpoints: BreakpointShape[] }>(
+      `${basePath(workspaceId, novelId)}/${runId}/breakpoints`,
+    );
+    return res.breakpoints;
+  }
+
+  async function createBreakpoint(
+    workspaceId: string,
+    novelId: string,
+    runId: string,
+    body: {
+      kind: BreakpointKind;
+      predicate?: { tickNumber: number } | BreakpointPredicate | null;
+      watch?: boolean;
+      enabled?: boolean;
+    },
+  ): Promise<BreakpointShape> {
+    const res = await api<{ breakpoint: BreakpointShape }>(
+      `${basePath(workspaceId, novelId)}/${runId}/breakpoints`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    );
+    return res.breakpoint;
+  }
+
+  async function deleteBreakpoint(
+    workspaceId: string,
+    novelId: string,
+    runId: string,
+    breakpointId: string,
+  ): Promise<void> {
+    await api(
+      `${basePath(workspaceId, novelId)}/${runId}/breakpoints/${breakpointId}`,
+      { method: "DELETE" },
+    );
+  }
+
+  async function replayRun(
+    workspaceId: string,
+    novelId: string,
+    runId: string,
+    toTick: number,
+  ): Promise<ReplayResult> {
+    const res = await api<ReplayResult>(
+      `${basePath(workspaceId, novelId)}/${runId}/replay`,
+      {
+        method: "POST",
+        body: JSON.stringify({ toTick }),
+      },
+    );
+    return res;
+  }
+
+  async function getWatchValues(
+    workspaceId: string,
+    novelId: string,
+    runId: string,
+  ): Promise<WatchValue[]> {
+    const res = await api<{ watches: WatchValue[] }>(
+      `${basePath(workspaceId, novelId)}/${runId}/watch`,
+    );
+    return res.watches;
+  }
+
+  async function debugStep(
+    workspaceId: string,
+    novelId: string,
+    runId: string,
+  ): Promise<DebugStepResult> {
+    const res = await api<DebugStepResult>(
+      `${basePath(workspaceId, novelId)}/${runId}/debug-step`,
+      { method: "POST" },
+    );
+    return res;
+  }
+
   return {
     listRuns,
     getRun,
@@ -325,5 +467,11 @@ export function useSimulationApi() {
     getCounterfactuals,
     listProposals,
     decideProposal,
+    listBreakpoints,
+    createBreakpoint,
+    deleteBreakpoint,
+    replayRun,
+    getWatchValues,
+    debugStep,
   };
 }

@@ -2293,3 +2293,17 @@ No-auto-linking pin: exactly one `db.endgameCallback.create` call site in the co
 | Backup/restore drill (`zz-023a-drill.test.ts`, temporary) | pg_dump -Fc → pg_restore to fresh DB; 29 tables row-count match; /ready 200; 6 key queries identical | 5/5 PASS (dump 332,035 bytes; restore 1.06s) |
 | Tenant-isolation audit (`zz-023a-isolation.test.ts`, temporary) | 14 service-level negative tests across the 21 014–022 tables (cross-workspace → 404, cross-user → empty/404, comment edit → 403) | 14/14 PASS |
 | Isolation code audit | Grep every Prisma access site on the 21 tables for missing workspaceId/novelId/userId filter | Zero unfiltered queries; GAP-091 (P3) for dead `simulation_entities` table |
+
+## NF-WF-024B — Simulation debugger (2026-10-07)
+
+| `simulation-debugger.test.ts` (API integration) | 10 tests: breakpoint CRUD (201/200/204), 400 invalid predicates (TICK without tickNumber, bad op, watch on non-PREDICATE), 403 VIEWER manage, 3/3 fault-injection (attribute crash → PREDICATE at tick 12 with pause_reason; missing injection → watch flatline at tick 11 + replay byte-identical; proposal storm → ON_PROPOSAL with 3 listed), replay byte-identical ticks 1..10, 409 REPLAY_OUT_OF_RANGE, EDITOR 200 replay + 403 debug-step | 10/10 PASS (dedicated `novelforge_test_simulation_debugger` DB, real HTTP, real migrated schema) |
+| `simulation.test.ts` (021A, regression) | 18 tests: primitives, prerequisites, lifecycle, determinism, canon isolation, capabilities | 18/18 PASS (refactor behavior-preserving) |
+| `simulation-causality.test.ts` (021B, regression) | 19 tests | 19/19 PASS |
+| `simulation-center.test.ts` (web components) | 12 tests: 9 existing + 3 new (debugger no-run, debugger sections, TICK breakpoint create) | 12/12 PASS |
+| `simulation-center.axe.test.ts` | 9 tests: 7 existing + 2 new (debugger with breakpoints+watch, debugger no-run) — wcag2aa + wcag22aa | 9/9 PASS, zero violations |
+| `vue-tsc --noEmit` (web) | Typecheck | Clean for 024B files |
+| `npx tsc --noEmit` (apps/api) | Typecheck | Clean for 024B files (024A/024C parallel files have pre-existing errors — not 024B scope) |
+| `npx eslint` (024B files) | Lint | Clean |
+| i18n parity | `simulation.debugger.*` keys en vs id | 45/45 keys present in both |
+
+Invariant 5 pin: replay is non-persisting — `simulationTick.count` unchanged after replay (asserted in test). No state-edit operation exists — the debugger service exposes no tick-history mutation (grep-verified).

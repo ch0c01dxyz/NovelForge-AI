@@ -36,6 +36,9 @@ import { registerNarrativeRoutes } from "./narrative-routes.ts";
 import { registerRevisionRoutes } from "./revision-routes.ts";
 import { registerSimulationRoutes } from "./simulation-routes.ts";
 import { registerCausalityRoutes } from "./simulation-causality-routes.ts";
+import { registerDebuggerRoutes } from "./simulation-debugger-routes.ts";
+import { registerWhatifRoutes } from "./whatif-routes.ts";
+import { createWhatifServices } from "./services/whatif.ts";
 import { registerEndgameRoutes } from "./endgame-routes.ts";
 import { registerEndgameCallbackRoutes } from "./endgame-callback-routes.ts";
 import { createEndgameServices } from "./services/endgame.ts";
@@ -50,6 +53,7 @@ import { createManuscriptServices } from "./services/manuscript.ts";
 import { createRevisionServices } from "./services/revisions.ts";
 import { createSimulationServices } from "./services/simulation.ts";
 import { createCausalityServices } from "./services/simulation-causality.ts";
+import { createDebuggerServices } from "./services/simulation-debugger.ts";
 import { readHeadRevisionId } from "./services/revisions.ts";
 import { createAiServices } from "./services/ai.ts";
 import { createDefinitionServices } from "./services/definitions.ts";
@@ -487,6 +491,30 @@ export async function buildApp(
       auth,
       services: createCausalityServices(options.db),
     });
+
+    // NF-WF-024A: evaluated what-if outline simulation. Narrative-level
+    // what-if across outline versions (kind='WHATIF' runs); inspect-only,
+    // never enters canon/memory/approval pipelines (Invariant 1).
+    {
+      const simulationServices = createSimulationServices({ db: options.db });
+      registerWhatifRoutes(app, {
+        auth,
+        services: createWhatifServices({ db: options.db, simulations: simulationServices }),
+      });
+    }
+
+    // NF-WF-024B: simulation debugger (breakpoints, watch, time-travel
+    // replay, debug-step). The debugger never mutates history (024
+    // Invariant 5 / 021 Invariant 6); replay is non-persisting; no new
+    // capabilities (reuses simulation:read / simulation:manage).
+    {
+      const simulationServices = createSimulationServices({ db: options.db });
+      registerDebuggerRoutes(app, {
+        auth,
+        services: createDebuggerServices({ db: options.db }),
+        simulationServices,
+      });
+    }
 
     // NF-WF-022A: closure ledger + ending gate + debt report. Planning
     // only: never writes to canon tables (Invariant 3), never auto-changes

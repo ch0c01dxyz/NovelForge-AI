@@ -13,6 +13,35 @@
       {{ t("recovery.mergeTarget") }}: <span class="font-mono">{{ targetBranchName }}</span>
     </p>
 
+    <!-- NF-WF-024C: semantic/conservative mode toggle -->
+    <div class="mt-3 flex items-center gap-2" data-testid="merge-mode-toggle">
+      <span id="merge-mode-label" class="text-[12px] text-nf-text-dim">{{ t("recovery.mergeMode") }}:</span>
+      <div role="radiogroup" aria-labelledby="merge-mode-label" class="flex gap-1">
+        <button
+          type="button"
+          role="radio"
+          :aria-checked="mode === 'conservative'"
+          data-testid="merge-mode-conservative"
+          class="rounded-lg border px-3 py-1 text-[12px] font-medium"
+          :class="mode === 'conservative' ? 'border-nf-border-strong bg-nf-bg-3 text-nf-text' : 'border-nf-border bg-nf-bg-2 text-nf-text-dim hover:bg-nf-bg-3'"
+          @click="setMode('conservative')"
+        >
+          {{ t("recovery.mergeModeConservative") }}
+        </button>
+        <button
+          type="button"
+          role="radio"
+          :aria-checked="mode === 'semantic'"
+          data-testid="merge-mode-semantic"
+          class="rounded-lg border px-3 py-1 text-[12px] font-medium"
+          :class="mode === 'semantic' ? 'border-nf-border-strong bg-nf-bg-3 text-nf-text' : 'border-nf-border bg-nf-bg-2 text-nf-text-dim hover:bg-nf-bg-3'"
+          @click="setMode('semantic')"
+        >
+          {{ t("recovery.mergeModeSemantic") }}
+        </button>
+      </div>
+    </div>
+
     <div v-if="loading" class="mt-3 text-[13px] text-nf-text-dim" data-testid="merge-preview-loading">
       {{ t("common.loading") }}
     </div>
@@ -78,6 +107,14 @@
               </div>
               <p v-if="c.warning" class="mt-1 text-[12px] text-amber-300" role="note">
                 {{ c.warning }}
+              </p>
+              <!-- NF-WF-024C: semantic rule citation for narrowed conflicts -->
+              <p
+                v-if="c.semanticRule"
+                class="mt-1 text-[12px] text-nf-text-dim"
+                :data-testid="`merge-semantic-${c.semanticRule}`"
+              >
+                {{ t("recovery.mergeSemanticRule", { rule: c.semanticRule }) }}
               </p>
               <!-- Conflict evidence: base / source / target -->
               <div v-if="c.kind === 'CONFLICT' || c.kind === 'DELETED_MODIFIED'" class="mt-2 grid gap-2 md:grid-cols-3 text-[12px]">
@@ -161,6 +198,8 @@ interface MergeChange {
   sourceVersion?: Record<string, unknown> | null;
   targetVersion?: Record<string, unknown> | null;
   warning?: string;
+  /** NF-WF-024C: the proving rule for a CONFLICT narrowed to CLEAN by semantic analysis. */
+  semanticRule?: "S1" | "S2" | "S3";
 }
 
 interface MergePreview {
@@ -191,6 +230,9 @@ const preview = ref<MergePreview | null>(null);
 const applying = ref(false);
 const applied = ref(false);
 const applyError = ref<string | null>(null);
+// NF-WF-024C: merge analysis mode. Conservative (default) = 020C behavior;
+// semantic = deterministic S1/S2/S3 narrowing of CONFLICT → CLEAN.
+const mode = ref<"conservative" | "semantic">("conservative");
 
 const sourceBranchName = computed(() => preview.value?.sourceBranch.name ?? "—");
 const targetBranchName = computed(() => preview.value?.targetBranch.name ?? "—");
@@ -253,11 +295,15 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
+    const body: Record<string, string> = {};
+    if (props.targetBranchId) body.targetBranchId = props.targetBranchId;
+    // NF-WF-024C: pass the mode; conservative is the default.
+    if (mode.value !== "conservative") body.mode = mode.value;
     const res = await api<{ preview: MergePreview }>(
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/branches/${props.sourceBranchId}/merge/preview`,
       {
         method: "POST",
-        body: JSON.stringify(props.targetBranchId ? { targetBranchId: props.targetBranchId } : {}),
+        body: JSON.stringify(body),
       },
     );
     preview.value = res.preview;
@@ -266,6 +312,13 @@ async function load(): Promise<void> {
   } finally {
     loading.value = false;
   }
+}
+
+function setMode(next: "conservative" | "semantic"): void {
+  if (mode.value === next) return;
+  mode.value = next;
+  applied.value = false;
+  void load();
 }
 
 async function onApply(): Promise<void> {

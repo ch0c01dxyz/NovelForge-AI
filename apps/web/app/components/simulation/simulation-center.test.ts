@@ -142,6 +142,7 @@ const mockRuns: SimulationRunShape[] = [
     seed: "seed-1",
     snapshotId: "snap-1",
     canonRevisionId: "rev-1",
+    pauseReason: null,
     createdAt: "2026-10-06T00:00:00Z",
   },
   {
@@ -155,6 +156,7 @@ const mockRuns: SimulationRunShape[] = [
     seed: "",
     snapshotId: null,
     canonRevisionId: null,
+    pauseReason: null,
     createdAt: "2026-10-06T00:00:00Z",
   },
 ];
@@ -337,5 +339,181 @@ describe("CivilizationWalkthrough", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="sim-walkthrough-content-outcomes"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="sim-walkthrough-final-pop"]').text()).toBe("491");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NF-WF-024B: SimulationDebugger component tests.
+// ---------------------------------------------------------------------------
+
+import SimulationDebugger from "./SimulationDebugger.vue";
+
+describe("024B SimulationDebugger", () => {
+  beforeEach(() => {
+    apiMock.mockReset();
+    // getRun, listBreakpoints, getWatchValues.
+    apiMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/breakpoints")) return { breakpoints: [] };
+      if (url.endsWith("/watch")) return { watches: [] };
+      return {
+        run: {
+          id: "run-1",
+          novelId: "novel-1",
+          branchId: "branch-1",
+          isSimulationBranch: true,
+          status: "RUNNING",
+          currentTick: 5,
+          maxTicks: 20,
+          seed: "test",
+          snapshotId: null,
+          canonRevisionId: null,
+          createdAt: new Date().toISOString(),
+          scenario: null,
+        },
+      };
+    });
+  });
+
+  it("renders the debugger with no run selected", async () => {
+    const wrapper = mount(SimulationDebugger, {
+      props: { workspaceId: "ws-1", novelId: "novel-1", runId: null },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="sim-debugger"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sim-debug-no-run"]').exists()).toBe(true);
+  });
+
+  it("renders breakpoints, watch, replay, and trace sections for a run", async () => {
+    const wrapper = mount(SimulationDebugger, {
+      props: { workspaceId: "ws-1", novelId: "novel-1", runId: "run-1" },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="sim-debug-no-bps"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sim-debug-no-watches"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sim-debug-replay-slider"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sim-debug-step"]').exists()).toBe(true);
+  });
+
+  it("creates a TICK breakpoint via the form", async () => {
+    apiMock.mockImplementation(async (url: string, opts?: { method?: string }) => {
+      if (opts?.method === "POST" && url.endsWith("/breakpoints")) {
+        return {
+          breakpoint: {
+            id: "bp-1",
+            runId: "run-1",
+            kind: "TICK",
+            predicate: { tickNumber: 5 },
+            watch: false,
+            enabled: true,
+            createdAt: new Date().toISOString(),
+          },
+        };
+      }
+      if (url.endsWith("/breakpoints")) {
+        return {
+          breakpoints: [
+            {
+              id: "bp-1",
+              runId: "run-1",
+              kind: "TICK",
+              predicate: { tickNumber: 5 },
+              watch: false,
+              enabled: true,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        };
+      }
+      if (url.endsWith("/watch")) return { watches: [] };
+      return {
+        run: {
+          id: "run-1",
+          novelId: "novel-1",
+          branchId: "branch-1",
+          isSimulationBranch: true,
+          status: "RUNNING",
+          currentTick: 5,
+          maxTicks: 20,
+          seed: "test",
+          snapshotId: null,
+          canonRevisionId: null,
+          createdAt: new Date().toISOString(),
+          scenario: null,
+        },
+      };
+    });
+
+    const wrapper = mount(SimulationDebugger, {
+      props: { workspaceId: "ws-1", novelId: "novel-1", runId: "run-1" },
+    });
+    await flushPromises();
+
+    // Select TICK kind (default), set tick number, create.
+    await wrapper.find('[data-testid="sim-debug-new-tick"]').setValue(5);
+    await wrapper.find('[data-testid="sim-debug-new-create"]').trigger("click");
+    await flushPromises();
+
+    expect(apiMock).toHaveBeenCalledWith(
+      expect.stringContaining("/breakpoints"),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("event picker lists tick events and trace button mounts the causal chain", async () => {
+    // F2 fix: the trace panel must be reachable from the UI.
+    apiMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/breakpoints")) return { breakpoints: [] };
+      if (url.endsWith("/watch")) return { watches: [] };
+      if (url.includes("/ticks/")) {
+        return {
+          tick: {
+            id: "tick-5",
+            runId: "run-1",
+            tickNumber: 5,
+            stateBefore: {},
+            stateAfter: {},
+            events: [
+              { id: "ev-drought", runId: "run-1", tickNumber: 5, kind: "DROUGHT", entityId: null, payload: {} },
+              { id: "ev-famine", runId: "run-1", tickNumber: 5, kind: "FAMINE", entityId: "pop-1", payload: {} },
+            ],
+          },
+        };
+      }
+      return {
+        run: {
+          id: "run-1",
+          novelId: "novel-1",
+          branchId: "branch-1",
+          isSimulationBranch: true,
+          status: "RUNNING",
+          currentTick: 5,
+          maxTicks: 20,
+          seed: "test",
+          snapshotId: null,
+          canonRevisionId: null,
+          pauseReason: null,
+          createdAt: new Date().toISOString(),
+          scenario: null,
+        },
+      };
+    });
+
+    const wrapper = mount(SimulationDebugger, {
+      props: { workspaceId: "ws-1", novelId: "novel-1", runId: "run-1" },
+    });
+    await flushPromises();
+
+    // Event picker renders with both events.
+    expect(wrapper.find('[data-testid="sim-debug-tick-events-label"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sim-debug-event-ev-drought"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="sim-debug-event-ev-famine"]').exists()).toBe(true);
+
+    // Clicking trace mounts the CausalChainView (trace panel reachable).
+    await wrapper.find('[data-testid="sim-debug-trace-ev-drought"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="sim-debug-trace-back"]').exists()).toBe(true);
+    // Back button returns to the picker.
+    await wrapper.find('[data-testid="sim-debug-trace-back"]').trigger("click");
+    expect(wrapper.find('[data-testid="sim-debug-event-ev-drought"]').exists()).toBe(true);
   });
 });

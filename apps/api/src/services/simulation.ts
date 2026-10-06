@@ -79,6 +79,9 @@ export interface SimulationRunShape {
   seed: string;
   snapshotId: string | null;
   canonRevisionId: string | null;
+  /// NF-WF-024B: why the run paused (breakpoint hit). Null unless paused
+  /// by the debugger. The run reuses 021A PAUSED status.
+  pauseReason: string | null;
   createdAt: Date;
 }
 
@@ -94,6 +97,9 @@ export interface SimulationServices {
       seed?: string;
       maxTicks?: number;
     };
+    /// NF-WF-024A: scenario kind. Defaults to 'STANDARD'. 'WHATIF' tags
+    /// narrative-level what-if runs (excluded from 021D's list).
+    kind?: string;
   }): Promise<SimulationRunShape>;
 
   listRuns(input: {
@@ -174,6 +180,47 @@ export interface SimulationServices {
   }>;
 }
 
+/**
+ * NF-WF-024B: pure deterministic tick computation (extracted from stepRun).
+ *
+ * Given the state before a tick and the injections for that tick number,
+ * computes the state after and the events — with NO persistence, NO
+ * randomness, NO LLM calls. This is the single source of truth for tick
+ * semantics: 021A's stepRun and 024B's deterministic replay both use it,
+ * so replay fidelity holds by construction (021 Invariant 6).
+ *
+ * 021A's tick rule is minimal: state carries forward; injections for the
+ * tick number are applied as events (with optional `stateDelta`). 021C
+ * adds domain dynamics via the story-simulation package (not inline here).
+ */
+export function computeTick(
+  stateBefore: Record<string, unknown>,
+  tickNumber: number,
+  injections: Record<string, unknown[]>,
+): { stateAfter: Record<string, unknown>; events: unknown[] } {
+  const currentState = { ...stateBefore };
+  const tickInjections = injections[String(tickNumber)] ?? [];
+  const events: unknown[] = [];
+
+  // Apply injections as events (deterministic).
+  for (const injection of tickInjections) {
+    const evt = injection as Record<string, unknown>;
+    events.push({
+      kind: (evt.kind as string) ?? "INJECTION",
+      payload: evt,
+    });
+    // Injections may carry state deltas under `stateDelta`.
+    const delta = evt.stateDelta as Record<string, unknown> | undefined;
+    if (delta) {
+      for (const [k, v] of Object.entries(delta)) {
+        currentState[k] = v;
+      }
+    }
+  }
+
+  return { stateAfter: currentState, events };
+}
+
 export function createSimulationServices({
   db,
 }: {
@@ -222,6 +269,7 @@ export function createSimulationServices({
     seed: string;
     snapshotId: string | null;
     canonRevisionId: string | null;
+    pauseReason: string | null;
     createdAt: Date;
   }): SimulationRunShape {
     return {
@@ -235,12 +283,13 @@ export function createSimulationServices({
       seed: run.seed,
       snapshotId: run.snapshotId,
       canonRevisionId: run.canonRevisionId,
+      pauseReason: run.pauseReason,
       createdAt: run.createdAt,
     };
   }
 
   return {
-    async createRun({ actorUserId, workspaceId, novelId, branchId, scenario }) {
+    async createRun({ actorUserId, workspaceId, novelId, branchId, scenario, kind }) {
       await gate(workspaceId, novelId, actorUserId, "simulation:manage");
 
       // If a branch is named, verify it exists and belongs to the novel.
@@ -276,6 +325,9 @@ export function createSimulationServices({
           initialState: (scenario?.initialState ?? {}) as object,
           injections: (scenario?.injections ?? {}) as object,
           seed: scenario?.seed ?? "default",
+          // NF-WF-024A: tag the scenario kind. 'STANDARD' (default) or
+          // 'WHATIF' (narrative-level what-if; excluded from 021D's list).
+          kind: kind ?? "STANDARD",
         },
       });
 
@@ -285,7 +337,19 @@ export function createSimulationServices({
     async listRuns({ actorUserId, workspaceId, novelId }) {
       await gate(workspaceId, novelId, actorUserId, "simulation:read");
       const runs = await db.simulationRun.findMany({
-        where: { workspaceId, novelId },
+        where: {
+          workspaceId,
+          novelId,
+          // NF-WF-024A (F1): WHATIF runs are excluded from 021D's Simulation
+          // Center list (read-path isolation). The what-if panel is the sole
+          // surface for WHATIF runs; this preserves the 021 Q8
+          // narrative/world separation. Runs without a scenario (pre-024A)
+          // are included.
+          OR: [
+            { scenario: null },
+            { scenario: { kind: { not: "WHATIF" } } },
+          ],
+        },
         orderBy: { createdAt: "desc" },
       });
       return runs.map(toShape);
@@ -449,26 +513,15 @@ export function createSimulationServices({
         if (nextTickNumber > run.maxTicks) break;
 
         const stateBefore = { ...currentState };
-        const tickInjections = injections[String(nextTickNumber)] ?? [];
-        const events: unknown[] = [];
-
-        // Apply injections as events (deterministic).
-        for (const injection of tickInjections) {
-          const evt = injection as Record<string, unknown>;
-          events.push({
-            kind: (evt.kind as string) ?? "INJECTION",
-            payload: evt,
-          });
-          // Injections may carry state deltas under `stateDelta`.
-          const delta = evt.stateDelta as Record<string, unknown> | undefined;
-          if (delta) {
-            for (const [k, v] of Object.entries(delta)) {
-              currentState[k] = v;
-            }
-          }
-        }
-
-        const stateAfter = { ...currentState };
+        // NF-WF-024B: tick computation is the shared pure function (also
+        // used by deterministic replay). Behavior identical to the inline
+        // version it replaces.
+        const { stateAfter, events } = computeTick(
+          stateBefore,
+          nextTickNumber,
+          injections,
+        );
+        currentState = { ...stateAfter };
 
         // Persist the tick and its events (simulation tables only —
         // Invariant 1: never touch canon tables).

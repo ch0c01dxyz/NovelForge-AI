@@ -1,6 +1,6 @@
 # NF-WF-022 — Endgame Planning, Debt and Closure
 
-Status: PLANNED
+Status: IMPLEMENTED
 
 ## Normative vs informative
 

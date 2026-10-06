@@ -72,7 +72,7 @@ import { NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
 import { assessDramaWindow, type DramaBeat } from "@novelforge/narrative-rhythm";
 import { MemoryError } from "./memory.ts";
-import { readHeadRevisionId } from "./revisions.ts";
+import { readHeadRevisionId, checkedOutBranchId } from "./revisions.ts";
 import { validatePolicyPayloadOnRead } from "./final-text-review.ts";
 import { birthRevisionNumbers } from "./revision-birth.ts";
 import {
@@ -191,9 +191,15 @@ export function createStoryHealthServices(deps: {
     if (input.asOfRevisionId) {
       const rev = await db.revision.findFirst({
         where: { id: input.asOfRevisionId, novelId },
-        select: { number: true },
+        select: { number: true, branchId: true },
       });
       if (!rev) throw new NotFoundError("revision");
+      // NF-WF-020B (GAP-040): the as-of revision must be on the checked-out
+      // branch (Invariant 5). Cross-branch as-of is 400 INVALID_INPUT.
+      const checkedOutId = await checkedOutBranchId(db, novelId);
+      if (rev.branchId !== checkedOutId) {
+        throw new MemoryError(400, "INVALID_INPUT", "cross-branch as-of is not supported");
+      }
       rNumber = rev.number;
     }
     const sourceRevisionId = input.asOfRevisionId ?? headRevisionId;

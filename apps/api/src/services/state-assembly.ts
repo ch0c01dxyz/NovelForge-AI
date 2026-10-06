@@ -31,6 +31,8 @@
 import type { NovelForgeDb } from "@novelforge/database";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 import { NotFoundError } from "./platform.ts";
+import { MemoryError } from "./memory.ts";
+import { checkedOutBranchId } from "./revisions.ts";
 import type { AuditService } from "./audit.ts";
 import type { MemoryBlock, RecallNovelResult } from "@novelforge/memory";
 import {
@@ -204,9 +206,15 @@ export function createStateAssemblyServices(deps: {
     if (!asOfRevisionId) return null;
     const rev = await db.revision.findFirst({
       where: { id: asOfRevisionId, novelId },
-      select: { number: true },
+      select: { number: true, branchId: true },
     });
     if (!rev) throw new NotFoundError("revision");
+    // NF-WF-020B (GAP-040): the as-of revision must be on the checked-out
+    // branch (Invariant 5). Cross-branch as-of is 400 INVALID_INPUT.
+    const checkedOutId = await checkedOutBranchId(db, novelId);
+    if (rev.branchId !== checkedOutId) {
+      throw new MemoryError(400, "INVALID_INPUT", "cross-branch as-of is not supported");
+    }
     return rev.number;
   }
 

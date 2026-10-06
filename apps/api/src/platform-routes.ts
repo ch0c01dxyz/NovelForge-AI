@@ -23,7 +23,8 @@ import { HeadConflictError } from "./services/context-compiler.ts";
 import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 import { CanonApplicationError } from "./services/canon-applications.ts";
 import { MemoryError } from "./services/memory.ts";
-import { PolicyError, PublicationError, RateLimitError } from "./services/policy-errors.ts";
+import { BranchError, PolicyError, PublicationError, RateLimitError } from "./services/policy-errors.ts";
+import { SelectiveRestoreError } from "./services/selective-restore.ts";
 // NF-WF-017A: typed import-file refusals (IMPORT_TOO_LARGE,
 // IMPORT_UNSUPPORTED_TYPE, IMPORT_CORRUPT, IMPORT_ARCHIVE_UNSAFE,
 // IMPORT_NO_TEXT) carry the machine-readable code as the envelope's
@@ -31,6 +32,12 @@ import { PolicyError, PublicationError, RateLimitError } from "./services/policy
 // messages. Same position as the other typed-error branches.
 import { ImportError } from "./services/import-normalize.ts";
 import { ExportError } from "./services/export-render.ts";
+// NF-WF-020C: typed merge refusals (MERGE_CONFLICTS with the preview as
+// evidence, plus the other merge preconditions) carry the machine-readable
+// code as the envelope's error field, so the Recovery Center can render
+// conflicts vs. preconditions distinctly. Same position as the other
+// typed-error branches.
+import { MergeError } from "./services/revisions.ts";
 
 const slug = z
   .string()
@@ -143,11 +150,36 @@ export async function registerPlatformRoutes(
     if (error instanceof PublicationError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
+    // NF-WF-020B: typed branch-lifecycle refusals (INVALID_BRANCH_NAME,
+    // BRANCH_EXISTS → 400; DIRTY_SWITCH, NOT_ON_CHECKED_OUT_BRANCH,
+    // NO_BRANCH_SNAPSHOT → 409) carry the machine-readable code as the
+    // envelope's error field. Same position as the other typed-error
+    // branches.
+    if (error instanceof BranchError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
     // NF-WF-019B: typed rate-limit refusals (COMMENT_DAILY_LIMIT,
     // REPORT_DAILY_LIMIT) carry the machine-readable code as the
     // envelope's error field. Same position as the other typed-error
     // branches.
     if (error instanceof RateLimitError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-020C: typed merge/rollback refusals. MERGE_CONFLICTS carries the
+    // preview as evidence so the Recovery Center can render what diverged;
+    // the other codes have no evidence payload. INVALID_CHECKPOINT_KIND is
+    // a 400 (contract acceptance); the rest are 409.
+    if (error instanceof MergeError) {
+      return reply.code(error.statusCode).send({
+        error: error.code,
+        ...(error.evidence !== undefined ? { evidence: error.evidence } : {}),
+      });
+    }
+    // NF-WF-020A: typed selective-restore refusals (INVALID_INPUT,
+    // UNACKNOWLEDGED_CONFLICTS) carry the machine-readable code as the
+    // envelope's error field. Same position as the other typed-error
+    // branches.
+    if (error instanceof SelectiveRestoreError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
     if (error instanceof ConflictError) {

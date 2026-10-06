@@ -27,6 +27,7 @@ import {
   type Capability,
 } from "@novelforge/auth/authorization";
 import { NotFoundError } from "./platform.ts";
+import { checkedOutBranchId } from "./revisions.ts";
 
 /**
  * Typed memory refusals. Carries the machine-readable memory code as the
@@ -173,11 +174,11 @@ export function createMemoryServices(deps: {
         select: { id: true, novelId: true, branchId: true, number: true },
       });
       if (!rev || rev.novelId !== novelId) throw new NotFoundError("revision");
-      const branch = await db.novelBranch.findUnique({
-        where: { id: rev.branchId },
-        select: { name: true },
-      });
-      if (!branch || branch.name !== "main") {
+      // NF-WF-020B (GAP-040): the as-of revision must be on the checked-out
+      // branch (Invariant 5) — not hardcoded to `main`. Cross-branch as-of
+      // is 400 INVALID_INPUT.
+      const checkedOutId = await checkedOutBranchId(db, novelId);
+      if (rev.branchId !== checkedOutId) {
         throw new MemoryError(400, "INVALID_INPUT", "cross-branch as-of is not supported");
       }
       asOfRevisionId = rev.id;

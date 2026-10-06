@@ -5582,3 +5582,58 @@ clean. API `tsc --noEmit`: zero errors in 019D files
 their diff reviewer owns it).
 
 GAPs: none new for 019D. GAP-013/GAP-028/GAP-051 unchanged.
+
+## NF-WF-020B "Branch isolation" — IMPLEMENTED (2026-10-06, uncommitted)
+
+Implementer: 020B subagent (separate actor). Contract: `tasks/NF-WF-020-advanced-recovery-branches.md` (frozen).
+
+**What was built:**
+- Migration `20261006_nf_wf_020b_branches/` (additive, idempotent GAP-030 pattern): `novel_branches.source_revision_id` (nullable), `novels.current_branch_id` (nullable FK → `novel_branches`, ON DELETE SET NULL, backfilled to `main`), `RevisionOrigin.BRANCH_SWITCH`.
+- Branch lifecycle: `POST/GET .../novels/:novelId/branches`, `POST .../branches/:branchId/switch` (revision:manage; list: revision:read). Create validates name (400 INVALID_BRANCH_NAME/BRANCH_EXISTS), sets `parentBranchId` + `sourceRevisionId`; switch implements the temporal model (Invariant 5): DIRTY check via C7 comparison (409 DIRTY_SWITCH unless autoCheckpoint), restore-to-head + BRANCH_SWITCH revision + `Novel.currentBranchId` update in one transaction.
+- Branch-scoped history: `GET .../revisions` and `GET .../checkpoints` accept `?branchId=` (F5 default = checked-out branch); `POST .../checkpoints` and `POST .../restores/preview` accept `branchId?` (must be checked-out, else 409 NOT_ON_CHECKED_OUT_BRANCH); `POST .../restores/:id/apply` verifies the operation's branch is still checked-out.
+- Invariant 9: publish/schedule while a non-`main` branch is checked out → 409 NOT_ON_MAIN_BRANCH, no writes (guard in `publication.ts`; no new capability).
+- GAP-040 closed: branch-aware as-of in `memory.ts`, `story-health.ts`, `state-assembly.ts` — cross-branch `asOfRevisionId` → 400 INVALID_INPUT (was hardcoded to `main`).
+- Web UI: `RecoveryCenter.vue` (branch list/create/switch + per-branch timeline; §15 design; en+id; axe zero violations).
+- `Novel.currentBranchId` set in `createNovel`; `checkedOutBranchId()` helper exported for 020C merge.
+
+**Evidence:** API `branches.test.ts` 9/9; `revision.test.ts` 52/52; `publication.test.ts` 17/17; `memory.test.ts` 16/16; web `RecoveryCenter.test.ts` 5/5 (incl. axe en+id zero violations). tsc clean for 020B files (020A/020C test files have pre-existing type errors, their scope). Lint clean for 020B files.
+
+**Gaps recorded:** GAP-078 (schema edit mishap, closed), GAP-082 (DB password/`loadEnvFile` issue, open; renumbered from GAP-079).
+
+**Handoff:** uncommitted; 020C implementer consumes `Novel.currentBranchId`, `sourceRevisionId`, `BRANCH_SWITCH`, and the `NOT_ON_CHECKED_OUT_BRANCH` code.
+
+## NF-WF-020A "Selective restore" — IMPLEMENTED (2026-10-06, uncommitted)
+
+Implementer: 020A subagent (separate actor from contract author, amendment author, contract reviewer, 020B/020C implementers, future diff reviewer). Contract: `tasks/NF-WF-020-advanced-recovery-branches.md` §020A (frozen).
+
+**What was built:**
+- `packages/story-versioning/dependency-edges.ts`: 42-edge FK dependency table (DB column names, onDelete behaviors, 9 contract-pinned semantic edges) + `SELECTIVE_DOMAINS` (7 domains, 33 mapped tables) + `DOMAIN_UNMAPPED_TABLES` (3 never rewound).
+- `apps/api/src/services/selective-restore.ts`: selection resolution (DOMAIN/ENTITY/SELECTIVE validation), transitive dependency closure (BFS over FK edges), ORPHAN_REFERENCE/STALE_DEPENDENT conflict analysis, surgical apply (UPDATE-in-place for retained rows — Restrict-safe; DELETE only for rows absent from payload; INSERT for new rows; orphan dependents removed/nulled with consent, recorded in change set). Selection stored in the operation's `preview` JSON — no migration.
+- `apps/api/src/services/revisions.ts`: lifted the `"selective restore is not implemented"` refusal; `previewRestore`/`applyRestore` branch to the selective path for non-FULL scopes. DOMAIN/SELECTIVE with ORPHAN_REFERENCE conflicts require `acknowledged: true` (409 `UNACKNOWLEDGED_CONFLICTS`); ENTITY never gates (closure informational). Moved head → 409. `SelectiveRestoreError` typed 400/409, mapped in `platform-routes.ts`.
+- Routes: preview accepts `selection` object; apply accepts `acknowledged` boolean (both backward-compatible).
+- Web: `SelectiveRestorePanel.vue` (scope picker, conflict report, acknowledgment checkbox gating apply; §15 design) + en/id `recovery.*` (95/95 parity) + vitest-axe zero violations.
+- Existing `revision.test.ts` selective-refusal test updated to the 020A behavior.
+
+**Evidence:** story-versioning 26/26 (9 new edge pins); API selective-restore 12/12; revision 52/52 (011 no-regression); web panel 5/5 (incl. axe en+id); tsc + vue-tsc + eslint clean for 020A files.
+
+**Gaps recorded:** GAP-080 (concurrent 020B/020C tsc interference; one-line `NOT_ON_MAIN_BRANCH` union addition for 020B's throw — 020B owns the semantics), GAP-081 (`loadEnvFile` flakiness; explicit `DATABASE_URL` export needed).
+
+**Handoff:** uncommitted; the diff reviewer judges the exact diff. Backends MODEL_UNVERIFIED per GAP-013.
+
+**Diff review:** APPROVE_WITH_FINDINGS (2026-10-06) — F1 (P2) C4 statement-order violation fixed by a separate fix actor: `applySelectiveRestore` split into `planSelectiveRestore` (pure reads) + `executeSelectiveRestore` (writes), with `advanceHead` between them in `applySelectiveRestore` (`revisions.ts`), mirroring the FULL path; the false "revision created BEFORE the state writes" comment corrected to the new step ordering. New regression test "PRE_MUTATION checkpoint pins the pre-restore image when the head is snapshot-less (C4 / F1)": probe-verified FAIL under the old ordering (snapshot held the post-restore image) and PASS with the fix. Evidence after fix: API selective-restore 13/13; revision 52/52 (011 no-regression); dependency-edges 9/9; tsc clean for 020A files. Deviation `UNACKNOWLEDGED_CONFLICTS` + `acknowledged` ACCEPTED by the reviewer as contract-conformant additive extension (GAP-049 precedent).
+
+## NF-WF-020C "Conservative merge + bulk recovery" — IMPLEMENTED (2026-10-06, uncommitted)
+
+Implementer: 020C subagent (separate actor from contract author, amendment author, contract reviewer, the 020A/020B implementers, and the future diff reviewer). Contract: `tasks/NF-WF-020-advanced-recovery-branches.md` §020C (frozen). Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- Migration `20261006_nf_wf_020c_merge`: additive `RevisionOrigin.MERGE` (GAP-030 idempotent DO-block; verified from-empty + re-apply). No other schema changes. 020B's `Novel.currentBranchId` / `NovelBranch.sourceRevisionId` / `BRANCH_SWITCH` consumed via the regenerated Prisma client (020B's migration already in tree).
+- `apps/api/src/services/revisions.ts` (additive): `MergeError` typed 409 (MERGE_CONFLICTS with preview evidence, MERGE_NO_BASE, MERGE_NO_SNAPSHOT, MERGE_DIRTY_TARGET, NOT_ON_TARGET_BRANCH); `previewMerge` (read-only change-set taxonomy: CLEAN/CONFLICT/DELETED_MODIFIED/ORPHAN_RISK; same-entity divergence → CONFLICT conservatively — "identically on both" not auto-merged, semantic merge stays M9; ORPHAN_RISK via the 9 contract-pinned semantic edges from 020B's `DEPENDENCY_EDGES`; conflicts carry base+source+target row evidence from snapshots); `applyMerge` (preconditions: target checked out, zero conflicts, snapshots at both heads, clean target; then one MERGE revision via `advanceForMutation` with auto PRE_MUTATION checkpoint, three-way merged payload written via C7 full-rewrite, `Novel.currentBranchId` = target, rebuild intents queued); `rollbackCheckpoint` (one-action bulk rollback to PRE_MUTATION/PRE_IMPORT/PRE_GENERATION checkpoints on the checked-out branch; dedicated path, `applyRestore` untouched); `listRecoverableCheckpoints`.
+- Routes in `revision-routes.ts`: `POST .../branches/:branchId/merge/preview`, `POST .../branches/:branchId/merge/apply`, `POST .../checkpoints/:checkpointId/rollback`, `GET .../recoverable-checkpoints`. `platform-routes.ts`: `MergeError` handler branch (additive).
+- Web: `MergePreview.vue` (taxonomy lists, conflict evidence, apply gated on zero conflicts) + `RecoverableOperations.vue` (recoverable list, confirm-dialog rollback) + en/id `recovery.*` (95/95 parity); vitest-axe zero violations (wcag2aa+wcag22aa, en+id).
+
+**Evidence:** API `merge.test.ts` 11/11 (taxonomy with forced divergence, clean apply, 409-with-evidence zero-writes, negatives, bulk rollback, read-only preview); `revision.test.ts` 52/52 no-regression; `branches.test.ts` 9/9; web `MergePreview.test.ts` 6/6 (incl. axe en+id); recovery components 16/16; tsc zero errors in 020C files (3 pre-existing errors in 020A/020B files, GAP-079); vue-tsc zero errors in 020C files; eslint clean for 020C files.
+
+**Gaps recorded:** GAP-079 (tsc blocked by 020A/020B in-progress type errors).
+
+**Handoff:** uncommitted; the diff reviewer judges the exact diff.

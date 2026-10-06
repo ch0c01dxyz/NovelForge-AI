@@ -980,23 +980,33 @@ describe("C7 restore", () => {
     ).toBe(true);
   }, 30_000);
 
-  it("refuses a selective restore by name rather than treating it as malformed input", async () => {
+  it("accepts a selective restore preview (020A lifts the M1 refusal)", async () => {
     const f = await seedNovel("c7-selective");
     await createEntity(f, "Aldric");
     const checkpoint = await createCheckpoint(f, "boundary");
 
-    const preview = await previewRestore(f, checkpoint.checkpointId, "DOMAIN");
-    expect(preview.statusCode, JSON.stringify(preview.body)).toBe(409);
-    expect(preview.body).toEqual({ error: "CONFLICT" });
-    await expect(
-      createRevisionServices({ db }).previewRestore({
-        actorUserId: f.userId,
-        workspaceId: f.workspaceId,
-        novelId: f.novelId,
+    // DOMAIN without a domain is 400 (selection required), not a 409 refusal.
+    const noSelection = await previewRestore(f, checkpoint.checkpointId, "DOMAIN");
+    expect(noSelection.statusCode, JSON.stringify(noSelection.body)).toBe(400);
+
+    // DOMAIN with a selection previews successfully.
+    const res = await app.inject({
+      method: "POST",
+      url: novelUrl(f, "/restores/preview"),
+      headers: { cookie: f.cookie },
+      payload: {
         checkpointId: checkpoint.checkpointId,
         scope: "DOMAIN",
-      }),
-    ).rejects.toThrow("selective restore is not implemented");
+        selection: { domain: "canon" },
+      },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const body = jsonOf(res) as {
+      preview: { selection: { scope: string; domain: string; tables: string[] } };
+    };
+    expect(body.preview.selection.scope).toBe("DOMAIN");
+    expect(body.preview.selection.domain).toBe("canon");
+    expect(body.preview.selection.tables).toContain("canon_facts");
   });
 
   it("refuses an unknown checkpoint id with a 404", async () => {

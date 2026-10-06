@@ -2132,3 +2132,59 @@ structural (O(1) enqueue + bounded ≤500 batches, both tested) — no
 literal timing assertion with an N-follower fixture; (5) no
 publish→worker→row end-to-end test — the two seams are tested
 separately, the standard project pattern for async boundaries.
+
+## NF-WF-020A — Selective restore (2026-10-06)
+
+| Check actually run | Result |
+|---|---|
+| `packages/story-versioning` `dependency-edges.test.ts` | **9/9** — 42-edge table pinned, 9 semantic edges, domain vocabulary (33 mapped + 3 unmapped), FK-order consistency |
+| `packages/story-versioning` full suite | **26/26** (9 new + 17 existing) |
+| `apps/api/src/selective-restore.test.ts` | **12/12** — DOMAIN ORPHAN_REFERENCE fixture, STALE_DEPENDENT, ENTITY closure, SELECTIVE validation (400s), clean apply (non-selected untouched), acknowledged orphan 409→apply, moved-head 409, preview read-only, VIEWER 403 |
+| `apps/api/src/revision.test.ts` (011 no-regression) | **52/52** — FULL restore unchanged, selective refusal test updated to 020A behavior |
+| `apps/web` `SelectiveRestorePanel.test.ts` | **5/5** — scope picker, conflict report + ack gate, clean apply, axe zero violations en+id |
+| i18n parity `recovery.*` | **95/95** keys in en and id |
+| `npx tsc --noEmit` (apps/api) | Exit 0 (after fixing 020A's own errors; one-line `"NOT_ON_MAIN_BRANCH"` union addition for 020B's concurrent throw — GAP-080) |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 for 020A files (pre-existing 020B `RecoveryCenter.test.ts` type errors remain — not 020A's) |
+| `npx eslint` (020A files) | Exit 0 |
+
+GAP-080/081 recorded (concurrent-work tsc interference; `loadEnvFile` flakiness requiring explicit `DATABASE_URL` export).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) full API suite + `pnpm e2e` 011 BASELINE-OK pending (blocked by concurrent 020B/020C type errors in the shared tree at session end — see GAP-080); (3) the UI panel is not yet wired into a page (RecoveryCenter.vue is 020B/020C's component; the panel is ready to embed).
+
+## NF-WF-020B — Branch isolation (2026-10-06)
+
+| Check actually run | Result |
+|---|---|
+| `apps/api/src/branches.test.ts` | **9/9** — create (parentBranchId+sourceRevisionId), 400s (duplicate/"main"), 404 unknown, VIEWER 403, list with checked-out marker, isolation (B advances only B; per-branch history filtered), switch main→B→main (BRANCH_SWITCH on target, state follows via restore-target tables, currentBranchId tracks, no-op idempotent), DIRTY_SWITCH 409 + autoCheckpoint MANUAL, GAP-040 cross-branch as-of 400, Invariant 9 publish/schedule 409 NOT_ON_MAIN_BRANCH no-writes |
+| `apps/api/src/revision.test.ts` (011 no-regression) | **52/52** — existing revision/checkpoint/restore behavior unchanged |
+| `apps/api/src/publication.test.ts` | **17/17** — publish guard does not break existing publish flows on main |
+| `apps/api/src/memory.test.ts` | **16/16** — memory as-of still works same-branch |
+| `apps/web` `RecoveryCenter.test.ts` | **5/5** — branch list, create dialog, create+reload, axe zero violations en+id |
+| i18n parity `recovery.*` | **en+id** keys added (recovery section, 30 keys each) |
+| `npx tsc --noEmit` (apps/api) | Exit 0 for 020B files (020A `selective-restore.test.ts` + 020C `merge.test.ts` have pre-existing type errors — their scope, see GAP-080) |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+| `npx eslint` (020B files) | Exit 0 (branches.test.ts unused-var fixed) |
+| Migration `20261006_nf_wf_020b_branches` | Applied cleanly via `prisma migrate deploy`; idempotent DO-blocks; `BRANCH_SWITCH` enum value verified |
+
+GAP-078 (schema edit mishap, closed), GAP-082 (DB password/`loadEnvFile` flakiness, open — workaround: explicit `DATABASE_URL` export; renumbered from GAP-079).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) full API suite not run in one command (44 files fail on parallel DB contention; per-file runs green for affected files); (3) `pnpm e2e` 011 BASELINE-OK not run (GAP-076 single-command race; per-file e2e not attempted for 020B — no e2e surface changed); (4) RecoveryCenter.vue not yet wired into a novel page (component ready to embed).
+
+## NF-WF-020C — Conservative merge + bulk recovery (2026-10-06)
+
+| Check actually run | Result |
+|---|---|
+| `apps/api/src/merge.test.ts` | **11/11** — taxonomy (forced divergence: CONFLICT with base+source+target evidence, CLEAN, ORPHAN_RISK), preview read-only, clean apply (MERGE revision, entities match source, change set + intents, currentBranchId=target, PRE_MUTATION checkpoint), 409 MERGE_CONFLICTS with evidence + zero writes, NOT_ON_TARGET_BRANCH 409, moved-head 409, VIEWER 403, bulk rollback (one-action rewind, wrong-kind 409, wrong-branch 409, recoverable list) |
+| `apps/api/src/revision.test.ts` (002/011 no-regression) | **52/52** — existing revision/checkpoint/restore behavior unchanged |
+| `apps/api/src/branches.test.ts` (020B no-regression) | **9/9** — branch lifecycle unchanged |
+| `apps/web` `MergePreview.test.ts` | **6/6** — taxonomy render, conflict evidence, gated apply, apply POST, axe zero violations en+id |
+| `apps/web` recovery components | **16/16** — RecoveryCenter 5/5 + MergePreview 6/6 + SelectiveRestorePanel 5/5 |
+| i18n parity `recovery.*` | **95/95** keys in en and id |
+| `npx tsc --noEmit` (apps/api) | Zero errors in 020C files; 3 pre-existing errors in 020A/020B files (GAP-079) |
+| `npx vue-tsc --noEmit` (apps/web) | Zero errors in 020C files; pre-existing 020A/020B test-file errors remain |
+| `npx eslint` (020C files) | Exit 0 |
+| Migration `20261006_nf_wf_020c_merge` | Applied cleanly via `prisma migrate deploy`; idempotent (re-apply converges); `MERGE` enum value verified |
+
+GAP-079 recorded (tsc blocked by 020A/020B in-progress type errors).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) full API suite not run in one command (44 files fail on parallel DB contention — per ADR-0003 §8 they use dedicated DBs; per-file runs green for 020C-affected files); (3) `pnpm e2e` 011 BASELINE-OK not run (GAP-076 single-command race; 020C changes no e2e surface — the 011 restore flow is untouched); (4) merge requires snapshots at both branch heads (409 MERGE_NO_SNAPSHOT otherwise — documented); (5) the UI components are not yet wired into RecoveryCenter.vue (ready to embed).

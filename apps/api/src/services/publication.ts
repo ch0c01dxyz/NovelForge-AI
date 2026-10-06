@@ -283,6 +283,36 @@ export function createPublicationServices({
     await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
   }
 
+  /**
+   * NF-WF-020B (Invariant 9, Q3): publishing is only available on the
+   * `main` branch. While a non-`main` branch is checked out,
+   * publish/schedule/immediate-publish is refused with a typed 409
+   * `NOT_ON_MAIN_BRANCH`, with no writes. The guard runs after the
+   * capability gate but before any write — the 409 carries no state
+   * change. No new capability: `chapter:publish` still gates.
+   */
+  async function assertOnMainBranch(novelId: string): Promise<void> {
+    const novel = await db.novel.findUnique({
+      where: { id: novelId },
+      select: { currentBranchId: true },
+    });
+    let branchName = "main";
+    if (novel?.currentBranchId) {
+      const branch = await db.novelBranch.findUnique({
+        where: { id: novel.currentBranchId },
+        select: { name: true },
+      });
+      if (branch) branchName = branch.name;
+    }
+    if (branchName !== "main") {
+      throw new PublicationError(
+        "NOT_ON_MAIN_BRANCH",
+        `publishing is only available on the main branch ` +
+          `(checked out: "${branchName}"); merge to main first`,
+      );
+    }
+  }
+
   return {
     async schedulePublication({
       actorUserId,
@@ -292,6 +322,7 @@ export function createPublicationServices({
       scheduledFor,
     }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:publish");
+      await assertOnMainBranch(novelId);
       // Route-level Zod already refuses unparseable/past times with 400
       // INVALID_INPUT; this is defense-in-depth for direct callers.
       const at = new Date(scheduledFor);
@@ -397,6 +428,7 @@ export function createPublicationServices({
 
     async publishChapter({ actorUserId, workspaceId, novelId, chapterId }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:publish");
+      await assertOnMainBranch(novelId);
       const publicationId = randomUUID();
       const now = new Date();
       const row = await db.$transaction(async (tx) => {

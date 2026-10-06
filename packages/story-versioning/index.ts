@@ -8,3 +8,4 @@
  */
 export * from "./snapshot.ts";
 export * from "./impact.ts";
+export * from "./dependency-edges.ts";

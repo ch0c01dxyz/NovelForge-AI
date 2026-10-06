@@ -226,6 +226,14 @@ model Novel {
   policies     NarrativePolicy[]
   antagonists  Antagonist[]
   branches     NovelBranch[]
+  /// NF-WF-020B: the checked-out branch whose head the live covered tables
+  /// reflect (Invariant 5, temporal model). Nullable FK, ON DELETE SET NULL;
+  /// NULL reads as `main` (the pre-020 default). Updated by the branch
+  /// switch route in the same transaction as the restore-to-head; read by
+  /// the publish guard (Invariant 9); set to the target by merge apply
+  /// (020C).
+  currentBranchId String?      @map("current_branch_id") @db.Uuid
+  currentBranch   NovelBranch? @relation("NovelCurrentBranch", fields: [currentBranchId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   revisions    Revision[]
   changeSets   ChangeSet[]
   snapshots    Snapshot[]
@@ -2492,6 +2500,10 @@ enum RevisionOrigin {
   MILESTONE
   BASELINE
   RESTORE
+  /// NF-WF-020B: created by a branch switch (restore-to-head, Invariant 5).
+  BRANCH_SWITCH
+  /// NF-WF-020C: created by a branch merge (conservative three-way merge).
+  MERGE
 }
 
 /// Discriminator, not a behaviour switch: M1 implements INLINE only. The
@@ -2543,6 +2555,12 @@ model NovelBranch {
   /// row must be inserted before the head can point at it (C4 reason 2).
   headRevisionId   String?      @map("head_revision_id") @db.Uuid
   headRevision     Revision?    @relation("BranchHead", fields: [headRevisionId], references: [id], onDelete: SetNull)
+  /// NF-WF-020B: the revision this branch was forked from (020C merge base).
+  /// NULL for pre-020 branches (only `main` existed; it was never forked).
+  sourceRevisionId String?   @map("source_revision_id") @db.Uuid
+  /// NF-WF-020B: novels currently checked out on this branch (reverse of
+  /// Novel.currentBranch).
+  checkedOutByNovels Novel[] @relation("NovelCurrentBranch")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 

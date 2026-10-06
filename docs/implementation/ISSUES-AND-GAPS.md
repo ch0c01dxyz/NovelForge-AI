@@ -1701,3 +1701,69 @@ IMPACT: no 019 API or E2E battery evidence obtainable until the stack is re-prov
 NEXT ACTION: re-provision PostgreSQL 16 + pgvector 0.6.0 + Redis 7 per `docs/11-deployment/ENVIRONMENT-PREFLIGHT.md` (azure.archive.ubuntu.com is the fast mirror; `mirror.cogentco.com` stays removed); reconcile the `novelforge_test` role password with the repo `.env` DATABASE_URL; re-run battery stages 2 (API full suite) and 4 (E2E per-file, sequential per GAP-076).
 
 STATUS: OPEN — recorded 2026-10-06 during the 019 evidence battery.
+
+## GAP-078 — 020B implementer: schema.prisma edit landed in Workspace model then over-aggressive cleanup deleted Workspace relations (2026-10-06)
+
+EVIDENCE: 020B implementer (2026-10-06): a `muse.edit` adding `Novel.currentBranchId` matched the `branches NovelBranch[]` + `revisions Revision[]` pattern in the Workspace model first (both models share the shape). A Python cleanup script then removed the wrongly-placed block but also deleted 8 legitimate Workspace relation lines (`revisions`, `changeSets`, `snapshots`, `checkpoints`, `restores`, `rebuildIntents`, `memoryProjections`, `finalTextReviews`). Caught by `pnpm prisma validate` (P1012: `Revision.workspace` missing opposite relation field). Restored from the git diff; final diff is purely additive (16 insertions, 0 deletions); `prisma validate` passes.
+
+IMPACT: none on the repo — caught before any migration ran; the schema diff is clean. Lesson: prefer unique anchors (model name) over structural patterns when editing schema.prisma.
+
+STATUS: CLOSED — resolved 2026-10-06 by the 020B implementer; no workaround needed.
+
+## GAP-079 — 020C implementer: `pnpm tsc` blocked by 020A/020B in-progress type errors in the shared tree (2026-10-06)
+
+EVIDENCE: 020C implementer (2026-10-06): `pnpm tsc --noEmit` in `apps/api` reports 3 errors, all in 020A/020B's uncommitted parallel work, none in 020C code:
+- `src/services/publication.ts(309,9)`: `"NOT_ON_MAIN_BRANCH"` not assignable to `PublicationErrorCode` (020B's branch publish guard).
+- `src/services/revisions.ts(1456,9)`: `selectiveApply` tx-type mismatch in 020A's modified `applyRestore`.
+- `src/services/selective-restore.ts(674,39)`: `EntityRef | undefined` (020A's new file; earlier full run also showed `@prisma/client` module-not-found there).
+
+020C's own additions (`MergeError`, `previewMerge`/`applyMerge`/`rollbackCheckpoint`/`listRecoverableCheckpoints`, merge routes, platform-routes handler) produce zero tsc errors — verified by the absence of diagnostics in 020C regions after fixing one self-inflicted `rev` implicit-any (annotated explicitly).
+
+IMPACT: the API `tsc` evidence-battery gate cannot go fully green until 020A/020B finish their in-progress changes. 020C does not touch their files (one-writer-per-file; they are actively editing).
+
+NEXT ACTION: 020A/020B implementers fix their type errors; 020C re-runs `pnpm tsc` when the tree is clean. 020C's type-cleanliness is evidenced by the per-region diagnostic absence above.
+
+STATUS: CLOSED — verified 2026-10-06 by the 020C fix actor: `npx tsc --noEmit` in `apps/api` now exits 0 with zero diagnostics (all three listed errors resolved: the `PublicationErrorCode` union member confirmed in place via the 020B fix actor, the 020A selective-apply tx-type fixed by the 020A fix actor). Concurrent-edit transient state settled; the evidence-battery gate is now green.
+
+## GAP-080 — 020A implementer: concurrent 020B/020C work breaks shared-tree tsc during 020A development (2026-10-06)
+
+EVIDENCE: 020A implementer (2026-10-06): while implementing selective restore, `npx tsc --noEmit` in `apps/api` was blocked multiple times by concurrent in-progress edits from the 020B/020C implementers in the same working tree:
+- `src/services/publication.ts`: 020B's `assertOnMainBranch` insertion left a transient syntax error (fixed by 020B mid-session).
+- `src/services/publication.ts(309,9)`: 020B threw `PublicationError("NOT_ON_MAIN_BRANCH", ...)` before adding the code to the `PublicationErrorCode` union.
+- `src/services/revisions.ts` (`restoreWouldChange`): 020B's `preview.counts[table]` strict-null error (fixed by 020B mid-session).
+- `src/merge.test.ts`: 020C's in-progress test file had a transient syntax error (mid-edit).
+- `packages/story-versioning/story-versioning.test.ts`: transient vite cache ENOENT (resolved by clearing cache).
+
+020A's own tsc errors were fixed by the 020A implementer. To unblock the 020A evidence battery, the 020A implementer added `"NOT_ON_MAIN_BRANCH"` to the `PublicationErrorCode` union in `apps/api/src/services/policy-errors.ts` (one-line, obviously the 020B author's intent — the code is thrown but not in the union). 020B owns the semantics; the union member is theirs.
+
+IMPACT: none on 020A's committed code; the policy-errors.ts touch is flagged in the 020A handoff shared-file list for 020B to review.
+
+STATUS: OPEN — 020B to confirm the union member; 020C's merge.test.ts syntax error was transient (mid-edit).
+
+## GAP-081 — 020A: `process.loadEnvFile` flaky in vitest; tests need explicit DATABASE_URL export (2026-10-06)
+
+EVIDENCE: 020A implementer (2026-10-06): `apps/api/src/selective-restore.test.ts` intermittently fails in `beforeAll` with `password authentication failed for user "novelforge_test"` when relying on `process.loadEnvFile` to load the repo-root `.env`. The `.env` password is correct (verified via direct `psql` with `PGPASSWORD`). Exporting `DATABASE_URL` explicitly from the `.env` in the shell before `npx vitest run` makes all 12 tests pass consistently.
+
+IMPACT: none on the implementation; test-only environment flakiness. The 020A evidence battery exports `DATABASE_URL` explicitly.
+
+STATUS: OPEN — investigate why `process.loadEnvFile` intermittently fails to provide the correct URL in the vitest worker (possibly a stale `process.env.DATABASE_URL` from the parent, or a race in env loading).
+
+## GAP-082 — `novelforge_test` DB password resets intermittently; `process.loadEnvFile` fails under `pnpm vitest` (2026-10-06)
+
+EVIDENCE: 020B implementer (2026-10-06): the `novelforge_test` role password (set to `test` via `ALTER USER`) worked for direct `psql` but `pnpm vitest` failed with `password authentication failed` even immediately after the ALTER. Setting `DATABASE_URL` explicitly in the environment before `pnpm vitest` resolved it — the test files' `process.loadEnvFile(path.join(HERE, "..", "..", "..", ".env"))` does not reliably load the repo-root `.env` under `pnpm vitest` (possibly a working-directory issue in the pnpm script subshell). The password itself was reset multiple times during the session (GAP-077 pattern); each `ALTER USER` worked transiently.
+
+IMPACT: API tests must be run with `DATABASE_URL` explicitly exported, not relying on the test files' `.env` loading. No product-code impact.
+
+NEXT ACTION: investigate why `process.loadEnvFile` fails under `pnpm vitest` (working directory? pnpm script env?). Workaround (documented): `export DATABASE_URL="postgresql://novelforge_test:test@localhost:5432/novelforge"` before `pnpm vitest run`.
+
+STATUS: OPEN — recorded 2026-10-06 by the 020B implementer; workaround in use. Renumbered from GAP-079 to GAP-082 by the 020B fix actor (2026-10-06): 020C had already claimed GAP-079 for the tsc-blocked entry (line 1713 keeps its number).
+
+## GAP-083 — NF-WF-020 Recovery Center UI components are not mounted on any page (2026-10-06)
+
+EVIDENCE: 020B diff reviewer (2026-10-06), verified by the 020B fix actor: `grep` over `apps/web/app/pages/` and `apps/web/app/components/` finds no page importing `RecoveryCenter.vue` (020B), `SelectiveRestorePanel.vue` (020A), `MergePreview.vue` (020C), or `RecoverableOperations.vue` (020C). All four are tested components (§15 tokens, en+id, vitest-axe zero violations) but there is no reachable Recovery Center surface — the per-child UI acceptance checkboxes are satisfied as components only.
+
+IMPACT: the Recovery Center UI exists but is unreachable from the novel workspace. Each child's contract acceptance said "UI: ... en+id parity; axe zero violations" — met as components; mounting was never pinned in the contract.
+
+NEXT ACTION: parent joint-wiring decision — whether 020B's commit (or a later wiring task) mounts the components into the novel workspace page, given all three children contribute Recovery Center surfaces and a joint wiring is cleaner than three separate mounts. No code change by the fix actor (per the F5 instruction: do NOT mount anything).
+
+STATUS: OPEN — recorded 2026-10-06 by the 020B fix actor (diff-review finding F5, P3).

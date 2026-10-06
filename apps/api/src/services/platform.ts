@@ -426,6 +426,13 @@ export function createPlatformServices(deps: {
             where: { id: branch.id },
             data: { headRevisionId: revision.id },
           });
+          // NF-WF-020B: a new novel checks out its `main` branch (Invariant 5,
+          // F1). The publish guard reads this; NULL would also read as `main`
+          // but the explicit pointer keeps the invariant visible.
+          await tx.novel.update({
+            where: { id: created.id },
+            data: { currentBranchId: branch.id },
+          });
           // Empty change set, no snapshot: the labeled baseline *checkpoint*
           // is an explicit authorized operation (C8).
           await tx.changeSet.create({

@@ -7,7 +7,7 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: PLANNED
+Status: IMPLEMENTED (2026-10-06)
 Milestone / capability IDs: M6 (Advanced recovery and simulation);
 CAP-03 (Revision, checkpoint, non-destructive restore — advanced M6);
 delivery-plan NF-WF-020 (row `:154`).
@@ -875,6 +875,69 @@ confirm). §15 design; en+id; axe.
   awareness today (the 020B guard is genuinely new).
 - **Status after review:** contract frozen pending
   implementation dispatch.
+
+### Round 2 — 020C diff review (2026-10-06)
+
+- **Reviewer:** separate 020C diff-reviewer actor (depth 1/2),
+  separate from the contract author, amendment author, contract
+  reviewer, the 020C implementer, the 020A/020B implementers, and
+  all prior reviewers. Backends MODEL_UNVERIFIED per GAP-013.
+- **Verdict: APPROVE_WITH_FINDINGS** — 1 P2 + 6 P3 findings.
+  No correctness or safety defect. Findings F1–F7 below are
+  recorded here as review-record annotations; the normative
+  pins are unchanged except where explicitly annotated.
+- **Annotations on the §020C normative pins:**
+  - **F2 (P2, recorded as the accepted reading):** the
+    `CLEAN` taxonomy's "(or identically on both)" parenthetical
+    is unenforceable as written — the pinned change-set-driven
+    mechanism (change_set_items record WHAT changed, C2)
+    cannot prove identity. The implementation conservatively
+    classifies identically-changed-on-both as `CONFLICT`
+    (refuse with evidence, never auto-merge). Accepted:
+    delivery-plan `:57` permits refusing merges with evidence
+    rather than auto-resolving; constitution §5 (conflicts
+    surfaced, never silently reconciled) governs; the
+    deviation only refuses more merges and cannot corrupt
+    data. The parenthetical stays as the aspiration; this
+    reading is the implemented conformance.
+  - **F3 (P3, recorded as accepted):** non-bulk checkpoint
+    kind → 400 with the machine code
+    `INVALID_CHECKPOINT_KIND`, narrowing the contract's pinned
+    400 `INVALID_INPUT`. Accepted as a contract-conformant
+    additive extension per the GAP-049 precedent (narrows,
+    doesn't weaken; the HTTP status matches).
+  - **F4 (P3, recorded as substance-conformant):** the
+    implemented preview response shape is `{ preview: {
+    baseRevisionId, baseNumber, sourceBranch, targetBranch,
+    changes: [...kind-discriminated...], summary: { clean,
+    conflict, deletedModified, orphanRisk }, canApply,
+    snapshotsAvailable } }`. All normative data is present
+    (clean list; conflict list with both versions + base +
+    dependency edges; warnings); `DELETED_MODIFIED` lands in
+    the conflict bucket for apply-gating (`canApply =
+    conflict === 0 && deletedModified === 0`).
+  - **F5 (P3, recorded):** the merge base is the MRCA
+    (most-recent common ancestor), which coincides with
+    `sourceBranch.sourceRevisionId` in all 020B-constructed
+    cases and additionally handles main-as-source, where
+    `sourceRevisionId` is NULL and the pinned formula is
+    undefined. Contract-conformant in intent; no code change.
+  - **F6 (P3, recorded, no change):** merge apply uses
+    `NOT_ON_TARGET_BRANCH` (implementer-added safeguard)
+    while bulk rollback uses the contract-pinned
+    `NOT_ON_CHECKED_OUT_BRANCH`. The two analogous situations
+    carry different codes; recorded as-is.
+  - **F7 (P3):** `DELETED_MODIFIED` was promoted from the
+    reviewer's temp verification into `merge.test.ts`
+    (delete-on-source + change-on-target → preview classifies
+    `DELETED_MODIFIED`, apply → 409 `MERGE_CONFLICTS` with
+    evidence, zero writes).
+- **F1 fix:** 2 tsc errors in `apps/api/src/merge.test.ts`
+  (noUncheckedIndexedAccess on `changeSet.items[0]`) fixed
+  with a non-null assertion — test-only, no runtime impact.
+- **Status after review:** 020C implementation verified
+  contract-conformant with the readings recorded above;
+  commit-ready.
 
 (Reviewer: separate contract-reviewer actor, backend
 MODEL_UNVERIFIED per GAP-013. Fill at review.)

@@ -37,7 +37,11 @@ export class PolicyError extends Error {
 export type PublicationErrorCode =
   | "ALREADY_PUBLISHED" // schedule/publish a chapter that already has a PUBLISHED publication
   | "NOT_SCHEDULED" // cancel a schedule for a chapter with no SCHEDULED publication
-  | "NOVEL_ARCHIVED"; // schedule/publish on an ARCHIVED novel
+  | "NOVEL_ARCHIVED" // schedule/publish on an ARCHIVED novel
+  // NF-WF-020B: publish/schedule while a non-main branch is checked out.
+  // (Union member added by the 020A implementer to unblock tsc on the
+  // 020B implementer's concurrent in-progress throw; 020B owns the semantics.)
+  | "NOT_ON_MAIN_BRANCH";
 
 export class PublicationError extends Error {
   readonly code: PublicationErrorCode;
@@ -75,5 +79,38 @@ export class RateLimitError extends Error {
     super(message);
     this.name = "RateLimitError";
     this.code = code;
+  }
+}
+
+/**
+ * NF-WF-020B: typed branch-lifecycle refusals.
+ *
+ * `BranchError` follows the `PublicationError` precedent: a typed error
+ * carrying the machine-readable code, mapped by the platform error handler
+ * BEFORE the generic `ConflictError` branch. The 400 codes are input
+ * validation (contract acceptance: duplicate name → 400, `"main"` → 400);
+ * the 409 codes are state conflicts (DIRTY_SWITCH, NOT_ON_CHECKED_OUT_BRANCH).
+ * Lives in this leaf module (no service imports) so the revision service
+ * can throw it without import cycles.
+ */
+export type BranchErrorCode =
+  | "INVALID_BRANCH_NAME" // empty, reserved ("main"), or too long → 400
+  | "BRANCH_EXISTS" // duplicate name per novel → 400
+  | "CHECKPOINT_BRANCH_MISMATCH" // 400: checkpoint belongs to another branch (NF-WF-020B fix F3)
+  | "DIRTY_SWITCH" // 409: unsaved changes on the checked-out branch
+  | "NOT_ON_CHECKED_OUT_BRANCH" // 409: mutation naming a non-checked-out branch
+  | "NO_BRANCH_SNAPSHOT"; // 409: branch head has no snapshot (cannot switch to / fork from)
+
+export class BranchError extends Error {
+  readonly code: BranchErrorCode;
+  readonly statusCode: 400 | 409;
+  constructor(code: BranchErrorCode, message: string) {
+    super(message);
+    this.name = "BranchError";
+    this.code = code;
+    this.statusCode =
+      code === "INVALID_BRANCH_NAME" || code === "BRANCH_EXISTS" || code === "CHECKPOINT_BRANCH_MISMATCH"
+        ? 400
+        : 409;
   }
 }

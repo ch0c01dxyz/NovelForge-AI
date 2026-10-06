@@ -1149,4 +1149,38 @@ export const id = {
       },
     },
   },
+  // NF-WF-017: kunci locale impor/ekspor. 017A memiliki `import`; 017B
+  // akan menambah bagian `export` di subtree yang sama (file bersama).
+  importExport: {
+    import: {
+      button: "Impor",
+      dialogTitle: "Impor bab",
+      dialogDescription:
+        "Impor file naskah atau tempel teks. Bab yang diimpor menjadi draf — tidak pernah menjadi kanon.",
+      fileTab: "File",
+      pasteTab: "Tempel teks",
+      chooseFile: "Pilih file",
+      dropHint: "TXT, Markdown, PDF, atau DOCX",
+      formatDetected: "Terdeteksi: {format}",
+      formatOverride: "Format",
+      formatAuto: "Deteksi otomatis",
+      pastePlaceholder: "Tempel teks naskah di sini…",
+      pasteFormatMd: "Markdown",
+      pasteFormatTxt: "Teks polos",
+      startImport: "Impor",
+      importing: "Mengimpor…",
+      successChapters: "{count} bab dibuat sebagai draf.",
+      skippedTitle: "Dilewati saat impor",
+      errors: {
+        IMPORT_TOO_LARGE: "File terlalu besar.",
+        IMPORT_UNSUPPORTED_TYPE: "Tipe file ini tidak bisa diimpor.",
+        IMPORT_CORRUPT: "File rusak dan tidak bisa dibaca.",
+        IMPORT_ARCHIVE_UNSAFE: "File terlihat tidak aman (kemungkinan archive bomb) dan ditolak.",
+        IMPORT_NO_TEXT: "Tidak ada teks yang bisa diekstrak (PDF hasil pindaian?).",
+        noFile: "Pilih file atau tempel teks dulu.",
+        invalid: "Beberapa isian tidak valid.",
+        generic: "Impor gagal ({code}).",
+      },
+    },
+  },
 } as const;

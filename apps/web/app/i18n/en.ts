@@ -1149,6 +1149,40 @@ export const en = {
       },
     },
   },
+  // NF-WF-017: import/export locale keys. 017A owns `import`; 017B will
+  // add the `export` section in the same subtree (shared file).
+  importExport: {
+    import: {
+      button: "Import",
+      dialogTitle: "Import chapters",
+      dialogDescription:
+        "Import a manuscript file or paste text. Imported chapters land as drafts — never as canon.",
+      fileTab: "File",
+      pasteTab: "Paste text",
+      chooseFile: "Choose file",
+      dropHint: "TXT, Markdown, PDF, or DOCX",
+      formatDetected: "Detected: {format}",
+      formatOverride: "Format",
+      formatAuto: "Auto-detect",
+      pastePlaceholder: "Paste your manuscript text here…",
+      pasteFormatMd: "Markdown",
+      pasteFormatTxt: "Plain text",
+      startImport: "Import",
+      importing: "Importing…",
+      successChapters: "{count} chapter(s) created as drafts.",
+      skippedTitle: "Skipped during import",
+      errors: {
+        IMPORT_TOO_LARGE: "The file is too large.",
+        IMPORT_UNSUPPORTED_TYPE: "This file type can't be imported.",
+        IMPORT_CORRUPT: "The file is corrupted and couldn't be read.",
+        IMPORT_ARCHIVE_UNSAFE: "The file looks unsafe (possible archive bomb) and was rejected.",
+        IMPORT_NO_TEXT: "No text could be extracted (scanned or image-only PDF?).",
+        noFile: "Choose a file or paste text first.",
+        invalid: "Some fields are invalid.",
+        generic: "Import failed ({code}).",
+      },
+    },
+  },
 } as const;
 
 export type LocaleKey = string;

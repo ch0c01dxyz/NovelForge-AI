@@ -26,6 +26,16 @@ import type { AuditService } from "./audit.ts";
 // (STORY-VERSIONING.md C3/C4). Imported directly rather than threaded through
 // the factory: the boundary call has to share the caller's `tx`.
 import { advanceForMutation, assertHeadExpectation } from "./revisions.ts";
+// NF-WF-017A: the unified import normalization pipeline (TXT/Markdown/
+// PDF/DOCX → import parts). The write path below consumes `ImportPart`.
+import {
+  extractPdfText,
+  normalizeDocxImport,
+  normalizeTextImport,
+  validateImportFile,
+  type ImportFormat,
+  type ImportPart,
+} from "./import-normalize.ts";
 
 export interface ManuscriptServices {
   createChapter(input: {
@@ -101,7 +111,18 @@ export interface ManuscriptServices {
     format: "md" | "txt";
     /** NF-WF-002D: the head the caller's plan was built against (C12.1). */
     expectedHeadRevisionId?: string | null;
-  }): Promise<{ created: number }>;
+  }): Promise<{ created: number; skipped: string[] }>;
+  /** NF-WF-017A: file import (multipart) — validated, extracted, normalized. */
+  importChaptersFromFile(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    buffer: Buffer;
+    mimeType?: string;
+    filename?: string;
+    declaredFormat?: ImportFormat;
+    expectedHeadRevisionId?: string | null;
+  }): Promise<{ created: number; skipped: string[] }>;
   exportNovel(input: {
     actorUserId: string;
     workspaceId: string;
@@ -282,6 +303,98 @@ export function createManuscriptServices(
     });
     if (!chapter) throw new NotFoundError("chapter");
     return chapter;
+  }
+
+  /**
+   * NF-WF-017A: the shared atomic import write path (paste + file).
+   * Every part lands as a DRAFT chapter with one version, `note:
+   * "import"` — imported material is source material, never canon
+   * (Invariant 4). GAP-061: the write runs the SAME sanitize → strip →
+   * count sequence as `saveChapter`, so no import path writes raw
+   * content.
+   */
+  async function writeImportParts(args: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    expectedHeadRevisionId?: string | null;
+    format: string;
+    parts: ImportPart[];
+    skipped: string[];
+  }): Promise<{ created: number; skipped: string[] }> {
+    const importable = args.parts.filter((p) => p.rawText.trim());
+    if (importable.length === 0) return { created: 0, skipped: args.skipped };
+    // One transaction: import is atomic (no partial chapters on failure)
+    // and the novel-row lock serializes numbering against concurrent
+    // createChapter/saveChapter (CLAUDE.md §12 transactional integrity).
+    let created = 0;
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM novels WHERE id = ${args.novelId} FOR UPDATE`;
+      // HIGH (C3): the import captures a mandatory PRE_MUTATION checkpoint
+      // and snapshot in this same transaction, pinned to the pre-import
+      // head. A bulk import is exactly the operation a checkpoint is for.
+      // It runs before the loop, not after: `captureSnapshot` reads the live
+      // tables, so advancing last would file the post-import chapters under a
+      // PRE_MUTATION label and restoring the checkpoint would remove nothing
+      // (GAP-024). One advance for the whole import, not one per part.
+      await advanceForMutation(tx, {
+        workspaceId: args.workspaceId,
+        novelId: args.novelId,
+        expectedHeadRevisionId: args.expectedHeadRevisionId,
+        operation: "chapters.import",
+        origin: "MANUAL",
+        actorUserId: args.actorUserId,
+        tables: ["chapters", "chapter_versions"],
+        items: [{ entityType: "Novel", entityId: args.novelId, operation: "UPDATE" }],
+      });
+      let next =
+        (
+          await tx.chapter.findFirst({
+            where: { novelId: args.novelId },
+            orderBy: { number: "desc" },
+            select: { number: true },
+          })
+        )?.number ?? 0;
+      for (const part of importable) {
+        next += 1;
+        const chapter = await tx.chapter.create({
+          data: {
+            novelId: args.novelId,
+            number: next,
+            title: part.title.slice(0, 200),
+            createdById: args.actorUserId,
+          },
+        });
+        // GAP-061: sanitize BEFORE the word count and the version insert,
+        // exactly like saveChapter — imported HTML is untrusted input.
+        const cleanContent = sanitizeChapterHtml(part.htmlBody);
+        const wordCount = countWords(stripHtmlTags(cleanContent));
+        const version = await tx.chapterVersion.create({
+          data: {
+            chapterId: chapter.id,
+            number: 1,
+            content: cleanContent,
+            wordCount,
+            note: "import",
+            authorId: args.actorUserId,
+          },
+        });
+        await tx.chapter.update({
+          where: { id: chapter.id },
+          data: { currentVersionId: version.id, wordCount: version.wordCount },
+        });
+        created++;
+      }
+    });
+    await audit?.record({
+      actorUserId: args.actorUserId,
+      workspaceId: args.workspaceId,
+      action: "chapters.imported",
+      entityType: "Novel",
+      entityId: args.novelId,
+      payload: { format: args.format, created, skipped: args.skipped },
+    });
+    return { created, skipped: args.skipped };
   }
 
   return {
@@ -589,6 +702,17 @@ export function createManuscriptServices(
      * Imported material is NOT canon (CLAUDE.md §32): chapters land as
      * DRAFT with one version each, author review happens in the editor.
      */
+    /**
+     * Import: split plain/Markdown text into chapters on Markdown ATX
+     * headings (`# Title` / `## Title`) or the first TXT separator line.
+     * Imported material is NOT canon (CLAUDE.md §32): chapters land as
+     * DRAFT with one version each, author review happens in the editor.
+     *
+     * NF-WF-017A: text normalization (frozen md/txt split → HTML) lives in
+     * `import-normalize.ts`; the write below runs the SAME sanitize →
+     * strip → count sequence as `saveChapter` (GAP-061: no import path
+     * may write raw content).
+     */
     async importChapters(input: {
       actorUserId: string;
       workspaceId: string;
@@ -596,7 +720,7 @@ export function createManuscriptServices(
       text: string;
       format: "md" | "txt";
       expectedHeadRevisionId?: string | null;
-    }): Promise<{ created: number }> {
+    }): Promise<{ created: number; skipped: string[] }> {
       await gate(input.workspaceId, input.novelId, input.actorUserId, "chapter:create");
       // Advisory pre-check after the tenant gate, before the parse and any
       // write: a stale plan does no work (NF-WF-002D). The locked CAS inside
@@ -605,116 +729,73 @@ export function createManuscriptServices(
         novelId: input.novelId,
         expectedHeadRevisionId: input.expectedHeadRevisionId,
       });
-      const lines = input.text.split(/\r?\n/);
+      const parts = normalizeTextImport(input.text, input.format);
+      return writeImportParts({
+        actorUserId: input.actorUserId,
+        workspaceId: input.workspaceId,
+        novelId: input.novelId,
+        expectedHeadRevisionId: input.expectedHeadRevisionId,
+        format: input.format,
+        parts,
+        skipped: [],
+      });
+    },
 
-      // Parse into raw blocks, then flush each to a part. `cur` holds the
-      // current block; `push()` emits it only when it has a body, so a
-      // trailing heading with no prose does not become an empty chapter.
-      interface Block {
-        title: string;
-        body: string[];
-      }
-      const parts: Array<{ title: string; content: string }> = [];
-      const push = (b: Block): void => {
-        if (b.body.some((l) => l.trim())) {
-          parts.push({ title: b.title, content: b.body.join("\n") });
-        }
-      };
-      let cur: Block = { title: "Imported", body: [] };
-
-      for (const line of lines) {
-        const md = input.format === "md" ? /^(#{1,2})\s+(.+)$/.exec(line) : null;
-        if (md) {
-          push(cur);
-          cur = { title: md[2]!.trim(), body: [] };
-          continue;
-        }
-        // TXT: a setext-style underline — the line ABOVE '===' is a
-        // title, and whatever precedes it belongs to the previous
-        // chapter. Only '=' counts; '---' is ambiguous with a horizontal
-        // rule / em-dash run and must stay content.
-        if (input.format === "txt" && /^={3,}$/.test(line.trim())) {
-          const last = cur.body[cur.body.length - 1];
-          if (last !== undefined && last.trim()) {
-            cur.body.pop();
-            push(cur);
-            cur = { title: last.trim(), body: [] };
-            continue;
-          }
-        }
-        cur.body.push(line);
-      }
-      push(cur);
-
-      const importable = parts.filter((p) => p.content.trim());
-      if (importable.length === 0) return { created: 0 };
-      // One transaction: import is atomic (no partial chapters on failure)
-      // and the novel-row lock serializes numbering against concurrent
-      // createChapter/saveChapter (CLAUDE.md §12 transactional integrity).
-      let created = 0;
-      await db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM novels WHERE id = ${input.novelId} FOR UPDATE`;
-        // HIGH (C3): the import captures a mandatory PRE_MUTATION checkpoint
-        // and snapshot in this same transaction, pinned to the pre-import
-        // head. A bulk import is exactly the operation a checkpoint is for.
-        // It runs before the loop, not after: `captureSnapshot` reads the live
-        // tables, so advancing last would file the post-import chapters under a
-        // PRE_MUTATION label and restoring the checkpoint would remove nothing
-        // (GAP-024). One advance for the whole import, not one per part.
-        await advanceForMutation(tx, {
+    /**
+     * NF-WF-017A: file import (multipart). Validates the bytes (MIME
+     * allowlist, magic-byte sniffing, per-format byte caps,
+     * decompression-bomb limits), extracts text per format, normalizes
+     * to import parts, then takes the same atomic write path as
+     * `importChapters`.
+     */
+    async importChaptersFromFile(input: {
+      actorUserId: string;
+      workspaceId: string;
+      novelId: string;
+      buffer: Buffer;
+      mimeType?: string;
+      filename?: string;
+      declaredFormat?: ImportFormat;
+      expectedHeadRevisionId?: string | null;
+    }): Promise<{ created: number; skipped: string[] }> {
+      await gate(input.workspaceId, input.novelId, input.actorUserId, "chapter:create");
+      await assertHeadExpectation(db, {
+        novelId: input.novelId,
+        expectedHeadRevisionId: input.expectedHeadRevisionId,
+      });
+      const { format } = validateImportFile(input.buffer, {
+        mimeType: input.mimeType,
+        filename: input.filename,
+        declaredFormat: input.declaredFormat,
+      });
+      if (format === "docx") {
+        const { parts, skipped } = await normalizeDocxImport(input.buffer);
+        return writeImportParts({
+          actorUserId: input.actorUserId,
           workspaceId: input.workspaceId,
           novelId: input.novelId,
           expectedHeadRevisionId: input.expectedHeadRevisionId,
-          operation: "chapters.import",
-          origin: "MANUAL",
-          actorUserId: input.actorUserId,
-          tables: ["chapters", "chapter_versions"],
-          items: [{ entityType: "Novel", entityId: input.novelId, operation: "UPDATE" }],
+          format,
+          parts,
+          skipped,
         });
-        let next =
-          (
-            await tx.chapter.findFirst({
-              where: { novelId: input.novelId },
-              orderBy: { number: "desc" },
-              select: { number: true },
-            })
-          )?.number ?? 0;
-        for (const part of importable) {
-          next += 1;
-          const chapter = await tx.chapter.create({
-            data: {
-              novelId: input.novelId,
-              number: next,
-              title: part.title.slice(0, 200),
-              createdById: input.actorUserId,
-            },
-          });
-          const version = await tx.chapterVersion.create({
-            data: {
-              chapterId: chapter.id,
-              number: 1,
-              content: part.content.trim(),
-              wordCount: countWords(part.content),
-              note: "import",
-              authorId: input.actorUserId,
-            },
-          });
-          await tx.chapter.update({
-            where: { id: chapter.id },
-            data: { currentVersionId: version.id, wordCount: version.wordCount },
-          });
-          created++;
-        }
-      });
-      await audit?.record({
+      }
+      const text =
+        format === "pdf"
+          ? (await extractPdfText(input.buffer)).text
+          : new TextDecoder("utf-8").decode(input.buffer);
+      // PDF-extracted text reuses the TXT chapter-splitting rule: page
+      // breaks never create chapters.
+      const parts = normalizeTextImport(text, format === "md" ? "md" : "txt");
+      return writeImportParts({
         actorUserId: input.actorUserId,
         workspaceId: input.workspaceId,
-        action: "chapters.imported",
-        entityType: "Novel",
-        entityId: input.novelId,
-        payload: { format: input.format, created },
+        novelId: input.novelId,
+        expectedHeadRevisionId: input.expectedHeadRevisionId,
+        format,
+        parts,
+        skipped: [],
       });
-      return { created };
     },
 
     /** Export: whole novel as Markdown (ATX headings, ordered). */

@@ -11,6 +11,9 @@ import net from "node:net";
 import Fastify, { type FastifyInstance } from "fastify";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
+// NF-WF-017A: multipart for the chapter-import file route. Registered
+// once here; per-format validation lives in the import service.
+import multipart from "@fastify/multipart";
 import type { Env } from "@novelforge/config";
 import type { NovelForgeDb } from "@novelforge/database";
 import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
@@ -161,6 +164,13 @@ export async function buildApp(
   });
 
   await app.register(cookie);
+  // NF-WF-017A: the chapter-import file route needs multipart bodies.
+  // The plugin-level fileSize cap is the route's IMPORT_BODY_LIMIT
+  // (manuscript-routes); per-format caps and type sniffing stay in the
+  // import service, where the 400 codes are actionable.
+  await app.register(multipart, {
+    limits: { fileSize: 15_000_000, files: 1, fields: 5 },
+  });
   await app.register(rateLimit, {
     // Global fallback; per-route overrides live in route config.
     //

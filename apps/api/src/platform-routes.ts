@@ -24,6 +24,12 @@ import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 import { CanonApplicationError } from "./services/canon-applications.ts";
 import { MemoryError } from "./services/memory.ts";
 import { PolicyError, PublicationError } from "./services/policy-errors.ts";
+// NF-WF-017A: typed import-file refusals (IMPORT_TOO_LARGE,
+// IMPORT_UNSUPPORTED_TYPE, IMPORT_CORRUPT, IMPORT_ARCHIVE_UNSAFE,
+// IMPORT_NO_TEXT) carry the machine-readable code as the envelope's
+// error field, so the import dialog can map them to actionable en/id
+// messages. Same position as the other typed-error branches.
+import { ImportError } from "./services/import-normalize.ts";
 
 const slug = z
   .string()
@@ -116,6 +122,9 @@ export async function registerPlatformRoutes(
     // ConflictError branch below (which can only emit CONFLICT) — the
     // same position as CanonApplicationError/MemoryError.
     if (error instanceof PolicyError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    if (error instanceof ImportError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
     // NF-WF-012: typed publication-lifecycle refusals (ALREADY_PUBLISHED,

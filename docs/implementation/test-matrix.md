@@ -1803,3 +1803,27 @@ fetch; no live-browser walkthrough was performed.
 
 Manual a11y: the automated half is green (axe, both locales); the
 named screen-reader pass is PENDING human verification.
+
+## NF-WF-017A — Import normalization (2026-10-06)
+
+Executed on this host (native PostgreSQL 16.15 + pgvector on localhost:5432,
+Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/import-normalize.test.ts src/import-chapters.test.ts` (apps/api) | 2 files, **45/45** — unit: magic-byte detection, frozen md/txt split parity, md allowlist, zip central-directory parse + bomb guard, PDF extraction + IMPORT_NO_TEXT, DOCX headings/tables/images/footnotes/comments, typed 400s, body-limit; integration: per-format e2e (md/txt/pdf/docx fixtures), GAP-061 sanitize→strip→count, no-canon-promotion, tenant 404, corrupt/oversize 400s |
+| Full API suite `npx vitest run` (apps/api) | 31 files, **638/638** |
+| Full web suite `npx vitest run` (apps/web) | **252/252** — incl. new `ImportDialog` component tests 6/6 and axe 2/2 (0 violations, en+id) |
+| `pnpm e2e` (011 author-preview loop) | 3 files, **20/20** BASELINE-OK — no-regression vs 011 |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+
+Fixtures: real per-format files in `apps/api/test-fixtures/import/`
+(sample.md incl. `<script>` injection attempt, sample.txt, sample.pdf
+2-page, empty.pdf, sample.docx with table/image/footnote); PDF/DOCX built by
+the committed `generate-fixtures.mjs` generator (pdf-lib + docx are
+devDependencies, never shipped). No live-browser walkthrough was performed;
+UI flows are covered by component tests with mocked API. Manual a11y:
+automated half green (axe, both locales); named screen-reader pass remains
+human verification (project-wide).

@@ -4800,3 +4800,65 @@ tests); `pnpm e2e` **20/20** BASELINE-OK (no-regression vs 011);
 exit 0. All green, actually executed 2026-10-06 on this host (native
 PostgreSQL 16.15 + pgvector on localhost:5432, Redis 7.0.15 on 6379,
 scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+
+## NF-WF-017A — Import normalization (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 017A implementer actor (separate from the 017 contract
+author/reviewer; backends MODEL_UNVERIFIED per GAP-013). 017B (export) and
+017C (GAP-053 closure) are separate actors and were NOT touched.
+
+Backend (`apps/api`): new `src/services/import-normalize.ts` — unified
+pipeline TXT/Markdown/PDF/DOCX → sanitized HTML exactly per 015 Invariant 2:
+`splitImportBlocks` (frozen md/txt rules, byte-identical), `mdBodyToHtml`
+(allowlist-only h2/strong/em/blockquote/ul/ol/li/hr; code fences, links,
+images, tables degrade to text), `plainTextToHtml` (server mirror of the web
+util), `detectImportFormat` (magic-byte authoritative; declared format only
+disambiguates md/txt; contradiction rejected), `parseZipCentralDirectory`
++ `checkZipBomb` (no decompression before caps), `extractPdfText` (unpdf,
+Q4 pick, per-page, blank lines between pages; scanned PDFs → IMPORT_NO_TEXT),
+`normalizeDocxImport` (mammoth + Heading1/2→h1/h2 styleMap; images dropped
+via convertImage counter, tables/footnotes dropped with skip notices,
+comments/tracked-changes detected via zip XML scan), typed `ImportError`
+400s (IMPORT_TOO_LARGE / IMPORT_UNSUPPORTED_TYPE / IMPORT_CORRUPT /
+IMPORT_ARCHIVE_UNSAFE / IMPORT_NO_TEXT). `manuscript.ts`: `importChapters`
+refactored to the pipeline + new `writeImportParts` with the GAP-061 fix
+(sanitize → strip → count, the exact saveChapter sequence); new
+`importChaptersFromFile`; routes: `POST .../chapters/import/file`
+(multipart, 15 MB, server-side validation authoritative per Q1);
+`platform-routes.ts` maps `ImportError` → `{error: code}`. Deps: new
+`@fastify/multipart`, `unpdf`, `mammoth`, `jszip`; devDeps `pdf-lib`, `docx`
+(fixture generation only). Fixtures `apps/api/test-fixtures/import/`:
+hand-written sample.md (incl. `<script>` injection attempt), sample.txt;
+generated sample.pdf (2 pages — page breaks do not split chapters),
+empty.pdf (IMPORT_NO_TEXT), sample.docx (Heading1×2, Heading2, table, image,
+footnote); generator `generate-fixtures.mjs`.
+
+Frontend (`apps/web`): new `ImportDialog.vue` (`components/import-export/`)
+— file (drag-click input) + paste tabs, format auto-detect with manual
+override, typed 400 → localized error strings, success report with skip
+notices; pinned UI into the writer page header (Import ⤒ button next to "+",
+`onImported → loadChapters()`); i18n `importExport.import` keys en+id.
+
+GAP-061 CLOSED: the recorded closure check is satisfied — the
+"GAP-061: import writes sanitize → strip → count like saveChapter" test
+asserts `<script>`/event-handler markup imports as sanitized HTML with a
+tag-stripped word count.
+
+Corrections during implementation (ordinary, not GAPs): mammoth needs
+`imgElement(() => null)` to drop images; the `topLevelBlocks` walker split
+closing tags to an empty tag name (fixed by slicing before the "/"); docx
+ships a default empty comments.xml (skip notice only when `<w:comment`
+exists); sanitize-html emits `<hr />`; ImportDialog's Esc handler needed
+`immediate: true` on the open watcher; 8 lint errors (unused vars,
+generate-fixtures.mjs node globals) fixed inline.
+
+New GAPs recorded before completion (standing rule): none — no contract
+deviation. GAP-053 stays with 017C; GAP-013 (MODEL_UNVERIFIED) unchanged.
+
+Evidence: API **638/638** (31 files; new: import-normalize 34, import-chapters
+11); web **252/252** (incl. ImportDialog 6, axe 2 files 0 violations);
+`pnpm e2e` **20/20** BASELINE-OK (no-regression vs 011); `pnpm lint` exit 0;
+API `tsc --noEmit` exit 0; web `vue-tsc --noEmit` exit 0. All green, actually
+executed 2026-10-06 on this host (native PostgreSQL 16.15 + pgvector on
+localhost:5432, Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only;
+pnpm 12.5.1).

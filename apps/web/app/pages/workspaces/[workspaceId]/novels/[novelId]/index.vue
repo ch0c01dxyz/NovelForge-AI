@@ -31,6 +31,8 @@ import {
 import { countWords as countWordsStripped, stripHtmlTags } from "../../../../../utils/htmlText";
 import type RunStatusPanel from "../../../../../components/generation/RunStatusPanel.vue";
 import type GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
+// ---------- NF-WF-017 import dialog ----------
+import ImportDialog from "../../../../../components/import-export/ImportDialog.vue";
 // ---------- NF-WF-016 workspace panels ----------
 import WorkspaceDrawer from "../../../../../components/workspace/WorkspaceDrawer.vue";
 import CharacterPanel from "../../../../../components/workspace/CharacterPanel.vue";
@@ -668,6 +670,11 @@ type WorkspacePanelKey =
   | "health";
 
 const workspacePanel = ref<WorkspacePanelKey | null>(null);
+// ---------- NF-WF-017A: import dialog ----------
+const importDialogOpen = ref(false);
+async function onImported() {
+  await loadChapters();
+}
 
 const workspaceNavItems: { key: WorkspacePanelKey; labelKey: string }[] = [
   { key: "characters", labelKey: "workspace.nav.characters" },
@@ -842,6 +849,15 @@ async function publish() {
             @click="createChapter"
           >
             +
+          </button>
+          <button
+            class="rounded border border-nf-border-strong px-1.5 text-[13px] leading-5 text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+            :aria-label="t('importExport.import.button')"
+            :title="t('importExport.import.button')"
+            data-testid="import-open"
+            @click="importDialogOpen = true"
+          >
+            ⤒
           </button>
         </div>
         <p v-if="loading" class="px-2.5 text-[13px] text-nf-text-faint">{{ t("common.loading") }}</p>
@@ -1206,5 +1222,13 @@ async function publish() {
         :novel-id="novelId"
       />
     </WorkspaceDrawer>
+    <!-- NF-WF-017A: import dialog -->
+    <ImportDialog
+      :open="importDialogOpen"
+      :workspace-id="workspaceId"
+      :novel-id="novelId"
+      @close="importDialogOpen = false"
+      @imported="onImported"
+    />
   </div>
 </template>

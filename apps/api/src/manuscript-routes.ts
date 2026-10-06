@@ -7,6 +7,9 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+// NF-WF-017A: type augmentation for `request.file()` (the plugin itself is
+// registered once in app.ts).
+import type { MultipartValue } from "@fastify/multipart";
 import type { AuthService } from "@novelforge/auth";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 // Error mapping lives in platform-routes' ONE setErrorHandler (shared
@@ -278,6 +281,51 @@ export function registerManuscriptRoutes(
         actorUserId,
         ...params.data,
         ...body.data,
+      });
+      return reply.code(201).send(result);
+    },
+  );
+
+  // NF-WF-017A: file import (multipart). The paste path above keeps the
+  // frozen JSON `{text, format}` shape; this route validates the uploaded
+  // bytes server-side (MIME allowlist, magic-byte sniffing, per-format
+  // byte caps, decompression-bomb limits) and extracts text per format.
+  // The multipart plugin is registered once in app.ts with a file-size
+  // limit of IMPORT_BODY_LIMIT; per-format caps are enforced in the
+  // service (`validateImportFile`).
+  const importFileFields = z.object({
+    // Manual format override for plain text (md vs txt); the magic bytes
+    // stay authoritative for binary formats (see detectImportFormat).
+    format: z.enum(["md", "txt", "pdf", "docx"]).optional(),
+    expectedHeadRevisionId: uuid.nullable().optional(),
+  });
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/chapters/import/file",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelScopeParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const file = await request.file();
+      if (!file) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const rawFields: Record<string, unknown> = {};
+      for (const [name, field] of Object.entries(file.fields)) {
+        const f = field as MultipartValue | MultipartValue[] | undefined;
+        const first = Array.isArray(f) ? f[0] : f;
+        if (first && typeof first.value === "string") rawFields[name] = first.value;
+      }
+      const fields = importFileFields.safeParse(rawFields);
+      if (!fields.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const buffer = await file.toBuffer();
+      const result = await services.importChaptersFromFile({
+        actorUserId,
+        ...params.data,
+        buffer,
+        mimeType: file.mimetype,
+        filename: file.filename,
+        declaredFormat: fields.data.format,
+        expectedHeadRevisionId: fields.data.expectedHeadRevisionId,
       });
       return reply.code(201).send(result);
     },

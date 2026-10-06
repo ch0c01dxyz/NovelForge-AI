@@ -125,10 +125,16 @@ status, version history, publish), launch runs, inspect runs (step
 graph with per-step status/outcome/error), and decide parked
 approvals from an inbox. Every action rides a frozen route
 (definitions CRUD/versions/publish; run/cancel/approve/reject;
-run list/get), plus one additive backend item: a `?status=` filter
+run list/get), plus additive backend items: a `?status=` filter
 on the run list route (Invariant 1(d)) — the frozen route filters
 only by `workflowId`/limit, so the approvals inbox cannot list
-AWAITING_APPROVAL runs reliably without it.
+AWAITING_APPROVAL runs reliably without it — and the three
+GAP-064 versions-list routes (`GET /api/agents/:agentId/versions`,
+`GET /api/skills/:skillId/versions`,
+`GET /api/workflows/:workflowId/versions`): the frozen routes serve
+the current version only, so the pinned "immutable version history"
+acceptance cannot ride frozen routes (see GAP-064; ruled
+contract-conformant by the 018A diff review).
 
 Inputs: workspace membership + capabilities. Outputs: an AI Studio
 page under the workspace showing definitions, versions, runs, and
@@ -245,7 +251,13 @@ Acceptance (all testable):
   `platformRole` field (Invariant 1's backend items).
 - `apps/api/src/definition-routes.ts`,
   `apps/api/src/services/workflow-runs.ts` (additive only): the
-  run-list `?status=` filter (Invariant 1(d)).
+  run-list `?status=` filter (Invariant 1(d)) and the three
+  GAP-064 versions-list routes
+  (`GET /api/agents/:agentId/versions`,
+  `GET /api/skills/:skillId/versions`,
+  `GET /api/workflows/:workflowId/versions` — read-only, gated
+  like the detail routes; added by 018A, ruled contract-conformant
+  by the 018A diff review).
 - `apps/web/app/i18n/en.ts`, `id.ts`: studio, admin, receipts
   locale keys.
 - Tests for all of the above (API route tests + web vitest tests,
@@ -287,9 +299,9 @@ Acceptance (all testable):
   the platform admin page (safe-secrets gateway management,
   models, profiles, routing overview); the receipts surface
   (ledger, failures, evaluations, audit trail).
-- Four additive backend items: the two audit-read routes, the
-  session `platformRole` field, and the run-list `?status=`
-  filter.
+- Seven additive backend items: the two audit-read routes, the
+  session `platformRole` field, the run-list `?status=` filter,
+  and the three GAP-064 versions-list routes (018A).
 
 ### Out of scope (with follow-up owner)
 
@@ -735,3 +747,80 @@ outcome envelope shapes in run-get (implementer pins from
 user row for the session field (implementer verifies the
 Prisma user model has the field — the platform axis exists
 in authorization.ts so the row must carry it).
+
+### Round 2 — NF-WF-018A diff review (2026-10-06). Verdict: APPROVE_WITH_FINDINGS (1 finding, fixed inline)
+
+(Reviewer: separate actor from the contract author, the contract
+reviewer, and the 018A implementer; backend MODEL_UNVERIFIED per
+GAP-013. Nothing committed — working tree only.)
+
+**F1 (P3) — GAP-064 ruling (APPROVE_WITH_FINDINGS, not CHANGES_REQUESTED).**
+The implementer added three additive routes
+(`GET /api/agents/:agentId/versions`,
+`GET /api/skills/:skillId/versions`,
+`GET /api/workflows/:workflowId/versions`) beyond the contract's
+four-item additive list, returning a bare array instead of a
+`{agentId, versions}` envelope. Ruled contract-conformant:
+(a) the routes are genuinely necessary for the pinned "append-only
+version history" acceptance (Invariant 2) — no frozen route serves
+version history (the detail routes return the current version only);
+(b) the gating rules are identical to the frozen detail routes
+(missing/PLATFORM-DRAFT → 404, cross-tenant → gateRead refusal,
+same `agent:read`/`skill:read`/`workflow:read` caps);
+(c) the bare-array shape matches the existing list-route
+convention and is consumed verbatim by `useAiStudio.listVersions`;
+(d) no schema change, no new capabilities, additive read-only
+routes; (e) the deviation was recorded in GAP-064 BEFORE any
+workaround (standing rule). Fixed inline: the contract's
+child-scope, Allowed-paths, and Outputs sections now record seven
+additive backend items (the three GAP-064 routes added).
+
+**GAP-064 CLOSES** on this review (verified: version-list tests —
+ascending order, 404 for unknown ids and PLATFORM-scoped DRAFTs,
+cross-tenant refusal).
+
+**Independent verification (reviewer's own, 2026-10-06, this
+host):** `src/ai-studio.test.ts` 6/6 green (re-ran myself —
+?status= filter genuine: 3 seeded runs, only the AWAITING_APPROVAL
+one returned; invalid status → 400 INVALID_INPUT; VIEWER 403 /
+AUTHOR 200 / outsider 404; version-list ascending + gating tests
+genuine); web `useAiStudio.test.ts` + `components/ai-studio/`
+20/20 green; `app/a11y/ai-studio.axe.test.ts` 10/10 green (0
+violations); API `tsc --noEmit` exit 0; web `vue-tsc --noEmit`
+exit 0; zero `@ts-ignore`/`@ts-expect-error` in new web files;
+i18n `aiStudio` subtree en/id leaf parity 76/76 (checked
+programmatically); `WorkflowRunStatus` enum includes
+AWAITING_APPROVAL (schema.prisma:561-570). The implementer's
+recorded full-suite claims (API 699/699, web 290/290, e2e 20/20
+BASELINE-OK, lint clean) are consistent with my targeted re-runs
+but are NOT re-claimed here.
+
+**Item-by-item:** F1 `?status=` filter — verified (optional
+`RunStatus` enum, `workflow:read` gate unchanged, follows the
+existing `workflowId` pattern; inbox lists via the server filter,
+not client-side). Capability matrix — server enforces
+(`packages/auth/authorization.ts` untouched; role gates verified
+in tests); the web capability helpers mirror ROLE_CAPABILITIES
+exactly (VIEWER→nothing; EDITOR→read+run, no approve; AUTHOR→
+read+run+approve, no manage; OWNER/ADMIN→manage). 007 boundary —
+`components/generation/*`, `useWorkflowRuns.ts`, `ApprovalDialog`,
+`RunStatusPanel`, `GenerationPanel` untouched; the writer-page
+change is the single additive nav link only (role-gated,
+progressive enhancement). Approval flow — inbox calls the frozen
+005 approve/reject routes with the verbatim park-time
+`snapshotHash` (`expectedSnapshotHash`); 005's 409 codes mapped to
+actionable messages (`STALE_APPROVAL`/`NO_APPROVAL_SNAPSHOT`/
+`ALREADY_DECIDED`/`RUN_CANCELLED` + FORBIDDEN); reject requires a
+reason. Run graph — per-step status/outcome/error/latency +
+pinned executed version numbers shown. No 018B/018C scope creep —
+no platform-admin routes, no audit-read routes, no receipts UI
+(the receipts-tab extension point is the authorized 018C marker).
+No forbidden-path violations — no schema changes/migrations, no
+new capabilities.
+
+**Observations (not findings):** (a) an untracked
+`docs/adr/DRAFT-GAP-062-pdf-unicode-font.md` ships in this tree —
+clearly marked DRAFT, decision pending (owner: Klein), no
+behavioral impact; acceptable as decision groundwork, not scope
+creep; (b) `docs/adr/` contains other committed ADRs, so the
+location is consistent.

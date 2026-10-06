@@ -72,6 +72,19 @@ export interface AgentView extends DefinitionView {
   hasOutputSchema: boolean;
 }
 
+/**
+ * One row of a definition's immutable version history (NF-WF-018A,
+ * GAP-064). The content fields are deliberately omitted — this is the
+ * history view, not the content view; the detail route carries the
+ * current version's content.
+ */
+export interface DefinitionVersionRow {
+  id: string;
+  number: number;
+  createdAt: Date;
+  createdBy: string | null;
+}
+
 export interface SkillView extends DefinitionView {
   category: SkillCategory;
   modelProfile: string | null;
@@ -144,6 +157,16 @@ export interface DefinitionServices {
     actorPlatformRole: PlatformRole;
     agentId: string;
   }): Promise<AgentDetail>;
+  /**
+   * NF-WF-018A (GAP-064): the immutable version history of an agent, in
+   * ascending version order. Read-only: no route or service ever updates a
+   * version row in place. Gated like getAgent (`agent:read`).
+   */
+  listAgentVersions(input: {
+    actorUserId: string;
+    actorPlatformRole: PlatformRole;
+    agentId: string;
+  }): Promise<DefinitionVersionRow[]>;
 
   // --- skills ---
   createSkill(input: {
@@ -177,6 +200,15 @@ export interface DefinitionServices {
     actorPlatformRole: PlatformRole;
     skillId: string;
   }): Promise<SkillDetail>;
+  /**
+   * NF-WF-018A (GAP-064): the immutable version history of a skill, in
+   * ascending version order. Read-only; gated like getSkill (`skill:read`).
+   */
+  listSkillVersions(input: {
+    actorUserId: string;
+    actorPlatformRole: PlatformRole;
+    skillId: string;
+  }): Promise<DefinitionVersionRow[]>;
 
   // --- workflows ---
   createWorkflow(input: {
@@ -210,6 +242,16 @@ export interface DefinitionServices {
     actorPlatformRole: PlatformRole;
     workflowId: string;
   }): Promise<WorkflowDetail>;
+  /**
+   * NF-WF-018A (GAP-064): the immutable version history of a workflow, in
+   * ascending version order. Read-only; gated like getWorkflow
+   * (`workflow:read`).
+   */
+  listWorkflowVersions(input: {
+    actorUserId: string;
+    actorPlatformRole: PlatformRole;
+    workflowId: string;
+  }): Promise<DefinitionVersionRow[]>;
 
   /**
    * Delete a workflow. Both workflow_runs FKs are RESTRICT (see the
@@ -604,6 +646,37 @@ export function createDefinitionServices(deps: {
       };
     },
 
+    // NF-WF-018A (GAP-064): immutable version history, ascending order.
+    // Same tenant rules as getAgent: DRAFT platform definitions are not
+    // part of the shared catalog.
+    async listAgentVersions(input) {
+      const agent = await db.agent.findUnique({
+        where: { id: input.agentId },
+        select: { id: true, scope: true, workspaceId: true, status: true },
+      });
+      if (!agent) throw new NotFoundError("agent");
+      if (agent.scope === "PLATFORM" && agent.status !== "PUBLISHED") {
+        throw new NotFoundError("agent");
+      }
+      await gateRead({
+        actorUserId: input.actorUserId,
+        scope: agent.scope,
+        workspaceId: agent.workspaceId,
+        cap: "agent:read",
+      });
+      const rows = await db.agentVersion.findMany({
+        where: { agentId: agent.id },
+        include: { createdBy: { select: { displayName: true } } },
+        orderBy: { number: "asc" },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        number: r.number,
+        createdAt: r.createdAt,
+        createdBy: r.createdBy.displayName,
+      }));
+    },
+
     // ==================== Skills ====================
 
     async createSkill(input) {
@@ -797,6 +870,36 @@ export function createDefinitionServices(deps: {
         createdAt: skill.createdAt,
         updatedAt: skill.updatedAt,
       };
+    },
+
+    // NF-WF-018A (GAP-064): immutable version history, ascending order.
+    // Same tenant rules as getSkill.
+    async listSkillVersions(input) {
+      const skill = await db.skill.findUnique({
+        where: { id: input.skillId },
+        select: { id: true, scope: true, workspaceId: true, status: true },
+      });
+      if (!skill) throw new NotFoundError("skill");
+      if (skill.scope === "PLATFORM" && skill.status !== "PUBLISHED") {
+        throw new NotFoundError("skill");
+      }
+      await gateRead({
+        actorUserId: input.actorUserId,
+        scope: skill.scope,
+        workspaceId: skill.workspaceId,
+        cap: "skill:read",
+      });
+      const rows = await db.skillVersion.findMany({
+        where: { skillId: skill.id },
+        include: { createdBy: { select: { displayName: true } } },
+        orderBy: { number: "asc" },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        number: r.number,
+        createdAt: r.createdAt,
+        createdBy: r.createdBy.displayName,
+      }));
     },
 
     // ==================== Workflows ====================
@@ -1007,6 +1110,36 @@ export function createDefinitionServices(deps: {
         createdAt: workflow.createdAt,
         updatedAt: workflow.updatedAt,
       };
+    },
+
+    // NF-WF-018A (GAP-064): immutable version history, ascending order.
+    // Same tenant rules as getWorkflow.
+    async listWorkflowVersions(input) {
+      const workflow = await db.workflow.findUnique({
+        where: { id: input.workflowId },
+        select: { id: true, scope: true, workspaceId: true, status: true },
+      });
+      if (!workflow) throw new NotFoundError("workflow");
+      if (workflow.scope === "PLATFORM" && workflow.status !== "PUBLISHED") {
+        throw new NotFoundError("workflow");
+      }
+      await gateRead({
+        actorUserId: input.actorUserId,
+        scope: workflow.scope,
+        workspaceId: workflow.workspaceId,
+        cap: "workflow:read",
+      });
+      const rows = await db.workflowVersion.findMany({
+        where: { workflowId: workflow.id },
+        include: { createdBy: { select: { displayName: true } } },
+        orderBy: { number: "asc" },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        number: r.number,
+        createdAt: r.createdAt,
+        createdBy: r.createdBy.displayName,
+      }));
     },
 
     async deleteWorkflow(input) {

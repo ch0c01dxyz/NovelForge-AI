@@ -14,6 +14,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
+import { WorkflowRunStatus } from "@novelforge/database";
 import type { PlatformRole } from "@novelforge/auth/authorization";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import type { DefinitionServices } from "./services/definitions.ts";
@@ -116,6 +117,11 @@ const runWorkflowBody = z.object({
 
 const listRunsQuery = z.object({
   workflowId: uuid.optional(),
+  // NF-WF-018A (Invariant 1(d)): the approvals inbox needs to list parked
+  // runs reliably, so the run list accepts an optional run-status filter,
+  // following the existing optional-`workflowId` pattern. The
+  // `workflow:read` gate is unchanged.
+  status: z.nativeEnum(WorkflowRunStatus).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
@@ -267,6 +273,20 @@ export function registerDefinitionRoutes(
     return { status: "ok" };
   });
 
+  // NF-WF-018A (GAP-064): the agent's immutable version history, ascending.
+  // Read-only; gated agent:read like the detail route.
+  app.get("/api/agents/:agentId/versions", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = agentParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return definitions.listAgentVersions({
+      actorUserId: actor.userId,
+      actorPlatformRole: actor.platformRole,
+      agentId: params.data.agentId,
+    });
+  });
+
   // ==================== Skills ====================
 
   app.post("/api/skills", { bodyLimit: DEFINITION_BODY_LIMIT }, async (request, reply) => {
@@ -355,6 +375,20 @@ export function registerDefinitionRoutes(
     return { status: "ok" };
   });
 
+  // NF-WF-018A (GAP-064): the skill's immutable version history, ascending.
+  // Read-only; gated skill:read like the detail route.
+  app.get("/api/skills/:skillId/versions", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = skillParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return definitions.listSkillVersions({
+      actorUserId: actor.userId,
+      actorPlatformRole: actor.platformRole,
+      skillId: params.data.skillId,
+    });
+  });
+
   // ==================== Workflows ====================
 
   app.post("/api/workflows", { bodyLimit: DEFINITION_BODY_LIMIT }, async (request, reply) => {
@@ -433,6 +467,20 @@ export function registerDefinitionRoutes(
       workflowId: params.data.workflowId,
     });
     return { status: "ok" };
+  });
+
+  // NF-WF-018A (GAP-064): the workflow's immutable version history,
+  // ascending. Read-only; gated workflow:read like the detail route.
+  app.get("/api/workflows/:workflowId/versions", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = workflowParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return definitions.listWorkflowVersions({
+      actorUserId: actor.userId,
+      actorPlatformRole: actor.platformRole,
+      workflowId: params.data.workflowId,
+    });
   });
 
   // Run history is the execution audit trail: a workflow with runs is
@@ -571,6 +619,7 @@ export function registerDefinitionRoutes(
       actorUserId: actor.userId,
       workspaceId: params.data.workspaceId,
       ...(query.data.workflowId ? { workflowId: query.data.workflowId } : {}),
+      ...(query.data.status ? { status: query.data.status } : {}),
       ...(query.data.limit !== undefined ? { limit: query.data.limit } : {}),
     });
   });

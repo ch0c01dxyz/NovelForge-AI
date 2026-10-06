@@ -14,7 +14,7 @@
  * - `cancelRun()` transitions PENDING/RUNNING/AWAITING_APPROVAL →
  *   CANCELLED via a guarded update and best-effort removes the queued job.
  */
-import type { NovelForgeDb } from "@novelforge/database";
+import type { NovelForgeDb, WorkflowRunStatus } from "@novelforge/database";
 import { requireCapability } from "@novelforge/auth/authorization";
 import {
   validateGraph,
@@ -142,6 +142,11 @@ export interface WorkflowRunServices {
     actorUserId: string;
     workspaceId: string;
     workflowId?: string;
+    /**
+     * NF-WF-018A (Invariant 1(d)): optional run-status filter — the
+     * approvals inbox lists `AWAITING_APPROVAL` runs through it.
+     */
+    status?: WorkflowRunStatus;
     limit?: number;
   }): Promise<RunView[]>;
   getRun(input: {
@@ -644,6 +649,9 @@ export function createWorkflowRunServices(deps: {
         where: {
           workspaceId: input.workspaceId,
           ...(input.workflowId ? { workflowId: input.workflowId } : {}),
+          // NF-WF-018A (Invariant 1(d)): optional status filter — the
+          // approvals inbox lists AWAITING_APPROVAL runs through it.
+          ...(input.status ? { status: input.status } : {}),
         },
         include: { workflow: { select: { key: true } } },
         orderBy: { startedAt: "desc" },

@@ -31,6 +31,8 @@ import {
 import { countWords as countWordsStripped, stripHtmlTags } from "../../../../../utils/htmlText";
 import type RunStatusPanel from "../../../../../components/generation/RunStatusPanel.vue";
 import type GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
+// ---------- NF-WF-018A: AI Studio ----------
+import { useAiStudio, type WorkspaceRole } from "../../../../../composables/useAiStudio";
 // ---------- NF-WF-017 import dialog ----------
 import ImportDialog from "../../../../../components/import-export/ImportDialog.vue";
 import ExportPicker from "../../../../../components/import-export/ExportPicker.vue";
@@ -69,6 +71,15 @@ const { api } = useApi();
 const { t, locale, setLocale } = useLocale();
 const gen = useChapterGeneration();
 const runs = useWorkflowRuns();
+const aiStudio = useAiStudio();
+
+// ---------- NF-WF-018A: AI Studio nav ----------
+// The member role gates the AI Studio header link (VIEWER sees nothing);
+// the studio page re-gates per tab. The server enforces every capability.
+const studioRole = ref<WorkspaceRole | null>(null);
+const showStudioLink = computed(
+  () => studioRole.value !== null && studioRole.value !== "VIEWER",
+);
 
 const workspaceId = computed(() => String(route.params.workspaceId ?? ""));
 const novelId = computed(() => String(route.params.novelId ?? ""));
@@ -728,6 +739,12 @@ function closeWorkspacePanel() {
 }
 
 onMounted(async () => {
+  // NF-WF-018A: best-effort role fetch for the AI Studio link; a failure
+  // only hides the link (the studio page re-checks).
+  aiStudio.getWorkspaceRole(workspaceId.value).then(
+    (r) => (studioRole.value = r),
+    () => (studioRole.value = null),
+  );
   try {
     await loadChapters();
     void loadHealth();
@@ -805,6 +822,16 @@ async function publish() {
       >
         {{ t("workspace.nav.planning") }}
       </button>
+      <!-- NF-WF-018A: AI Studio link — hidden for VIEWER (role-gated,
+           progressive enhancement; the server enforces). -->
+      <NuxtLink
+        v-if="showStudioLink"
+        :to="`/workspaces/${workspaceId}/ai-studio`"
+        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        data-testid="ai-studio-link"
+      >
+        {{ t("aiStudio.navLink") }}
+      </NuxtLink>
       <div
         class="flex items-center gap-1 rounded-lg border border-nf-border p-0.5 text-[12px]"
         role="group"

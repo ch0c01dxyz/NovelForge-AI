@@ -4988,3 +4988,87 @@ web `vue-tsc --noEmit` exit 0; zero `@ts-ignore`/`@ts-expect-error` in
 new code. All green, actually executed 2026-10-06 on this host (native
 PostgreSQL 16.15 + pgvector on localhost:5432, Redis 7.0.15 on 6379,
 scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+
+## NF-WF-018A — AI Studio: definitions, run graph, approvals inbox (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 018A implementer actor (separate from the 018 contract
+author/reviewer, the 018B/018C implementers, and the future diff reviewer;
+backends MODEL_UNVERIFIED per GAP-013). 018B (platform admin) and 018C
+(receipts) were NOT touched.
+
+Backend (`apps/api`) — additive only, no schema change, no new
+capabilities, `packages/auth/authorization.ts` untouched:
+
+- `definition-routes.ts` — the F1-owned `?status=` filter on the run list
+  route (`listRunsQuery.status = z.nativeEnum(WorkflowRunStatus).optional()`,
+  pass-through to the service; the `workflow:read` gate is unchanged,
+  following the existing optional-`workflowId` pattern). Plus the GAP-064
+  workaround: three additive read-only routes
+  `GET /api/agents/:agentId/versions`,
+  `GET /api/skills/:skillId/versions`,
+  `GET /api/workflows/:workflowId/versions` (ascending, gated on the same
+  read caps as the detail routes — PLATFORM+DRAFT → 404, cross-tenant →
+  403/404).
+- `services/definitions.ts` — `DefinitionVersionRow` (`id`, `number`,
+  `createdAt`, `createdBy` displayName) + `listAgentVersions` /
+  `listSkillVersions` / `listWorkflowVersions` (same tenant rules as the
+  detail getters; content fields deliberately omitted — this is the
+  history view, not the content view).
+- `services/workflow-runs.ts` — the `where` clause honors the optional
+  status filter.
+
+Web (`apps/web`) — new AI Studio surface at
+`/workspaces/:workspaceId/ai-studio` (Q1 decision of record):
+
+- `composables/useAiStudio.ts` — the studio's fetch surface (list/get
+  definitions, versions, runs, launch, decide with the 005 `code` field
+  preserved via a local fetch, `getWorkspaceRole`) + the client-side
+  capability matrix helpers (`canViewStudio`/`canManageDefinitions`/
+  `canDecideApprovals`/`canLaunchRuns` mirroring ROLE_CAPABILITIES;
+  progressive enhancement — the server enforces).
+- `components/ai-studio/`: `DefinitionList.vue` (current version + status;
+  run button only for PUBLISHED workflows when the role may launch),
+  `DefinitionDetail.vue` (detail + append-version JSON dialog + publish
+  confirm), `VersionHistory.vue` (append-only ascending history),
+  `RunList.vue` (status filter dropdown incl. AWAITING_APPROVAL),
+  `RunGraph.vue` (vertical step list — the list IS the screen-reader text
+  equivalent — with per-step status/outcome/error/latency and pinned
+  workflow/agent/skill version numbers), `ApprovalsInbox.vue` (parked
+  list via `?status=AWAITING_APPROVAL`; snapshot material display;
+  approve/reject dialog echoing the park-time `snapshotHash` verbatim;
+  the 005 409 codes STALE_APPROVAL/NO_APPROVAL_SNAPSHOT/ALREADY_DECIDED/
+  RUN_CANCELLED surface as actionable messages, never raw codes;
+  reject requires a reason).
+- `pages/workspaces/[workspaceId]/ai-studio/index.vue` — tab shell
+  (Definitions / Runs / Approvals; a data-driven list with a marked
+  extension point for 018C's receipts tab). VIEWER → no-access state;
+  Approvals tab only for `workflow:approve` holders.
+- Writer page (`novels/[novelId]/index.vue`) — additive "AI Studio"
+  NuxtLink next to the planning button, hidden for VIEWER (the only
+  writer-page change; 007's ApprovalDialog/RunStatusPanel/
+  GenerationPanel/useWorkflowRuns untouched).
+- i18n: 91 `aiStudio.*` keys in en + id (parity verified 91/91).
+
+Tests: `src/ai-studio.test.ts` (API, 6/6 — filter, gating, versions
+routes); `useAiStudio.test.ts` (8/8 — the capability matrix pinned);
+`DefinitionList.test.ts` (4/4); `RunGraph.test.ts` (3/3);
+`ApprovalsInbox.test.ts` (5/5 — snapshot-hash approve path,
+STALE_APPROVAL actionable message, reject-reason required, decide
+buttons hidden without `workflow:approve`);
+`app/a11y/ai-studio.axe.test.ts` (10/10 — zero violations en+id).
+
+GAPs: GAP-064 recorded before the workaround (the versions-list routes
+extend the contract's additive-items list from four to five — the diff
+reviewer rules APPROVE_WITH_FINDINGS vs CHANGES_REQUESTED); GAP-065
+(host: PostgreSQL role missing + pgvector not in template1 after the VM
+reinstall — fixed on the host, must be re-applied on VM replacement).
+GAP-013 (MODEL_UNVERIFIED) unchanged. GAP-028/039/040/051/058/059/062/
+063 untouched by 018A.
+
+Evidence: API **699/699** (35 files, +6 new); web **290/290** (46 files,
++30 new); `pnpm e2e` **20/20** (3 files) exit 0 — BASELINE-OK no-regression; `pnpm lint` exit 0;
+API `tsc --noEmit` exit 0; web `vue-tsc --noEmit` exit 0; zero
+`@ts-ignore`/`@ts-expect-error` in new code. All actually executed
+2026-10-06 on this host (native PostgreSQL 16.15 + pgvector on
+localhost:5432, Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs
+only; pnpm 12.5.1).

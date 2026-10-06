@@ -1902,3 +1902,41 @@ sequences are verified against stripped text per the contract pin (the
 017 contract's Invariant 3 states verification is against tag-stripped
 text, no exceptions); (3) no live-model generation was exercised
 (GAP-013).
+
+## NF-WF-018A — AI Studio: definitions, run graph, approvals inbox (2026-10-06)
+
+Executed on this host (native PostgreSQL 16.15 + pgvector on localhost:5432,
+Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+Implementer actor separate from the 018 contract author/reviewer, the
+018B/018C implementers, and the future diff reviewer; backends
+MODEL_UNVERIFIED per GAP-013. 018B (platform admin) and 018C (receipts)
+were NOT touched.
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/ai-studio.test.ts` (apps/api) | **6/6** — `?status=` filters (incl. `AWAITING_APPROVAL` inbox query, invalid → 400), VIEWER 403 / AUTHOR 200 / non-member 404 on the run list, agent/workflow version history ascending, 404 for unknown ids and PLATFORM-scoped DRAFTs, cross-tenant 404 |
+| New web tests: `useAiStudio.test.ts` + `components/ai-studio/*.test.ts` | **20/20** — capability matrix pinned (VIEWER nothing; AUTHOR view+decide, no manage; ADMIN/OWNER manage), DefinitionList run-button gating, RunGraph steps + pins + outcome/error, ApprovalsInbox snapshot-hash approve path, STALE_APPROVAL actionable message, reject-reason required, decide buttons hidden without `workflow:approve` |
+| `app/a11y/ai-studio.axe.test.ts` | **10/10** — zero axe violations (wcag2aa + wcag22aa) on DefinitionList, DefinitionDetail (+version history), RunList, RunGraph, ApprovalsInbox (+decide dialog), in en and id |
+| i18n parity check | **91/91** `aiStudio.*` keys present in both en and id; missing-key fallback via the `t()` path-key comparison |
+| Full API suite `npx vitest run` (apps/api) | 35 files, **699/699** — +6 new (ai-studio), no regressions |
+| Full web suite `npx vitest run` (apps/web) | 46 files, **290/290** |
+| `pnpm e2e` (011 author-preview loop) | 3 files, **20/20** exit 0 — no-regression vs 011 |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+
+GAP-064 deviation recorded before the workaround (standing rule): the
+frozen contract's additive-items list named four backend items; 018A adds
+a fifth — the three read-only `GET /api/{agents,skills,workflows}/:id/versions`
+routes (same read gates as the detail routes, ascending, no schema
+change, no new capabilities). The diff reviewer rules whether this is
+APPROVE_WITH_FINDINGS or CHANGES_REQUESTED.
+
+Honest limitations (not GAPs): (1) the approvals inbox lists parked runs
+but a real end-to-end park (HUMAN_APPROVAL step → AWAITING_APPROVAL) was
+not driven — the 005 suite owns the park/decide state machine, and the
+inbox reads the same frozen rows; (2) no live-model generation was
+exercised (GAP-013); (3) the full screen-reader pass is a human task
+(GAP-051); (4) the studio page itself (tab shell, role gating) has no
+dedicated test — its children are covered and the gates are
+progressive enhancement over the server enforcement.

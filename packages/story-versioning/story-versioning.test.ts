@@ -34,8 +34,8 @@ import {
 } from "./impact.ts";
 
 describe("C1 coverage set", () => {
-  it("has exactly the 35 tables the contract names (33 + NF-WF-009 memory_projections + NF-WF-010 final_text_reviews)", () => {
-    expect(COVERED_TABLE_NAMES).toHaveLength(35);
+  it("has exactly the 36 tables the contract names (33 + NF-WF-009 memory_projections + NF-WF-010 final_text_reviews + NF-WF-012 publications)", () => {
+    expect(COVERED_TABLE_NAMES).toHaveLength(36);
     // The exact membership, not a spot check: a table dropped from this list
     // would make validateSnapshotComplete accept a payload that omits it, and
     // restore would then delete every row of it.
@@ -66,6 +66,7 @@ describe("C1 coverage set", () => {
         "outline_nodes",
         "outline_versions",
         "planning_horizons",
+        "publications",
         "relationship_stances",
         "sagas",
         "scenes",
@@ -130,11 +131,15 @@ describe("C1 coverage set", () => {
     }
   });
 
-  it("marks only the manuscript pair as non-restore-target", () => {
+  it("marks only the manuscript pair and publications as non-restore-target", () => {
     const nonTargets = COVERED_TABLES.filter((t) => !t.restoreTarget).map((t) => t.key);
     // chapter_versions is ON DELETE CASCADE from chapters and append-only, so
     // deleting either destroys immutable history (C7).
-    expect([...nonTargets].sort()).toEqual(["chapter_versions", "chapters"]);
+    // publications is non-restore-target per NF-WF-012 Invariant 8: the release
+    // lifecycle is not story state — restoring a pre-publish checkpoint must
+    // not unpublish, and restoring a post-publish checkpoint must not resurrect
+    // a cancelled publication.
+    expect([...nonTargets].sort()).toEqual(["chapter_versions", "chapters", "publications"]);
   });
 });
 

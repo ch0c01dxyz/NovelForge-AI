@@ -1601,3 +1601,83 @@ IMPACT: without the fields, anonymous readers could not see engagement counts on
 NEXT ACTION: the 019A implementer adds the three fields as additive-only, backward-compatible fields (no existing 013 field renamed, removed, or restructured). The 019A diff reviewer verifies: (a) additive-only; (b) counts reflect only published-visible engagement (`commentCount` counts VISIBLE comments only); (c) no auth object, no session handling, no 401 path introduced into `/api/public/*` (013 Invariant 2 preserved).
 
 STATUS: OPEN — 019 contract review (Round 1, 2026-10-06) ruled Q8 APPROVE under the GAP-049 precedent (013's additive extensions to 012's frozen shapes, ruled LEGITIMATE by an independent contract reviewer): genuinely necessary for the anonymous-counts acceptance (no frozen route serves aggregate engagement counts), additive-only and backward-compatible, no per-user state in the fields, no auth introduced into the public routes. Closes when the 019A diff review verifies conditions (a)–(c) with test evidence.
+
+## GAP-069 — Host PostgreSQL/Redis services were not running at NF-WF-019A start (2026-10-06)
+
+EVIDENCE: 2026-10-06, at the start of NF-WF-019A implementation, `localhost:5432` and `localhost:6379` both refused connections and the binaries were not on the implementer's PATH. Initial diagnosis ("no binaries installed") was WRONG: `apt-cache policy` showed `postgresql-16` 16.15, `redis-server` 7.0.15, and `postgresql-16-pgvector` 0.6.0 all INSTALLED (exactly the GAP-065-recorded versions) — the services simply were not running (no systemd auto-start; this host's services are started manually per ENVIRONMENT-PREFLIGHT). Correction recorded here; the initial misdiagnosis is kept visible per §13 honesty.
+
+IMPACT: the 019A evidence battery could not run until the services were started. No data loss; no schema impact.
+
+NEXT ACTION: start the services manually (`pg_ctlcluster 16 main start` or equivalent; `redis-server` daemon). Re-apply the GAP-065 steps if a fresh cluster is ever initialized (`novelforge_test` role + `vector` in `template1`). The 019A implementer started both services on 2026-10-06 (postgres 16.15 online on :5432, redis-server 7.0.15 PONG on :6379) before running the evidence battery.
+
+STATUS: CLOSED — 019A implementer (2026-10-06). Lesson: check `apt-cache policy` / `pg_lsclusters` before concluding a fresh install is needed.
+
+## GAP-070 — NF-WF-019A adds one additive `followerCount` field to NF-WF-013's frozen public author shape (2026-10-06)
+
+EVIDENCE: the frozen 019 contract's 019A Web UI section pins: "`FollowAuthorButton` on the public author page (`/authors/[authorId]`, the 013 page). Rendered ONLY when a session exists; anonymous readers see the counts as static text." The Q8 ruling (GAP-068) covers additive counts on the frozen 013 NOVEL and CHAPTER shapes only. There is no anonymous-readable source for the author-follower aggregate: `GET /api/reader/engagement/author` is authenticated by construction (Invariant 1 — `/api/reader/*` has no anonymous path). Without the field, the pinned "anonymous readers see the counts as static text" acceptance is unimplementable on the author page.
+
+IMPACT: with the field, anonymous readers see the author follower count on the public author page (matching the novel/chapter Q8 pattern); without it, the author page shows no count to anonymous readers, contradicting the contract.
+
+NEXT ACTION: the 019A implementer adds `followerCount` as an additive-only, backward-compatible field on the frozen 013 author shape (`GET /api/public/authors/:authorId` → `author: { id, displayName, followerCount }`), following the GAP-068 necessity logic, recorded here BEFORE implementation. The 019A diff reviewer verifies: (a) additive-only; (b) the count is a pure aggregate (`author_follows` row count — no per-user state); (c) no auth object, no session handling, no 401 path in `/api/public/*` (013 Invariant 2 preserved). Recorded BEFORE implementation per the standing rule.
+
+STATUS: OPEN — 019A implementer (2026-10-06).
+
+## GAP-071 — NF-WF-019: `chapters.comment_count` is pinned in both the 019A migration block and the 019B acceptance (shared column, parallel builders) (2026-10-06)
+
+EVIDENCE: the frozen 019 contract pins `Chapter.commentCount` in 019A's migration contents ("`Chapter.likeCount`, `Chapter.commentCount Int @default(0)`") AND in 019B's acceptance ("`Chapter.commentCount` counts VISIBLE only; hide/delete decrements transactionally"). 019A and 019B are built by separate actors in parallel against one schema. Both migrations (`20261006_nf_wf_019a_engagement`, `20261006_nf_wf_019b_comments`) contain `ALTER TABLE "chapters" ADD COLUMN IF NOT EXISTS "comment_count" ...`; the schema carries a single `commentCount` field (019B's, with a coordination comment naming 019A).
+
+IMPACT: whichever migration lands first creates the column; the other converges via `IF NOT EXISTS` (the GAP-030 idempotency precedent). No duplicate column, no drift. The counter is written ONLY by the 019B comment write path (post/hide/unhide/delete, transactional); 019A reads it for the Q8 public chapter shape.
+
+NEXT ACTION: both diff reviewers verify the single-column convergence (`prisma validate` clean, one `comment_count` in the schema). No schema change needed.
+
+STATUS: OPEN — 019B implementer (2026-10-06); closes on both 019A and 019B diff reviews.
+
+## GAP-072 — NF-WF-019B: `?status=` on the moderation report queue filters the COMMENT's status (contract interpretation) (2026-10-06)
+
+EVIDENCE: the frozen 019 contract pins `GET /api/reader/novels/:novelId/moderation/reports?status=` with shape `{ reports: [{ comment, reason, reporterCount, createdAt }] }`, but the pinned migration carries no report-resolution state — moderation "resolves" reports by acting on the comment (hide/unhide/delete). The only meaningful `status` domain is the comment's `CommentStatus` (VISIBLE/HIDDEN/DELETED).
+
+IMPACT: the 019B implementation filters `?status=` on the comment's status (Zod enum `COMMENT_STATUSES`; absent = all). This is an interpretation, not a deviation — recorded here BEFORE the diff review per the standing rule so the reviewer can rule.
+
+NEXT ACTION: the 019B diff reviewer rules the interpretation (APPROVE_WITH_FINDINGS = keep; CHANGES_REQUESTED = amend the contract to pin the filter domain explicitly).
+
+STATUS: OPEN — 019B implementer (2026-10-06).
+
+## GAP-074 — NF-WF-019A enriches the `novel` sub-object in the three engagement list endpoints with published-visible card fields (2026-10-06)
+
+EVIDENCE: the frozen 019 contract pins the 019A list shapes as `{ bookmarks: [{ novelId, novel: { id, title, slug }, createdAt }], page }` (same for follows). The same contract's 019A Web UI section requires the `/read/library` page to render "novel/author cards (reuse the 014 discovery card component; do not reinvent)". The 014 `NovelCard` requires `{ id, title, slug, author: { id, displayName }, genres, publishedChapterCount, firstPublishedAt, lastPublishedAt }` — fields the pinned `{ id, title, slug }` sub-object cannot supply, and no other 019A endpoint serves them per-novel for the caller's list.
+
+IMPACT: without the enrichment, the library page cannot reuse NovelCard without N+1 per-novel fetches or a second endpoint; with it, the library renders directly from the list responses.
+
+NEXT ACTION (renumbered from GAP-071 on 2026-10-06 — the 019B actor had recorded their own GAP-071 for the shared comment_count column while this actor was working; no content change): the 019A implementer additively enriches the `novel` sub-object in `GET /api/reader/bookmarks`, `/api/reader/follows` (and the same novel sub-object shape is already what `listNovelFollows` returns) with the published-visible card fields: `author { id, displayName }`, `genres`, `publishedChapterCount` (PUBLISHED chapters only), `firstPublishedAt`/`lastPublishedAt` (nullable — null when the novel currently has no PUBLISHED chapters), plus the internal `status` for the library's Invariant-2 filtering. All enriched fields are published-visible data; no per-user state; no frozen 013 shape touched. Recorded BEFORE implementation per the standing rule. The 019A diff reviewer rules on conformance.
+
+STATUS: OPEN — 019A implementer (2026-10-06).
+
+## GAP-073 — NF-WF-019C: `novel.chapter_published` is emitted from BOTH the 012 worker fire AND the API immediate-publish path (contract interpretation) (2026-10-06)
+
+EVIDENCE: the frozen 019 contract's 019C Fan-out section says "The 012 publication worker emits `novel.chapter_published` and enqueues a fan-out job". The 012 codebase has TWO paths that transition a publication to PUBLISHED: the worker's `fireScheduledPublication` (scheduled fires) and the API's `publishChapter` (immediate publish — the primary author flow). Emitting only from the worker path would silently drop NEW_CHAPTER notifications for every immediately-published chapter, breaking the 019C acceptance checkbox ("Follow a novel → publish a chapter → follower receives a NEW_CHAPTER notification") for the most common publish flow.
+
+IMPACT: the 019C implementation enqueues the fan-out job from both paths — `apps/api/src/services/publication.ts` (`publishChapter`, after commit, via the new `notifications` queue facade; only the enqueue is awaited) and `apps/worker/src/publication-jobs.ts` (after a successful fire, via an injectable `enqueueNotificationFanout` seam). Both produce the identical pinned event (a chapter reaching PUBLISHED); no notification is fabricated (Invariant 7). Recorded BEFORE the diff review per the standing rule.
+
+NEXT ACTION: the 019C diff reviewer rules the interpretation (APPROVE_WITH_FINDINGS = keep both emission points; CHANGES_REQUESTED = restrict to the worker path and amend the acceptance checkbox to scheduled-publishes only).
+
+STATUS: OPEN — 019C implementer (2026-10-06).
+
+## GAP-065 note — host binaries absent at 019C session start; reinstalled (2026-10-06)
+
+EVIDENCE: at the start of the 019C implementation session, `localhost:5432` and `localhost:6379` refused connections; `dpkg -l | grep -E "postgres|redis"` returned nothing, `find / -name postgres -o -name redis-server` returned nothing, and `apt-cache policy postgresql-16` had no candidate until the apt sources were repaired. A stuck background `apt-get update` (PID 1273, held the lock for 8+ minutes) was killed; `mirror.cogentco.com` was removed from `/etc/apt/sources.list.d/ubuntu.sources` (the documented stall cause), after which `azure.archive.ubuntu.com` updated in 27s. Installed: `postgresql-16`, `postgresql-16-pgvector` (0.6.0), `postgresql-client-16`, `redis-server`. Started manually (no systemd auto-start): `pg_ctlcluster 16 main start` (16.15 online on :5432), `redis-server --daemonize yes` (PONG on :6379). Re-applied the GAP-065 steps: `novelforge_test` LOGIN SUPERUSER role created, `vector` + `pgcrypto` in `template1`. A sibling's pg_hba `trust` for local TCP was already in place and kept.
+
+IMPACT: none on the repo — environment-only. This session's evidence battery ran against this fresh stack.
+
+NEXT ACTION: none — recorded for the next VM-replacement preflight.
+
+STATUS: CLOSED — 019C implementer (2026-10-06).
+
+## GAP-075 — NF-WF-012 added `publications` to COVERED_TABLES but the C1 pinning test still asserts 35 tables; CI red since 2026-10-05 (2026-10-06)
+
+EVIDENCE: GitHub Actions run 37428209898 (job 112152641739, 2026-10-06 07:13 UTC): step 9 "Test" failed — `@novelforge/story-versioning` `story-versioning.test.ts`: (1) `expect(COVERED_TABLE_NAMES).toHaveLength(35)` got 36; (2) `expect([...nonTargets].sort()).toEqual(["chapter_versions", "chapters"])` got 3 items (the third is `publications`). Root cause: commit `3c57739` (NF-WF-012, 2026-10-05) added `{ key: "publications", restoreTarget: false }` to `COVERED_TABLES` (a deliberate, contract-reviewed decision — 012 Invariant 8: publication lifecycle is not story state, restores must never touch publication rows) but did not update the two pinning assertions. Every CI run since `3c57739` (7 runs: 013, 014, 015, 016, 017, 018, 018) failed on the same 2 tests. The local suite was green during those tasks because implementers ran their packages' suites, not the story-versioning package, against the same assertion.
+
+IMPACT: CI red for 7 consecutive main-branch pushes; the C1 coverage-set pin (which exists to catch silent table drops/additions) was stale, so it could no longer serve its purpose.
+
+NEXT ACTION: update the two assertions to pin the deliberate 012 state — 36 tables with `publications` in the membership list, and non-restore-targets `["chapter_versions", "chapters", "publications"]` with the 012 Invariant 8 rationale. Test-only change; no behavior change; the pinning purpose is preserved (any future silent add/drop still fails).
+
+STATUS: OPEN — fix applied 2026-10-06; closes when CI is green on the fix commit.

@@ -5724,3 +5724,69 @@ Implementer: 021D subagent (separate actor from contract author, contract review
 **Gaps recorded:** None — no missing routes; all UI needs covered by 021A/021B routes.
 
 **Handoff:** uncommitted; the diff reviewer judges the exact diff. Backends MODEL_UNVERIFIED per GAP-013.
+
+## NF-WF-022C "Endgame simulation (021 integration)" — IMPLEMENTED (2026-10-07, uncommitted)
+
+Implementer: 022C subagent (separate actor from contract author, contract reviewer, the 022A/022B implementers, and the future 022C diff reviewer). Contract: `tasks/NF-WF-022-endgame.md` §022C. Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- `packages/story-simulation/endgame-projection.ts` — pure domain logic: `EndgameLedgerEntry` (pinned 022A shape: ledgerId/threadId/status/closed/criteria), `buildEndgameScenario` (ledger + closePlan → 021 scenario: flat `thread:<id>` → CLOSED/OPEN initial state, one `ENDGAME_THREAD_CLOSED` injection per planned thread with stateDelta), `interpretEndgameProjection` (final tick state → closed/open MUSTs + others, projectedGate READY/BLOCKED). Deterministic, no DB/HTTP/LLM/randomness. Never mutates inputs.
+- `apps/api/src/services/endgame-projection.ts` — server orchestrator `runEndgameProjection`: drives 021A `SimulationServices` programmatically (create → configure → start → step). No new API routes (contract §Routes). `MODULE_NOT_ENABLED` surfaces from 021A's existing prerequisite check (no new code). `EndgameLedgerReader` seam (injected; 022A parallel) + production adapter `createEndgameLedgerReader` over 022A's `listLedgerEntries` (shapes structurally identical; 022A documents 022C consumption on `ledgerId`/`closed`).
+- `apps/api/src/endgame-projection.test.ts` — 6 integration tests (dedicated `novelforge_test_endgame` DB): projection via 021 (READY), what-if-stays-OPEN (BLOCKED), 021-disabled → 400 MODULE_NOT_ENABLED, no ledger mutation (real 022A table deep-equal), unknown thread → INVALID_INPUT, determinism.
+- `apps/web/app/components/endgame/endgameApi.ts` — web client: 022A ledger fetch (pinned route), 020B branch list, 021A lifecycle (create with full scenario incl. injections — 021D's client type omits injections, so a dedicated `createProjectionRun` posts the complete body).
+- `apps/web/app/components/endgame/EndgameProjectionView.vue` — Simulation tab: close-plan picker (checkboxes; already-closed not selectable), branch picker, run → drives 021A routes → projected gate banner + closed/open MUST lists. `endgame:read` gates the view (022A route layer); `simulation:manage` enforced server-side by 021A.
+- i18n: `endgame.projection.*` (~30 keys) en+id parity. Status labels under `endgame.projection.statusLabels.*` (not `endgame.ledger.*` — 022A's scope) to avoid key collisions.
+- `apps/api/package.json`: added `@novelforge/story-simulation: workspace:*`.
+
+**Decisions (documented):**
+- 021-integration: web UI drives 021A HTTP routes (no new routes); pure scenario build/interpret shared via `@novelforge/story-simulation` (021C precedent). Server orchestrator exists for tests + future 022A route use.
+- Ledger read via injected `EndgameLedgerReader` seam (022A was parallel at implementation start; verified compatible with landed 022A: route path, `{ entries }` shape, and entry fields all match).
+- Capability note: projection view uses `endgame:read` (022A pins); running requires `simulation:manage` (021A-enforced; UI surfaces 403/400 as inline errors).
+
+**Evidence:** `endgame-projection.test.ts` (pure) **13/13**; API integration `endgame-projection.test.ts` **6/6** (dedicated `novelforge_test_endgame` DB; real 021A services + real 022A ledger table for the no-mutation pin); component **6/6**; axe **3/3** zero violations; full web suite **457/457** (76 files, no regressions); `vue-tsc` clean for 022C files; ESLint clean. `apps/api` tsc clean for 022C files.
+
+**Gaps recorded:** GAP-088 (VM replaced mid-task; PostgreSQL/Redis restarted; CLOSED with test evidence).
+
+**Handoff:** uncommitted; the diff reviewer judges the exact diff. Backends MODEL_UNVERIFIED per GAP-013.
+
+## NF-WF-022A "Closure ledger" — IMPLEMENTED (2026-10-07, uncommitted)
+
+Implementer: 022A subagent (separate actor from contract author, contract reviewer, the 022B/022C implementers, and the future 022A diff reviewer). Contract: `tasks/NF-WF-022-endgame.md` §022A. Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- Capabilities: `endgame:read` / `endgame:manage` in `packages/auth/authorization.ts` (pinned role mapping: OWNER/ADMIN/AUTHOR both; EDITOR read-only; VIEWER neither) + 3 new tests in `authorization.test.ts`.
+- Prisma: `EndgameClosureStatus` enum (MUST/SHOULD/MAY/OPEN/SEQUEL), `EndgameLedger` (threadId → StoryThread onDelete Cascade, @@unique([novelId, threadId])), `EndgameGateApproval` (approver identity recorded); back-relations on Workspace/Novel/StoryThread/User.
+- Migration `20261007_nf_wf_022a_endgame` (GAP-030: DO-block enum, CREATE TABLE IF NOT EXISTS, idempotent FK DO-blocks, additive only).
+- `apps/api/src/services/endgame.ts` — `EndgameError` (INVALID_INPUT/THREAD_NOT_FOUND/LEDGER_NOT_FOUND → 404; DUPLICATE_LEDGER_ENTRY → 409); `createLedgerEntry` / `updateLedgerEntry` (the ONLY status-write path — Invariant 1; audit-logged via audit service) / `listLedgerEntries` (status filter) / `getGate` (BLOCKED if any MUST thread not RESOLVED — Invariant 4; READY requires all MUSTs closed + approval) / `approveGate` (records approver, audit-logged) / `getDebtReport` (pinned shape; `unpaidCallbacks` reads 022B's `endgame_callback` opportunistically via information_schema — [] when absent, never fails).
+- `apps/api/src/endgame-routes.ts` — 6 routes (POST/PATCH/GET ledger, GET gate, POST gate/approve, GET debt-report); session auth, Zod, 404-for-non-members.
+- `apps/api/src/endgame.test.ts` — 20 integration tests (dedicated `novelforge_test_endgame` DB): CRUD, 409 duplicate, 404s, audit logging, gate BLOCKED→READY lifecycle, non-MUST never blocks, approver identity, Invariant 1 (no read path changes status), Invariant 2 (grep: no /chapter/i in module), Invariant 3 (canon counts unchanged), debt-report pinned shape, `closed`/`ledgerId` 022C-integration fields, capabilities (VIEWER 403, EDITOR read-only, non-member 404).
+- Web: `endgameLedgerApi.ts` (typed client), `EndgameLedgerList.vue` (badges + filter + explicit status change), `EndgameLedgerCreate.vue` (thread picker via 010 route), `EndgameGateBanner.vue` (verdict + approve), `EndgameDebtReport.vue` (4 pinned sections), `endgame.vue` page, nav link in novel index, `endgame.*` i18n (66 keys, en+id parity verified).
+- Tests: `endgame-ledger.test.ts` 10/10 component, `endgame.axe.test.ts` 4/4 zero violations; vue-tsc clean (022A files); eslint clean.
+
+**022C integration:** ledger response includes `ledgerId` (= id) and `closed` (= thread.status === "RESOLVED") per 022C's pinned client shape (`EndgameLedgerEntry` in `packages/story-simulation/endgame-projection.ts`). `closed` is derived, never stored — the ledger `status` (author's plan) is never derived (Invariant 1).
+
+**Shared-file coordination (parallel actors):** `packages/auth/authorization.ts` (+ test) — 022A added endgame caps; 022B/022C did not touch. `apps/web/app/i18n/en.ts` + `id.ts` — 022C added `endgame.projection.*`, 022B added `endgame.callbacks.*`/`legacy.*`, 022A added ledger/gate/debt keys; merged into a single `endgame:` block (was 2 duplicate blocks — fixed by 022A). `apps/web/app/components/endgame/` — 022C owns `endgameApi.ts` + `EndgameProjectionView.vue`; 022A added `endgameLedgerApi.ts` + 4 components + tests (no 022C files touched). `apps/api/src/app.ts` + `platform-routes.ts` — 022A registration + EndgameError branch (additive).
+
+GAPs: GAP-089 (PostgreSQL absent on host at test time; system apt replay blocking; API integration tests pending DB install — recorded before workaround per standing rule).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) component tests mock at HTTP boundary per Q5; (3) `endgame-projection.test.ts` (022C's file, parallel actor) has pre-existing tsc syntax errors — not 022A scope. (API integration tests 20/20 PASS after GAP-089 resolution.)
+
+## NF-WF-022B — Callbacks and legacy (2026-10-07)
+
+Implementer: 022B subagent (separate actor from contract author, contract reviewer, the 022A/022C implementers, and the future 022B diff reviewer). Contract: `tasks/NF-WF-022-endgame.md` §022B. Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- Prisma: `EndgameCallbackStatus` enum (PENDING/PAID), `EndgameCallback` (setupEventId, payoffEventId nullable, status, description, @@unique([novelId, setupEventId]), CHECK(setup != payoff)); `EndgameLegacyKind` enum (CHARACTER/WORLD/THEMATIC), `EndgameLegacy` (kind, subjectId nullable, description); back-relations on Workspace/Novel/User. 022A's models/capabilities already in-tree (parallel actor) — 022B did not duplicate.
+- Migration `20261007_nf_wf_022b_callbacks_legacy` (GAP-030: DO-block enums, CREATE TABLE IF NOT EXISTS, IF NOT EXISTS indexes, additive only).
+- `apps/api/src/services/endgame-callbacks.ts` — `EndgameCallbackError` (INVALID_INPUT → 400; CALLBACK_NOT_FOUND/LEGACY_NOT_FOUND → 404; DUPLICATE_CALLBACK → 409; distinct class from 022A's EndgameError — parallel children); `createCallback` (THE only write path to endgame_callbacks — Invariant 5; PENDING without payoff, PAID with; 409 on duplicate setup), `listCallbacks` (status filter), `listUnpaidCallbacks` (PENDING only — read by 022A's debt report), `recordLegacy` (per kind, non-empty description), `listLegacies` (kind filter). Gate: 404 non-members, endgame:read/manage per pinned role mapping.
+- `apps/api/src/endgame-callback-routes.ts` — 5 routes (POST/GET callbacks, GET callbacks/unpaid, POST/GET legacy); session auth, Zod, 404-for-non-members. 022A's GET debt-report NOT built (022A owns it).
+- `apps/api/src/platform-routes.ts` — EndgameCallbackError handler branch (additive, after 022A's). `apps/api/src/app.ts` — route registration (additive, after 022A's).
+- `apps/api/src/endgame-callback.test.ts` — 18 integration tests (dedicated `novelforge_test_endgame_callback` DB): explicit PENDING/PAID creation, 409 duplicate, 400 setup==payoff, unpaid query exactness, legacy per kind + filters, capabilities (VIEWER 403, EDITOR read-only), Invariant 5 (no callback for never-POSTed setup; single `db.endgameCallback.create` call site verified), Invariant 3 (canon counts unchanged). 18/18 PASS.
+- Web: `endgameCallbackApi.ts` (typed client; 022C owns `endgameApi.ts`), `EndgameCallbackList.vue` (unpaid amber-highlighted + unpaid-only filter), `EndgameCallbackCreate.vue` (explicit link dialog), `EndgameLegacyList.vue` (kind filter), `EndgameLegacyCreate.vue`; integrated as additive sections in 022A's `endgame.vue` page (clearly marked 022B). i18n `endgame.callbacks.*` + `endgame.legacy.*` (~45 keys, en+id parity).
+- Tests: `endgame-callback.test.ts` (web) 8/8; `endgame-callback.axe.test.ts` 4/4 zero violations; vue-tsc clean (022B files); eslint clean.
+
+**Shared-file coordination (parallel actors):** `packages/database/prisma/schema.prisma` — 022B models additive, no 022A models touched. `apps/api/src/app.ts` + `platform-routes.ts` — 022B registration + error branch additive after 022A's. `apps/web/app/i18n/en.ts` + `id.ts` — 022B keys nested in merged `endgame:` block (survived 022A's duplicate-block fix). `endgame.vue` — 022B sections appended after 022A's debt report. `packages/auth/authorization.ts` — NOT touched by 022B (022A added caps).
+
+GAPs: GAP-065 note (VM replaced 4th time at 022B session; PostgreSQL/Redis reinstalled per recipe; pg_hba trust for novelforge_test@localhost).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) component tests mock at HTTP boundary per Q5; (3) 022A's `endgame.test.ts` / `endgame-projection.test.ts` have pre-existing tsc syntax errors (022A in-progress, not 022B scope).

@@ -169,6 +169,37 @@ describe("capability model", () => {
     expect(can("VIEWER", "simulation:manage")).toBe(false);
   });
 
+  // ---- NF-WF-022A endgame capabilities (contract §Capabilities) ----
+  // Endgame planning is a distinct workspace-scoped domain: reusing
+  // canon:manage would grant canon-authoring power; reusing
+  // simulation:manage would grant simulation-running power. Explicit
+  // assertions, for the same reason as the canon/simulation blocks above.
+
+  it("endgame capabilities are workspace-scoped, never platform capabilities", () => {
+    for (const c of ["endgame:read", "endgame:manage"] as const) {
+      expect(PLATFORM_ONLY_CAPABILITIES.has(c)).toBe(false);
+      expect(canPlatform("SUPER_ADMIN", c)).toBe(false);
+    }
+  });
+
+  it("endgame:read is held by OWNER, ADMIN, AUTHOR and EDITOR — not VIEWER", () => {
+    expect(can("OWNER", "endgame:read")).toBe(true);
+    expect(can("ADMIN", "endgame:read")).toBe(true);
+    expect(can("AUTHOR", "endgame:read")).toBe(true);
+    // An editor is a continuity reviewer: they may inspect the debt
+    // report, but closure decisions are the author's act.
+    expect(can("EDITOR", "endgame:read")).toBe(true);
+    expect(can("VIEWER", "endgame:read")).toBe(false);
+  });
+
+  it("endgame:manage is held by OWNER, ADMIN and AUTHOR only", () => {
+    expect(can("OWNER", "endgame:manage")).toBe(true);
+    expect(can("ADMIN", "endgame:manage")).toBe(true);
+    expect(can("AUTHOR", "endgame:manage")).toBe(true);
+    expect(can("EDITOR", "endgame:manage")).toBe(false);
+    expect(can("VIEWER", "endgame:manage")).toBe(false);
+  });
+
   it("every role has at least novel:read; all mapped capabilities are valid", () => {
     for (const r of ROLES) {
       expect(ROLE_CAPABILITIES[r].has("novel:read")).toBe(true);

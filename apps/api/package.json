@@ -25,6 +25,7 @@
     "@novelforge/relationship-intelligence": "workspace:*",
     "@novelforge/retrieval": "workspace:*",
     "@novelforge/story-intelligence": "workspace:*",
+    "@novelforge/story-simulation": "workspace:*",
     "@novelforge/story-versioning": "workspace:*",
     "@novelforge/validation": "workspace:*",
     "@novelforge/workflow-executor": "workspace:*",

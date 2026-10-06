@@ -232,6 +232,9 @@ importers:
       '@novelforge/story-intelligence':
         specifier: workspace:*
         version: link:../../packages/story-intelligence
+      '@novelforge/story-simulation':
+        specifier: workspace:*
+        version: link:../../packages/story-simulation
       '@novelforge/story-versioning':
         specifier: workspace:*
         version: link:../../packages/story-versioning

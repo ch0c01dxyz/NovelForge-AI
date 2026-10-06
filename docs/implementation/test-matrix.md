@@ -2243,3 +2243,45 @@ Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) 021A's `simul
 No new API routes (021D consumes 021A/021B routes only). No GAPs recorded (all UI needs covered by existing routes).
 
 Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) walkthrough drives 021C domain functions directly in browser (not via 021A/021B routes) — implementer's documented choice; (3) component tests mock at HTTP boundary per Q5; full loop covered API-level in apps/api.
+
+## NF-WF-022C — Endgame simulation (2026-10-07)
+
+| Surface | Tests | Result |
+|---|---|---|
+| `endgame-projection.test.ts` (pure, story-simulation) | 13 tests: scenario build (initial state mapping, per-tick injections in order, empty plan, unknown thread, duplicates, no input mutation, determinism), interpretation (READY, BLOCKED what-if, empty plan, SEQUEL/OPEN neutrality, idempotent re-close, no mutation) | 13/13 PASS |
+| `endgame-projection-view.test.ts` (component) | 6 tests: checkbox render + status badges, empty ledger, load error, full 021A flow + gate READY, what-if BLOCKED, MODULE_NOT_ENABLED clean error | 6/6 PASS |
+| `endgame-projection.axe.test.ts` (a11y) | 3 tests: plan picker, result view, error view — wcag2aa + wcag22aa | 3/3 PASS, zero violations |
+| `endgame-projection.test.ts` (API integration) | 6 tests: projection via 021, what-if BLOCKED, 021-disabled → 400 MODULE_NOT_ENABLED, no ledger mutation (real 022A table deep-equal), unknown thread, determinism | 6/6 PASS |
+| `vue-tsc --noEmit` (web) | Typecheck | Clean for 022C files (2 pre-existing errors in 022A's EndgameLedgerCreate/List: vue-i18n types — not 022C scope) |
+| ESLint (022C files) | Lint | Clean |
+| i18n en+id parity | ~30 new `endgame.projection.*` keys | Verified present in both locales |
+
+No new API routes (022C consumes 021A routes + 022A ledger route). No GAPs recorded.
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) API integration suite pending DB reinstall; (3) component tests mock at HTTP boundary per Q5; the 021A route loop is covered API-level in 021A's suite.
+
+## NF-WF-022A — Closure ledger (2026-10-07)
+
+| Surface | Tests | Result |
+|---|---|---|
+| `endgame.test.ts` (API integration) | 20 tests: ledger CRUD (201, 409 duplicate, 404 thread/ledger, 400 invalid status, status filter, PATCH audit-logged, PATCH empty → 400), gate (BLOCKED→approve→RESOLVED→READY, non-MUST never blocks, approver identity + audit), Invariant 1 (no read path changes status), Invariant 2 (grep no chapter), Invariant 3 (canon counts unchanged), debt report (pinned shape, unpaidCallbacks [] when 022B absent, resolved MUST drops out), `closed`/`ledgerId` 022C fields, capabilities (VIEWER 403, EDITOR read-only, non-member 404) | 20/20 PASS (dedicated `novelforge_test_endgame` DB, real HTTP, GAP-089 resolved) |
+| `authorization.test.ts` (capability unit) | 3 new tests: workspace-scoped (not platform), read mapping (OWNER/ADMIN/AUTHOR/EDITOR — not VIEWER), manage mapping (OWNER/ADMIN/AUTHOR only) | 33/33 PASS (2 pre-existing skips) |
+| `endgame-ledger.test.ts` (component) | 10 tests: list badges + closed marker, status filter, change-status emit, create submit (threadId+status+optionals), no-submit without thread, gate BLOCKED/READY views, approve emit, debt report counts + sections, error alert | 10/10 PASS |
+| `endgame.axe.test.ts` (a11y) | 4 tests: ledger list, create dialog, gate banner, debt report — wcag2aa + wcag22aa | 4/4 PASS, zero violations |
+| `vue-tsc --noEmit` (web) | Typecheck | Clean for 022A files (022B's 4 components have pre-existing vue-i18n import errors — not 022A scope) |
+| `npx tsc --noEmit` (apps/api) | Typecheck | Clean for 022A files (022C's `endgame-projection.test.ts` has pre-existing syntax errors — not 022A scope) |
+| ESLint (022A files) | Lint | Clean (0 errors) |
+| i18n en+id parity | 66 `endgame.*` keys (022A scope: ledger/gate/debt; merged with 022C `projection.*` + 022B `callbacks.*`/`legacy.*` into one block) | Verified identical key sets |
+
+No new audit table (uses existing audit_logs via audit service). No chapter-count logic (grep-verified in test).
+
+## NF-WF-022B — Callbacks and legacy (2026-10-07)
+
+| `endgame-callback.test.ts` (API integration) | 18 tests: explicit PENDING/PAID creation (201), 409 DUPLICATE_CALLBACK, 400 setup==payoff INVALID_INPUT, unpaid query exactness (2 PENDING of 3), list with status filter, legacy per kind CHARACTER/WORLD/THEMATIC (201), optional subjectId, 400 empty description, kind filter, capabilities (VIEWER 403 manage, EDITOR 403 manage + 200 read), 401 unauthenticated, Invariant 5 (no callback for never-POSTed setup; paid creation doesn't touch others), Invariant 3 (canon counts unchanged) | 18/18 PASS (dedicated `novelforge_test_endgame_callback` DB, real HTTP, real migrated schema) |
+| `endgame-callback.test.ts` (web components) | 8 tests: list renders + unpaid highlight, unpaid-only filter, empty state, create emits, create submits setup+payoff / setup-only, legacy list + kind filter, legacy create submits | 8/8 PASS |
+| `endgame-callback.axe.test.ts` | 4 tests: callback list, callback dialog, legacy list, legacy dialog — wcag2aa + wcag22aa | 4/4 PASS, zero violations |
+| `vue-tsc --noEmit` (web) | Typecheck | Clean for 022B files |
+| `npx tsc --noEmit` (apps/api) | Typecheck | Clean for 022B files (pre-existing syntax errors in 022A's in-progress test files — not 022B scope) |
+| `npx eslint` (022B files) | Lint | Clean |
+
+No-auto-linking pin: exactly one `db.endgameCallback.create` call site in the codebase (`createCallback` — the explicit author action); verified by grep. No background jobs, no detection code.

@@ -70,6 +70,14 @@ export const CAPABILITIES = [
   // 021B (GAP-084: 021A not yet implemented); 021A to confirm on integration.
   "simulation:read", // read simulation runs, ticks, events, causal chains, proposals
   "simulation:manage", // create/configure/start/step runs; create/decide proposals
+  // Endgame planning (M7, NF-WF-022A). Workspace-scoped like canon/revision/
+  // simulation: the closure ledger is one tenant's ending plan, so neither
+  // capability is platform-only. Contract-pinned (022 §Capabilities):
+  // distinct planning domain → new capability pair warranted (021 Q7
+  // precedent). Reusing canon:manage would grant canon-authoring power;
+  // reusing simulation:manage would grant simulation-running power.
+  "endgame:read", // read closure ledger, ending gate, debt report
+  "endgame:manage", // create/update ledger entries, approve the ending gate
   // Platform-scoped catalog. Only a platform administrator may define the
   // shared agent/skill/workflow catalog every workspace can read.
   "platform:define",
@@ -155,6 +163,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // administrative act (NF-WF-021 Q7).
     "simulation:read",
     "simulation:manage",
+    // ADMIN plans the story's ending: closure statuses and gate approval
+    // are administrative acts (NF-WF-022 §Capabilities).
+    "endgame:read",
+    "endgame:manage",
   ]),
   AUTHOR: new Set<Capability>([
     "novel:create",
@@ -192,6 +204,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // and deciding its proposals are authoring acts (NF-WF-021 Q7).
     "simulation:read",
     "simulation:manage",
+    // The author owns the story's ending plan: setting closure statuses
+    // and approving the ending gate are authoring acts (NF-WF-022 §Capabilities).
+    "endgame:read",
+    "endgame:manage",
   ]),
   EDITOR: new Set<Capability>([
     "novel:read",
@@ -220,6 +236,10 @@ export const ROLE_CAPABILITIES: Record<Role, ReadonlySet<Capability>> = {
     // as a continuity reviewer, but running simulations and deciding
     // proposals are the author's acts (NF-WF-021 Q7).
     "simulation:read",
+    // An editor may inspect the endgame debt report as a continuity
+    // reviewer, but closure decisions and gate approval are the author's
+    // acts (NF-WF-022 §Capabilities — pinned role mapping).
+    "endgame:read",
   ]),
   VIEWER: new Set<Capability>(["novel:read", "chapter:read"]),
 };

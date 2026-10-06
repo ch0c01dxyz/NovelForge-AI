@@ -892,6 +892,17 @@ async function publish() {
       >
         {{ t("simulation.title") }}
       </NuxtLink>
+      <!-- NF-WF-022A: Endgame panel link — workspace members only
+           (progressive enhancement; the endgame page and every
+           endgame route enforce membership + `endgame:read`
+           server-side). -->
+      <NuxtLink
+        :to="`/workspaces/${workspaceId}/novels/${novelId}/endgame`"
+        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        data-testid="endgame-link"
+      >
+        {{ t("endgame.title") }}
+      </NuxtLink>
       <div
         class="flex items-center gap-1 rounded-lg border border-nf-border p-0.5 text-[12px]"
         role="group"

@@ -36,6 +36,10 @@ import { registerNarrativeRoutes } from "./narrative-routes.ts";
 import { registerRevisionRoutes } from "./revision-routes.ts";
 import { registerSimulationRoutes } from "./simulation-routes.ts";
 import { registerCausalityRoutes } from "./simulation-causality-routes.ts";
+import { registerEndgameRoutes } from "./endgame-routes.ts";
+import { registerEndgameCallbackRoutes } from "./endgame-callback-routes.ts";
+import { createEndgameServices } from "./services/endgame.ts";
+import { createEndgameCallbackServices } from "./services/endgame-callbacks.ts";
 import { createCharacterServices } from "./services/characters.ts";
 import { createRelationshipServices } from "./services/relationships.ts";
 import { createStoryServices } from "./services/story.ts";
@@ -482,6 +486,23 @@ export async function buildApp(
     registerCausalityRoutes(app, {
       auth,
       services: createCausalityServices(options.db),
+    });
+
+    // NF-WF-022A: closure ledger + ending gate + debt report. Planning
+    // only: never writes to canon tables (Invariant 3), never auto-changes
+    // a ledger status (Invariant 1), no chapter-count logic (Invariant 2).
+    registerEndgameRoutes(app, {
+      auth,
+      services: createEndgameServices({ db: options.db, audit }),
+    });
+
+    // NF-WF-022B: setup/payoff callbacks + legacy records. Callbacks are
+    // explicit author-made links only (Invariant 5 — never auto-linked);
+    // planning only, never writes to canon tables (Invariant 3). 022A's
+    // debt report reads endgame_callbacks as a read-model.
+    registerEndgameCallbackRoutes(app, {
+      auth,
+      services: createEndgameCallbackServices({ db: options.db }),
     });
 
     // NF-WF-009: revision-derived chapter/arc memory. The rebuild route

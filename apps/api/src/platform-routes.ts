@@ -45,6 +45,8 @@ import { MergeError } from "./services/revisions.ts";
 import { SimulationError } from "./services/simulation.ts";
 // NF-WF-021B: typed causality/proposal refusals.
 import { SimulationCausalityError } from "./services/simulation-causality.ts";
+import { EndgameError } from "./services/endgame.ts";
+import { EndgameCallbackError } from "./services/endgame-callbacks.ts";
 
 const slug = z
   .string()
@@ -203,6 +205,21 @@ export async function registerPlatformRoutes(
     // envelope's error field. Same position as the other typed-error
     // branches.
     if (error instanceof SimulationCausalityError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-022A: typed endgame refusals (INVALID_INPUT → 400;
+    // THREAD_NOT_FOUND / LEDGER_NOT_FOUND → 404; DUPLICATE_LEDGER_ENTRY
+    // → 409) carry the machine-readable code as the envelope's error
+    // field. Same position as the other typed-error branches.
+    if (error instanceof EndgameError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-022B: typed callback/legacy refusals (INVALID_INPUT → 400;
+    // CALLBACK_NOT_FOUND / LEGACY_NOT_FOUND → 404; DUPLICATE_CALLBACK →
+    // 409) carry the machine-readable code as the envelope's error field.
+    // Distinct class from 022A's EndgameError (parallel children) — same
+    // position as the other typed-error branches.
+    if (error instanceof EndgameCallbackError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
     if (error instanceof ConflictError) {

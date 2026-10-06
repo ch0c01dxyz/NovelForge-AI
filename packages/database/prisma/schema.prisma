@@ -72,6 +72,14 @@ model User {
   decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
   /// NF-WF-021B: simulation proposals decided by this user.
   decidedSimulationProposals SimulationProposal[] @relation("SimulationProposalDecider")
+  /// NF-WF-022A: closure ledger entries created by this user.
+  createdEndgameLedgers EndgameLedger[] @relation("EndgameLedgerCreator")
+  /// NF-WF-022A: ending gate approvals recorded by this user.
+  endgameGateApprovals EndgameGateApproval[] @relation("EndgameGateApprover")
+  /// NF-WF-022B: callback links created by this user.
+  createdEndgameCallbacks EndgameCallback[] @relation("EndgameCallbackCreator")
+  /// NF-WF-022B: legacy records created by this user.
+  createdEndgameLegacies EndgameLegacy[] @relation("EndgameLegacyCreator")
   createdApplications CanonApplication[] @relation("CanonApplicationCreator")
   decidedApplications CanonApplication[] @relation("CanonApplicationDecider")
   decidedApprovals    WorkflowApprovalDecision[] @relation("WorkflowApprovalDecider")
@@ -174,6 +182,14 @@ model Workspace {
   simulationCausalLinks SimulationCausalLink[]
   /// NF-WF-021B: uncertainty proposals for simulation runs in this workspace.
   simulationProposals SimulationProposal[]
+  /// NF-WF-022A: closure ledger entries in this workspace.
+  endgameLedgers EndgameLedger[]
+  /// NF-WF-022A: ending gate approvals in this workspace.
+  endgameGateApprovals EndgameGateApproval[]
+  /// NF-WF-022B: callback links in this workspace.
+  endgameCallbacks EndgameCallback[]
+  /// NF-WF-022B: legacy records in this workspace.
+  endgameLegacies EndgameLegacy[]
 
   @@map("workspaces")
 }
@@ -283,6 +299,14 @@ model Novel {
   simulationCausalLinks SimulationCausalLink[]
   /// NF-WF-021B: uncertainty proposals for simulation runs in this novel.
   simulationProposals SimulationProposal[]
+  /// NF-WF-022A: closure ledger entries for this novel.
+  endgameLedgers EndgameLedger[]
+  /// NF-WF-022A: ending gate approvals for this novel.
+  endgameGateApprovals EndgameGateApproval[]
+  /// NF-WF-022B: callback links for this novel.
+  endgameCallbacks EndgameCallback[]
+  /// NF-WF-022B: legacy records for this novel.
+  endgameLegacies EndgameLegacy[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -1923,6 +1947,9 @@ model StoryThread {
   updatedAt   DateTime     @updatedAt @map("updated_at")
 
   threadEvents StoryThreadEvent[]
+  /// NF-WF-022A: closure ledger entries planning this thread's ending
+  /// (at most one per novel — @@unique([novelId, threadId]) on the ledger).
+  endgameLedgers EndgameLedger[]
 
   @@index([novelId, status])
   @@index([novelId, kind])
@@ -3358,4 +3385,138 @@ enum SimulationProposalStatus {
   PROPOSED
   APPROVED
   REJECTED
+}
+
+/// NF-WF-022A: closure-planning statuses (pinned by contract). These are
+/// the AUTHOR's ending-plan decisions per thread — distinct from
+/// ThreadStatus (ACTIVE/DORMANT/RESOLVED), which is the story lifecycle.
+/// Do not conflate them.
+enum EndgameClosureStatus {
+  MUST
+  SHOULD
+  MAY
+  OPEN
+  SEQUEL
+}
+
+/// NF-WF-022A: the closure ledger. One entry per story thread the author
+/// plans to close (or intentionally leaves open / hooks for a sequel).
+/// Planning only — the module never writes to canon tables (Invariant 3)
+/// and never auto-changes a status (Invariant 1).
+model EndgameLedger {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary, matching Chunk (ADR-0007): a filtered
+  /// query never joins to enforce isolation.
+  workspaceId String   @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String   @map("novel_id") @db.Uuid
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// The planned thread. onDelete: Cascade — a ledger entry for a deleted
+  /// thread is meaningless (contract §Migration).
+  threadId    String   @map("thread_id") @db.Uuid
+  thread      StoryThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  /// The author's closure decision (explicit action; never auto-set).
+  status      EndgameClosureStatus
+  /// What "closed" means for this thread — the concrete criteria the
+  /// author will satisfy before the ending.
+  criteria    String?  @db.Text
+  /// Why this status (especially for OPEN and SEQUEL, which are
+  /// intentional author decisions, not debt).
+  rationale   String?  @db.Text
+  createdById String   @map("created_by_id") @db.Uuid
+  createdBy   User     @relation("EndgameLedgerCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([novelId, threadId])
+  @@index([novelId, status])
+  @@map("endgame_ledger")
+}
+
+/// NF-WF-022A: the author's sign-off on the ending gate. Required for a
+/// READY verdict alongside "all MUSTs closed" (Invariant 4). One row per
+/// novel — a new approval supersedes the previous one (recorded, not
+/// deleted; the latest row wins).
+model EndgameGateApproval {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId String   @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String   @map("novel_id") @db.Uuid
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// The approver's identity is recorded (contract §Routes).
+  approvedById String  @map("approved_by_id") @db.Uuid
+  approvedBy  User    @relation("EndgameGateApprover", fields: [approvedById], references: [id])
+  approvedAt  DateTime @default(now()) @map("approved_at")
+
+  @@index([novelId, approvedAt])
+  @@map("endgame_gate_approval")
+}
+
+/// NF-WF-022B: callback lifecycle. A callback is an EXPLICIT author-made
+/// link from a setup event to its payoff event (Invariant 5 — never
+/// auto-linked). PENDING = setup tracked, payoff not yet linked (unpaid);
+/// PAID = setup → payoff linked.
+enum EndgameCallbackStatus {
+  PENDING
+  PAID
+}
+
+/// NF-WF-022B: a setup → payoff callback link. Created ONLY via the
+/// explicit POST .../endgame/callbacks route — there is no detection or
+/// auto-linking code path (Invariant 5; pinned by test).
+model EndgameCallback {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId String   @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String   @map("novel_id") @db.Uuid
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// The setup event (logical UUID ref to a story event; no DB-level FK —
+  /// 022B parallelizes against 022A/010 shapes).
+  setupEventId String @map("setup_event_id") @db.Uuid
+  /// The payoff event. NULL while PENDING (unpaid); set when the author
+  /// links the payoff. Logical UUID ref, no DB-level FK.
+  payoffEventId String? @map("payoff_event_id") @db.Uuid
+  status      EndgameCallbackStatus @default(PENDING)
+  /// Author's note on what the setup promises / what the payoff delivers.
+  description String?  @db.Text
+  createdById String   @map("created_by_id") @db.Uuid
+  createdBy   User     @relation("EndgameCallbackCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([novelId, setupEventId])
+  @@index([novelId, status])
+  @@map("endgame_callbacks")
+}
+
+/// NF-WF-022B: legacy kinds (pinned by contract).
+enum EndgameLegacyKind {
+  CHARACTER
+  WORLD
+  THEMATIC
+}
+
+/// NF-WF-022B: what the story leaves behind. CHARACTER = a character's
+/// lasting impact; WORLD = how the world changed; THEMATIC = the story's
+/// thematic statement. Planning records — never written to canon
+/// (Invariant 3).
+model EndgameLegacy {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId String   @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId     String   @map("novel_id") @db.Uuid
+  novel       Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  kind        EndgameLegacyKind
+  /// The subject (character/world element). Nullable: a THEMATIC legacy
+  /// may have no concrete subject. Logical UUID ref, no DB-level FK.
+  subjectId   String?  @map("subject_id") @db.Uuid
+  description String   @db.Text
+  createdById String   @map("created_by_id") @db.Uuid
+  createdBy   User     @relation("EndgameLegacyCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([novelId, kind])
+  @@map("endgame_legacies")
 }

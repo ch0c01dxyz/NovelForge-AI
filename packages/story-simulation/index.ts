@@ -5,3 +5,4 @@
  * no HTTP/UI/provider dependencies (AGENTS.md §10).
  */
 export * from "./irrigation-scenario.ts";
+export * from "./endgame-projection.ts";

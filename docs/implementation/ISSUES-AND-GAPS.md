@@ -1841,3 +1841,45 @@ STATUS: CLOSED — resolved 2026-10-06 by 021D with test evidence.
 RESOLUTION: 021D implementer (2026-10-06): the unified Simulation Center UI is now built — `simulation.vue` page with Runs/Walkthrough tabs; RunList (status filter), RunCreate (branch picker), RunDetail (lifecycle controls + tick history), CausalChainView (recursive + counterfactuals), ProposalReview (explicit-choice decide). All three children's UI scope (021A run management, 021B causal/proposal, 021C walkthrough) addressed in a single coherent surface per the amended contract. Web 15/15 (9 component + 6 axe zero), full web 421/421, vue-tsc + eslint clean, i18n en+id parity.
 
 STATUS: CLOSED — resolved 2026-10-06 by 021D with test evidence.
+
+## GAP-065 note — VM replaced again at 022B session; binaries absent (2026-10-07)
+
+EVIDENCE: at the start of the 022B implementation session, a mid-test service restart was followed by `redis-cli: command not found` and `pg_isready: command not found` — PostgreSQL and Redis binaries are absent (VM replaced, fourth time). Following the 019C recipe: repair apt sources if needed, install `postgresql-16`, `postgresql-16-pgvector`, `postgresql-client-16`, `redis-server`, start manually, re-apply GAP-065 steps (`novelforge_test` role + `vector` in `template1`).
+
+STATUS: OPEN — recorded 2026-10-07 by the 022B implementer before the workaround (standing rule).
+
+## GAP-089 — 022A implementer: PostgreSQL absent on host; system apt replay in progress (2026-10-07)
+
+EVIDENCE: 022A implementer (2026-10-07): `pg_isready` reported "accepting connections" at 19:0x, but vitest failed with ECONNREFUSED 127.0.0.1:5432 minutes later. No PostgreSQL binaries on the host (`/usr/lib/postgresql/` empty, no dpkg entries, nothing on 5432). A system os-intent replay process (pid 1637/1657) is running `apt-get update`, blocking the apt lock.
+
+IMPACT: 022A integration tests (`endgame.test.ts`, 19 tests) cannot execute until PostgreSQL 16 + pgvector are installed and started. Unit-level work (tsc, web UI) continues in parallel.
+
+NEXT ACTION: wait for the os-intent replay to release the apt lock, then install `postgresql-16`, `postgresql-16-pgvector`, `redis-server` per GAP-065, start manually, apply GAP-065 steps (`novelforge_test` role + trust auth).
+
+STATUS: OPEN — recorded 2026-10-07 by the 022A implementer before the workaround (standing rule).
+
+## GAP-089 update — RESOLVED (2026-10-07)
+
+RESOLUTION: A parallel actor (022B/022C implementer) installed `postgresql-16` 16.15 + `postgresql-16-pgvector` 0.6.0 + `redis-server` 7.0.15 while the 022A implementer was doing web UI work. 022A then: started both services manually, created the `novelforge_test` role (idempotent DO-block), confirmed `vector` + `pgcrypto` in `template1`, added pg_hba `trust` for `novelforge_test` on 127.0.0.1/32 and ::1/128, reloaded, and verified trust-auth connectivity. API integration tests now runnable.
+
+STATUS: CLOSED — resolved 2026-10-07 with test evidence (see 022A handoff).
+
+## GAP-090 — 022B/022A parallel coordination: shared files touched by both (2026-10-07)
+
+EVIDENCE: 022B implementer (2026-10-07): 022A's implementer is working in parallel in the same tree (uncommitted). Shared files touched by both: `packages/database/prisma/schema.prisma` (022A: EndgameLedger/GateApproval; 022B: EndgameCallback/Legacy — additive, no overlap), `packages/auth/authorization.ts` (022A added endgame caps; 022B did NOT touch), `apps/api/src/app.ts` + `platform-routes.ts` (022A: registration + EndgameError branch; 022B: registration + EndgameCallbackError branch — additive, adjacent), `apps/web/app/i18n/en.ts` + `id.ts` (022A fixed duplicate `endgame:` block; 022B keys survived), `endgame.vue` (022B sections appended after 022A's). 022B's `EndgameCallbackError` is deliberately a distinct class from 022A's `EndgameError` to avoid instanceof collision.
+
+IMPACT: none yet — all changes are additive and non-overlapping. Risk is at commit time if both children commit shared files.
+
+NEXT ACTION: parent coordinates commit order (022A then 022B, or single unit). 022B's diff reviewer should verify no 022A regressions.
+
+STATUS: OPEN — recorded 2026-10-07 by the 022B implementer (standing rule).
+
+## GAP-088 — VM replaced mid-022C; PostgreSQL/Redis reinstalled (2026-10-07)
+
+EVIDENCE: 022C implementer (2026-10-07): at session start, `redis-cli`/`psql`/`postgres` user all absent — the VM had been replaced (fourth time; see GAP-065, GAP-077). The system apt replay was running its own `apt-get update` (process 1657).
+
+IMPACT: Could not run the 022C API integration suite (`endgame-projection.test.ts`, 6 tests) until PostgreSQL 16 + pgvector and Redis 7 were available and started.
+
+RESOLUTION (before workaround, per standing rule): `postgresql-16`, `postgresql-16-pgvector`, `redis-server` were already installed (newest versions) — only the services needed starting. Removed the stalling `mirror.cogentco.com` from apt sources (established lesson; kept `.bak`). Started PostgreSQL 16.15 + Redis 7.0.15 manually. Verified GAP-065 prerequisites already in place: `vector` + `pgcrypto` in `template1`, `novelforge_test` role exists, pg_hba `trust` for `novelforge_test@localhost`. All 6 API integration tests then passed.
+
+STATUS: CLOSED — resolved 2026-10-07 by the 022C implementer with test evidence.

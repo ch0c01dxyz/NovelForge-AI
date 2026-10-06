@@ -1543,3 +1543,11 @@ EVIDENCE: `renderPdf` in `apps/api/src/services/export-render.ts` embeds only `S
 IMPACT: PDF export of any chapter containing non-CP1252 characters fails outright. TXT/Markdown/DOCX/EPUB are unaffected (UTF-8 throughout). The 017B contract's PDF acceptance ("a paginated .pdf — chapter-per-section layout from the HTML blocks") is met for WinAnsi content; this is an honest limitation beyond the contract's pins, not a 017B deviation.
 
 STATUS: open — recorded before any completion claim (standing rule). Closure check: closes when `renderPdf` either embeds a Unicode-capable font (adds a font asset to `apps/api` — an ADR-level packaging decision) or returns an actionable typed refusal for unencodable prose instead of a 500. Owner: follow-up task; not 017B.
+
+## GAP-063 — NF-WF-018: `AIGateway` has no quota fields; constitution §6 requires "quota observations" (2026-10-06)
+
+Status: OPEN (documented absence, follow-up task).
+
+OBSERVED: constitution §6 ("AI gateway rules") requires the gateway configuration to include "latency/error/quota observations". The `AIGateway` model (schema.prisma:396-423) records latency (`latencyMs`), errors (`lastErrorAt`, `lastErrorCategory`, `consecutiveFailures`) and health (`health`, `lastHealthCheckAt`) — but has NO quota fields (no quota limit, quota usage, or reset window on the gateway row or the catalog models). A SUPER_ADMIN managing a gateway in the 018 admin surface cannot see quota consumption or remaining quota.
+
+NEXT: a follow-up task (or NF-WF-018B, at the contract reviewer's discretion) should decide whether quota observation is a schema addition (model fields + gateway health-check sync) or whether "quota observations" is dropped from §6 as unenforced. Do not silently weaken the §6 requirement.

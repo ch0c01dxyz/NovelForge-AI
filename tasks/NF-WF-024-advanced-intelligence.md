@@ -1,6 +1,6 @@
 # NF-WF-024 — Advanced Intelligence and Measured Optimization
 
-Status: PLANNED
+Status: IMPLEMENTED (2026-10-07, commit 55998d0)
 
 ## Normative vs informative
 

@@ -9,6 +9,8 @@
  *   chapters (order, titles, prose intact)
  * - PDF/DOCX/EPUB structural validity + chapter content presence
  * - the pinned sync byte cap (Q8): EXPORT_TOO_LARGE, 413
+ * - GAP-062 closure (023B): PDF_UNSUPPORTED_CHARACTERS, 400 — typed
+ *   refusal for non-WinAnsi prose instead of the WinAnsi 500
  * - committed fixtures are byte-stable for txt/md
  */
 import { readFileSync } from "node:fs";
@@ -148,6 +150,68 @@ describe("renderPdf", () => {
     expect(joined).toContain("The Beginning");
     expect(joined).toContain("The Road");
     expect(joined).toContain("A New Path");
+  });
+
+  it("still renders WinAnsi-only prose with CP1252 extras (no regression)", async () => {
+    const winansi: ExportChapter[] = [
+      {
+        number: 1,
+        title: "Em—dash “quoted”",
+        content: "<p>Café naïve — “dialogue,” she said…</p>",
+      },
+    ];
+    const buffer = await renderPdf("Tîtle — test", winansi);
+    expect(buffer.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+  });
+});
+
+describe("renderPdf GAP-062 closure: typed refusal for non-WinAnsi prose", () => {
+  it("refuses CJK prose with PDF_UNSUPPORTED_CHARACTERS (400), not a 500", async () => {
+    const cjk: ExportChapter[] = [
+      { number: 1, title: "第一章", content: "<p>中文字内容</p>" },
+    ];
+    await expect(renderPdf("Novel", cjk)).rejects.toMatchObject({
+      name: "ExportError",
+      code: "PDF_UNSUPPORTED_CHARACTERS",
+      status: 400,
+    });
+  });
+
+  it("refuses emoji prose with PDF_UNSUPPORTED_CHARACTERS (400)", async () => {
+    const emoji: ExportChapter[] = [
+      { number: 1, title: "Fun", content: "<p>Launch day 🎉</p>" },
+    ];
+    await expect(renderPdf("Novel", emoji)).rejects.toMatchObject({
+      name: "ExportError",
+      code: "PDF_UNSUPPORTED_CHARACTERS",
+      status: 400,
+    });
+  });
+
+  it("refuses via renderExport (the route path) so GET .../export?format=pdf maps to 400", async () => {
+    const cjk: ExportChapter[] = [
+      { number: 1, title: "T", content: "<p>日本語</p>" },
+    ];
+    await expect(renderExport("pdf", "Novel", "novel", cjk)).rejects.toMatchObject(
+      {
+        name: "ExportError",
+        code: "PDF_UNSUPPORTED_CHARACTERS",
+        status: 400,
+      },
+    );
+    // The refusal message names the remedy (DOCX/EPUB).
+    await expect(renderExport("pdf", "Novel", "novel", cjk)).rejects.toThrow(
+      /DOCX or EPUB/,
+    );
+  });
+
+  it("the raw WinAnsi throw is gone: no untyped error escapes renderPdf", async () => {
+    const cjk: ExportChapter[] = [
+      { number: 1, title: "T", content: "<p>한글</p>" },
+    ];
+    const err = await renderPdf("Novel", cjk).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ExportError);
+    expect((err as ExportError).message).not.toMatch(/WinAnsi cannot encode/);
   });
 });
 

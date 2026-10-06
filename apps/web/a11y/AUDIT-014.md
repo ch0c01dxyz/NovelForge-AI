@@ -62,3 +62,16 @@ ContinueReading. Result at last run: **0 violations** (2026-10-06).
 Automated: 0 axe violations (en+id) — 2026-10-06.
 Manual items above: keyboard/contrast/viewports/reduced-motion/zoom to be completed by
 human verification; **screen-reader pass explicitly pending — see the note above.**
+
+## NF-WF-023C release-verification note (2026-10-07)
+
+**Automated half:** NOT re-executed in the 023C battery — the battery stopped at Box 1
+(`pnpm lint` failed on GAP-097, an unused type import) per the contract's battery
+failure handling, so Box 7 (axe suites) was not run on the release revision in 023.
+Last OBSERVED automated result remains 0 violations (2026-10-06, NF-WF-014). No new
+axe evidence in 023.
+
+**Human screen-reader gate (GAP-051):** still OPEN. The NVDA + Firefox / VoiceOver +
+Safari pass cannot be performed by agents and has no named human owner yet. This is
+an explicit release gate: the 023C release decision is SHIP_WITH_KNOWN_GAPS at best
+until a human auditor completes it. Owner: to be named (human auditor).

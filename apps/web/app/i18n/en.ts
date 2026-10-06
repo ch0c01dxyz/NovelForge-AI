@@ -1546,6 +1546,8 @@ export const en = {
         "Exports are whole-novel downloads with a size cap; very large novels are refused instead of truncated.",
       errors: {
         EXPORT_TOO_LARGE: "The novel is too large for a direct download.",
+        PDF_UNSUPPORTED_CHARACTERS:
+          "PDF export supports Latin text only; this novel contains other characters. Export as DOCX or EPUB instead.",
         invalid: "Some fields are invalid.",
         generic: "Export failed ({code}).",
       },

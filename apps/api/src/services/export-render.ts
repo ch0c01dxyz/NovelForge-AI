@@ -370,6 +370,43 @@ function wrapText(
   return lines;
 }
 
+/**
+ * NF-WF-023B (GAP-062 closure): pre-flight WinAnsi encodability check.
+ *
+ * The PDF standard fonts are WinAnsi/CP1252-encoded. Rather than
+ * hand-rolling the CP1252 table, this probes pdf-lib's own encoder
+ * (`font.encodeText`, which is what `drawText`/`widthOfTextAtSize` call
+ * internally and what throws `WinAnsi cannot encode ...`). Any text
+ * that fails the probe would throw at draw time as a 500; instead we
+ * raise the typed refusal here, before any page is drawn.
+ *
+ * The probe runs over the raw title/content inputs: block text drawn
+ * later is a subset of `content` (tags stripped, never added), and the
+ * chapter number is digits, so a clean probe guarantees clean draws.
+ */
+function assertPdfEncodable(
+  font: { encodeText(text: string): unknown },
+  novelTitle: string,
+  chapters: ExportChapter[],
+): void {
+  const probe = (text: string) => {
+    try {
+      font.encodeText(text);
+    } catch {
+      throw new ExportError(
+        400,
+        "PDF_UNSUPPORTED_CHARACTERS",
+        "PDF export supports Latin (WinAnsi) text only; this novel contains characters outside that range. Export as DOCX or EPUB for full Unicode support.",
+      );
+    }
+  };
+  probe(novelTitle);
+  for (const c of chapters) {
+    probe(c.title);
+    probe(c.content);
+  }
+}
+
 export async function renderPdf(
   novelTitle: string,
   chapters: ExportChapter[],
@@ -381,6 +418,13 @@ export async function renderPdf(
   doc.setModificationDate(FIXTURE_DATE);
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  // NF-WF-023B (GAP-062 closure): typed refusal for non-WinAnsi prose.
+  // The embedded standard fonts are WinAnsi/CP1252-encoded; pdf-lib
+  // throws `WinAnsi cannot encode ...` at draw time for anything else
+  // (e.g. CJK, emoji), which would surface as a 500. Detect up front —
+  // before any page.drawText — and refuse with an actionable 4xx naming
+  // the remedy (export as DOCX/EPUB), instead of the 500.
+  assertPdfEncodable(regular, novelTitle, chapters);
   const maxWidth = PDF_PAGE_WIDTH - PDF_MARGIN * 2;
   const lineHeight = (size: number) => size * 1.4;
 

@@ -1546,6 +1546,8 @@ export const id = {
         "Ekspor adalah unduhan seluruh novel dengan batas ukuran; novel yang sangat besar ditolak, bukan dipotong.",
       errors: {
         EXPORT_TOO_LARGE: "Novel terlalu besar untuk diunduh langsung.",
+        PDF_UNSUPPORTED_CHARACTERS:
+          "Ekspor PDF hanya mendukung teks Latin; novel ini mengandung karakter lain. Ekspor sebagai DOCX atau EPUB.",
         invalid: "Beberapa isian tidak valid.",
         generic: "Ekspor gagal ({code}).",
       },

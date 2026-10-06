@@ -17,6 +17,8 @@
  */
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
@@ -225,6 +227,99 @@ export interface E2EContext {
 
 let ctx: E2EContext | null = null;
 
+// ---------------------------------------------------------------------------
+// GAP-076: cross-process setup lock.
+//
+// `getE2E()` performs a destructive database reset (terminate backends,
+// DROP/CREATE, migrate). Vitest isolates each test file's module registry,
+// so the `ctx` fast-path above does not prevent two files' setups from
+// overlapping when workers interleave: the second file's terminate can
+// kill the first file's in-flight fixture build (PostgreSQL 57P01,
+// "terminating connection due to administrator command").
+//
+// The lock serializes the ENTIRE lifecycle — from the start of the
+// destructive setup until `closeE2E()` — across all files, workers,
+// threads, and OS processes. It is an atomic exclusive-create (`wx`)
+// on a lockfile in the OS temp dir, so it works regardless of how
+// vitest schedules files.
+//
+// Correctness argument: `pg_terminate_backend` executes only inside
+// `getE2E()` while the lock is held; the lock is released only in
+// `closeE2E()` (after the file's tests complete) or on setup failure;
+// therefore no terminate can land during another file's DB usage.
+// Stale locks (crashed holder) are stolen via PID-liveness + age checks.
+// Test-harness code only — no product changes (contract Invariant 1).
+// ---------------------------------------------------------------------------
+
+const E2E_LOCK_PATH = path.join(os.tmpdir(), `novelforge-e2e-${TEST_DB}.lock`);
+/** Well above the longest fixture build (~600 s) plus a file's test time. */
+const E2E_LOCK_STALE_MS = 45 * 60 * 1000;
+const E2E_LOCK_POLL_MS = 500;
+
+let e2eLockHeld = false;
+
+function e2eLockPayload(): string {
+  return JSON.stringify({ pid: process.pid, startedAt: Date.now() });
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    // ESRCH = no such process (dead). EPERM = exists but no permission (alive).
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Attempt to steal a stale lock. Returns true if the caller should retry the exclusive create. */
+function tryStealStaleLock(): boolean {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(E2E_LOCK_PATH, "utf8");
+  } catch {
+    return true; // vanished — retry the exclusive create
+  }
+  try {
+    const { pid, startedAt } = JSON.parse(raw) as { pid?: number; startedAt?: number };
+    const age = Date.now() - (startedAt ?? 0);
+    if (pid != null && isPidAlive(pid) && age <= E2E_LOCK_STALE_MS) return false;
+  } catch {
+    // Unparseable payload — treat as stale.
+  }
+  try {
+    fs.unlinkSync(E2E_LOCK_PATH);
+  } catch {
+    // Lost the race with another stealer — retry anyway.
+  }
+  return true;
+}
+
+async function acquireE2eLock(): Promise<void> {
+  for (;;) {
+    try {
+      fs.writeFileSync(E2E_LOCK_PATH, e2eLockPayload(), { flag: "wx" });
+      e2eLockHeld = true;
+      return;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      if (!tryStealStaleLock()) {
+        await new Promise((r) => setTimeout(r, E2E_LOCK_POLL_MS));
+      }
+    }
+  }
+}
+
+function releaseE2eLock(): void {
+  if (!e2eLockHeld) return;
+  e2eLockHeld = false;
+  try {
+    fs.unlinkSync(E2E_LOCK_PATH);
+  } catch {
+    // Already gone (stolen as stale, or never created) — not an error.
+  }
+}
+
 async function seedUser(
   db: NovelForgeDb,
   email: string,
@@ -331,7 +426,23 @@ export function newIdempotencyKey(): string {
   return randomUUID();
 }
 
+/**
+ * GAP-076: acquire the cross-process setup lock before the destructive
+ * reset; the lock is held until `closeE2E()` (or released on setup
+ * failure), so no second file's terminate can kill an in-flight build.
+ */
 export async function getE2E(): Promise<E2EContext> {
+  if (ctx) return ctx;
+  await acquireE2eLock();
+  try {
+    return await getE2EInner();
+  } catch (e) {
+    releaseE2eLock();
+    throw e;
+  }
+}
+
+async function getE2EInner(): Promise<E2EContext> {
   if (ctx) return ctx;
 
   const admin = new pg.Client({ connectionString: withDb(BASE_URL, "postgres") });
@@ -447,13 +558,20 @@ export async function getE2E(): Promise<E2EContext> {
   return ctx;
 }
 
-/** Close the app + db at the end of a file's run (idempotent). */
+/** Close the app + db at the end of a file's run (idempotent). Releases the GAP-076 setup lock. */
 export async function closeE2E(): Promise<void> {
-  if (!ctx) return;
+  if (!ctx) {
+    releaseE2eLock();
+    return;
+  }
   const c = ctx;
   ctx = null;
-  await c.app.close().catch(() => {});
-  await c.db.$disconnect().catch(() => {});
+  try {
+    await c.app.close().catch(() => {});
+    await c.db.$disconnect().catch(() => {});
+  } finally {
+    releaseE2eLock();
+  }
 }
 
 /** Poll a condition with a bounded timeout — never sleep(N) (Invariant 10). */

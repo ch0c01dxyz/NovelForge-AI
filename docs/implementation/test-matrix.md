@@ -2285,3 +2285,11 @@ No new audit table (uses existing audit_logs via audit service). No chapter-coun
 | `npx eslint` (022B files) | Lint | Clean |
 
 No-auto-linking pin: exactly one `db.endgameCallback.create` call site in the codebase (`createCallback` — the explicit author action); verified by grep. No background jobs, no detection code.
+
+## NF-WF-023A — Data safety (2026-10-07)
+
+| `prisma migrate deploy` (empty DB) | 36 migrations, from zero | 36/36 applied, 6s, exit 0; re-run is a clean no-op |
+| `prisma migrate deploy` schema check | All 21 014–022 tables present | 21/21 present; 92 base tables total |
+| Backup/restore drill (`zz-023a-drill.test.ts`, temporary) | pg_dump -Fc → pg_restore to fresh DB; 29 tables row-count match; /ready 200; 6 key queries identical | 5/5 PASS (dump 332,035 bytes; restore 1.06s) |
+| Tenant-isolation audit (`zz-023a-isolation.test.ts`, temporary) | 14 service-level negative tests across the 21 014–022 tables (cross-workspace → 404, cross-user → empty/404, comment edit → 403) | 14/14 PASS |
+| Isolation code audit | Grep every Prisma access site on the 21 tables for missing workspaceId/novelId/userId filter | Zero unfiltered queries; GAP-091 (P3) for dead `simulation_entities` table |

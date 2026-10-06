@@ -1883,3 +1883,88 @@ IMPACT: Could not run the 022C API integration suite (`endgame-projection.test.t
 RESOLUTION (before workaround, per standing rule): `postgresql-16`, `postgresql-16-pgvector`, `redis-server` were already installed (newest versions) — only the services needed starting. Removed the stalling `mirror.cogentco.com` from apt sources (established lesson; kept `.bak`). Started PostgreSQL 16.15 + Redis 7.0.15 manually. Verified GAP-065 prerequisites already in place: `vector` + `pgcrypto` in `template1`, `novelforge_test` role exists, pg_hba `trust` for `novelforge_test@localhost`. All 6 API integration tests then passed.
 
 STATUS: CLOSED — resolved 2026-10-07 by the 022C implementer with test evidence.
+
+## GAP-062 — CLOSED (2026-10-07, NF-WF-023B)
+
+CLOSURE (preferred option — typed refusal, minimal): `renderPdf` in
+`apps/api/src/services/export-render.ts` now pre-flights WinAnsi
+encodability via pdf-lib's own `font.encodeText` (the same encoder
+`drawText`/`widthOfTextAtSize` call internally) over the novel title +
+all chapter titles/contents, before any page is drawn. Non-WinAnsi
+prose (CJK, emoji, etc.) raises `ExportError(400,
+"PDF_UNSUPPORTED_CHARACTERS", "<message naming DOCX/EPUB as the
+remedy>")` instead of the raw `WinAnsi cannot encode ...` 500. The
+existing `platform-routes.ts` ExportError branch maps it to
+`{ error: "PDF_UNSUPPORTED_CHARACTERS" }` with status 400; no new
+route, no new error shape, no font assets, no ADR needed.
+
+EVIDENCE (OBSERVED 2026-10-07, this host): `apps/api/src/export-render.test.ts`
+19/19 (4 new GAP-062 tests: CJK → 400 typed refusal; emoji → 400; via
+`renderExport` route path → 400 + remedy message; raw WinAnsi throw
+gone; WinAnsi+CP1252-extras render unregressed). `npx tsc --noEmit`
+clean, `npx eslint` clean, `npx vue-tsc --noEmit` clean. i18n en+id
+parity: `PDF_UNSUPPORTED_CHARACTERS` added to the export errors block
+in both locales.
+
+STATUS: CLOSED — 2026-10-07 by the 023B implementer (pre-authorized
+code change per 023 Invariant 1); diff review pending as part of 023B.
+
+## GAP-091 — 023A tenant-isolation audit: `simulation_entities` is a dead table (P3, contract fidelity) (2026-10-07)
+
+EVIDENCE: 023A implementer (2026-10-07): repo-wide grep for `simulationEntity`/`simulation_entities` in `apps/api/src` (non-test) returns zero query sites — only doc comments in `services/simulation.ts` and `deleteMany` in test cleanup. The 021A contract defined SimulationEntity as a computational primitive (F5 kinds pinned), and migration `20261006_nf_wf_021a_simulation` created the table, but the tick implementation persists state only in `simulation_ticks.stateBefore/stateAfter` JSON — no code path ever writes or reads `simulation_entities`.
+
+IMPACT: No tenant-isolation risk (no queries = no leak). Schema/contract drift: the table exists but is unused; future readers may assume it is populated.
+
+NEXT ACTION: Follow-up task decides: (a) implement entity persistence per the 021A contract, or (b) amend the 021A contract to drop the SimulationEntity primitive and remove the table in a future migration. Do NOT silently start writing to it.
+
+STATUS: OPEN — recorded 2026-10-07 by the 023A implementer during the isolation code audit (standing rule).
+
+## GAP-094 — NF-WF-023B: `publication` stuck-job detection only on worker restart, no interval sweeper (2026-10-07)
+
+EVIDENCE: job inventory (`docs/implementation/023B-job-inventory.md`, OBSERVED 2026-10-07): the `publication` queue's recovery contract is worker-owned startup reconciliation (remove-first-then-enqueue). There is no interval sweeper (unlike `workflow-runs`' 60s `runRecoverySweep`). A publication stuck SCHEDULED past its due time (e.g. worker alive but the delayed job was lost, or the fire threw transiently with attempts: 1) is recovered only at the next worker deploy/restart.
+
+IMPACT: detection latency is unbounded between restarts. For a long-lived worker process, a stuck publication could wait indefinitely.
+
+STATUS: OPEN — recorded 2026-10-07 by the 023B implementer during verification (not a defect fix per 023 Invariant 1). Owner: follow-up task (consider a publication sweeper or health-check-driven reconciliation).
+
+## GAP-095 — NF-WF-023B: `memory-rebuild` has no reconciliation after Redis loss (2026-10-07)
+
+EVIDENCE: job inventory (OBSERVED 2026-10-07): `memory-rebuild` uses BullMQ retry (attempts: 5, exponential backoff) but has no sweeper and no startup reconciliation. Verified in R2-style reasoning: if Redis is lost, queued rebuild jobs are gone and nothing re-derives them; the rebuild must be re-triggered via the API (the memory status surface shows staleness, so the need is visible, but recovery is manual).
+
+IMPACT: after a Redis outage, memory rebuilds do not self-heal; an operator (or the author via the UI) must re-trigger.
+
+STATUS: OPEN — recorded 2026-10-07 by the 023B implementer during verification (not a defect fix per 023 Invariant 1). Owner: follow-up task.
+
+## GAP-096 — NF-WF-023B: `notifications` failed fan-outs are not auto-recovered (2026-10-07)
+
+EVIDENCE: job inventory (OBSERVED 2026-10-07): the `notifications` queue uses `attempts: 1` (inherited `WORKFLOW_DEFAULT_JOB_OPTIONS`), no retry, no sweeper. A failed `fanout` job goes to `failed` (retained, removeOnFail: 5000) and stays there — visible in the queue, but no automatic recovery. The notification *record* (`notifications` table) is unaffected (fan-out is delivery, not the record), so the data is not lost, but delivery is not retried.
+
+IMPACT: a transient failure during fan-out (e.g. DB blip) means the recipient never gets that notification unless an operator re-drives the job.
+
+STATUS: OPEN — recorded 2026-10-07 by the 023B implementer during verification (not a defect fix per 023 Invariant 1). Owner: follow-up task (consider attempts > 1 with backoff, or a dead-letter re-drive).
+
+## GAP-076 update — CLOSED (2026-10-07)
+
+RESOLUTION: 023C implementer (2026-10-07): made `getE2E()` in `apps/api/src/e2e/setup.ts` race-safe with a cross-process file lock (`novelforge-e2e-novelforge_test_e2e.lock` in the OS temp dir, atomic `wx` exclusive-create). The lock is acquired before the destructive terminate/drop/create sequence and held until `closeE2E()` (or released on setup failure), serializing the entire DB lifecycle across files/workers/threads/processes. Stale locks (crashed holder) are stolen via PID-liveness + 45-min age checks. Test-harness code only — no product changes (contract Invariant 1).
+
+PROOF:
+- A/B stress (`/tmp/e2e-lock-stress.ts`, 3 concurrent getE2E/closeE2E lifecycles with overlapping DB-usage windows): OLD code → STRESS FAILED with PostgreSQL 57P01 "terminating connection due to administrator command" (the exact GAP-076 error, reproduced in ~5s); NEW code → STRESS OK, all 3 lifecycles serialized cleanly.
+- Correctness by construction: `pg_terminate_backend` executes only inside `getE2E()` while the lock is held; the lock is released only in `closeE2E()` or on setup failure; therefore no terminate can land during another file's DB usage.
+
+STATUS: CLOSED — resolved 2026-10-07 by the 023C implementer with A/B stress evidence. `pnpm e2e` single-command reliability to be confirmed by the 023C battery (Box 6).
+
+## GAP-097 — 023C battery Box 1 (lint) fails: unused `DependencyConflict` type import in `revisions.ts` (2026-10-07)
+
+EVIDENCE: 023C evidence battery (2026-10-07, release revision `f754e12`): `pnpm lint` → exit 1 with 1 error: `apps/api/src/services/revisions.ts:47:8 'DependencyConflict' is defined but never used` (@typescript-eslint/no-unused-vars). The import was added in `e28653b` (NF-WF-020) and has been unused since; the defect is in the committed tree, not caused by 023C. No other lint errors.
+
+IMPACT: Box 1 of the pinned "green" definition fails. Per the contract's battery failure handling (F1-fixed): new non-pre-authorized defect → battery STOPS, no fix inside 023, release decision reflects it. Severity: P3 — cosmetic (unused type import; zero functional, build, or test impact). Non-blocking for release.
+
+NEXT ACTION: remove the unused import (one-line fix) in a post-023 cleanup. Owner: whoever next touches `revisions.ts` or runs the release battery.
+
+STATUS: OPEN — recorded 2026-10-07 by the 023C implementer during the battery (standing rule). Battery stopped per contract; boxes 2–7 not executed in 023.
+
+## GAP-051 update — NF-WF-023C: human screen-reader gate still OPEN, recorded as explicit release gate (2026-10-07)
+
+023C (2026-10-07): the automated axe half was NOT re-executed in the 023 battery (battery stopped at Box 1 per contract failure handling; last OBSERVED automated result remains 0 violations from 2026-10-06). `apps/web/a11y/AUDIT-014.md` updated with the 023C release-verification note. The manual screen-reader pass (NVDA + Firefox / VoiceOver + Safari) remains PENDING HUMAN VERIFICATION with no named owner yet. Per the 023C contract, this is an explicit release gate: the release decision is SHIP_WITH_KNOWN_GAPS at best until a human auditor completes it.
+
+STATUS: OPEN — owner: to be named (human auditor).

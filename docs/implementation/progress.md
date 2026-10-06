@@ -5790,3 +5790,22 @@ Implementer: 022B subagent (separate actor from contract author, contract review
 GAPs: GAP-065 note (VM replaced 4th time at 022B session; PostgreSQL/Redis reinstalled per recipe; pg_hba trust for novelforge_test@localhost).
 
 Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) component tests mock at HTTP boundary per Q5; (3) 022A's `endgame.test.ts` / `endgame-projection.test.ts` have pre-existing tsc syntax errors (022A in-progress, not 022B scope).
+
+## NF-WF-023A — Data safety (2026-10-07)
+
+**What was verified (no product code changes, Invariant 1):**
+
+1. **Backup/restore drill** (`docs/11-deployment/BACKUP-RESTORE-RUNBOOK.md` written):
+   - Seeded `novelforge_test_023a_drill` with representative rows (29 tables incl. core; 1 row per 014–022 table).
+   - `pg_dump -Fc` → 332,035 bytes; `pg_restore --no-owner` into fresh `novelforge_test_023a_restore` (1.06s).
+   - **29/29 tables row-count match**; API booted against restored DB, `/ready` → 200; 6 pinned key queries (novel, chapter, revisions, branches, sim run, endgame ledger) byte-identical.
+   - Drill test 5/5 PASS (temporary `zz-023a-drill.test.ts`, removed after run).
+
+2. **Migration-from-zero**: `prisma migrate deploy` on empty `novelforge_test_023a_migrate` — **36/36 migrations applied, 6s, exit 0**; re-run → "No pending migrations to apply" (clean no-op, GAP-030 idempotency holds); 92 base tables; all 21 014–022 tables present.
+
+3. **Tenant-isolation audit** (21 tables from 014–022 migrations):
+   - Code audit: every Prisma access site on the 21 tables verified tenant-filtered (session `userId` for 019 user-scoped tables; `gate()` membership + `workspaceId`/`novelId` filter for 021/022 novel-scoped tables; ownership/staff checks for comments). **Zero unfiltered queries.**
+   - Live negative tests: 14/14 PASS (temporary `zz-023a-isolation.test.ts`, removed after run) — cross-workspace reads → 404, cross-user reads → empty/404, comment edit → 403, reports list → 404 for non-staff.
+   - Finding: **GAP-091** (P3) — `simulation_entities` is a dead table (migrated, never queried); no isolation risk.
+
+**Honest limitations:** (1) backends MODEL_UNVERIFIED per GAP-013; (2) verification scripts were temporary (evidence in this entry + handoff); (3) isolation negative tests were service-level per the contract's permitted equivalent.

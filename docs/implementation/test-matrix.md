@@ -1862,3 +1862,43 @@ comparison neutralizes this artifact; words and order survive; (2) prose
 lines starting with `#` are backslash-escaped on MD export (the frozen md
 importer would otherwise promote them to chapter boundaries); the escape
 is preserved verbatim on re-import, not unescaped.
+
+## NF-WF-017C — GAP-053 closure: HTML-consumer alignment (2026-10-06)
+
+Executed on this host (native PostgreSQL 16.15 + pgvector on localhost:5432,
+Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+Implementer actor separate from the 017 contract author/reviewer, the
+017A/017B implementers, and the future diff reviewer; backends
+MODEL_UNVERIFIED per GAP-013. 017A's import pipeline and 017B's export
+renderer were NOT touched.
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/html-strip-map.test.ts` (apps/api) | **25/25** — `stripped` byte-identical to `stripHtmlTags` on 12 inputs; offset spot-checks (tag interiors → replacement space, end boundary → stripped length); monotonicity on all inputs; `verifyEvidenceQuote`/`strippedContentIncludes` semantics incl. the GAP-053 `<strong>the</strong> dark forest` example |
+| `npx vitest run src/canon.test.ts` (apps/api) | **64/64** — incl. 4 new 017C: tag-split quote verifies with raw-content offsets (stored raw, no re-mapping); exact in-HTML span; genuinely-absent quote → 409; out-of-range span still 409 (frozen bounds) |
+| `npx vitest run src/canon-application.test.ts` (apps/api) | **16/16** — incl. 1 new 017C: the 008 fact-source pin fires on HTML content where the first quote is split by inline tags (old `.includes` yielded null) |
+| `npx vitest run src/public-discovery.test.ts` (apps/api) | **18/18** — incl. 3 new 017C: HTML chapter ranks on prose, snippet has `<mark>` and no other tags; `strong`/`blockquote` never match as lexemes; no word fusion across the strip |
+| Full API suite `npx vitest run` (apps/api) | 34 files, **693/693** |
+| Full web suite `npx vitest run` (apps/web) | 41 files, **260/260** — no web code touched, no-regression |
+| `pnpm e2e` (011 author-preview loop) | 3 files, **20/20** exit 0 — no-regression vs 011 |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+
+GAP-053 closes on this evidence: the evidence-span rule (raw offsets in
+storage, strip-aware verification via the documented offset map in
+`services/manuscript.ts`) and the discovery full-text query (SQL-side
+`regexp_replace` strip, Q7 decision of record) are pinned against the
+defined HTML/strip contract with tests. Performance of the SQL-side
+strip at the 011 fixture scale is the diff reviewer's to measure (Q7);
+the stored stripped column stays the 023/024 follow-up (needs an ADR).
+
+Honest limitations (not GAPs): (1) the whitespace-normalized fallback
+accepts quotes whose whitespace differs from the stripped span — the
+frozen exact rule runs first, so plain-text rows and non-boundary spans
+verify exactly as before; the relaxation covers only the tag-boundary
+space artifact; (2) legacy plain-text rows containing literal `<...>`
+sequences are verified against stripped text per the contract pin (the
+017 contract's Invariant 3 states verification is against tag-stripped
+text, no exceptions); (3) no live-model generation was exercised
+(GAP-013).

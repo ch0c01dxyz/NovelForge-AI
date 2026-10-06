@@ -47,6 +47,9 @@ import {
 import { canView, parseViewMode, type ViewMode } from "@novelforge/retrieval";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// NF-WF-017C (Invariant 3): strip-aware evidence-quote verification —
+// spans stay raw-content offsets, verification runs on stripped text.
+import { verifyEvidenceQuote } from "./manuscript.ts";
 // Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
 import { advanceForMutation, assertHeadExpectation, createWithRevision } from "./revisions.ts";
 import type { RetrievalServices } from "./retrieval.ts";
@@ -2655,7 +2658,13 @@ export function createCanonServices(deps: {
     if (!verifySpan(text, source.start, source.end)) {
       throw new ConflictError("evidence span does not describe a range in the source");
     }
-    if (text.slice(source.start, source.end) !== source.quote) {
+    // NF-WF-017C (Invariant 3): spans stay raw-content offsets in
+    // storage; the quote is verified against tag-stripped text through
+    // the shared strip rule with the documented offset mapping
+    // (stripHtmlWithOffsetMap). Exact first (the frozen 008 rule),
+    // then the whitespace-normalized fallback for tag-boundary
+    // artifacts.
+    if (!verifyEvidenceQuote(text, source.start, source.end, source.quote)) {
       throw new ConflictError("evidence quote does not match the span in the source");
     }
 

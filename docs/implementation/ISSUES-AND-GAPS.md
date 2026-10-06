@@ -1436,8 +1436,22 @@ semantics are forbidden paths in 015):
 IMPACT: neither breaks 015's frozen acceptance, and both are
 edge-case quality degradations rather than correctness failures (the
 write path, the 013 reader, and both word counts are pinned to strip
-in 015). STATUS: open; owner: NF-WF-017C (017's HTML-consumer-alignment child;
-review R1 of the 017 contract, 2026-10-06) — NOT 015's implementer.
+in 015). STATUS: CLOSED by NF-WF-017C implementation (2026-10-06) —
+the evidence-span rule (spans stay raw-content offsets in storage;
+`resolveSourceEvidence` verifies quotes against tag-stripped text via
+the documented offset-mapping rule `stripHtmlWithOffsetMap` in
+`services/manuscript.ts`; `verifySpan` bounds semantics frozen;
+`canon-applications.ts` pin strip-aware) and the discovery full-text
+query (SQL-side `regexp_replace(cv.content, '<[^>]*>', ' ', 'g')`,
+Q7 decision of record) are pinned against the defined HTML/strip
+contract with tests: `src/html-strip-map.test.ts` 25/25,
+`src/canon.test.ts` +4, `src/canon-application.test.ts` +1,
+`src/public-discovery.test.ts` +3; full API 693/693, web 260/260,
+e2e 20/20, lint + tsc + vue-tsc clean. 017C diff review (Round 4,
+2026-10-06): APPROVE_WITH_FINDINGS — one inline docs finalization
+(this status line), no code findings; the closure evidence (offset
+map + strip-aware verification/pin + SQL-side strip, all tested)
+satisfies the recorded closure check. GAP-053 stays CLOSED.
 Closure check: closes when the evidence-span rule and the discovery
 full-text query are pinned against a defined HTML/strip contract with
 tests. Recorded before 015 implementation, per the standing rule.

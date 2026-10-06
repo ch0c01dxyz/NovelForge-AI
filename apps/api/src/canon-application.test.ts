@@ -895,6 +895,55 @@ describe("staleness, atomicity, and audit", () => {
     expect(PROSE.slice(sources[0]!.start, sources[0]!.end)).toBe(sources[0]!.quote);
     expect(sources[0]!.quote).toBe("Wren swore the oath of silence");
   });
+
+  it("pins the fact source when the quote is split by inline tags in the chapter version (NF-WF-017C)", async () => {
+    const admin = await seedUser("admin@example.com", "SUPER_ADMIN");
+    const { workspaceId, novelId } = await seedWorkspace(admin.userId, "ws-source-html");
+    const seeded = await seedTemplate(admin.cookie, workspaceId);
+    const runId = await runToExtract(admin.cookie, workspaceId, novelId, seeded.workflowId);
+
+    // GAP-053 item 1: the chapter version carries sanitized-HTML
+    // content where the first evidence quote ("Wren swore the oath of
+    // silence", from the extraction draft) is split by inline tags.
+    // The old `content.includes(firstQuote)` pin yielded null here.
+    const chapter = await db.chapter.create({
+      data: {
+        novelId,
+        number: 1,
+        title: "Chapter 1",
+        createdById: admin.userId,
+      },
+    });
+    const version = await db.chapterVersion.create({
+      data: {
+        chapterId: chapter.id,
+        number: 1,
+        content:
+          "<p>Wren swore the <strong>oath of silence</strong> beneath the old oak.</p>",
+        wordCount: 12,
+        authorId: admin.userId,
+      },
+    });
+    await db.chapter.update({ where: { id: chapter.id }, data: { currentVersionId: version.id } });
+
+    const res = await createApplication(admin.cookie, workspaceId, novelId, {
+      runId,
+      items: [inlineContracting(0)],
+    });
+    const body = res.json() as { id: string; items: Array<{ id: string }> };
+    const approved = await approveApplication(admin.cookie, workspaceId, novelId, body.id, {
+      itemIds: [body.items[0]!.id],
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    const factId = (
+      approved.json() as { appliedItems: Array<{ factId: string }> }
+    ).appliedItems[0]!.factId;
+
+    const sources = await db.canonFactSource.findMany({ where: { canonFactId: factId } });
+    expect(sources).toHaveLength(1);
+    expect(sources[0]!.chapterVersionId).toBe(version.id);
+    expect(sources[0]!.quote).toBe("Wren swore the oath of silence");
+  });
 });
 
 describe("separation, authorization, and decision safety", () => {

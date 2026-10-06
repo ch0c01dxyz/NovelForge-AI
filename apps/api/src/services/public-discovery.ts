@@ -390,19 +390,32 @@ export function createPublicDiscoveryServices({ db }: { db: NovelForgeDb }) {
           `SELECT n.id AS "novelId", n.title AS "novelTitle", n.slug AS "novelSlug",
                   u.id AS "authorId", u.display_name AS "authorName",
                   c.number AS "chapterNumber", c.title AS "chapterTitle",
-                  ts_headline('english', cv.content, ${tsq},
+                  ts_headline('english', pc.stripped, ${tsq},
                     'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MinWords=10, MaxWords=25') AS snippet,
                   GREATEST(
-                    ts_rank(to_tsvector('english', cv.content), ${tsq}),
+                    ts_rank(to_tsvector('english', pc.stripped), ${tsq}),
                     ts_rank(to_tsvector('english', c.title), ${tsq})
                   ) AS rank,
-                  p.published_at AS "sortAt"
-           FROM chapter_versions cv
-           JOIN publications p ON p.chapter_version_id = cv.id AND p.status = 'PUBLISHED'
-           JOIN chapters c ON c.id = p.chapter_id
-           JOIN novels n ON n.id = p.novel_id AND n.status = 'ACTIVE'
+                  pc."sortAt" AS "sortAt"
+           FROM (
+             SELECT p.chapter_id AS "chapterId",
+                    p.novel_id AS "novelId",
+                    -- NF-WF-017C (Invariant 3, Q7 decision of record):
+                    -- SQL-side tag strip — the shared strip rule
+                    -- (<[^>]*> -> one space) in SQL, computed once
+                    -- per published version, so tags never become index
+                    -- lexemes and never appear in snippets. A stored
+                    -- stripped column is the 023/024 performance
+                    -- follow-up (schema change, needs an ADR).
+                    regexp_replace(cv.content, '<[^>]*>', ' ', 'g') AS stripped,
+                    p.published_at AS "sortAt"
+             FROM chapter_versions cv
+             JOIN publications p ON p.chapter_version_id = cv.id AND p.status = 'PUBLISHED'
+           ) pc
+           JOIN chapters c ON c.id = pc."chapterId"
+           JOIN novels n ON n.id = pc."novelId" AND n.status = 'ACTIVE'
            JOIN users u ON u.id = n.created_by_id
-           WHERE to_tsvector('english', cv.content) @@ ${tsq}
+           WHERE to_tsvector('english', pc.stripped) @@ ${tsq}
               OR to_tsvector('english', c.title) @@ ${tsq}
            ORDER BY rank DESC, "sortAt" DESC
            LIMIT $2`,

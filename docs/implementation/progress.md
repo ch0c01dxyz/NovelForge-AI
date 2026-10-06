@@ -4919,3 +4919,72 @@ violations en+id); `pnpm e2e` **20/20** BASELINE-OK (no-regression vs 011);
 All green, actually executed 2026-10-06 on this host (native PostgreSQL
 16.15 + pgvector on localhost:5432, Redis 7.0.15 on 6379, scratch
 `novelforge_test_*` DBs only; pnpm 12.5.1).
+
+## NF-WF-017C — GAP-053 closure: HTML-consumer alignment (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 017C implementer actor (separate from the 017 contract
+author/reviewer, the 017A/017B implementers, and the future diff reviewer;
+backends MODEL_UNVERIFIED per GAP-013). 017A's import pipeline and 017B's
+export renderer were NOT touched.
+
+Backend (`apps/api`):
+
+- `services/manuscript.ts` — the offset-mapping rule for the frozen strip
+  rule, next to `stripHtmlTags` (it is defined by it):
+  `stripHtmlWithOffsetMap(html)` returns the stripped text (byte-identical
+  to `stripHtmlTags`) plus `toStripped(rawOffset)`: offsets outside tags
+  map to the same character's stripped offset; offsets strictly inside a
+  tag map to the single replacement space's offset; monotone
+  non-decreasing; `toStripped(html.length) === stripped.length`. Also
+  `normalizeQuoteWhitespace` (collapse runs, trim ends),
+  `verifyEvidenceQuote(content, start, end, quote)` (exact on the mapped
+  stripped span first — the frozen 008 rule — then the
+  whitespace-normalized fallback for the tag-boundary space artifact),
+  and `strippedContentIncludes(content, quote)` (exact, then stripped,
+  then normalized; whitespace-only quotes never match via normalization).
+- `services/canon.ts` — `resolveSourceEvidence` now verifies the quote
+  with `verifyEvidenceQuote` instead of the raw `text.slice(start, end)`
+  comparison. Spans stay raw-content offsets in storage; the frozen
+  `verifySpan` bounds check runs first, unchanged; both 409 messages are
+  verbatim. `story-intelligence`'s `verifySpan`/`locateQuote` untouched
+  (the package cannot import the API-layer strip rule without inverting
+  the dependency; the offset map lives with the rule it derives from).
+- `services/canon-applications.ts` — the 008 fact-source pin is now
+  `strippedContentIncludes(version.content, firstQuote)` (was
+  `content.includes(firstQuote)`); a quote split by inline tags pins
+  instead of yielding null.
+- `services/public-discovery.ts` — the chapter search builds
+  `to_tsvector`/`ts_headline` on tag-stripped content via the Q7-decided
+  SQL-side strip: a derived table computes
+  `regexp_replace(cv.content, '<[^>]*>', ' ', 'g')` once per published
+  version (the same `<[^>]*>` → one-space rule as the JS strip), and the
+  outer query ranks/headlines/`WHERE`-matches on it. Title search and the
+  novel-type search are untouched. No stored stripped column (Q7: the
+  023/024 performance follow-up, needs an ADR).
+
+Tests: `src/html-strip-map.test.ts` (new, 25/25 — byte-identity with
+`stripHtmlTags` on 12 inputs, offset spot-checks, monotonicity,
+quote/include semantics incl. the GAP-053 example);
+`src/canon.test.ts` +4 (HTML evidence: tag-split quote verifies with raw
+offsets and pins with raw offsets in storage; exact in-HTML span;
+genuinely-absent quote refused 409; out-of-range span still 409);
+`src/canon-application.test.ts` +1 (the pin on HTML content where the
+first quote is split by `<strong>`);
+`src/public-discovery.test.ts` +3 (HTML chapter ranks on prose with
+tag-free snippets; tag names never lexemes; no word fusion across the
+strip).
+
+New GAPs recorded before completion (standing rule): none — no contract
+deviation. GAP-053 CLOSED on the evidence below (closure check: the
+evidence-span rule and the discovery full-text query pinned against the
+defined HTML/strip contract with tests). GAP-013 (MODEL_UNVERIFIED)
+unchanged.
+
+Evidence: API **693/693** (34 files; new: html-strip-map 25, canon +4,
+canon-application +1, public-discovery +3); web **260/260** (41 files,
+no web code touched — no-regression); `pnpm e2e` **20/20** exit 0
+(no-regression vs 011); `pnpm lint` exit 0; API `tsc --noEmit` exit 0;
+web `vue-tsc --noEmit` exit 0; zero `@ts-ignore`/`@ts-expect-error` in
+new code. All green, actually executed 2026-10-06 on this host (native
+PostgreSQL 16.15 + pgvector on localhost:5432, Redis 7.0.15 on 6379,
+scratch `novelforge_test_*` DBs only; pnpm 12.5.1).

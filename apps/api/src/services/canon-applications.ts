@@ -35,6 +35,9 @@ import {
 import { STORY_ENTITY_KINDS } from "./canon.ts";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+// NF-WF-017C (Invariant 3): strip-aware quote pinning on HTML chapter
+// content (the 008 fact-source pin).
+import { strippedContentIncludes } from "./manuscript.ts";
 import {
   advanceForMutation,
   assertHeadExpectation,
@@ -1224,7 +1227,12 @@ export function createCanonApplicationServices(deps: {
                       orderBy: { number: "desc" },
                       select: { id: true, content: true },
                     });
-                    return version && version.content.includes(firstQuote) ? version.id : null;
+                    // NF-WF-017C (Invariant 3): the fact-source pin is
+                    // strip-aware — a quote split by inline tags must
+                    // still pin to the chapter version.
+                    return version && strippedContentIncludes(version.content, firstQuote)
+                      ? version.id
+                      : null;
                   })()
                 : null;
 

@@ -7,7 +7,7 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: REVIEW_PENDING
+Status: IMPLEMENTED (017A + 017B + 017C all diff-reviewed; 2026-10-06)
 Milestone / capability IDs: M5 (CAP-13); delivery-plan NF-WF-017
 Implementer role / requested and resolved model: (separate actors per child; backend MODEL_UNVERIFIED per GAP-013)
 Reviewer role / requested and resolved model: (separate actor from the contract author and each implementer; backend MODEL_UNVERIFIED per GAP-013)
@@ -859,6 +859,95 @@ newlines would split oddly on round-trip — pre-existing condition of
 the frozen shape, not a 017B regression. (4) The docx fixture embeds
 real core-property timestamps (noted as structural-only in
 `generate-fixtures.mjs`); txt/md fixtures are byte-compared.
+
+### Round 4 — 2026-10-06 — 017C diff review — verdict: APPROVE_WITH_FINDINGS
+
+Reviewed the exact uncommitted 017C diff on top of `e7ba098` (017B
+commit). 017A's import pipeline (`import-normalize.ts`, import routes,
+`ImportDialog`) and 017B's export renderer (`export-render.ts`,
+export routes, `ExportPicker`) are absent from this diff — no scope
+creep. Backends MODEL_UNVERIFIED per GAP-013. I am a separate actor
+from the contract author, contract reviewer, the 017A/017B/017C
+implementers, and all prior reviewers.
+
+**Findings (R1 fixed inline in the working tree; no code findings):**
+
+- **R1 (P3) — GAP-053's status line still said "Pending 017C diff
+  review."** The implementer had pre-closed it on the implementation
+  evidence. Finalized the line to record this round's confirmation
+  (verdict APPROVE_WITH_FINDINGS, closure evidence satisfies the
+  recorded closure check); GAP-053 stays CLOSED.
+
+**Verification (checked items 1–7 of the review brief):**
+
+1. **Offset-mapping design** — `stripHtmlWithOffsetMap` is sound:
+   one pass with the same `/<[^>]*>/g` regex as the frozen
+   `stripHtmlTags` (byte-identical output, proven by test on 12
+   inputs); tag interiors map to the replacement space's stripped
+   offset; `toStripped(html.length) === stripped.length`; monotone
+   non-decreasing. Home decision justified: the map derives from the
+   frozen strip rule, so it lives next to it in `services/manuscript.ts`
+   (app-local); putting it in `packages/story-intelligence` would
+   require the package to import the API layer's rule, inverting the
+   dependency direction. Both consumers are app-local services.
+2. **`verifyEvidenceQuote` / `strippedContentIncludes`** — exact-first
+   ordering verified by reading the code, so the frozen 008 behavior
+   (`text.slice(start,end) === quote`, `content.includes(firstQuote)`)
+   is a strict subset of the new behavior. The whitespace-normalized
+   fallback only collapses whitespace runs and trims ends — non-
+   whitespace content is never loosened — so "a quote genuinely
+   absent still fails" holds (tested). The
+   `canon-applications.ts` change keeps the contract's "else null,
+   run ref in the audit payload" pin; only the match predicate is
+   strip-aware. No contradiction with the frozen 008 fact-source pin.
+3. **Discovery SQL-side strip (Q7)** — derived table computes
+   `regexp_replace(cv.content, '<[^>]*>', ' ', 'g')` once per
+   published version; `to_tsvector`/`ts_rank`/`ts_headline`/`WHERE`
+   all run on `pc.stripped`; title search and the novel-type search
+   (on `n.title`/`u.display_name`) are untouched; each tag becomes one
+   space (no word fusion); snippets carry `<mark>` and no other tags
+   (tested). Q7 cost measured by this reviewer against the 011
+   fixture scale (300 published chapters, ~6 KB sanitized-HTML each,
+   scratch DB, EXPLAIN ANALYZE median of 5): old shape 603.2 ms, new
+   shape 674.6 ms — marginal overhead ≈ +72 ms (+12%), strip-only
+   29.3 ms; the dominant cost (per-row `to_tsvector`, no GIN index)
+   is pre-existing. The stored stripped column stays the 023/024
+   follow-up requiring an ADR, per Q7's decision of record.
+4. **Spans stay raw offsets** — the canon test asserts
+   `stored.start === 0` / `stored.end === content.length` on HTML
+   content; `verifySpan` bounds check still runs first
+   (`canon.ts:2658` before `:2667`); both 409 messages are verbatim
+   (checked against the `e7ba098` parent).
+5. **No 017A/017B scope creep** — the diff touches only
+   `services/canon.ts`, `services/canon-applications.ts`,
+   `services/manuscript.ts`, `services/public-discovery.ts`, their
+   tests, and docs. No schema changes/migrations, no new
+   capabilities, `story-intelligence` untouched.
+6. **Own runs (actually executed 2026-10-06 on this host — do NOT
+   re-claim as full suites):** `src/html-strip-map.test.ts`
+   **25/25**; `src/canon.test.ts` 017C block **4/4**; `src/canon-
+   application.test.ts` 017C test **1/1**; `src/public-discovery.
+   test.ts` 017C block **3/3** (all on scratch
+   `novelforge_test_*` DBs); API `tsc --noEmit` exit 0; zero
+   `@ts-ignore`/`@ts-expect-error` in new code. Consistent with the
+   implementer's recorded claims (API 693/693, web 260/260, e2e
+   20/20 BASELINE-OK, lint clean), which are NOT re-claimed here.
+7. **GAP-053 closure** — the recorded closure check ("the evidence-
+   span rule and the discovery full-text query pinned against a
+   defined HTML/strip contract with tests") is satisfied: the
+   offset-mapping rule is documented in the `stripHtmlWithOffsetMap`
+   JSDoc, `verifySpan` bounds semantics are frozen, both 409 messages
+   are verbatim, the SQL strip is the Q7-decided `regexp_replace`,
+   and all four test files carry the pinned tests. **GAP-053 CLOSES.**
+
+**Observations (not findings):** (1) the whitespace-normalized
+fallback additionally accepts quotes that differ from the stripped
+span only in whitespace (not just at tag boundaries); exact-first
+ordering means this is a narrow, documented relaxation and the
+evidence guarantee ("absent quotes fail") is unaffected — honestly
+disclosed in `test-matrix.md`'s "Honest limitations". (2)
+`strippedContentIncludes`'s exact-first branch means the old pin's
+behavior is preserved verbatim for every quote that matched before.
 
 ## Backend verification (contract author)
 

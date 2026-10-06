@@ -799,3 +799,75 @@ describe("GET /api/public/search (published-only search)", () => {
     expect(bad.status).toBe(400);
   });
 });
+
+describe("GET /api/public/search on sanitized-HTML chapter content (NF-WF-017C)", () => {
+  // GAP-053 item 2: to_tsvector/ts_headline are built on tag-stripped
+  // content (SQL-side regexp_replace, Q7 decision of record) — tags are
+  // never index lexemes and never appear in snippets.
+  const HTML_CONTENT =
+    "<p>The <strong>crimson phoenix</strong> soared over the jade pagoda at dawn.</p>" +
+    "<blockquote>Emberlight danced upon the river stones.</blockquote>";
+
+  it("ranks HTML chapters on their prose and emits tag-free snippets", async () => {
+    const owner = await seedUser("owner@example.com");
+    const ws = await seedWorkspace(owner.userId, "ws");
+    const { novelId } = await seedPublishedNovel(owner, ws, "html-search-novel", HTML_CONTENT);
+
+    const res = await api(
+      "GET",
+      `/api/public/search?q=${encodeURIComponent("crimson phoenix")}&type=chapter`,
+    );
+    expect(res.status).toBe(200);
+    const hits = res.json["results"] as Array<{
+      type: string;
+      snippet: string | null;
+      novel: { id: string };
+    }>;
+    expect(hits.length).toBe(1);
+    expect(hits[0]?.type).toBe("chapter");
+    expect(hits[0]?.novel.id).toBe(novelId);
+
+    const snippet = hits[0]?.snippet ?? "";
+    expect(snippet).toContain("<mark>");
+    // Beyond the highlight markers, no HTML tags may appear.
+    const withoutMarks = snippet.replace(/<\/?mark>/g, "");
+    expect(withoutMarks).not.toContain("<");
+    expect(withoutMarks).not.toContain(">");
+    expect(withoutMarks).toContain("crimson phoenix");
+  });
+
+  it("never indexes tag names as lexemes", async () => {
+    const owner = await seedUser("owner@example.com");
+    const ws = await seedWorkspace(owner.userId, "ws");
+    await seedPublishedNovel(owner, ws, "html-tag-novel", HTML_CONTENT);
+
+    // "strong" and "blockquote" appear only as tags, never as prose.
+    for (const q of ["strong", "blockquote"]) {
+      const res = await api(
+        "GET",
+        `/api/public/search?q=${encodeURIComponent(q)}&type=chapter`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.json["results"]).toEqual([]);
+    }
+  });
+
+  it("still matches prose adjacent to tags (no word fusion across the strip)", async () => {
+    const owner = await seedUser("owner@example.com");
+    const ws = await seedWorkspace(owner.userId, "ws");
+    await seedPublishedNovel(
+      owner,
+      ws,
+      "html-adjacent-novel",
+      "<p>alpha</p><p>beta gamma</p>",
+    );
+
+    const res = await api(
+      "GET",
+      `/api/public/search?q=${encodeURIComponent("beta gamma")}&type=chapter`,
+    );
+    expect(res.status).toBe(200);
+    const hits = res.json["results"] as Array<{ type: string }>;
+    expect(hits.length).toBe(1);
+  });
+});

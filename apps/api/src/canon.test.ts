@@ -1229,6 +1229,144 @@ describe("evidence must resolve to a real span in an immutable revision", () => 
   });
 });
 
+describe("evidence spans on sanitized-HTML chapter content (NF-WF-017C)", () => {
+  // GAP-053 item 1: ChapterVersion.content is sanitized HTML (015
+  // Invariant 2). Spans stay raw-content offsets in storage; the quote
+  // is verified against tag-stripped text through the shared strip
+  // rule with the documented offset mapping (manuscript.ts
+  // stripHtmlWithOffsetMap).
+  async function seedHtmlChapter(
+    owner: { userId: string; cookie: string },
+    workspaceId: string,
+    novelId: string,
+    content: string,
+  ) {
+    const chapter = await db.chapter.create({
+      data: {
+        novelId,
+        number: 1,
+        title: "One",
+        status: "DRAFT",
+        createdById: owner.userId,
+      },
+    });
+    const version = await db.chapterVersion.create({
+      data: {
+        chapterId: chapter.id,
+        number: 1,
+        content,
+        wordCount: 1,
+        authorId: owner.userId,
+      },
+    });
+    await db.chapter.update({
+      where: { id: chapter.id },
+      data: { currentVersionId: version.id },
+    });
+    return version;
+  }
+
+  it("verifies a quote split by inline tags against raw-content offsets", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    // The contract's pinned example: the quote's words are split by an
+    // inline tag in the stored content.
+    const content = "<p><strong>the</strong> dark forest</p>";
+    const version = await seedHtmlChapter(owner, workspaceId, novelId, content);
+
+    const good = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "location",
+      objectText: "the dark forest",
+      source: {
+        chapterVersionId: version.id,
+        quote: "the dark forest",
+        start: 0,
+        end: content.length,
+      },
+    });
+    expect(good.statusCode, JSON.stringify(good.body)).toBe(201);
+    const stored = await db.canonFactSource.findFirstOrThrow({
+      where: { canonFactId: (good.body as { id: string }).id },
+    });
+    // Spans stay raw-content offsets in storage — no re-mapping.
+    expect(stored.start).toBe(0);
+    expect(stored.end).toBe(content.length);
+    expect(stored.quote).toBe("the dark forest");
+  });
+
+  it("verifies an exact prose span inside HTML that crosses no tag boundary", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const content = "<p>His hair was <strong>black</strong> as ink.</p>";
+    const version = await seedHtmlChapter(owner, workspaceId, novelId, content);
+    const start = content.indexOf("black");
+
+    const good = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+      source: {
+        chapterVersionId: version.id,
+        quote: "black",
+        start,
+        end: start + "black".length,
+      },
+    });
+    expect(good.statusCode, JSON.stringify(good.body)).toBe(201);
+  });
+
+  it("refuses a quote genuinely absent from the chapter prose", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const content = "<p><strong>the</strong> dark forest</p>";
+    const version = await seedHtmlChapter(owner, workspaceId, novelId, content);
+
+    const bad = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "location",
+      objectText: "the red forest",
+      source: {
+        chapterVersionId: version.id,
+        quote: "the red forest",
+        start: 0,
+        end: content.length,
+      },
+    });
+    expect(bad.statusCode).toBe(409);
+    expect((bad.body as { error: string }).error).toBe("CONFLICT");
+    expect(await db.canonFact.count({ where: { novelId } })).toBe(0);
+  });
+
+  it("still refuses out-of-range spans on HTML content (frozen bounds)", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const content = "<p><strong>the</strong> dark forest</p>";
+    const version = await seedHtmlChapter(owner, workspaceId, novelId, content);
+
+    const bad = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "location",
+      objectText: "the dark forest",
+      source: {
+        chapterVersionId: version.id,
+        quote: "the dark forest",
+        start: 0,
+        end: content.length + 100,
+      },
+    });
+    expect(bad.statusCode).toBe(409);
+  });
+});
+
 describe("the attach half of the evidence lifecycle (GAP-057 / NF-WF-016 Q2)", () => {
   // Detach (`DELETE .../sources/:sourceId`) exists without an attach — the
   // route below closes the asymmetric lifecycle: a fact created in haste can

@@ -5699,3 +5699,28 @@ Implementer: 021B subagent (separate actor from contract author, contract review
 **Gaps recorded:** GAP-084 (021B added Q7 capabilities; 021A to confirm); GAP-086 (DB password not in .env; resolved — password reset, tests executed).
 
 **Handoff:** uncommitted; the diff reviewer judges the exact diff. Backends MODEL_UNVERIFIED per GAP-013.
+
+## NF-WF-021D "Simulation Center UI" — IMPLEMENTED (2026-10-06, uncommitted)
+
+Implementer: 021D subagent (separate actor from contract author, contract reviewer, the 021A/021B/021C implementers, all prior reviewers, and the future 021D diff reviewer). Contract: `tasks/NF-WF-021-simulation.md` §021D (amended 2026-10-06 per Klein's option-1 decision). Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built:**
+- `apps/web/app/components/simulation/simulationApi.ts` — typed API client consuming 021A (10 lifecycle routes) + 021B (6 causal/proposal routes). No new API routes.
+- `apps/web/app/components/simulation/SimulationRunList.vue` — run list with status filter (all 7 statuses), branch/seed/tick metadata, status badges.
+- `apps/web/app/components/simulation/SimulationRunCreate.vue` — create dialog (branch picker via 020B routes, seed, maxTicks 1-1000).
+- `apps/web/app/components/simulation/SimulationRunDetail.vue` — run detail with status badge (incl. PAUSED_PROPOSAL), lifecycle controls (configure/start/step/pause/resume/abort, conditionally rendered by status), tick history with expandable stateBefore/stateAfter diff view and per-event "view causes" buttons.
+- `apps/web/app/components/simulation/CausalChainView.vue` — recursive causal chain visualization with DIRECT/ENABLING/PREVENTING badges, evidence display, counterfactual (PREVENTING) panel.
+- `apps/web/app/components/simulation/ProposalReview.vue` — alternatives side-by-side with evidence/confidence; approve REQUIRES explicit choice (client-side guard mirrors backend 400; no silent default); reject needs no choice; rationale field.
+- `apps/web/app/components/simulation/CivilizationWalkthrough.vue` — guided 5-step walkthrough (setup → run → drought → proposal → outcomes) driving the 021C `irrigation-scenario` domain functions DIRECTLY in the browser (implementer's documented choice: pure functions, no backend needed for the demo; `runIrrigationScenario` + `resumeIrrigationScenario` from `@novelforge/story-simulation` workspace package). Includes SVG population/food-security charts with drought/proposal markers, drought causal chain display, proposal decision UI.
+- `apps/web/app/pages/workspaces/[workspaceId]/novels/[novelId]/simulation.vue` — Simulation Center page with Runs/Walkthrough tabs; run detail shows causal chain + proposal review for the selected run.
+- Nav link added to novel page (`simulation.title`).
+- i18n: ~40 new keys in en.ts + id.ts (subtitle, filters, walkthrough steps/bodies, chart labels, proposal hints). Full en+id parity verified.
+- `apps/web/package.json`: added `@novelforge/story-simulation: workspace:*` dependency.
+
+**Decisions:** Walkthrough drives 021C domain functions directly (not 021A/021B routes) — documented in component header. No new API routes (contract constraint); all UI needs covered by existing 021A/021B routes. Branch picker consumes 020B's branch list route.
+
+**Evidence:** `simulation-center.test.ts` **9/9** (run list render/filter/empty/emit; create submits correct body; proposal explicit-choice-required, approve-with-choice, reject-without-choice; walkthrough full flow setup→outcomes). `simulation-center.axe.test.ts` **6/6** zero violations (run list, empty list, create dialog, causal empty, proposal empty, walkthrough setup). Full web suite **421/421** (70 files, no regressions). `vue-tsc --noEmit` clean. ESLint clean.
+
+**Gaps recorded:** None — no missing routes; all UI needs covered by 021A/021B routes.
+
+**Handoff:** uncommitted; the diff reviewer judges the exact diff. Backends MODEL_UNVERIFIED per GAP-013.

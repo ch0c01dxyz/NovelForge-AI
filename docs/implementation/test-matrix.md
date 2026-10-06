@@ -2228,3 +2228,18 @@ Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) no web UI bui
 GAP-084 recorded (021B added Q7 capabilities; 021A to confirm on integration). GAP-086 recorded and resolved (DB password not in .env; reset, tests executed).
 
 Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) 021A's `simulation_runs` table created minimally in test setup (021A migration not yet existent — parallel implementation); (3) no web UI built for 021B (causal chain visualization + proposal review components deferred — no Simulation Center exists yet per GAP-083 precedent); (4) i18n keys added but UI not built to verify rendering; (5) full API suite not run (021B files verified in isolation; 021A's test file has 4 type errors from parallel work).
+
+## NF-WF-021D — Simulation Center UI (2026-10-06)
+
+| Surface | Tests | Result |
+|---|---|---|
+| `simulation-center.test.ts` (component) | 9 tests: run list render/filter/empty/emit (4), create submits correct body (1), proposal explicit-choice-required/approve-with-choice/reject-without-choice (3), walkthrough full flow (1) | 9/9 PASS |
+| `simulation-center.axe.test.ts` (a11y) | 6 tests: run list, empty list, create dialog, causal empty, proposal empty, walkthrough setup — wcag2aa + wcag22aa | 6/6 PASS, zero violations |
+| Full web suite | 70 files, 421 tests | 421/421 PASS (no regressions) |
+| `vue-tsc --noEmit` (web) | Typecheck | Clean, zero errors |
+| ESLint (021D files) | Lint | Clean |
+| i18n en+id parity | ~40 new keys | Verified present in both locales |
+
+No new API routes (021D consumes 021A/021B routes only). No GAPs recorded (all UI needs covered by existing routes).
+
+Honest limitations: (1) backends MODEL_UNVERIFIED per GAP-013; (2) walkthrough drives 021C domain functions directly in browser (not via 021A/021B routes) — implementer's documented choice; (3) component tests mock at HTTP boundary per Q5; full loop covered API-level in apps/api.

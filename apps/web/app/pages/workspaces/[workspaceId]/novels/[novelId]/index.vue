@@ -881,6 +881,17 @@ async function publish() {
       >
         {{ t("comments.queueNavLink") }}
       </NuxtLink>
+      <!-- NF-WF-021D: Simulation Center link — workspace members only
+           (progressive enhancement; the simulation page and every
+           simulation route enforce membership + `simulation:read`
+           server-side). -->
+      <NuxtLink
+        :to="`/workspaces/${workspaceId}/novels/${novelId}/simulation`"
+        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        data-testid="simulation-link"
+      >
+        {{ t("simulation.title") }}
+      </NuxtLink>
       <div
         class="flex items-center gap-1 rounded-lg border border-nf-border p-0.5 text-[12px]"
         role="group"

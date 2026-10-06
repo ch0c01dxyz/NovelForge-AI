@@ -299,6 +299,9 @@ importers:
       '@floating-ui/dom':
         specifier: 1.8.0
         version: 1.8.0
+      '@novelforge/story-simulation':
+        specifier: workspace:*
+        version: link:../../packages/story-simulation
       '@tiptap/core':
         specifier: 3.31.4
         version: 3.31.4(@tiptap/pm@3.31.4)

@@ -1829,3 +1829,15 @@ STATUS: OPEN — recorded 2026-10-06 by the 021A diff reviewer finding F2 (P2), 
 DECISION: Klein (2026-10-07, "gunakan opsi ke-1"): build a 021D child covering the unified Simulation Center UI (021A run management + 021B causal visualization/proposal review + 021C walkthrough). Contract `tasks/NF-WF-021-simulation.md` amended: child split now four children; new "Child 021D — Simulation Center UI" section with pinned scope, §15 design, en+id, axe zero. GAP-085 (021C walkthrough UI) and 021B F1 (proposal/causal UI) are subsumed into 021D scope.
 
 STATUS: DECIDED — 021D implementer dispatched 2026-10-07.
+
+## GAP-085 update — RESOLVED by 021D (2026-10-06)
+
+RESOLUTION: 021D implementer (2026-10-06): the civilization walkthrough UI is now built as `CivilizationWalkthrough.vue` — a 5-step guided demo (setup → run → drought → proposal → outcomes) driving the 021C `irrigation-scenario` domain functions directly in the browser. Includes SVG population/food-security charts with drought/proposal markers, drought causal chain display, and proposal decision UI with explicit choice. Covered by `simulation-center.test.ts` (walkthrough flow test) and `simulation-center.axe.test.ts` (zero violations).
+
+STATUS: CLOSED — resolved 2026-10-06 by 021D with test evidence.
+
+## GAP-087 update — RESOLVED by 021D (2026-10-06)
+
+RESOLUTION: 021D implementer (2026-10-06): the unified Simulation Center UI is now built — `simulation.vue` page with Runs/Walkthrough tabs; RunList (status filter), RunCreate (branch picker), RunDetail (lifecycle controls + tick history), CausalChainView (recursive + counterfactuals), ProposalReview (explicit-choice decide). All three children's UI scope (021A run management, 021B causal/proposal, 021C walkthrough) addressed in a single coherent surface per the amended contract. Web 15/15 (9 component + 6 axe zero), full web 421/421, vue-tsc + eslint clean, i18n en+id parity.
+
+STATUS: CLOSED — resolved 2026-10-06 by 021D with test evidence.

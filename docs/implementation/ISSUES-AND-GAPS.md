@@ -1968,3 +1968,9 @@ STATUS: OPEN — recorded 2026-10-07 by the 023C implementer during the battery 
 023C (2026-10-07): the automated axe half was NOT re-executed in the 023 battery (battery stopped at Box 1 per contract failure handling; last OBSERVED automated result remains 0 violations from 2026-10-06). `apps/web/a11y/AUDIT-014.md` updated with the 023C release-verification note. The manual screen-reader pass (NVDA + Firefox / VoiceOver + Safari) remains PENDING HUMAN VERIFICATION with no named owner yet. Per the 023C contract, this is an explicit release gate: the release decision is SHIP_WITH_KNOWN_GAPS at best until a human auditor completes it.
 
 STATUS: OPEN — owner: to be named (human auditor).
+
+## GAP-097 update — CLOSED (2026-10-07)
+
+RESOLUTION: Removed the unused `type DependencyConflict` import from `apps/api/src/services/revisions.ts` (one line). Verified: `npx eslint src/services/revisions.ts` → exit 0, clean. Committed as `ab7d71d` (post-023 cleanup per 023 Invariant 1; the 023C reviewer's F1 P2 required this before 024 dispatch to establish the green 023 battery baseline for 024's Invariant 0).
+
+STATUS: CLOSED — 2026-10-07.

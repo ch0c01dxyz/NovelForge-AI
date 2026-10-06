@@ -90,6 +90,18 @@ const platformAdmin = usePlatformAdmin();
 const platformRole = ref<"SUPER_ADMIN" | null>(null);
 const showAdminLink = computed(() => platformRole.value === "SUPER_ADMIN");
 
+// ---------- NF-WF-019B: comment moderation nav ----------
+// Staff = workspace members holding the existing `novel:update`
+// capability (Klein's Q2 decision 2026-10-06: no platform moderation
+// team). The link is role-gated (progressive enhancement only); the
+// moderation page and every moderation route enforce membership +
+// `novel:update` server-side.
+const showModerationLink = computed(
+  () =>
+    studioRole.value !== null &&
+    ["OWNER", "ADMIN", "AUTHOR", "EDITOR"].includes(studioRole.value),
+);
+
 const workspaceId = computed(() => String(route.params.workspaceId ?? ""));
 const novelId = computed(() => String(route.params.novelId ?? ""));
 const base = computed(() => `/workspaces/${workspaceId.value}/novels/${novelId.value}`);
@@ -856,6 +868,18 @@ async function publish() {
         data-testid="admin-link"
       >
         {{ t("platformAdmin.title") }}
+      </NuxtLink>
+      <!-- NF-WF-019B: comment moderation link — staff only (role-gated,
+           progressive enhancement; the moderation page and every
+           moderation route enforce membership + `novel:update`
+           server-side). -->
+      <NuxtLink
+        v-if="showModerationLink"
+        :to="`/workspaces/${workspaceId}/novels/${novelId}/moderation`"
+        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        data-testid="moderation-link"
+      >
+        {{ t("comments.queueNavLink") }}
       </NuxtLink>
       <div
         class="flex items-center gap-1 rounded-lg border border-nf-border p-0.5 text-[12px]"

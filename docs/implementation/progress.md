@@ -5219,3 +5219,366 @@ have no frozen read route; the diff reviewer rules conformance —
 the GAP-064/066 precedent); GAP-028 stays open (surfaced honestly,
 not fixed); GAP-013 (MODEL_UNVERIFIED) unchanged; GAP-051 (human
 screen-reader pass) applies to the receipts surface too.
+
+## NF-WF-019A — Reader engagement (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 019A implementer actor (separate from the 019
+contract author/amendment author/contract reviewer, the 019B/C/D
+implementers, and the future diff reviewer; backends MODEL_UNVERIFIED
+per GAP-013). 019B/C/D scope NOT touched (their files are separate
+uncommitted work by parallel actors in the same tree; the only shared
+files touched are additive: `schema.prisma`, `services/publication.ts`
+(Q8/GAP-070 count fields), `public-routes.test.ts` (one exact-shape
+assertion updated for the additive field), `app.ts` (route
+registration), i18n `en.ts`/`id.ts` (new `social:` subtree)).
+
+Backend (additive; `packages/auth/authorization.ts` untouched — no new
+capabilities, no new auth endpoints):
+
+- `packages/database/prisma/schema.prisma` — new `Bookmark` /
+  `NovelFollow` / `AuthorFollow` / `ChapterLike` models (dedup unique
+  constraints as the idempotency backstop; chapter likes anchor to
+  chapter identity `(novelId, chapterNumber)`, not a chapter FK, so rows
+  survive republication); `Novel.followerCount`, `Chapter.likeCount`
+  counters; `Chapter.commentCount` (pinned in the 019A migration block
+  too — shared with 019B per GAP-071, both `ADD COLUMN IF NOT
+  EXISTS`); back-references on `User`/`Novel` (author follows are two
+  named relations to `User`).
+- `packages/database/prisma/migrations/20261006_nf_wf_019a_engagement/migration.sql`
+  — idempotent (`CREATE TABLE IF NOT EXISTS` with inline unique
+  constraints, `ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT
+  EXISTS`; GAP-030). Purely additive; rollback = drop tables/columns.
+- `apps/api/src/services/reader-engagement.ts`
+  (`createEngagementServices`) — bookmark/follow/like/author-follow
+  writes with the 014 predicate IN the query (ACTIVE novel + PUBLISHED
+  publication; invisible → 404 no-oracle); `INSERT ... ON CONFLICT DO
+  NOTHING` + conditional counter `UPDATE` in the same transaction
+  (concurrent writers cannot double-count; decrements
+  `GREATEST(n-1, 0)`); author identity = the 013 public-author
+  predicate (user with ≥1 public novel); self-follow → 400
+  `EngagementInputError`; keyset cursor pagination
+  (base64url `{createdAt, id}`); list endpoints return the caller's
+  rows only; the `novel` sub-object is additively enriched with the
+  published-visible 014 card fields (GAP-074 — needed to reuse
+  NovelCard on the library page).
+- `apps/api/src/reader-routes.ts` — 13 routes under `/api/reader/*`,
+  all authenticated by construction (`requireActor` → 401
+  `UNAUTHENTICATED`); Zod → 400; `NotFoundError` → 404,
+  `EngagementInputError` → 400.
+- `apps/api/src/services/publication.ts` — Q8/GAP-068 additive counts
+  on the frozen 013 shapes (`followerCount` on the novel shape;
+  `likeCount`/`commentCount` on the chapter shape) plus GAP-070
+  (`followerCount` on the author shape); served only on visible reads
+  (the novel/chapter/author pages 404 when invisible), so counts
+  always reflect published-visible engagement; no auth object, no
+  session handling in `/api/public/*` (013 Invariant 2 preserved).
+- `apps/api/src/app.ts` — registers `registerReaderEngagementRoutes`
+  after the public reader routes.
+
+Web (`§15` foundational design; en+id `social:` subtree 19/19;
+WCAG 2.2 AA):
+
+- `apps/web/app/composables/useSession.ts` — session probe
+  (`GET /api/auth/session`; shape-validated; UI gating is progressive
+  enhancement only).
+- `apps/web/app/composables/useEngagement.ts` — engagement API client.
+- `apps/web/app/components/social/` — `LikeButton`, `BookmarkButton`,
+  `FollowButton`, `FollowAuthorButton` (optimistic UI with rollback,
+  `aria-pressed`, counts from Q8 fields for anonymous as static text).
+- `apps/web/app/pages/read/[slug].vue` — bookmark + follow buttons
+  (signed-in only); anonymous sees the follower count as static text.
+- `apps/web/app/pages/read/[slug]/[number].vue` — like button
+  (signed-in only); anonymous sees the like count as static text.
+- `apps/web/app/pages/read/authors/[authorId].vue` — author-follow
+  button (signed-in only); anonymous sees the follower count as static
+  text (GAP-070 field).
+- `apps/web/app/pages/read/library.vue` — private library (bookmarks
+  + novel follows + author follows); anonymous → redirect to sign-in;
+  reuses the 014 `NovelCard`; novels with no currently-published
+  chapters render a fallback card (no fabricated dates).
+
+Evidence (actually executed on this host, 2026-10-06; scratch DBs):
+
+- API new `src/reader-engagement.test.ts` **31/31** (idempotency,
+  404 no-oracle, 401 on all 13 routes, transactional counters incl.
+  concurrent writers, privacy, author follows, engagement state,
+  pagination, Q8/GAP-068/GAP-070 conditions).
+- `src/public-routes.test.ts` **14/14** (one exact-shape assertion
+  updated for the additive GAP-070 field — the ruled consequence of
+  the additive extension).
+- Web new: `social.test.ts` **10/10**, `library.test.ts` **3/3**,
+  `social-engagement.axe.test.ts` **2/2** (zero violations, en+id).
+- `npx tsc --noEmit` (apps/api) clean for 019A files; `npx vue-tsc
+  --noEmit` clean; `pnpm lint` clean for 019A files (the one repo-wide
+  lint error is in 019B's `services/comments.ts:83`, not this actor's
+  file).
+- Full API suite / full web suite / `pnpm e2e` pending (parallel
+  actors' uncommitted files have type errors: 019B
+  `comment-routes.ts`/`services/comments.ts`, 019C
+  `services/notifications.ts` — fixed for 019C by regenerating the
+  Prisma client; 019B's are that actor's to fix).
+- Gaps: GAP-069 (host services not running — misdiagnosed at first,
+  corrected, CLOSED), GAP-070 (author-shape followerCount — OPEN for
+  the diff reviewer to rule), GAP-074 (list enrichment — OPEN for the
+  diff reviewer to rule; renumbered from GAP-071 after a collision
+  with the 019B actor's own GAP-071).
+
+## NF-WF-019B — Comments + moderation (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 019B implementer actor (separate from the 019
+contract author/amendment author/contract reviewer, the 019A/C/D
+implementers, and the future diff reviewer; backends MODEL_UNVERIFIED
+per GAP-013). 019A/C/D scope NOT touched (their files are separate
+uncommitted work by parallel actors in the same tree).
+
+Backend (additive; `packages/auth/authorization.ts` untouched — no new
+capabilities):
+
+- `packages/database/prisma/schema.prisma` — new `Comment` /
+  `CommentReport` models, `CommentStatus` / `ReportReason` enums;
+  `Chapter.commentCount` (VISIBLE-only counter, transactional);
+  relations on `User` (`authoredComments`, `filedReports`) and
+  `Novel` (`comments`).
+- `packages/database/prisma/migrations/20261006_nf_wf_019b_comments/migration.sql`
+  — idempotent (DO-blocks for `CREATE TYPE` per GAP-030, `IF NOT
+  EXISTS` everywhere). Coordination (GAP-071): `chapters.comment_count`
+  is ALSO pinned in the 019A migration block; both migrations use
+  `ADD COLUMN IF NOT EXISTS` so whichever lands first creates it.
+- `apps/api/src/services/comments.ts` (`createCommentServices`) —
+  post/list/reply/edit/delete, dedup-keyed reports, staff
+  hide/unhide/delete + report queue; visibility resolved IN THE QUERY
+  (ACTIVE novel + PUBLISHED publication, 014 precedent; invisible →
+  404 no-oracle); staff = workspace membership + EXISTING
+  `novel:update` (Klein's Q2 decision — no platform team);
+  moderation actions audit-logged (identity only).
+- `apps/api/src/comment-routes.ts` (`registerCommentRoutes`) — the 8
+  routes: `POST /api/reader/comments` (per-route burst limiter
+  1/10s/user keyed on the session cookie, the auth register/login
+  precedent), `GET /api/reader/comments` (anonymous-readable, VISIBLE
+  + DELETED tombstones, own/staff HIDDEN, keyset cursor pagination),
+  `PATCH`/`DELETE /api/reader/comments/:commentId` (own-only edit
+  within 15 min — HIDDEN → 403 even in-window, DELETED → 404;
+  staff may delete any), `POST .../reports` (dedup → 200 same),
+  `GET /api/reader/novels/:novelId/moderation/reports` (staff-only,
+  per-(comment,reason) aggregates with reporter COUNTS — never
+  identities; `?status=` filters the COMMENT's status — GAP-072
+  interpretation for the reviewer), `POST .../hide|unhide`.
+- `apps/api/src/services/policy-errors.ts` — additive `RateLimitError`
+  (`COMMENT_DAILY_LIMIT` / `REPORT_DAILY_LIMIT`, 100 comments /
+  20 reports per 24h per user, DB-counted); mapped to 429 in
+  `platform-routes.ts` (additive branch).
+- `apps/api/src/app.ts` — registers the comment routes (additive).
+
+Web (`apps/web/app/`, §15 foundational design, en+id):
+
+- `components/reader/CommentThread.vue` — on the public chapter page:
+  anonymous-readable list (replies nested, depth ≤ 1 — no reply
+  affordance on replies), session-gated composer/reply/edit/delete/
+  report dialog with the 5 pinned reasons; bodies render as escaped
+  text (`{{ }}` interpolation — markup is data, never markup);
+  hidden-by-moderator notice for own/staff-hidden comments.
+- `pages/workspaces/[workspaceId]/novels/[novelId]/moderation.vue` —
+  staff report queue (counts only, hide/unhide/delete, `?status=`
+  filter); header link on the novel page role-gated (OWNER/ADMIN/
+  AUTHOR/EDITOR; progressive enhancement, server enforces).
+- `pages/read/[slug]/[number].vue` — renders `CommentThread` below
+  the chapter nav (additive).
+- i18n: 56 `comments.*` leaf keys in en + id (parity verified 56/56).
+
+Tests (all actually executed on this host, scratch DBs): API
+`src/comments.test.ts` 16/16 (lifecycle, 404 no-oracle, 401, burst
+429, daily 429s, 400s, XSS-as-text, depth, edit window/states,
+tombstones, reports incl. dedup + invalid reason, moderation
+403/404/queue/counts/`?status=`, counter transactions, pagination);
+web `components/reader/comments.test.ts` 6/6,
+`moderation-queue.test.ts` 3/3, `app/a11y/comments.axe.test.ts` 4/4
+(zero violations en+id).
+
+GAPs: GAP-071 (shared `comment_count` column coordination — closes on
+both 019A/019B diff reviews), GAP-072 (`?status=` interpretation for
+the reviewer to rule), GAP-028/GAP-013/GAP-051 unchanged.
+Environment note: this host lost its PostgreSQL/Redis binaries (VM
+replacement, GAP-065 class); a parallel actor reinstalled PostgreSQL
+16 + pgvector + Redis, and the 019B implementer set pg_hba trust for
+local TCP so the passwordless `DATABASE_URL` works — dev-VM-only
+change, recorded here.
+
+Final verification evidence (all actually executed on this host):
+full API suite 38/38 non-e2e files green (771 passed | 17 skipped —
+the 3 e2e files fail only when run inside the API glob; via the proper
+`pnpm e2e`: 20/20 BASELINE-OK); full web suite 356/364 (8 failures all
+outside 019B scope: 3× reader.test.ts from 019A/019D's uncommitted
+`onUnmounted` in the chapter page, 4× 019D's reader-progress-sync axe
+missing a `useRoute` stub, 1× platform-admin axe timeout under load);
+API tsc EXIT 0; web vue-tsc EXIT 0; eslint clean on 019B files (fixed
+one `no-irregular-whitespace` in the control-char regex during the
+run); i18n `comments.*` 56/56 en+id leaf parity.
+
+## NF-WF-019C — Notifications + privacy (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 019C implementer actor (separate from the 019
+contract author/amendment author/contract reviewer, the 019A/B/D
+implementers, and the future diff reviewer; backends MODEL_UNVERIFIED
+per GAP-013). 019A/B/D scope NOT touched (their files are separate
+uncommitted work by parallel actors in the same tree) — except two
+additive shared-file hooks documented below.
+
+Backend (additive; `packages/auth/authorization.ts` untouched — no new
+capabilities; no new auth endpoints):
+
+- `packages/database/prisma/schema.prisma` — new `Notification` /
+  `NotificationPreference` models, `NotificationType` enum
+  (`NEW_CHAPTER`, `COMMENT_REPLY`, `MODERATION_NOTICE`); reverse
+  relations on `User` (inbox Cascade, actor SetNull, preferences
+  Cascade) and `Novel` (Cascade).
+- `packages/database/prisma/migrations/20261006_nf_wf_019c_notifications/migration.sql`
+  — additive, idempotent (DO-block enum, IF NOT EXISTS tables/indexes;
+  GAP-030); rollback = drop tables + type (destroys notification
+  history; never story truth — documented in the migration header).
+- `apps/api/src/services/notifications.ts` — `createNotificationServices`:
+  inbox list (cursor pagination, unreadCount), mark-read / read-all
+  (own rows only; 404 on others' ids — no oracle), preferences
+  (effective: all three pinned types, absent row = ON per Klein Q5;
+  upsert; unknown type → INVALID_INPUT), and the pinned event-emission
+  API for the 019B call sites (`emitCommentReplied` /
+  `emitCommentModerated` — single-recipient, preference-honoring,
+  self-reply suppressed).
+- `apps/api/src/services/notification-queue.ts` — the one shared
+  `notifications` BullMQ queue facade (`NOTIFICATION_QUEUE_NAME`,
+  `NOTIFICATION_FANOUT_JOB_NAME`, `NotificationFanoutJobData`), the
+  publication-queue.ts pattern.
+- `apps/api/src/reader-notification-routes.ts` —
+  `registerReaderNotificationRoutes`: `GET /api/reader/notifications`
+  (`?cursor=`, limit default 20 max 50), `POST .../read-all`
+  (registered before `/:id` so "read-all" is not captured),
+  `POST /api/reader/notifications/:id/read`,
+  `GET|PUT /api/reader/notifications/preferences` (PUT accepts only
+  the pinned NotificationType values → 400 otherwise; the master
+  switch is UI-only — OFF writes all three false, ON writes all three
+  true). All routes authenticated by construction (requireActor → 401).
+- `apps/api/src/app.ts` — `notificationQueue` option (fake seam like
+  `publicationQueue`), queue creation + onClose, route registration.
+- `apps/api/src/services/publication.ts` (shared-file hook, additive) —
+  the immediate-publish path enqueues the fan-out job AFTER commit
+  (only the enqueue is awaited); `notificationQueue?` is an optional
+  service option. GAP-073 records the contract interpretation (both
+  emission points) for the reviewer to rule.
+- `apps/worker/src/notification-fanout-jobs.ts` —
+  `fanoutChapterPublished` (resolves chapter PUBLISHED-guard, novel
+  author, novel followers ∪ author followers deduped via the 019A
+  pinned tables, NEW_CHAPTER opt-outs skipped at insert time with
+  absent = ON, bounded batches ≤ 500) + `startNotificationFanoutWorkerApp`
+  (injectable deps, Redis probe, graceful degradation — the
+  publication-jobs.ts facade).
+- `apps/worker/src/publication-jobs.ts` (shared-file hook, additive) —
+  after a successful fire, enqueues the fan-out job via the new
+  optional `enqueueNotificationFanout` dep (defaults to a real enqueue
+  on the `notifications` queue; randomUUID jobId — a republish reuses
+  the publication id, so a derived jobId would hit the P2-6
+  silent-noop hazard).
+- `apps/worker/src/index.ts` — fifth worker
+  (`startNotificationFanoutWorkerApp`), shutdown order, startup log.
+
+Web (`§15`-conformant, en+id, WCAG 2.2 AA):
+
+- `components/reader/NotificationBell.vue` — bell with unread badge;
+  renders only when a session exists (401 → hides; progressive
+  enhancement, the inbox is server-gated).
+- `pages/read/notifications.vue` — inbox (list, mark-read, read-all,
+  empty state, cursor pagination), preferences (master switch +
+  per-type toggles, optimistic with rollback, `role="switch"`),
+  privacy "what's private" panel (informational, no toggles in 019).
+- `pages/read/[slug].vue`, `pages/read/[slug]/[number].vue` — bell in
+  the top utility row (additive; the chapter page is 019D's file —
+  shared-file note in the handoff).
+- i18n: 35 `notifications.*` leaf keys in en + id (parity 35/35).
+  Placed top-level (not under `social:`), following 019B's `comments:`
+  precedent in the same tree.
+
+Tests (all actually executed on this host, scratch DBs, sequential):
+API `src/notifications.test.ts` 16/16 (inbox isolation/pagination/
+unreadCount, mark-read/read-all incl. 404 no-oracle, preferences
+defaults/upsert/400/master-switch, emission API incl. self-reply +
+opt-outs, no-email in bodies, immediate-publish enqueues fan-out);
+worker `src/notification-fanout-jobs.test.ts` 8/8 (union + dedupe,
+opt-out, non-PUBLISHED no-op, empty followers, bounded batches,
+batch clamp, Redis-unavailable degradation, malformed job data);
+web `components/reader/notifications.test.ts` 11/11,
+`app/a11y/notifications.axe.test.ts` 6/6 (zero violations en+id).
+
+GAPs: GAP-073 (dual emission-point interpretation — reviewer rules),
+GAP-065 note (binaries absent at 019C session start; reinstalled +
+role/vector re-applied — CLOSED), GAP-028/GAP-013/GAP-051 unchanged.
+
+## NF-WF-019D — Synced reading progress (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 019D implementer actor (separate from the 019
+contract author/amendment author/contract reviewer, the 019A/B/C
+implementers, and the future diff reviewer; backends MODEL_UNVERIFIED
+per GAP-013). 019A/B/C scope NOT touched (their files are separate
+uncommitted work by parallel actors in the same tree). Shared files
+with additive changes in distinct sections: `schema.prisma` (new
+`ReadingProgress` model + `User.readingProgress`/`Novel.readingProgress`
+relations), `apps/api/src/app.ts` (route registration),
+`apps/web/app/i18n/en.ts`/`id.ts` (new `progressSync:` subtree),
+`apps/web/app/pages/read/[slug]/[number].vue` (019D sync integration;
+019A/B/C also added their distinct sections: LikeButton,
+CommentThread, NotificationBell).
+
+Backend (additive; `packages/auth/authorization.ts` untouched — no new
+capabilities, no new auth endpoints):
+
+- `packages/database/prisma/schema.prisma` — new `ReadingProgress`
+  model: `{ id, userId → User (Cascade), novelId → Novel (Cascade),
+  chapterNumber Int, scrollRatio Float?, deviceId String?,
+  updatedAt DateTime, @@unique([userId, novelId]),
+  @@map("reading_progress") }`. `updatedAt` is set from the winning
+  write's client timestamp (NOT `@updatedAt`) so LWW comparisons are
+  stable.
+- `packages/database/prisma/migrations/20261006_nf_wf_019d_reading_progress/migration.sql`
+  — additive, idempotent (IF NOT EXISTS + DO-block constraints;
+  GAP-030); rollback = drop table (destroys progress history, never
+  story truth — documented in the migration header); backfill: none.
+- `apps/api/src/reader-progress-routes.ts` — 3 routes, all
+  authenticated by construction (`requireActor` → 401
+  `UNAUTHENTICATED`):
+  - `PUT /api/reader/progress` — last-write-wins by client clock:
+    applied only when `clientUpdatedAt` is NEWER than the stored
+    `updatedAt`; older/equal → 200 with the STORED row (deterministic
+    tie). Engageable check IN the SQL (Invariant 2: ACTIVE + ≥1
+    PUBLISHED publication; invisible → 404 `NOT_FOUND`, no oracle).
+    Transactional upsert; the server never fabricates progress.
+  - `GET /api/reader/progress?novelId=` — caller's own row only
+    (Invariant 4); `{ progress: {...} | null }`.
+  - `DELETE /api/reader/progress/:novelId` — 204 idempotent.
+
+Web (`apps/web/app`):
+
+- `composables/useSyncedReadingProgress.ts` — session probe (cached,
+  one call max per page load), `loadSyncedProgress` (max(updatedAt)
+  merge of device-local 014 + server row; winner written back via
+  idempotent PUT; ties keep server), debounced PUT (2s, the 014
+  cadence), offline queue (`nf:progress-sync-queue:v1`, latest per
+  novel wins; flushes on `online` event), honest `syncState`
+  (`anonymous`/`offline`/`local-only`/`synced`).
+- `pages/read/[slug]/[number].vue` — 014 `markRead` unchanged;
+  authenticated users resolve novelId via `/public/novels/:slug`
+  (frozen 013 shapes untouched), merge, seed scroll position from the
+  winner's `scrollRatio`; scroll listener → debounced PUT; "synced"
+  indicator (honest label; absent when offline/anonymous).
+- i18n: `progressSync.*` 2/2 en+id parity (programmatic check).
+
+Tests (all actually executed on this host, scratch DBs, sequential):
+API `src/reader-progress.test.ts` 11/11 (LWW newer/older/equal,
+401s, 404 no-oracle incl. nonexistent novel, privacy isolation,
+DELETE idempotency, 400s); web
+`composables/useSyncedReadingProgress.test.ts` 6/6 (merge
+semantics, tie, offline queue/flush, anonymous zero-progress-network,
+DELETE); `app/a11y/reader-progress-sync.axe.test.ts` 4/4 (zero
+violations en+id, indicator visible + hidden). `npx vue-tsc --noEmit`
+clean. API `tsc --noEmit`: zero errors in 019D files
+(`reader-progress-routes.ts`, `reader-progress.test.ts`); 2 errors in
+019A's `src/services/reader-engagement.ts` (parallel actor's scope —
+their diff reviewer owns it).
+
+GAPs: none new for 019D. GAP-013/GAP-028/GAP-051 unchanged.

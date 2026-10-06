@@ -48,3 +48,32 @@ export class PublicationError extends Error {
     this.code = code;
   }
 }
+
+/**
+ * NF-WF-019B: typed rate-limit refusals for reader social writes.
+ *
+ * `RateLimitError` follows the `PolicyError` precedent: a typed error
+ * carrying the machine-readable code, mapped by the platform error
+ * handler to 429 with the code as the envelope's error field. Lives in
+ * this leaf module (no service imports) so the comment service can
+ * throw it without import cycles.
+ *
+ * The burst limit (1 comment / 10s / user) is enforced by the app-wide
+ * @fastify/rate-limit with a per-route override (the auth
+ * register/login precedent); the DAILY limits below are enforced in
+ * the service via DB counts (deterministic per-user accounting the
+ * in-memory limiter cannot give across restarts).
+ */
+export type RateLimitErrorCode =
+  | "COMMENT_DAILY_LIMIT" // > 100 comments / 24h / user
+  | "REPORT_DAILY_LIMIT"; // > 20 reports / 24h / user
+
+export class RateLimitError extends Error {
+  readonly code: RateLimitErrorCode;
+  readonly statusCode = 429 as const;
+  constructor(code: RateLimitErrorCode, message: string) {
+    super(message);
+    this.name = "RateLimitError";
+    this.code = code;
+  }
+}

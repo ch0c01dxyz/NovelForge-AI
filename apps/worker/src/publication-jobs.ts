@@ -41,6 +41,12 @@ import {
   projectionsForTables,
 } from "@novelforge/story-versioning";
 import type { WorkerLogger } from "./worker.ts";
+import {
+  NOTIFICATION_FANOUT_JOB_NAME,
+  NOTIFICATION_QUEUE_NAME,
+  type NotificationFanoutJobData,
+} from "./notification-fanout-jobs.ts";
+import { randomUUID } from "node:crypto";
 
 export type FireOutcome =
   | { outcome: "published"; publicationId: string }
@@ -415,6 +421,13 @@ export interface PublicationWorkerDeps {
   };
   probeTimeoutMs: number;
   logger: WorkerLogger;
+  /**
+   * NF-WF-019C: enqueue the `novel.chapter_published` fan-out after a
+   * successful fire. Optional seam — tests inject a spy; production
+   * defaults to a real enqueue on the `notifications` queue built from
+   * the same connection.
+   */
+  enqueueNotificationFanout?: (data: NotificationFanoutJobData) => Promise<unknown>;
 }
 
 export function defaultPublicationWorkerDeps(
@@ -506,6 +519,28 @@ export async function startPublicationWorkerApp(
     });
   }
 
+  // NF-WF-019C: the `notifications` queue for the chapter-published
+  // fan-out, on the same connection. Created once here; the
+  // notification fan-out worker (notification-fanout-jobs.ts) builds
+  // its own Worker on the same queue name — never a second queue.
+  const notificationQueue = d.createQueue(NOTIFICATION_QUEUE_NAME, connection) as unknown as {
+    add(
+      name: string,
+      data: NotificationFanoutJobData,
+      opts: { jobId: string },
+    ): Promise<unknown>;
+    close(): Promise<void>;
+  };
+  const enqueueNotificationFanout =
+    d.enqueueNotificationFanout ??
+    ((fanoutData: NotificationFanoutJobData) =>
+      notificationQueue.add(NOTIFICATION_FANOUT_JOB_NAME, fanoutData, {
+        // One job per publish event: a republish reuses the publication
+        // id, so the job id must not be derived from it (the P2-6
+        // silent-noop hazard would swallow the second fan-out).
+        jobId: randomUUID(),
+      }));
+
   const worker = d.createWorker(
     PUBLICATION_QUEUE_NAME,
     async (job) => {
@@ -521,6 +556,18 @@ export async function startPublicationWorkerApp(
         outcome: outcome.outcome,
         ...(outcome.outcome === "refused" ? { code: outcome.code } : {}),
       });
+      if (outcome.outcome === "published") {
+        // NF-WF-019C: emit `novel.chapter_published` for the scheduled
+        // fire path. Enqueue AFTER the PUBLISHED commit; only the
+        // enqueue is awaited — fan-out itself is async and bounded, so
+        // the fire never blocks on follower count (Invariant 7).
+        await enqueueNotificationFanout({
+          eventName: "novel.chapter_published",
+          publicationId: outcome.publicationId,
+          novelId: data.novelId,
+          chapterId: data.chapterId,
+        });
+      }
       // Deterministic refusals succeed (the row is UNPUBLISHED); transient
       // failures throw above → BullMQ retains the failed record and the
       // row stays SCHEDULED for the next reconciliation.
@@ -553,6 +600,7 @@ export async function startPublicationWorkerApp(
       stopped = true;
       await worker.close();
       await queue.close();
+      await notificationQueue.close();
       connection.disconnect();
       await db.$disconnect();
     },

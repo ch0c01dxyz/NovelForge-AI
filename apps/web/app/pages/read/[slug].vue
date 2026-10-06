@@ -11,11 +11,18 @@
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
 import { useReadingProgress } from "../../composables/useReadingProgress";
+import { useSession } from "../../composables/useSession";
+import { useEngagement } from "../../composables/useEngagement";
+import BookmarkButton from "../../components/social/BookmarkButton.vue";
+import FollowButton from "../../components/social/FollowButton.vue";
 
 interface PublicNovel {
   id: string;
   title: string;
   slug: string;
+  // NF-WF-019A (Q8, GAP-068): additive aggregate count on the frozen
+  // 013 shape — optional for backward compatibility with cached data.
+  followerCount?: number;
   author: { id: string; displayName: string };
 }
 interface PublishedChapter {
@@ -28,6 +35,16 @@ const route = useRoute();
 const { api } = useApi();
 const { t } = useLocale();
 const { getProgress } = useReadingProgress();
+const { signedIn, checkSession } = useSession();
+const { getEngagement } = useEngagement();
+
+/** NF-WF-019A: the caller's engagement state for this novel. Anonymous
+ * readers keep the defaults (buttons hidden, counts from the Q8 public
+ * fields). */
+const bookmarked = ref(false);
+const following = ref(false);
+const followerCount = ref(0);
+const engagementFailed = ref(false);
 
 const slug = computed(() => String(route.params.slug ?? ""));
 const novel = ref<PublicNovel | null>(null);
@@ -63,6 +80,21 @@ onMounted(async () => {
     );
     novel.value = data.novel;
     chapters.value = data.chapters;
+    followerCount.value = data.novel.followerCount ?? 0;
+    // NF-WF-019A: engagement affordances only for signed-in readers
+    // (Invariant 1). The session probe failing is non-fatal — the
+    // page renders as anonymous.
+    try {
+      await checkSession();
+      if (signedIn.value) {
+        const state = await getEngagement(data.novel.id);
+        bookmarked.value = state.bookmarked;
+        following.value = state.following;
+        followerCount.value = state.followerCount;
+      }
+    } catch {
+      /* anonymous render */
+    }
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) {
       notFound.value = true;
@@ -77,6 +109,9 @@ onMounted(async () => {
 
 <template>
   <main class="mx-auto max-w-[700px] px-5 py-12 sm:px-10">
+    <div class="mb-6 flex justify-end">
+      <NotificationBell />
+    </div>
     <div v-if="loading" role="status" class="text-sm text-nf-text-dim">{{ t("reader.loading") }}</div>
     <div v-else-if="notFound" role="alert">
       <h1 class="font-nf-literary text-[30px] font-semibold">{{ t("reader.notFoundTitle") }}</h1>
@@ -96,6 +131,34 @@ onMounted(async () => {
         >
           {{ novel.author.displayName }}
         </NuxtLink>
+      </p>
+      <!-- NF-WF-019A: engagement affordances for signed-in readers only.
+           Anonymous readers see the follower count as static text
+           (Invariant 1). -->
+      <div class="mt-4 flex flex-wrap items-center gap-2">
+        <template v-if="signedIn && novel">
+          <BookmarkButton
+            :novel-id="novel.id"
+            :bookmarked="bookmarked"
+            @failed="engagementFailed = true"
+          />
+          <FollowButton
+            :novel-id="novel.id"
+            :following="following"
+            :follower-count="followerCount"
+            @failed="engagementFailed = true"
+          />
+        </template>
+        <p v-else class="text-[13px] tabular-nums text-nf-text-faint">
+          {{ t("social.followerCount", { n: followerCount }) }}
+        </p>
+      </div>
+      <p
+        v-if="engagementFailed"
+        role="alert"
+        class="mt-2 text-[13px] text-nf-text-dim"
+      >
+        {{ t("social.actionFailed") }}
       </p>
       <section aria-label="chapters" class="mt-10">
         <h2 class="nf-section-label">{{ t("reader.chapters") }}</h2>

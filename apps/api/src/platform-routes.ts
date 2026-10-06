@@ -23,7 +23,7 @@ import { HeadConflictError } from "./services/context-compiler.ts";
 import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 import { CanonApplicationError } from "./services/canon-applications.ts";
 import { MemoryError } from "./services/memory.ts";
-import { PolicyError, PublicationError } from "./services/policy-errors.ts";
+import { PolicyError, PublicationError, RateLimitError } from "./services/policy-errors.ts";
 // NF-WF-017A: typed import-file refusals (IMPORT_TOO_LARGE,
 // IMPORT_UNSUPPORTED_TYPE, IMPORT_CORRUPT, IMPORT_ARCHIVE_UNSAFE,
 // IMPORT_NO_TEXT) carry the machine-readable code as the envelope's
@@ -141,6 +141,13 @@ export async function registerPlatformRoutes(
     // branch below (which can only emit CONFLICT) — the same position as
     // PolicyError/CanonApplicationError/MemoryError.
     if (error instanceof PublicationError) {
+      return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-019B: typed rate-limit refusals (COMMENT_DAILY_LIMIT,
+    // REPORT_DAILY_LIMIT) carry the machine-readable code as the
+    // envelope's error field. Same position as the other typed-error
+    // branches.
+    if (error instanceof RateLimitError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
     if (error instanceof ConflictError) {

@@ -60,6 +60,11 @@ import {
   PUBLICATION_JOB_NAME,
   type PublicationQueue,
 } from "./publication-queue.ts";
+import {
+  NOTIFICATION_FANOUT_JOB_NAME,
+  type NotificationFanoutJobData,
+  type NotificationQueue,
+} from "./notification-queue.ts";
 
 export interface SchedulePublicationInput {
   actorUserId: string;
@@ -144,6 +149,8 @@ export interface PublicationServices {
     id: string;
     title: string;
     slug: string;
+    // NF-WF-019A (Q8, GAP-068): additive aggregate count.
+    followerCount: number;
     author: { id: string; displayName: string };
   } | null>;
   listPublishedChapters(input: {
@@ -162,6 +169,9 @@ export interface PublicationServices {
       wordCount: number;
       publishedVersionNumber: number;
       publishedAt: string;
+      // NF-WF-019A (Q8, GAP-068): additive aggregate counts.
+      likeCount: number;
+      commentCount: number;
     };
     prevChapter: { number: number; title: string } | null;
     nextChapter: { number: number; title: string } | null;
@@ -169,7 +179,9 @@ export interface PublicationServices {
   resolvePublicAuthor(input: {
     authorId: string;
   }): Promise<{
-    author: { id: string; displayName: string };
+    // NF-WF-019A (GAP-070): followerCount is additive on the frozen
+    // 013 author shape.
+    author: { id: string; displayName: string; followerCount: number };
     novels: Array<{
       id: string;
       title: string;
@@ -187,6 +199,14 @@ async function resolvePublicNovelBySlug(db: NovelForgeDb, novelSlug: string) {
       id: true,
       title: true,
       slug: true,
+      // NF-WF-019A (Q8, GAP-068): additive aggregate count on the frozen
+      // 013 novel shape. Backward-compatible: no existing field renamed,
+      // removed, or restructured; no auth object, no session handling,
+      // no 401 path (013 Invariant 2 preserved). The counter is served
+      // only here — the novel page itself 404s unless the novel is
+      // publicly visible — so the count always reflects
+      // published-visible engagement (GAP-068 condition b).
+      followerCount: true,
       createdBy: { select: { id: true, displayName: true } },
     },
     orderBy: { createdAt: "asc" },
@@ -196,6 +216,7 @@ async function resolvePublicNovelBySlug(db: NovelForgeDb, novelSlug: string) {
     id: novel.id,
     title: novel.title,
     slug: novel.slug,
+    followerCount: novel.followerCount,
     author: { id: novel.createdBy.id, displayName: novel.createdBy.displayName },
   };
 }
@@ -222,11 +243,19 @@ export function createPublicationServices({
   db,
   audit,
   queue,
+  notificationQueue,
   manuscripts,
 }: {
   db: NovelForgeDb;
   audit?: AuditService;
   queue: PublicationQueue;
+  /**
+   * NF-WF-019C: the `notifications` queue for the
+   * `novel.chapter_published` fan-out. Optional so existing callers
+   * (tests) that don't care about notifications keep working; when
+   * absent, no fan-out job is enqueued.
+   */
+  notificationQueue?: NotificationQueue;
   manuscripts: ManuscriptServices;
 }): PublicationServices {
   /** Membership gate — 404 for non-members (ADR-0004), then capability. */
@@ -474,6 +503,24 @@ export function createPublicationServices({
           ...(row.novelActivated ? { novelActivated: true } : {}),
         },
       });
+      // NF-WF-019C: emit `novel.chapter_published` for the immediate
+      // publish path. Enqueue AFTER commit (the schedule path's rule);
+      // only the enqueue is awaited — fan-out itself is async and
+      // bounded, so publish latency never grows with follower count
+      // (Invariant 7). The scheduled path emits from the 012 worker
+      // fire; both paths produce the same event (a chapter reaching
+      // PUBLISHED), never a fabricated one.
+      if (notificationQueue) {
+        const fanout: NotificationFanoutJobData = {
+          eventName: "novel.chapter_published",
+          publicationId: row.published.id,
+          novelId,
+          chapterId,
+        };
+        await notificationQueue.add(NOTIFICATION_FANOUT_JOB_NAME, fanout, {
+          jobId: randomUUID(),
+        });
+      }
       return {
         publicationId: row.published.id,
         pinnedVersionId: row.published.chapterVersionId,
@@ -821,6 +868,12 @@ export function createPublicationServices({
           id: true,
           number: true,
           title: true,
+          // NF-WF-019A (Q8, GAP-068): additive aggregate counts on the
+          // frozen 013 chapter shape. The chapter page 404s unless the
+          // chapter's publication is PUBLISHED, so these counts always
+          // reflect published-visible engagement (GAP-068 condition b).
+          likeCount: true,
+          commentCount: true,
           publication: {
             select: {
               status: true,
@@ -848,6 +901,9 @@ export function createPublicationServices({
           wordCount: countWords(stripHtmlTags(content)),
           publishedVersionNumber: pub.chapterVersion.number,
           publishedAt: pub.publishedAt!.toISOString(),
+          // NF-WF-019A (Q8, GAP-068): additive counts (see note above).
+          likeCount: chapter!.likeCount,
+          commentCount: chapter!.commentCount,
         },
         prevChapter:
           idx > 0
@@ -904,8 +960,20 @@ export function createPublicationServices({
       // Author page ordering: earliest publishedAt first (pinned here;
       // the contract's recommended choice).
       rows.sort((a, b) => (a.firstPublishedAt ?? 0) - (b.firstPublishedAt ?? 0));
+      // NF-WF-019A (GAP-070): additive author-follower aggregate on the
+      // frozen 013 author shape. Pure row count — no per-user state;
+      // served to anonymous readers as static text (the contract's 019A
+      // Web UI acceptance). No auth object, no session handling
+      // (013 Invariant 2 preserved).
+      const followerCount = await db.authorFollow.count({
+        where: { authorId },
+      });
       return {
-        author: { id: user.id, displayName: user.displayName },
+        author: {
+          id: user.id,
+          displayName: user.displayName,
+          followerCount,
+        },
         novels: rows.map(({ id, title, slug, publishedChapterCount }) => ({
           id,
           title,

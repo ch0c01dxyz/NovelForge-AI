@@ -48,10 +48,16 @@ import { createDefinitionServices } from "./services/definitions.ts";
 import { createWorkflowRunServices } from "./services/workflow-runs.ts";
 import { createWorkflowQueue, type WorkflowQueue } from "./services/workflow-queue.ts";
 import { createPublicationQueue, type PublicationQueue } from "./services/publication-queue.ts";
+import { createNotificationQueue, type NotificationQueue } from "./services/notification-queue.ts";
 import { createPublicationServices } from "./services/publication.ts";
+import { createEngagementServices } from "./services/reader-engagement.ts";
+import { createNotificationServices } from "./services/notifications.ts";
 import { registerPublicationRoutes } from "./publication-routes.ts";
 import { registerPublicReaderRoutes } from "./public-routes.ts";
+import { registerReaderEngagementRoutes } from "./reader-routes.ts";
+import { registerReaderNotificationRoutes } from "./reader-notification-routes.ts";
 import { registerPublicDiscoveryRoutes } from "./public-discovery-routes.ts";
+import { registerCommentRoutes } from "./comment-routes.ts";
 import { createPublicDiscoveryServices } from "./services/public-discovery.ts";
 import { createMemoryQueue, type MemoryQueue } from "./services/memory-queue.ts";
 import { createMemoryServices } from "./services/memory.ts";
@@ -60,6 +66,7 @@ import { createStateAssemblyServices } from "./services/state-assembly.ts";
 import { createFinalTextReviewServices } from "./services/final-text-review.ts";
 import { createStoryHealthServices } from "./services/story-health.ts";
 import { registerStoryHealthRoutes } from "./story-health-routes.ts";
+import { registerReaderProgressRoutes } from "./reader-progress-routes.ts";
 import { createRetrievalServices } from "./services/retrieval.ts";
 import { createCanonServices } from "./services/canon.ts";
 import { createCanonApplicationServices } from "./services/canon-applications.ts";
@@ -143,6 +150,13 @@ export interface BuildAppOptions {
    * `publication` queue is constructed.
    */
   publicationQueue?: PublicationQueue;
+  /**
+   * Queue seam for the notification fan-out. Tests supply a fake so no
+   * test needs a live BullMQ exchange; the handler is covered in the
+   * worker suite against the real DB. Production omits this and the
+   * shared `notifications` queue is constructed.
+   */
+  notificationQueue?: NotificationQueue;
 }
 
 export async function buildApp(
@@ -236,6 +250,18 @@ export async function buildApp(
         await publicationQueue.close();
       });
     }
+    // NF-WF-019C: the one shared `notifications` queue for the
+    // novel.chapter_published fan-out (Invariant 7 — async, bounded,
+    // the publish path never awaits fan-out). Tests may inject a fake;
+    // only a queue we created is closed here.
+    const ownNotificationQueue = options.notificationQueue === undefined;
+    const notificationQueue =
+      options.notificationQueue ?? createNotificationQueue(env.REDIS_URL);
+    if (ownNotificationQueue) {
+      app.addHook("onClose", async () => {
+        await notificationQueue.close();
+      });
+    }
     // One audit + one AI services instance shared by the AI routes and the
     // workflow executor: a workflow step must reach a model through the
     // same generation path as a direct request (CLAUDE.md §18), so the
@@ -249,16 +275,37 @@ export async function buildApp(
       db: options.db,
       audit,
       queue: publicationQueue,
+      notificationQueue,
       manuscripts: manuscriptServices,
     });
     registerPublicationRoutes(app, { auth, services: publicationServices });
     registerPublicReaderRoutes(app, { services: publicationServices });
+    // NF-WF-019C: reader notifications (inbox + preferences; identity-based,
+    // no new capabilities). The immediate-publish path enqueues fan-out
+    // jobs through this queue (see publication.ts).
+    registerReaderNotificationRoutes(app, {
+      auth,
+      services: createNotificationServices({ db: options.db }),
+    });
+    // NF-WF-019A: authenticated reader engagement (bookmark / follow /
+    // like). All routes here are authenticated by construction
+    // (requireActor → 401); the anonymous surface stays on the frozen
+    // /api/public/* routes.
+    registerReaderEngagementRoutes(app, {
+      auth,
+      services: createEngagementServices({ db: options.db }),
+    });
     // NF-WF-014: the anonymous public discovery routes (listing, genre
     // facets, published-only search) plus the single member genre
     // route. Anonymous routes take no auth (no 401 path); the member
     // route gets auth for its session check.
     const discoveryServices = createPublicDiscoveryServices({ db: options.db });
     registerPublicDiscoveryRoutes(app, { auth, services: discoveryServices });
+    // NF-WF-019B: reader comments + moderation (`/api/reader/comments*`).
+    // Writes are authenticated by construction; the comment list is
+    // anonymous-readable. The staff moderation routes reuse the
+    // EXISTING `novel:update` capability (no new capabilities).
+    registerCommentRoutes(app, { auth, db: options.db, audit });
     const aiServices = createAiServices({
       db: options.db,
       registry: createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY),
@@ -434,6 +481,10 @@ export async function buildApp(
       health: storyHealthServices,
       review: finalTextReviewServices,
     });
+
+    // NF-WF-019D: synced reading progress (identity-based /api/reader/*
+    // routes; no new capabilities).
+    registerReaderProgressRoutes(app, { auth, db: options.db! });
 
     // NF-WF-004: the one shared `workflow-runs` queue. The run route
     // enqueues through it; the worker executes off the request thread.

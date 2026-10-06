@@ -2016,3 +2016,119 @@ sub-tabs) has no dedicated test — its children are covered and the
 gates are progressive enhancement over the server enforcement; (4) the
 frozen 012 publish gate's internal `latestReceipt` is not read by this
 surface — receipts come from the additive read route.
+
+## NF-WF-019A reader engagement — 2026-10-06
+
+Implemented by the 019A implementer actor (separate from the 019
+contract author/amendment author/contract reviewer, the 019B/C/D
+implementers, and the future diff reviewer; backends MODEL_UNVERIFIED
+per GAP-013). Executed on this host (PostgreSQL 16.15 + pgvector 0.6.0,
+Redis 7.0.15 — services were not running at session start; started
+manually, GAP-069 recorded and CLOSED). Scratch DBs only
+(`novelforge_test_reader_engagement`).
+
+| Check actually run | Result |
+|---|---|
+| New API tests `src/reader-engagement.test.ts` | **31/31** — bookmark/follow/like idempotency (repeat → 200 same state, no duplicate rows), un-X → 204 idempotent, 404 no-oracle for DRAFT/ARCHIVED novels and UNPUBLISHED chapters, 401 on all 13 `/api/reader/*` routes without a session, counters transactional (follow/unfollow, like/unlike), concurrent writers (8 users → count 8; 10 duplicate same-user writes → 1 row, count +1), lists return the caller's rows only, author follows (self-follow 400, nonexistent/no-public-novels author 404), engagement + engagement/author state endpoints, cursor pagination, invalid cursor → 400, Q8/GAP-068 (additive-only shapes, counts vanish when chapter leaves PUBLISHED), GAP-070 author-shape followerCount |
+| `src/public-routes.test.ts` (regression) | **14/14** — one exact-shape assertion updated for the additive GAP-070 `followerCount` field (the ruled consequence of the additive extension; all other 013 shape assertions unchanged) |
+| New web tests `app/components/social/social.test.ts` | **10/10** — optimistic toggle + API call shapes, rollback + `failed` emission on API failure, `aria-pressed` states, DELETE paths |
+| New web tests `app/pages/read/library.test.ts` | **3/3** — renders the caller's three lists, anonymous → `/sign-in` redirect, empty hint |
+| `app/a11y/social-engagement.axe.test.ts` | **2/2** — zero axe violations (wcag2aa + wcag22aa) on all four engagement buttons, en+id |
+| i18n parity check | **19/19** `social.*` keys present in both en and id |
+| `npx tsc --noEmit` (apps/api) | Exit 0 for all 019A files (remaining repo errors are the parallel 019B actor's `comment-routes.ts`/`services/comments.ts`, not this actor's files) |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+| `pnpm lint` (019A files) | Exit 0 (the one repo-wide lint error is 019B's `services/comments.ts:83`) |
+| Full web suite `npx vitest run` (apps/web) | 65 files, **380/390** — the 10 failures are all in other actors' files (019C `notifications.axe` 2, 018B `platform-admin.axe` 2, 019D `reader-progress-sync.axe` 1, 018C `receipts.axe` 2, 019D's `onUnmounted` breaking 013 `reader.test.ts` chapter page 3); this actor's files **15/15** (social 10, library 3, social-engagement axe 2) |
+| `pnpm e2e` (011 author-preview loop) | `author-preview.loop.test.ts` **3/3** PASS; `gates.test.ts` **10/10** PASS (isolated run); the single-command `pnpm e2e` is flaky on this host — `getE2E()`'s `pg_terminate_backend` races the long-novel fixture build (57P01), recorded as GAP-076 (harness issue, not a 019A regression) |
+| `npx tsc --noEmit` (apps/api) | Exit 0 (4 errors in this actor's `reader-engagement.ts` found and fixed: widened `"PUBLISHED"` literal in the shared select — `as const`) |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+| `pnpm lint` (repo eslint; 019A files) | Exit 0 for all 019A `.ts` files (repo eslint has no Vue plugin — `.vue` covered by vue-tsc) |
+
+GAP-070 and GAP-074 deviations recorded BEFORE the workarounds
+(standing rule): (1) no anonymous-readable source existed for the
+author-follower count the contract promises as static text, so 019A
+adds additive `followerCount` to the frozen 013 author shape
+(GAP-070); (2) the pinned list shapes could not supply the 014
+NovelCard fields the library page must render, so 019A additively
+enriches the `novel` sub-object in the three list endpoints with
+published-visible card fields (GAP-074; renumbered from GAP-071 after
+a collision with the 019B actor's own GAP-071). The diff reviewer
+rules both.
+
+Honest limitations (not GAPs): (1) backends MODEL_UNVERIFIED per
+GAP-013; (2) the full screen-reader pass is a human task (GAP-051);
+(3) the library page fetches up to 100 rows per list without
+"load more" pagination UI — acceptable for a v1 private page;
+(4) the 019B/019C/019D parallel work was not re-verified by this
+actor.
+
+## NF-WF-019D synced reading progress — 2026-10-06
+
+Implemented by the 019D implementer actor (separate from the 019
+contract author/amendment author/contract reviewer, the 019A/B/C
+implementers, and the future diff reviewer; backends MODEL_UNVERIFIED
+per GAP-013). Executed on this host (PostgreSQL 16.15 + pgvector 0.6.0,
+Redis 7.0.15 — already running from the 019A session; GAP-065
+re-applied). Scratch DB only (`novelforge_test_reader_progress`).
+
+| Check actually run | Result |
+|---|---|
+| New API tests `src/reader-progress.test.ts` | **11/11** — PUT LWW (newer overwrites, older → 200 stored row no regression, equal → stored wins tie), 401 on PUT/GET/DELETE without session, 404 no-oracle on DRAFT novel and on nonexistent novel id (identical responses), privacy (caller's row only; other user sees null), DELETE 204 idempotent, 400 on bad novelId/chapterNumber/scrollRatio/clientUpdatedAt |
+| New web tests `app/composables/useSyncedReadingProgress.test.ts` | **6/6** — server-newer wins (no PUT), local-newer wins + write-back, tie keeps server, offline queue + reconnect flush, anonymous zero-progress-network, DELETE |
+| `app/a11y/reader-progress-sync.axe.test.ts` | **4/4** — zero axe violations (wcag2aa + wcag22aa) on the reader page with the synced indicator visible and hidden, en+id |
+| i18n parity check | **2/2** `progressSync.*` keys present in both en and id |
+| `npx tsc --noEmit` (apps/api) | Zero errors in 019D files (`reader-progress-routes.ts`, `reader-progress.test.ts`); 2 errors in the parallel 019A actor's `src/services/reader-engagement.ts` (not 019D scope) |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+| Full API suite / full web suite / `pnpm e2e` | NOT run to completion by this actor — parallel actors' uncommitted files have type errors (019A); the 019D diff reviewer should re-run the full battery on a clean tree |
+
+No new GAPs for 019D. Honest limitations (not GAPs): (1) backends
+MODEL_UNVERIFIED per GAP-013; (2) the full screen-reader pass is a
+human task (GAP-051); (3) the anonymous session probe is one
+lightweight `GET /api/auth/session` per page load — the 014
+device-local path itself makes zero progress-network calls.
+
+## NF-WF-019C — Notifications + privacy (2026-10-06)
+
+Executed on this host (native PostgreSQL 16.15 + pgvector on localhost:5432,
+Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+Implementer actor separate from the 019 contract author/amendment author/
+contract reviewer, the 019A/019B/019D implementers, and the future diff
+reviewer; backends MODEL_UNVERIFIED per GAP-013. 019A/019B/019D scope NOT
+touched. The API suite and `pnpm e2e` ran sequentially (never concurrently —
+the standing procedural lesson).
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/notifications.test.ts` (apps/api) | **16/16** — inbox isolation/pagination/unreadCount; mark-read/read-all incl. 404 no-oracle; preferences defaults/upsert/400/master-switch; `emitCommentReplied`/`emitCommentModerated` incl. self-reply suppression + opt-outs; no-email in bodies; immediate-publish enqueues fan-out job (publish never blocks) |
+| `npx vitest run src/notification-fanout-jobs.test.ts` (apps/worker) | **8/8** — novel∪author follower union + dedupe (one notification per user per event); NEW_CHAPTER opt-out skipped at insert; non-PUBLISHED chapter → no-op; empty followers; bounded batches ≤ 500 (batch clamp); Redis-unavailable degradation; malformed job data |
+| New web tests: `app/components/reader/notifications.test.ts` | **11/11** — bell session-gating/401-hide, unread badge, inbox list/mark-read/read-all/empty/pagination, preference toggles, master switch writes all-three-false/true |
+| `app/a11y/notifications.axe.test.ts` | **6/6** — zero axe violations (wcag2aa + wcag22aa) on NotificationBell, inbox page, empty state, in en and id |
+| i18n parity check | **35/35** `notifications.*` keys present in both en and id (top-level subtree, following 019B's `comments:` precedent) |
+| Regression: `src/publication.test.ts` + `src/app.test.ts` (my touched files) | **21/21** — no regression from the dual-emission seam or the queue wiring |
+| Full worker suite `npx vitest run` (apps/worker) | 5 files, **40 passed / 1 skipped** — +8 new (fan-out), no regressions |
+| Full web suite `npx vitest run` (apps/web) | 65 files, **382/390** in the contended run; all 8 failures verified environmental — re-ran the 4 files sequentially: **32/32** (the 3 `reader.test.ts` chapter-page failures trace to 019D's `onUnmounted` in the shared harness, not to 019C's bell; 019D's diff reviewer owns it) |
+| Full API suite `npx vitest run` (apps/api) | Could not complete on this 2-CPU/7GB host: the run died silently after 11 files (**all green**: notifications 16/16, reader-engagement 31/31, public-routes 14/14, reader-progress 11/11, comments 16/16, canon 64/64, canon-application 16/16, definitions 49/49, chapter-template 13/13, writer-ui 11/11, approval-decision partial) — no summary, no failures observed before the process vanished |
+| `pnpm e2e` (011 author-preview loop) | 3 files, **20/20** exit 0 — no-regression vs 011 |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx tsc --noEmit` (apps/worker) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+
+GAP-073 deviation recorded BEFORE implementation (standing rule): the
+contract names only the 012 worker as the `novel.chapter_published`
+emission point, but the API immediate-publish path is the primary author
+flow — emitting only from the worker would silently drop notifications
+for it. 019C emits the identical pinned event from both points (worker
+fire after success via injectable seam; API immediate-publish after
+commit, only the enqueue awaited). The diff reviewer rules whether this
+is APPROVE_WITH_FINDINGS or CHANGES_REQUESTED.
+
+Honest limitations (not GAPs): (1) backends MODEL_UNVERIFIED per
+GAP-013; (2) no live-model generation exercised — the fan-out crash
+window (commit-then-enqueue) loses that event's notifications with no
+reconciliation; (3) the full screen-reader pass is a human task
+(GAP-051); (4) publish-latency independence from follower count is
+structural (O(1) enqueue + bounded ≤500 batches, both tested) — no
+literal timing assertion with an N-follower fixture; (5) no
+publish→worker→row end-to-end test — the two seams are tested
+separately, the standard project pattern for async boundaries.

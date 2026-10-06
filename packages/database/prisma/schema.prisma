@@ -85,6 +85,30 @@ model User {
   createdRevisions    Revision[]       @relation("RevisionCreator")
   createdCheckpoints  Checkpoint[]     @relation("CheckpointCreator")
   requestedRestores   RestoreOperation[] @relation("RestoreRequester")
+  /// NF-WF-019B: comments authored by this user; reports filed by this
+  /// user (dedup-keyed per (comment, reporter)).
+  authoredComments  Comment[]       @relation("CommentAuthor")
+  filedReports      CommentReport[] @relation("CommentReportReporter")
+  /// NF-WF-019D: server-side reading progress (one latest-position row
+  /// per novel; last-write-wins by client clock; private to this user).
+  readingProgress   ReadingProgress[]
+  /// NF-WF-019A: reader engagement owned by this user — bookmark,
+  /// novel-follow, and chapter-like rows (all Cascade; privacy
+  /// Invariant 4: readable only by the owning user). Author follows:
+  /// given (as follower) and received (as the followed author;
+  /// served by aggregate query — no counter column on User).
+  bookmarks         Bookmark[]       @relation("BookmarkOwner")
+  novelFollows      NovelFollow[]    @relation("NovelFollowOwner")
+  chapterLikes      ChapterLike[]    @relation("ChapterLikeOwner")
+  authorFollowsGiven AuthorFollow[]  @relation("AuthorFollowFollower")
+  authorFollowsReceived AuthorFollow[] @relation("AuthorFollowAuthor")
+  /// NF-WF-019C: in-app notification inbox (private to this user;
+  /// Cascade) and the actor link for notification attribution
+  /// (SetNull — deleting a user keeps others' notifications with a
+  /// null actor; displayName resolves at read time, never stored).
+  notifications           Notification[]
+  notificationActors      Notification[]           @relation("NotificationActor")
+  notificationPreferences NotificationPreference[]
 
   @@map("users")
 }
@@ -211,6 +235,27 @@ model Novel {
   memoryProjections MemoryProjection[]
   finalTextReviews FinalTextReview[]
   publications     Publication[]
+  /// NF-WF-019B: chapter-scoped reader comments (chapter identity =
+  /// novelId + chapterNumber; rows retained across republication).
+  comments         Comment[]
+  /// NF-WF-019D: server-side reading progress rows for this novel.
+  readingProgress  ReadingProgress[]
+  /// NF-WF-019A: aggregate engagement counters maintained
+  /// transactionally with engagement writes (never negative;
+  /// `GREATEST(n-1, 0)` on decrement). followerCount counts
+  /// NovelFollow rows; author-follow counts have no column (aggregate
+  /// query). 0 is the correct backfill (no engagement exists).
+  /// Rows are retained while unpublished; counts are served only on
+  /// visible reads (Invariant 2).
+  followerCount    Int              @default(0) @map("follower_count")
+  /// NF-WF-019A: engagement rows for this novel (private to each
+  /// owning user; counts public).
+  bookmarks        Bookmark[]
+  novelFollows     NovelFollow[]
+  chapterLikes     ChapterLike[]
+  /// NF-WF-019C: NEW_CHAPTER notification rows for this novel
+  /// (Cascade; private to each recipient).
+  notifications    Notification[]
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
@@ -275,6 +320,16 @@ model Chapter {
   currentVersionId String?          @unique @map("current_version_id") @db.Uuid
   currentVersion   ChapterVersion?  @relation("CurrentChapterVersion", fields: [currentVersionId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   wordCount        Int              @default(0) @map("word_count")
+  /// NF-WF-019B: VISIBLE-comment count for the current chapter row,
+  /// maintained transactionally with comment writes (hide/delete
+  /// decrement). Shared with the 019A migration block (pinned there too);
+  /// additive idempotent: 0 is the correct backfill (no comments exist).
+  commentCount     Int              @default(0) @map("comment_count")
+  /// NF-WF-019A: like count for the current chapter row, maintained
+  /// transactionally with chapter-like writes (never negative).
+  /// Served only on PUBLISHED reads (Invariant 2); additive 0
+  /// backfill is correct (no likes exist).
+  likeCount        Int              @default(0) @map("like_count")
   createdById      String           @map("created_by_id") @db.Uuid
   createdBy        User             @relation("ChapterCreator", fields: [createdById], references: [id])
   createdAt        DateTime         @default(now()) @map("created_at")
@@ -2814,4 +2869,218 @@ model Publication {
 
   @@index([novelId, status])
   @@map("publications")
+}
+
+// ==================== Reader social: comments (NF-WF-019B) ====================
+// Comments attach to chapter IDENTITY (novelId + chapterNumber), NOT to the
+// pinned ChapterVersion — they survive republication. Visibility follows
+// isPubliclyVisible (ACTIVE novel + PUBLISHED publication) at QUERY time;
+// when a chapter leaves PUBLISHED its rows are hidden from listing but
+// retained, and reappear on republication. Bodies are plain text
+// (<= 5000 chars, sanitized); moderation is report-driven. Staff =
+// workspace members holding the existing `novel:update` capability
+// (Klein Q2 decision 2026-10-06: no platform moderation team).
+
+enum CommentStatus {
+  VISIBLE
+  HIDDEN
+  DELETED
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  SPOILER
+  OFF_TOPIC
+  OTHER
+}
+
+model Comment {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  author        User          @relation("CommentAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  novelId       String        @map("novel_id") @db.Uuid
+  novel         Novel         @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  // Chapter identity, not a chapter FK: comments stay anchored to the
+  // chapter NUMBER across republication; the list query joins the
+  // chapter row to count only VISIBLE comments on the CURRENT row.
+  chapterNumber Int           @map("chapter_number")
+  // Depth <= 1: parentId must reference a top-level comment (parentId
+  // IS NULL) on the same chapter; reply-to-reply is rejected. onDelete:
+  // SetNull — deleting a parent tombstones it, replies stay.
+  parentId      String?       @map("parent_id") @db.Uuid
+  parent        Comment?      @relation("CommentReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies       Comment[]     @relation("CommentReplies")
+  body          String
+  status        CommentStatus @default(VISIBLE)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  reports       CommentReport[]
+
+  @@index([novelId, chapterNumber, status, createdAt])
+  @@map("comments")
+}
+
+model CommentReport {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  commentId  String       @map("comment_id") @db.Uuid
+  comment    Comment      @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  reporterId String       @map("reporter_id") @db.Uuid
+  reporter   User         @relation("CommentReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reason     ReportReason
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  @@unique([commentId, reporterId])
+  @@map("comment_reports")
+}
+
+// ==================== Reader social: synced progress (NF-WF-019D) ====================
+// One latest-position row per (user, novel). Last-write-wins by the
+// client's clock: the write is applied only when clientUpdatedAt is
+// NEWER than the stored updatedAt; ties keep the stored row
+// (deterministic — no conflict UI in 019D). The server never
+// fabricates progress. updatedAt is set from the winning write's
+// client timestamp (NOT @updatedAt) so merge comparisons are stable.
+// Rows are retained while a novel is unpublished and invisible until
+// it is public again; progress is private to the owning user
+// (Invariant 4 — no endpoint exposes another user's row).
+model ReadingProgress {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  novelId       String   @map("novel_id") @db.Uuid
+  novel         Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// Chapter identity (not a pinned version) — progress survives
+  /// republication.
+  chapterNumber Int      @map("chapter_number")
+  /// 0..1 scroll position within the chapter; null when unknown.
+  scrollRatio   Float?   @map("scroll_ratio")
+  /// Opaque client-chosen device string (never PII).
+  deviceId      String?  @map("device_id")
+  updatedAt     DateTime @map("updated_at")
+
+  @@unique([userId, novelId])
+  @@map("reading_progress")
+}
+
+// ==================== Reader social: engagement (NF-WF-019A) ====================
+// Bookmark / novel-follow / author-follow / chapter-like rows. Engagement
+// attaches to identity, not pinned versions: chapter likes anchor to
+// (novelId, chapterNumber) — NOT to a chapter FK — so rows survive
+// republication; they are retained while a novel/chapter is unpublished
+// and invisible until public again (Invariant 2). Dedup keys are DB
+// unique constraints (Invariant 3: repeat engagement → 200 same state,
+// never a duplicate row). Counter columns (Novel.followerCount,
+// Chapter.likeCount) are maintained in the SAME transaction as the write
+// via INSERT ... ON CONFLICT DO NOTHING + conditional UPDATE, so
+// concurrent writers cannot double-count; decrements use
+// GREATEST(n-1, 0) and can never go negative. All relations
+// onDelete: Cascade. No counter column on User for author follows —
+// the count is an aggregate query (Invariant 4).
+
+model Bookmark {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation("BookmarkOwner", fields: [userId], references: [id], onDelete: Cascade)
+  novelId   String   @map("novel_id") @db.Uuid
+  novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, novelId])
+  @@index([userId, createdAt])
+  @@map("bookmarks")
+}
+
+model NovelFollow {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation("NovelFollowOwner", fields: [userId], references: [id], onDelete: Cascade)
+  novelId   String   @map("novel_id") @db.Uuid
+  novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, novelId])
+  @@index([userId, createdAt])
+  @@map("novel_follows")
+}
+
+model AuthorFollow {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation("AuthorFollowFollower", fields: [userId], references: [id], onDelete: Cascade)
+  // The followed author: a User.id (the frozen 013 public author
+  // identity — a user with >= 1 public novel; see resolvePublicAuthor).
+  authorId  String   @map("author_id") @db.Uuid
+  author    User     @relation("AuthorFollowAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, authorId])
+  @@index([userId, createdAt])
+  @@map("author_follows")
+}
+
+model ChapterLike {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  user          User     @relation("ChapterLikeOwner", fields: [userId], references: [id], onDelete: Cascade)
+  novelId       String   @map("novel_id") @db.Uuid
+  novel         Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  // Chapter identity (not a chapter FK): likes survive republication and
+  // chapter-row replacement; the visibility check is in the write SQL.
+  chapterNumber Int      @map("chapter_number")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, novelId, chapterNumber])
+  @@index([userId, createdAt])
+  @@map("chapter_likes")
+}
+
+/// NF-WF-019C: in-app notification channel (Invariant 7 — in-app ONLY;
+/// no email, no push). Pinned types per Klein's Q5 decision (2026-10-06):
+/// all three default ON; an absent NotificationPreference row means ON.
+enum NotificationType {
+  NEW_CHAPTER
+  COMMENT_REPLY
+  MODERATION_NOTICE
+}
+
+/// NF-WF-019C: one row per delivered in-app notification. Every row
+/// traces to a real event (Invariant 7 — never fabricated): a chapter
+/// reaching PUBLISHED, a real comment reply, or a real staff moderation
+/// action. Rows carry IDs + type only — display names resolve at read
+/// time from User; no email, no credential material (Invariant 4).
+model Notification {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String           @map("user_id") @db.Uuid
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          NotificationType
+  novelId       String?          @map("novel_id") @db.Uuid
+  novel         Novel?           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  // Chapter identity (not a chapter FK): the notification still reads
+  // sensibly across republication (the 019A chapter-identity precedent).
+  chapterNumber Int?             @map("chapter_number")
+  // Who triggered the event (novel author / replier / moderator).
+  // SetNull: deleting that user keeps the recipient's notification with
+  // a null actor (the inbox renders a fallback label).
+  actorUserId   String?          @map("actor_user_id") @db.Uuid
+  actor         User?            @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  readAt        DateTime?        @map("read_at")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+/// NF-WF-019C: per-user per-type opt-out. Absent row = pinned default
+/// (ON for all three pinned types, Klein Q5). The preferences route
+/// accepts only the pinned NotificationType values; the master switch
+/// is a UI-only affordance that writes all three rows (no separate row).
+model NotificationPreference {
+  userId  String           @map("user_id") @db.Uuid
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type    NotificationType
+  enabled Boolean
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
 }

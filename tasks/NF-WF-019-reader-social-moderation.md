@@ -7,7 +7,9 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: PLANNED
+Status: IMPLEMENTED (2026-10-06: 019A/019B/019C/019D all diff-reviewed and
+committed; children A: reader engagement, B: comments + moderation,
+C: notifications + privacy, D: synced reading progress)
 Milestone / capability IDs: M5/M8 (CAP-12 spans both per the capability
 ledger; 019 delivers the M5 social surfaces); delivery-plan NF-WF-019
 (row `:153`); CAP-12 (`:85`).
@@ -695,7 +697,8 @@ honest async delivery and pinned privacy-respecting defaults.
 ### Pinned event names (the contract 019A/019B emit; 019C consumes)
 
 - `novel.chapter_published { novelId, chapterNumber }` — emitted by
-  the 012 publication worker when a publication reaches PUBLISHED.
+  the 012 publication paths (the API immediate publish + the worker
+  fire; see §Fan-out / GAP-073) when a publication reaches PUBLISHED.
 - `comment.replied { commentId, parentCommentId, novelId,
   chapterNumber, replierUserId }` — emitted by the 019B comment
   write path.
@@ -719,9 +722,23 @@ honest async delivery and pinned privacy-respecting defaults.
 
 ### Fan-out (Invariant 7)
 
-- The 012 publication worker emits `novel.chapter_published` and
+- `novel.chapter_published` is emitted from BOTH 012 publish paths and
   enqueues a fan-out job (new queue in `apps/worker`, following the
-  `publication-jobs.ts` facade). The worker resolves the notification
+  `publication-jobs.ts` facade): the API immediate-publish path
+  (`publishChapter`, after the PUBLISHED commit) and the 012 worker
+  fire (`fireScheduledPublication`, after a successful fire). Both
+  produce the identical pinned event for the same real transition (a
+  chapter reaching PUBLISHED) — never fabricated. The 012 state machine
+  guarantees each publication row reaches PUBLISHED exactly once via
+  exactly one path (the API path throws on SCHEDULED rows; the worker
+  only fires SCHEDULED rows), so no publish event double-enqueues;
+  job IDs are random (a republish reuses the publication row id, so a
+  deterministic job ID would swallow the genuine second fan-out —
+  the P2-6 silent-noop hazard). Ruled contract-conformant under
+  GAP-073 (019C diff review, 2026-10-06): emitting only from the worker
+  would silently drop NEW_CHAPTER notifications for every
+  immediately-published chapter — the primary author flow — breaking
+  the 019C acceptance checkbox. The worker resolves the notification
   set: novel followers ∪ author followers (the novel's `createdBy`
   user; deduped — a user following both gets ONE notification),
   honoring `NEW_CHAPTER` preferences (opted-out users are skipped at
@@ -1092,6 +1109,293 @@ server-received-at tiebreak is a future refinement, not a blocker.
 
 (Round 2+: filled by child diff reviews at implementation time.)
 
+### Round 2 — 019D diff review (2026-10-06): APPROVE_WITH_FINDINGS
+
+Reviewer: 019D diff reviewer — a separate actor from the contract
+author, the amendment author, the contract reviewer, all four 019
+implementers, and all prior reviewers. Backends MODEL_UNVERIFIED per
+GAP-013.
+
+**Findings (fixed inline in the working tree):**
+- **F1 (P2):** 019D's `onUnmounted(() => window.removeEventListener("scroll", onScroll))`
+  in `apps/web/app/pages/read/[slug]/[number].vue` broke the frozen 013
+  `reader.test.ts` (3 failures: `ReferenceError: onUnmounted is not
+  defined`). Root cause: the page relies on Nuxt auto-imports, and the
+  013 vitest harness stubs `ref`/`computed`/`onMounted`/`useRoute`/
+  `useHead`/`navigateTo` as globals but not `onUnmounted` (019D's own
+  axe test already stubbed it — the gap was only in the 013 harness).
+  Fix: added `import { onUnmounted } from "vue";` to the page (explicit
+  imports are safe under Nuxt auto-import). Re-verified: 013
+  `reader.test.ts` 10/10 green. No 019A/019B/019C file touched.
+
+**Verification (reviewer's own runs, actually executed):**
+- LWW semantics: PUT applies only when `clientUpdatedAt` is NEWER;
+  older/equal → 200 with the stored row (deterministic tie — stored
+  wins); `updatedAt` is set from the winning client timestamp (no
+  `@updatedAt`). `src/reader-progress.test.ts` **11/11** green.
+- Privacy: unauthenticated → 401 `UNAUTHENTICATED` on all three routes;
+  GET returns only the caller's row (cross-user → `null`); PUT on
+  invisible/nonexistent novel → identical 404 `NOT_FOUND` (no oracle);
+  engageable check IN the SQL (Invariant 2).
+- Merge: `max(deviceLocal.updatedAt, server.updatedAt)` wins, ties
+  keep server, winner written back via idempotent PUT; offline queue
+  (latest-per-novel) flushes on reconnect; no conflict UI; `syncState`
+  honest (`synced` only when the server holds the current position).
+  `useSyncedReadingProgress.test.ts` **6/6** green.
+- 014 regression: `useReadingProgress.test.ts` **7/7** green;
+  anonymous device-local path makes zero progress-network calls (the
+  single `/api/auth/session` probe is pinned by test and disclosed).
+- Axe: `reader-progress-sync.axe.test.ts` **4/4**, zero violations
+  (wcag2aa + wcag22aa, en + id).
+- Typechecks: API `tsc --noEmit` exit 0 (whole package); web
+  `vue-tsc --noEmit` clean on all 019D files incl. the edited page;
+  zero `@ts-ignore`/`@ts-expect-error` in 019D files; eslint clean
+  on all 019D files.
+- Migration: idempotent (`IF NOT EXISTS` + `DO`-block constraints per
+  GAP-030); `@@unique([userId, novelId])`; `onDelete: Cascade` on
+  both relations; `packages/auth/authorization.ts` untouched (empty
+  diff); no new auth endpoints; no schema change beyond the pinned
+  `ReadingProgress` table.
+- i18n: `progressSync.*` 2/2 en+id parity (programmatic check).
+- Shared sections: `app.ts` registration in its own marked 019D
+  block; schema/i18n/page sections additive and distinct.
+
+**Session-probe decision (item 5): KEEP AS-IS.** 019D keeps its own
+cached session probe rather than converging on 019A's uncommitted
+`useSession`. Rationale: 019A's composable relies on Nuxt auto-imports
+(`ref`/`computed`) that the vitest harness does not provide —
+converging now would break 019D's own tests; the shapes also differ
+(cached boolean promise vs explicit check + refs). The duplication is
+~10 lines. Convergence is a post-review follow-up for the 019A diff
+reviewer (who owns 019A's auto-import latent issue).
+
+**Observations (not findings):**
+- Anonymous chapter loads make exactly one `/api/auth/session`
+  probe (zero *progress*-network calls); the minimal mechanism for
+  the session branch — acceptable, disclosed, test-pinned.
+- PUT's read-then-upsert has a benign concurrent-write race (the
+  unique constraint prevents duplicates; worst case a slightly older
+  timestamp wins, corrected by the next write) — acceptable for v1.
+- GET does not re-check engageability (returns the caller's own row
+  even for unpublished novels) — privacy-safe; the contract's
+  "invisible until public again" governs the novel surface, not the
+  private row read.
+- The chapter page now carries two session probes (019A's
+  `useSession` + 019D's internal one) — 2 lightweight requests per
+  page load; acceptable v1, converges with the probe follow-up.
+
+**No new GAPs recorded.** No contract deviations or obstacles beyond
+F1. Full suites + e2e remain for the parent's clean-tree battery at
+019 completion.
+
+### Round 3 — 019A diff review (2026-10-06): APPROVE
+
+Reviewer: 019A diff reviewer — a separate actor from the contract
+author, the amendment author, the contract reviewer, all four 019
+implementers, and all prior reviewers. Backends MODEL_UNVERIFIED per
+GAP-013.
+
+**No findings.** The exact submitted 019A diff was reviewed file by
+file; every 019A acceptance checkbox is verified with executed test
+evidence (reviewer's own runs below). Nothing in the working tree was
+changed by this review.
+
+**GAP-068 ruling (Q8 additive counts): CLOSED on 019A's read-side
+evidence.** Conditions verified with test evidence: (a) additive-only
+— the "frozen 013 shapes keep every pinned field" test asserts all
+012-pinned + GAP-049 fields survive unchanged; (b) published-visible
+— the "counts vanish from reads when the chapter leaves PUBLISHED"
+test proves the read-side gate (novel/chapter pages 404 unless
+visible, so served counts always reflect visible engagement);
+(c) no auth object, no session handling, no 401 path in
+`/api/public/*` (013 Invariant 2 test). Carry-over, explicitly NOT
+claimed here: the `commentCount` = VISIBLE-only WRITE property is
+019B's write path (hide/decrement); it is in 019B's pinned acceptance
+and belongs to the 019B diff review.
+
+**GAP-070 ruling (additive `followerCount` on the frozen 013 author
+shape): CLOSED — contract-conformant.** Genuinely necessary under the
+GAP-068 logic: no anonymous-readable source for the author-follower
+aggregate exists (`GET /api/reader/engagement/author` is
+authenticated by construction), and the contract's 019A Web UI pins
+"anonymous readers see the counts as static text" on the author page.
+Verified: additive-only (the exact-shape assertion in
+`public-routes.test.ts` updated; all pinned fields preserved), pure
+aggregate row count (no per-user state; no counter column on `User`),
+no auth object/session/401 in `/api/public/*`, recorded BEFORE
+implementation (standing rule).
+
+**GAP-074 ruling (additive `novel` sub-object enrichment in the three
+list endpoints): CLOSED — contract-conformant.** The enrichment
+(`author { id, displayName }`, `genres`, `publishedChapterCount`,
+`firstPublishedAt`/`lastPublishedAt`) is on the authenticated
+`/api/reader/*` list endpoints only — no frozen 013 shape touched.
+All enriched fields are published-visible (no per-user state); the
+implementation is narrower than the GAP text (no `status` field is
+exposed). Genuinely necessary: the contract's own 019A Web UI
+requires the library page to reuse the 014 `NovelCard`, which needs
+exactly these fields, and no other 019A endpoint serves them.
+Recorded BEFORE implementation (standing rule).
+
+**Item 6 (013 `reader.test.ts` breakage): no 019A action needed.**
+The 019D diff review already fixed the `onUnmounted` harness gap
+(Round 2, F1) with an explicit `import { onUnmounted } from "vue"`.
+Re-verified on the current tree: 013 `reader.test.ts` **10/10**
+green. The earlier 019A/019B reports of 3 failures were against a
+stale snapshot.
+
+**Item 5 follow-up from the 019D review (session-probe
+convergence): reviewed, no action.** 019A's `useSession`/`useEngagement`
+rely on Nuxt auto-imports (`ref`/`computed`) — this matches the
+established 014 precedent (`useReadingProgress.ts`) and the 007/013
+vitest harness pattern (globals stubbed in tests). Both conventions
+coexist in the codebase; neither is broken. 019A's tests stub the
+globals and pass. Convergence of the two probes remains an optional
+post-019 follow-up, not a review finding.
+
+**Verification (reviewer's own runs, actually executed):**
+- `src/reader-engagement.test.ts` **31/31** — idempotency (repeat →
+  200 same state, no duplicate rows), 8-concurrent-user and
+  10-duplicate-same-user collapse, counters transactional
+  (`GREATEST(n-1,0)`), self-follow → 400, nonexistent/non-public
+  author → 404 (no oracle), cross-user list isolation, all 13
+  `/api/reader/*` routes 401 without session.
+- `src/public-routes.test.ts` **14/14** — incl. the GAP-070
+  exact-shape assertion and the 013 Invariant 2 no-401 test.
+- Web: `social.test.ts` **10/10** (optimistic toggle, rollback,
+  self-follow refusal), `library.test.ts` **3/3** (renders lists,
+  anonymous → sign-in redirect), `social-engagement.axe.test.ts`
+  **2/2** zero violations (en+id); 013 `reader.test.ts` **10/10**.
+- Typechecks: API `tsc --noEmit` exit 0 (whole package); web
+  `vue-tsc --noEmit` exit 0; eslint exit 0 on 019A API files; zero
+  `@ts-ignore`/`@ts-expect-error` in 019A files.
+- i18n: `social.*` 23/23 en+id parity (programmatic check, no
+  missing keys either side).
+- Schema/migration: the four engagement models match the contract's
+  migration block exactly (dedup unique constraints, Cascade,
+  `@@map` names); one additive idempotent migration; `comment_count`
+  shared with 019B via `ADD COLUMN IF NOT EXISTS` (GAP-071);
+  `packages/auth/authorization.ts` untouched (empty diff); no new
+  auth endpoints; no `User` counter column.
+- The 019A `publicAuthor` predicate is equivalent to the frozen 013
+  `resolvePublicAuthor` predicate (ACTIVE novel + ≥1 PUBLISHED
+  chapter).
+
+**Observations (not findings):**
+- `bookmarkNovel` returns the original row's `createdAt` on repeat —
+  correct "same state" semantics.
+- The library page carries `noindex` meta — privacy-appropriate for
+  a private page, not contract-pinned but consistent with
+  Invariant 4.
+- Full suites + e2e remain for the parent's clean-tree battery at
+  019 completion (019C still in flight at review time).
+
+**No new GAPs recorded.** No contract deviations beyond the three
+ruled GAPs above; no obstacles encountered.
+
+### Round 2 — 019B diff review (2026-10-06): APPROVE_WITH_FINDINGS
+
+Reviewer: 019B diff reviewer — a separate actor from the contract
+author, the amendment author, the contract reviewer, all four 019
+implementers, and all prior reviewers. Backends MODEL_UNVERIFIED per
+GAP-013. Reviewed the exact 019B file set (uncommitted working tree);
+019A/019C/019D files and sections were not touched.
+
+**Verdict: APPROVE_WITH_FINDINGS** — 1 P3 finding, fixed inline in
+the working tree. Nothing committed.
+
+**F1 (P3) — staff delete audited no-op deletes.** `deleteComment`
+recorded a `comment.deleted` audit row BEFORE the already-DELETED
+idempotency early-return, so a repeat staff delete of a tombstoned
+comment wrote a misleading audit entry (the hide path correctly
+audits nothing on its idempotent early-return). Fixed inline in
+`apps/api/src/services/comments.ts`: the staff gate
+(`requireStaff`, preserving 404-for-outsider / 403-for-member-
+without-capability even on tombstones) now runs before the
+idempotency check, and the audit write moved after it. Re-verified:
+API `tsc --noEmit` exit 0, `src/comments.test.ts` 16/16 green
+post-fix.
+
+**GAP-071 ruling: sound, no action.** Both migrations
+(`20261006_nf_wf_019a_engagement`, `20261006_nf_wf_019b_comments`)
+use `ADD COLUMN IF NOT EXISTS "comment_count"` — whichever lands
+first creates the column, the other converges. The column is
+WRITTEN only by the 019B write path (increment on VISIBLE post,
+decrement on VISIBLE delete/hide, increment on unhide — all in the
+same transaction as the comment write); 019A's engagement service
+and `publication.ts` only READ it. GAP-071 stays open per its own
+terms (closes when both the 019A and 019B diff reviews complete).
+
+**GAP-072 ruling: interpretation ACCEPTED (no contract amendment
+needed).** The contract pins
+`GET /api/reader/novels/:novelId/moderation/reports?status=` without
+specifying the status domain; the schema carries no
+report-resolution state (moderation resolves reports by acting on
+the comment — hide/unhide/delete), so filtering on the COMMENT's
+`CommentStatus` (Zod enum → 400 off-list) is the only meaningful
+interpretation. Recorded in GAP-072 BEFORE implementation per the
+standing rule; the route, service, and moderation page implement it
+consistently.
+
+**Verification (reviewer's own runs, actually executed):**
+1. Sanitization — `validateCommentBody`: non-string/empty rejected,
+   trimmed length ≤ 5000, control chars (`\u0000-\u0008\u000B\u000C
+   \u000E-\u001F\u007F`) rejected; web renders bodies only via
+   `{{ }}` escaped interpolation (`whitespace-pre-wrap` preserves
+   line breaks) — zero `v-html` in 019B components; no HTML stored.
+2. Rate limits — burst: per-route `@fastify/rate-limit` override
+   (`max: 1, timeWindow: "10 seconds"`, keyed on the session cookie
+   with IP fallback; the app-wide limiter is registered in
+   `app.ts`); daily: DB counts — 100 comments / 20 reports per 24h
+   per user → typed `RateLimitError` → 429 via the shared
+   `setErrorHandler` (the `PolicyError` precedent). The 21st report
+   in 24h → 429 is asserted in `comments.test.ts:488`.
+3. Moderation authority — `requireStaff`: novel → workspaceId →
+   membership (404 for non-members, ADR-0004) → existing
+   `novel:update` capability read-only (403);
+   `packages/auth/authorization.ts` untouched (verified via diff);
+   staff actions audit-logged identity-only (actorUserId,
+   workspaceId, action, entityType, entityId, ID-only payload — no
+   PII). Klein's Q2 (no platform team) honored.
+4. HIDDEN not editable — `FORBIDDEN_EDIT` → 403 even within the
+   15-minute window (asserted at `comments.test.ts:620,655`);
+   DELETED → 404 on edit; delete → DELETED tombstone rendering
+   `"[deleted]"` to everyone; no auto-hide logic exists anywhere in
+   the 019B code (verified by grep).
+5. Chapter identity — comments keyed on `(novelId, chapterNumber)`,
+   never the pinned version; visibility evaluated IN THE QUERY
+   (`novel.status = ACTIVE` + `publication.status = PUBLISHED`,
+   the 014 precedent); unpublished/invisible → identical 404
+   (no oracle); rows retained across republication; depth ≤ 1;
+   15-minute self-edit window.
+6. GAP-071 — sound (see ruling above).
+7. GAP-072 — acceptable (see ruling above).
+8. Evidence — `src/comments.test.ts` **16/16**; web
+   `comments.test.ts` + `moderation-queue.test.ts` +
+   `comments.axe.test.ts` **13/13** (axe zero violations, en+id);
+   API `tsc --noEmit` exit 0; `vue-tsc --noEmit` exit 0; `eslint`
+   exit 0 on all 019B files; zero `@ts-ignore`/`@ts-expect-error`
+   in 019B files; i18n `comments.*` en/id leaf parity confirmed
+   (no missing keys either direction).
+
+**Observations (not findings):**
+- Reply-to-HIDDEN: `postComment` requires the parent to be VISIBLE
+  (in addition to top-level, same chapter). This is stricter than
+  the contract's literal "`parentId` must be a top-level comment
+  on the same chapter" — defensible (HIDDEN comments are frozen
+  per the F4 ruling and invisible to non-authors/non-staff), and
+  consistent with the no-evasion intent. Noted, not changed.
+- Shared-file hygiene: 019B's sections in `app.ts`,
+  `platform-routes.ts`, `policy-errors.ts`, `schema.prisma`,
+  `i18n/en.ts` + `id.ts`, `[slug]/[number].vue` (3 template lines +
+  auto-imported `CommentThread`), and the novel index page
+  (role-gated moderation link, progressive enhancement) are all
+  clearly marked and additive; no 019A/019C/019D section touched.
+
+**For the parent:** ready to commit as `NF-WF-019B: comments +
+moderation (diff-reviewed APPROVE_WITH_FINDINGS)`. GAP-071 closes
+when the 019A diff review also completes.
+
 ## Backend verification (contract author)
 
 - Verified 2026-10-06 against repo HEAD `6ce0eeb`: no social models
@@ -1118,3 +1422,71 @@ server-received-at tiebreak is a future refinement, not a blocker.
   `423407c560693bc6ba1ef4ffddbf33c5023bf059`, 012
   `b815a887b027082ccf1e949189af93081ee7d77e`.
 - Backends MODEL_UNVERIFIED per GAP-013 (standing).
+
+### Round 2 — 019C diff review (2026-10-06): APPROVE_WITH_FINDINGS
+
+Reviewer: 019C diff reviewer — a separate actor from the contract
+author, the amendment author, the contract reviewer, all four 019
+implementers, and all prior reviewers. Backends MODEL_UNVERIFIED per
+GAP-013. Work reviewed uncommitted on top of `4654d2a`; nothing
+committed by the reviewer.
+
+**F1 (P3) — GAP-073 ruling: APPROVE_WITH_FINDINGS (not
+CHANGES_REQUESTED).** The implementer's dual emission of
+`novel.chapter_published` (API immediate-publish path +
+012 worker fire) is ruled contract-conformant under the GAP-064/066
+necessity precedent: (a) genuinely necessary — the immediate-publish
+path is the primary author flow; emitting only from the worker would
+silently drop NEW_CHAPTER notifications for every
+immediately-published chapter, breaking the 019C acceptance checkbox;
+(b) no fabrication — both paths produce the identical pinned event
+for the same real transition (a chapter reaching PUBLISHED);
+(c) event-level idempotency holds — the 012 state machine completes
+each publication row via exactly one path (the API `publishChapter`
+throws ConflictError on SCHEDULED rows; the worker fires only
+SCHEDULED rows and enqueues only on outcome=published), so no publish
+event double-enqueues; (d) random job IDs are correct — a republish
+reuses the publication row id (`existing?.id ?? publicationId`), so a
+deterministic job ID would swallow the genuine second fan-out (the
+P2-6 silent-noop hazard); (e) recorded in GAP-073 BEFORE
+implementation (standing rule). Fixed inline: §019C "Pinned event
+names" and "Fan-out (Invariant 7)" updated to name both emission
+points; GAP-073 CLOSED in ISSUES-AND-GAPS.md. No other findings.
+
+**Verification (reviewer's own runs, actually executed):**
+- API `src/notifications.test.ts` 16/16 (inbox, mark-read/read-all,
+  preferences incl. Q5 defaults + master-switch semantics,
+  pinned-type 400s, 401s, emission API, immediate-publish enqueue).
+- Worker `src/notification-fanout-jobs.test.ts` 8/8 (dedup across
+  novel∪author follows, opt-out honored, non-PUBLISHED no-op,
+  bounded batches incl. 500-clamp, Redis-unavailable degrade).
+- Web `app/components/reader/notifications.test.ts` 11/11 +
+  `app/a11y/notifications.axe.test.ts` 6/6, zero violations (en+id).
+- `tsc --noEmit` (apps/api) exit 0; `tsc --noEmit` (apps/worker)
+  exit 0; `vue-tsc --noEmit` (apps/web) exit 0; `eslint` on the six
+  019C source/test files exit 0; zero `@ts-ignore` in 019C files;
+  i18n `notifications:` 36/36 keys en+id parity.
+- The implementer's full-suite claims are NOT re-claimed (the
+  implementer could not complete the full API suite on this host —
+  resource starvation; targeted subsets were run instead).
+
+**Checked against the contract:** pinned event names exact
+(`novel.chapter_published`, `comment.replied`, `comment.moderated`);
+fan-out async BullMQ, bounded ≤500/batch, publish never blocks on
+follower count (only the enqueue is awaited); targets = novel
+followers ∪ author followers deduped to one per user; preferences
+three pinned types default ON (absent row = ON), master switch
+UI-only writing all three, route accepts only pinned types;
+inbox own-only (scoped queries, 404 no-oracle), 401 unauthenticated,
+no email/credential material in bodies (tested); comment.replied →
+parent author (self-reply → none), comment.moderated → comment
+author; no new capabilities (`packages/auth` untouched), no new auth
+endpoints, one additive idempotent migration (GAP-030 pattern).
+
+**Observations (not findings):** (1) `emitCommentModerated` does not
+suppress self-notification when the moderator is the comment author —
+trivial edge, contract is silent; left as-is. (2) The 019B call sites
+for `emitCommentReplied`/`emitCommentModerated` do not exist yet
+(019B still implementing) — 019C's emission API is tested directly;
+019B's diff reviewer owns the wiring. (3) `NotificationBell.vue`'s
+catch block is redundant (bell hides on every error path) — harmless.

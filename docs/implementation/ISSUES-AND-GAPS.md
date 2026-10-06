@@ -1600,7 +1600,7 @@ IMPACT: without the fields, anonymous readers could not see engagement counts on
 
 NEXT ACTION: the 019A implementer adds the three fields as additive-only, backward-compatible fields (no existing 013 field renamed, removed, or restructured). The 019A diff reviewer verifies: (a) additive-only; (b) counts reflect only published-visible engagement (`commentCount` counts VISIBLE comments only); (c) no auth object, no session handling, no 401 path introduced into `/api/public/*` (013 Invariant 2 preserved).
 
-STATUS: OPEN — 019 contract review (Round 1, 2026-10-06) ruled Q8 APPROVE under the GAP-049 precedent (013's additive extensions to 012's frozen shapes, ruled LEGITIMATE by an independent contract reviewer): genuinely necessary for the anonymous-counts acceptance (no frozen route serves aggregate engagement counts), additive-only and backward-compatible, no per-user state in the fields, no auth introduced into the public routes. Closes when the 019A diff review verifies conditions (a)–(c) with test evidence.
+STATUS: CLOSED — 019A diff review Round 3 (2026-10-06): APPROVE, no findings. Conditions (a)–(c) verified with test evidence: (a) additive-only — frozen 013 shapes keep every pinned field (exact-shape test); (b) published-visible — counts vanish from reads when the chapter leaves PUBLISHED; (c) no auth object, no session handling, no 401 path in /api/public/* (013 Invariant 2 test). Carry-over: commentCount VISIBLE-only WRITE property is 019B's write path, verified in the 019B diff review.
 
 ## GAP-069 — Host PostgreSQL/Redis services were not running at NF-WF-019A start (2026-10-06)
 
@@ -1620,7 +1620,7 @@ IMPACT: with the field, anonymous readers see the author follower count on the p
 
 NEXT ACTION: the 019A implementer adds `followerCount` as an additive-only, backward-compatible field on the frozen 013 author shape (`GET /api/public/authors/:authorId` → `author: { id, displayName, followerCount }`), following the GAP-068 necessity logic, recorded here BEFORE implementation. The 019A diff reviewer verifies: (a) additive-only; (b) the count is a pure aggregate (`author_follows` row count — no per-user state); (c) no auth object, no session handling, no 401 path in `/api/public/*` (013 Invariant 2 preserved). Recorded BEFORE implementation per the standing rule.
 
-STATUS: OPEN — 019A implementer (2026-10-06).
+STATUS: CLOSED — 019A diff review Round 3 (2026-10-06): ruled contract-conformant under the GAP-068 logic. Verified: additive-only (exact-shape assertion in public-routes.test.ts updated; all pinned fields preserved), pure aggregate row count (no per-user state; no counter column on User), no auth object/session/401 in /api/public/*.
 
 ## GAP-071 — NF-WF-019: `chapters.comment_count` is pinned in both the 019A migration block and the 019B acceptance (shared column, parallel builders) (2026-10-06)
 
@@ -1630,7 +1630,7 @@ IMPACT: whichever migration lands first creates the column; the other converges 
 
 NEXT ACTION: both diff reviewers verify the single-column convergence (`prisma validate` clean, one `comment_count` in the schema). No schema change needed.
 
-STATUS: OPEN — 019B implementer (2026-10-06); closes on both 019A and 019B diff reviews.
+STATUS: CLOSED — both 019A (Round 3 APPROVE) and 019B (Round 2 APPROVE_WITH_FINDINGS) diff reviews complete, 2026-10-06. 019B review ruled the shared-column design sound: both migrations use ADD COLUMN IF NOT EXISTS "comment_count" (whichever lands first creates the column, the other converges); the column is WRITTEN only by the 019B write path (same-transaction increment/decrement), READ by 019A's engagement service and publication.ts.
 
 ## GAP-072 — NF-WF-019B: `?status=` on the moderation report queue filters the COMMENT's status (contract interpretation) (2026-10-06)
 
@@ -1640,7 +1640,7 @@ IMPACT: the 019B implementation filters `?status=` on the comment's status (Zod 
 
 NEXT ACTION: the 019B diff reviewer rules the interpretation (APPROVE_WITH_FINDINGS = keep; CHANGES_REQUESTED = amend the contract to pin the filter domain explicitly).
 
-STATUS: OPEN — 019B implementer (2026-10-06).
+STATUS: CLOSED — 019B diff review Round 2 (2026-10-06): interpretation ACCEPTED, no contract amendment needed. `?status=` on the moderation report queue filters the COMMENT's CommentStatus (the schema carries no report-resolution state; reports resolve by acting on the comment — hide/unhide/delete). Route, service, and moderation page implement it consistently; verified in the 019B diff review.
 
 ## GAP-074 — NF-WF-019A enriches the `novel` sub-object in the three engagement list endpoints with published-visible card fields (2026-10-06)
 
@@ -1650,7 +1650,7 @@ IMPACT: without the enrichment, the library page cannot reuse NovelCard without 
 
 NEXT ACTION (renumbered from GAP-071 on 2026-10-06 — the 019B actor had recorded their own GAP-071 for the shared comment_count column while this actor was working; no content change): the 019A implementer additively enriches the `novel` sub-object in `GET /api/reader/bookmarks`, `/api/reader/follows` (and the same novel sub-object shape is already what `listNovelFollows` returns) with the published-visible card fields: `author { id, displayName }`, `genres`, `publishedChapterCount` (PUBLISHED chapters only), `firstPublishedAt`/`lastPublishedAt` (nullable — null when the novel currently has no PUBLISHED chapters), plus the internal `status` for the library's Invariant-2 filtering. All enriched fields are published-visible data; no per-user state; no frozen 013 shape touched. Recorded BEFORE implementation per the standing rule. The 019A diff reviewer rules on conformance.
 
-STATUS: OPEN — 019A implementer (2026-10-06).
+STATUS: CLOSED — 019A diff review Round 3 (2026-10-06): ruled contract-conformant. The enrichment (author { id, displayName }, genres, publishedChapterCount, firstPublishedAt/lastPublishedAt) is on the authenticated /api/reader/* list endpoints only — no frozen 013 shape touched; all enriched fields are published-visible (no per-user state); narrower than the GAP text (no status field exposed). Genuinely necessary: the 019A library page reuses the 014 NovelCard, which needs exactly these fields.
 
 ## GAP-073 — NF-WF-019C: `novel.chapter_published` is emitted from BOTH the 012 worker fire AND the API immediate-publish path (contract interpretation) (2026-10-06)
 
@@ -1660,7 +1660,7 @@ IMPACT: the 019C implementation enqueues the fan-out job from both paths — `ap
 
 NEXT ACTION: the 019C diff reviewer rules the interpretation (APPROVE_WITH_FINDINGS = keep both emission points; CHANGES_REQUESTED = restrict to the worker path and amend the acceptance checkbox to scheduled-publishes only).
 
-STATUS: OPEN — 019C implementer (2026-10-06).
+STATUS: CLOSED — 019C diff review (2026-10-06): ruled APPROVE_WITH_FINDINGS under the GAP-064/066 necessity precedent. Genuinely necessary (the immediate-publish path is the primary author flow; worker-only emission would silently drop NEW_CHAPTER for every immediately-published chapter, breaking the 019C acceptance checkbox); no fabrication (both paths produce the identical pinned event for a real chapter-PUBLISHED transition); event-level idempotency holds (the 012 state machine completes each publication row via exactly one path — the API throws ConflictError on SCHEDULED rows, the worker fires only SCHEDULED rows and enqueues only on outcome=published); random job IDs are correct (republish reuses the publication row id, so a deterministic job ID would swallow the genuine second fan-out — the P2-6 silent-noop hazard). Contract §019C Fan-out + pinned event names updated.
 
 ## GAP-065 note — host binaries absent at 019C session start; reinstalled (2026-10-06)
 
@@ -1691,3 +1691,13 @@ IMPACT: `pnpm e2e` as a single command is flaky on this host; per-file runs are 
 NEXT ACTION: make `getE2E()` setup race-safe (e.g. a file lock / single setup per worker run, or skip the terminate when the caller is the same OS process tree). Owner: whoever next touches the e2e harness (suggested: NF-WF-023 or a harness-hardening follow-up).
 
 STATUS: OPEN — recorded 2026-10-06 by the 019A implementer.
+
+## GAP-077 — VM/container switched mid-session during the NF-WF-019 evidence battery; `novelforge_test` password-auth mismatch seen before the switch (2026-10-06)
+
+EVIDENCE: evidence battery subagent (2026-10-06 ~13:34–13:48 UTC): the API stage began on the real dev host (`pg_isready` → accepting connections, `redis-cli` → PONG) but every DB-backed test file failed with `password authentication failed for user "novelforge_test"` (thrown from the pg-protocol parser in `beforeAll`; tests build DATABASE_URL from the repo `.env`). Mid-run the exec environment switched underneath: `/tmp` wiped (the API log gone), `pg_isready`/`psql`/`redis-server` binaries absent, no `/etc/postgresql`, zero TCP listeners — while `~` (repo, pnpm, node) intact. Matches the VM-replacement pattern (GAP-050, GAP-065). Result: API stage BLOCKED (37 files failed on auth, 4 non-DB files passed, 77 tests), E2E stage NOT RUN. Lint/typecheck GREEN, web suite GREEN (65 files / 390 tests) — verified before the switch. Full battery record: `~/workspace/evidence-battery-nf-wf-019.md` (sandbox link in the battery handoff).
+
+IMPACT: no 019 API or E2E battery evidence obtainable until the stack is re-provisioned and the test-role credential reconciled. No code signal — the failures are environmental, not product regressions. The 019 commit is held until the battery goes green.
+
+NEXT ACTION: re-provision PostgreSQL 16 + pgvector 0.6.0 + Redis 7 per `docs/11-deployment/ENVIRONMENT-PREFLIGHT.md` (azure.archive.ubuntu.com is the fast mirror; `mirror.cogentco.com` stays removed); reconcile the `novelforge_test` role password with the repo `.env` DATABASE_URL; re-run battery stages 2 (API full suite) and 4 (E2E per-file, sequential per GAP-076).
+
+STATUS: OPEN — recorded 2026-10-06 during the 019 evidence battery.

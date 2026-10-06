@@ -497,10 +497,16 @@ describe("GET /api/public/authors/:authorId", () => {
     const res = await api("GET", `/api/public/authors/${author.userId}`);
     expect(res.status).toBe(200);
     const body = res.body as {
-      author: { id: string; displayName: string };
+      // NF-WF-019A (GAP-070): followerCount is additive on the frozen
+      // 013 author shape (Q8 pattern, ruled contract-conformant).
+      author: { id: string; displayName: string; followerCount: number };
       novels: Array<{ id: string; title: string; slug: string; publishedChapterCount: number }>;
     };
-    expect(body.author).toEqual({ id: author.userId, displayName: "Famous Author" });
+    expect(body.author).toEqual({
+      id: author.userId,
+      displayName: "Famous Author",
+      followerCount: 0,
+    });
     expect(body.novels).toHaveLength(1);
     expect(body.novels[0]!.slug).toBe("author-novel");
     expect(body.novels[0]!.publishedChapterCount).toBe(2);

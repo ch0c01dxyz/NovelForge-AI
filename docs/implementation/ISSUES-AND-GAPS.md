@@ -1436,12 +1436,11 @@ semantics are forbidden paths in 015):
 IMPACT: neither breaks 015's frozen acceptance, and both are
 edge-case quality degradations rather than correctness failures (the
 write path, the 013 reader, and both word counts are pinned to strip
-in 015). STATUS: open; owner: a follow-up task under NF-WF-017's
-orbit (which takes the HTML format as frozen input) or the 008/014
-owners — NOT 015's implementer. Closure check: closes when the
-evidence-span rule and the discovery full-text query are pinned
-against a defined HTML/strip contract with tests. Recorded before 015
-implementation, per the standing rule.
+in 015). STATUS: open; owner: NF-WF-017C (017's HTML-consumer-alignment child;
+review R1 of the 017 contract, 2026-10-06) — NOT 015's implementer.
+Closure check: closes when the evidence-span rule and the discovery
+full-text query are pinned against a defined HTML/strip contract with
+tests. Recorded before 015 implementation, per the standing rule.
 
 ## GAP-054 — NF-WF-015 contract claimed `chapters.blockedPublished` exists in both locale files; it does not (2026-10-06)
 
@@ -1514,3 +1513,11 @@ IMPACT: 016 cannot wire affordances on a panel that does not exist, and adding c
 EVIDENCE: the frozen 016 contract (Invariant 1.1) pins that `CharacterSheet` displays the migration-owned `storyEntityId` link read-only. But `listCharacters` in `apps/api/src/services/characters.ts` (verified ~:277-290) maps rows to `{id, novelId, key, name, summary, createdAt}` — no `storyEntityId`, even though the column exists on the model (`schema.prisma:2044`, set only by the migration backfill per GAP-058). The UI treats a missing link as "none", which is honest but loses the information for linked characters.
 
 IMPACT: linked characters are indistinguishable from unlinked ones in 016's UI; the read-only display pin is only partially satisfiable. STATUS: **CLOSED 2026-10-06** — diff review (separate actor) applied the minimal fix: `listCharacters` in `services/characters.ts` now returns `storyEntityId` on the read shape (one field, no schema change, still no writer — GAP-058's pin holds). The 016 UI already rendered the field when present (`CharacterSheet.vue` `data-testid="character-sheet-entity"`). New API test verifies the shape: null for unlinked characters, the migration-set id after a backfill-style DB write. Closure check: the character read routes return `storyEntityId` with tests — met.
+
+## GAP-061 — NF-WF-017: `importChapters` writes ChapterVersion rows without Invariant-2 sanitization (2026-10-06)
+
+EVIDENCE: `services/manuscript.ts:690-696` writes imported versions as `content: part.content.trim(), wordCount: countWords(part.content)` — raw text straight into the column, with a tag-unaware word count. The `saveChapter` path (015 Invariant 2, `:394-397`) instead writes `sanitizeChapterHtml(content)` and counts `countWords(stripHtmlTags(cleanContent))`. Imported rows therefore bypass the frozen 015 format contract: today's md/txt imports store unsanitized content, and once 017 normalizes all formats to HTML, an unsanitized write would persist un-normalized markup into `chapter_versions`.
+
+IMPACT: the import path is the only `chapter_versions` writer outside Invariant 2. If 017 normalizes imports to HTML without fixing this write, imported chapters diverge from editor-saved chapters (different sanitization, tag-counting word counts, reader-rendering behavior).
+
+STATUS: open; owner: NF-WF-017A (the frozen contract pins the fix: every import path writes through the same sanitize→strip→count sequence as `saveChapter`). Closure check: closes when a test asserts an import payload containing disallowed markup (`<script>`, event handlers, non-allowlist tags) lands as sanitized HTML with a tag-stripped word count identical to the `saveChapter` result for the same prose.

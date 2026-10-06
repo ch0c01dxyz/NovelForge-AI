@@ -7,7 +7,7 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: REVIEW_PENDING
+Status: IMPLEMENTED (diff-reviewed APPROVE_WITH_FINDINGS, round 2)
 Milestone / capability IDs: M2 (author half); delivery-plan NF-WF-016
 Implementer role / requested and resolved model: (separate actor; backend MODEL_UNVERIFIED per GAP-013)
 Reviewer role / requested and resolved model: (separate actor; backend MODEL_UNVERIFIED per GAP-013)
@@ -695,6 +695,56 @@ contract pins them (constitution §13 satisfied). Trusted from the
 author's verification: exact schema.prisma line numbers for models,
 `resolveSourceEvidence` internals, spoiler-boundary mode details,
 `EvidenceFinding` type location, 015 HTML strip-rule interplay.
+
+### Round 2 (diff review) — 2026-10-06 — verdict: APPROVE_WITH_FINDINGS
+
+Reviewed the exact submitted diff (working tree on HEAD `3e1165d`; 11
+modified + 29 new files, 2320 insertions). Separate actor from the
+contract author, contract reviewer, and implementer; backend
+MODEL_UNVERIFIED per GAP-013. Findings fixed inline in this round; no
+contract rewrite by the implementer was needed.
+
+**Findings fixed inline:**
+
+- **R1 (P2) — the "view the read-only story-entity link" acceptance
+  checkbox was unsatisfiable.** `listCharacters`
+  (`services/characters.ts`) mapped rows without `storyEntityId`,
+  so the UI's `v-if="character.storyEntityId"` could never fire.
+  Fixed: the read shape now returns `storyEntityId` (additive field,
+  no schema change, still no writer — GAP-058's pin holds). One-line
+  change in the response map; new API test asserts null for unlinked
+  characters and the migration-set id after a backfill-style DB
+  write. GAP-060 CLOSED on this.
+- **R2 (P3) — no finding, but recorded:** GAP-059 (scene-context
+  panel exists only in the mockup) and the Q3 deferral (no
+  event↔thread linking anywhere — verified absent in UI and API)
+  are correctly handled as honest open gaps, not silent omissions.
+
+**Independent verification (checked vs trusted):**
+Checked: the Q2 route + service against every Invariant 4 pin (path,
+Zod schema byte-equal to `createFactBody.source`, `canon:manage`
+gate, `resolveSourceEvidence`, audit `canon.fact-source-added`,
+`advanceForMutation ["canon_fact_sources"]`, 409-on-retracted,
+404-cross-tenant); no schema changes and no new capabilities in the
+diff (packages/database, packages/auth untouched); no AI calls in any
+workspace component; workspace-scoped proposal approve/reject paths
+(F4); `mode=AUTHOR` in FactList and retrieval search (F5); no
+character update route usage; storyEntityId never written by the UI;
+GAP-059/GAP-060 evidence verified against source (GAP-060 claim
+confirmed, then fixed); orange (`nf-accent`) usage conforms to
+DESIGN-TOKENS.md (primary CTA + active nav state only);
+DESIGN-TOKENS drawer conventions (Esc, focus return, role=dialog);
+i18n workspace-subtree parity en↔id (752/752 key paths, all enum
+`kind:` blocks byte-identical); no `@ts-ignore`/`@ts-expect-error`
+in new files. Re-ran: canon.test.ts 60/60, character.test.ts 23/23,
+full web suite 244/244 (37 files), API `tsc --noEmit` exit 0, web
+`vue-tsc --noEmit` exit 0, `pnpm lint` exit 0. Trusted from the
+implementer: full API suite 592/592 and `pnpm e2e` 20/20
+BASELINE-OK (the targeted re-runs I did are consistent with both
+claims; the UI is component-test-only, honestly noted in
+test-matrix.md).
+
+---
 
 ## Backend verification (contract author)
 

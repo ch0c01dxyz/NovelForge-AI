@@ -78,6 +78,17 @@ const createFactBody = z.object({
     { message: "validUntilChapter must not be before validFromChapter" },
   );
 
+// NF-WF-016 (GAP-057): the attach half of the evidence lifecycle. Detach
+// (`DELETE .../sources/:sourceId`) exists without an attach — asymmetric.
+// Same span validation as createFact, via resolveSourceEvidence.
+const factSourceBody = z.object({
+  chapterVersionId: uuid.nullable().optional(),
+  referenceVersionId: uuid.nullable().optional(),
+  quote: z.string().min(1).max(20_000),
+  start: z.number().int().min(0),
+  end: z.number().int().min(1),
+});
+
 const proposeBody = z.object({
   entityId: uuid,
   predicate: z.string().trim().min(1).max(200),
@@ -361,6 +372,28 @@ export function registerCanonRoutes(
         ...body.data,
       });
       return reply.code(204).send();
+    },
+  );
+
+  app.post(
+    "/api/workspaces/:workspaceId/novels/:novelId/canon/facts/:factId/sources",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams
+        .extend({ factId: uuid })
+        .safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = factSourceBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const created = await services.addSource({
+        actorUserId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+        factId: params.data.factId,
+        source: body.data,
+      });
+      return reply.code(201).send(created);
     },
   );
 

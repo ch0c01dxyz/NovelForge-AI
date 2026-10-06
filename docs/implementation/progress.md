@@ -4692,3 +4692,111 @@ Evidence: API scenes 12/12; web new 35/35 (18 component + 10 utils +
 web `vue-tsc` clean. GAP-052 closes
 on 015 verification; GAP-053 stays open (canon-evidence /
 discovery-search HTML follow-ups).
+
+## NF-WF-016 research/world/planning/character workspace completion — implemented 2026-10-06, awaiting independent diff review
+
+Contract `tasks/NF-WF-016-authoring-workspace.md` (REVIEW_PENDING, round 1
+APPROVE_WITH_FINDINGS with 5 findings fixed, Q1–Q8 decided). Implementer
+actor separate from author/reviewer/contract-reviewer; backends
+MODEL_UNVERIFIED per GAP-013. NOT committed — working tree left for the
+diff reviewer, per the task's hard rule. A daemon restart mid-session
+killed three of the four original UI builder agents; three completion
+agents re-dispatched and finished (no restart checkpoint existed, so the
+completion agents re-verified against the frozen contract).
+
+Implementation (all English artifacts):
+
+Backend (the ONLY permitted addition, Q2): `POST
+/api/workspaces/:workspaceId/canon/facts/:factId/sources`
+(`apps/api/src/canon-routes.ts` route + `factSourceBody` Zod schema,
+`apps/api/src/services/canon.ts` `addSource`): session auth + membership
+404 gate + `canon:manage` capability gate, pinned evidence-span
+validation via `resolveSourceEvidence`, `advanceForMutation` tables
+`["canon_fact_sources"]`, audit `canon.fact-source-added`, 409 on
+retracted/non-active fact, 404 cross-tenant. Additive, no schema
+change. GAP-057 CLOSED (closure condition: route exists with
+span-validation tests). 4 new API tests ("the attach half of the
+evidence lifecycle"): valid attach, 404-foreign/409-retracted,
+400-malformed-evidence, audit row written.
+
+Writer-page wiring (`apps/web/app/pages/workspaces/[workspaceId]/novels/[novelId]/index.vue`):
+story-structure nav (9 items), header outline button opens the Planning
+panel, footer "Canon in sync" bound to live `GET .../story-health`
+(refreshed after the Health panel closes), shared `WorkspaceDrawer.vue`
+shell (Esc, focus return, `role=dialog`).
+
+Nine drawer panels in `apps/web/app/components/workspace/` (with
+`PanelTabs.vue`, `ConfirmDialog.vue`, `WorkspaceDrawer.vue` shell,
+`workspaceApi.ts` + `canon-types.ts` typed clients):
+- Characters: CharacterPanel/CharacterList/CharacterSheet/CharacterStates/CharacterKnowledge/CharacterArcs —
+  create/delete (NO update route, GAP-058; `storyEntityId` read-only,
+  GAP-060), state spans (409 overlap honest), knowledge stance+source,
+  arcs + milestones, roving-tabindex tabs.
+- Relationships: RelationshipPanel/RelationshipStances/Bonds —
+  directional stance spans, bonds with members/structure/chapters,
+  transitions, interactions, stage-at/neglect readouts.
+- World & Lore: WorldPanel/EntityBrowser/FactList/FactEditor/CitationFields —
+  entities by kind, fact creation WITH ≥1 validated citation (UI refuses
+  without one, Q8; server contract unchanged), retract with audit note,
+  attach/detach citation (Q2).
+- Canon review: CanonReviewPanel/ProposalReview — per-claim proposal
+  approve/reject bulk list with visible conflict + acknowledgment,
+  application open by ID in the existing review dialog (read-only; no
+  list route exists); workspace-scoped approve/reject paths (F4 pin).
+- Timeline: TimelinePanel/StoryEvents/TimelineView/ThreadsView/PromisesView/CausalEdges —
+  events, timeline entries, threads (status change; event↔thread linking
+  absent by design, GAP-056), promises (transitions), causal edges
+  (escalation note: some edges require canon:approve).
+- Planning: PlanningPanel/SynopsesView/SagasView/OutlineNodesView/OutlineVersionsView/HorizonView —
+  synopsis create/archive/delete, sagas, outline nodes, version approval
+  visually separated (`canon:approve`) + supersede, horizon read/update.
+- Research: ResearchPanel/ReferenceLibrary/ReferenceIngest/RetrievalSearch —
+  reference CRUD + publish + ingest trigger, corpus search (sends
+  `mode=AUTHOR`, F5 pin), retrieval audit, labelled non-canon boundary.
+- Narrative: NarrativePanel/DnaEditor/PolicyList/Antagonists —
+  DNA edit (JSON validation), policies (SCALE display-only with pinned
+  note), antagonists with 1-based chapters.
+- Health & memory: HealthMemoryPanel — `evaluateHealth` findings with
+  severity + evidence, unresolved-identities register, memory
+  projection status + rebuild trigger.
+
+i18n en+id: 573 static `workspace.*` keys verified present in both
+locales (`apps/web/app/i18n/en.ts`, `id.ts`), plus 14 enum-family leaf
+sets (entity kinds, fact/proposal/application statuses, verdicts,
+conflict kinds, thread kinds/statuses, promise transition states, edge
+confidences, saga/node kinds, outline-version statuses) used by
+template-literal lookups — a post-handoff re-audit caught the missing
+leaves (static regex audits miss template-literal enums) and they were
+added en+id, vue-tsc clean, web suite re-run 244/244. a11y: vitest-axe tests for all four panel groups
+(`apps/web/app/a11y/workspace-characters.axe.test.ts`,
+`apps/web/app/a11y/workspace-world-canon.axe.test.ts`,
+`apps/web/a11y/workspace-research-narrative-health.axe.test.ts`,
+`apps/web/a11y/workspace-timeline-planning.axe.test.ts`; 0 violations);
+`apps/web/vitest.config.ts` now includes `a11y/**/*.test.ts`.
+
+Corrections during implementation: the characters/relationships tests
+initially asserted key-path fallbacks (keys absent from en.ts when the
+tests were written); after the keys were merged centrally the assertions
+were updated to the real English strings. 5 lint errors (unused imports
+in timeline/planning test files) fixed inline; 3 vue-tsc errors in
+`Bonds.vue` (string|undefined into t()) fixed inline. No GAP needed —
+ordinary implementation corrections, no contract deviation.
+
+New GAPs recorded before completion (standing rule): GAP-059
+(scene-context panel exists only in the design mockup — 016 ships
+without it; no-regression pin Invariant 6 prevents touching 015's
+SceneNav), GAP-060 (`GET .../characters` omits `storyEntityId` — the
+read-only link display is only partially satisfiable). GAP-056 stays
+open as deferred (Q3); GAP-058 stays open as pinned-out (no character
+update route); GAP-039 (SCALE never FAILs), GAP-040 (cross-branch
+as-of), GAP-055 (planning owner) remain untouched.
+
+Evidence: web **244/244** (37 files; new component tests: characters 12,
+relationships 10, world/canon 15, timeline/planning 50 across 12 view
+files + 2 panel files, research/narrative/health 24; axe 4 files, 0
+violations); API **592/592** (29 files, incl. 4 new canon add-source
+tests); `pnpm e2e` **20/20** BASELINE-OK (no-regression vs 011);
+`pnpm lint` exit 0; API `tsc --noEmit` exit 0; web `vue-tsc --noEmit`
+exit 0. All green, actually executed 2026-10-06 on this host (native
+PostgreSQL 16.15 + pgvector on localhost:5432, Redis 7.0.15 on 6379,
+scratch `novelforge_test_*` DBs only; pnpm 12.5.1).

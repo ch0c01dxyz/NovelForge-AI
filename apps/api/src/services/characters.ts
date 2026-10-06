@@ -287,6 +287,10 @@ export function createCharacterServices(deps: {
         key: row.key,
         name: row.name,
         summary: row.summary,
+        // NF-WF-016 (GAP-060): read-only display of the migration-owned
+        // character<->story-entity link. Read shape only — no writer
+        // exists (GAP-058); the UI renders it as a label, never an input.
+        storyEntityId: row.storyEntityId,
         createdAt: row.createdAt,
       }));
     },

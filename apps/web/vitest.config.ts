@@ -13,6 +13,6 @@ export default defineConfig({
   plugins: [vue()],
   test: {
     environment: "jsdom",
-    include: ["app/**/*.test.ts"],
+    include: ["app/**/*.test.ts", "a11y/**/*.test.ts"],
   },
 });

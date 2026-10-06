@@ -600,6 +600,42 @@ describe("authorization and tenancy hold on the Phase 8 surface", () => {
   });
 });
 
+describe("the character list exposes the migration-owned story-entity link (NF-WF-016 / GAP-060)", () => {
+  // The read routes must return `storyEntityId` so the 016 UI can display
+  // the link read-only (GAP-058 pins that no route or service WRITES it).
+  it("returns storyEntityId on the list shape, null for unlinked characters", async () => {
+    const f = await seed("link-shape");
+    const id = await makeCharacter(f, "ling-fan", "Ling Fan");
+
+    const plain = await get(f, "/characters");
+    expect(plain.statusCode).toBe(200);
+    const rows = plain.body as { id: string; storyEntityId: string | null }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.storyEntityId).toBeNull();
+
+    // Simulate the migration backfill setting the link (it writes a real
+    // story-entity id directly in the DB; there is intentionally no API
+    // writer for it) — the read shape must carry it through.
+    const entityRes = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${f.workspaceId}/novels/${f.novelId}/canon/entities`,
+      headers: { cookie: f.cookie },
+      payload: { kind: "CHARACTER", name: "Ling Fan" },
+    });
+    expect(entityRes.statusCode, entityRes.body).toBe(201);
+    const entityId = (entityRes.json() as { id: string }).id;
+    await db.character.update({
+      where: { id },
+      data: { storyEntityId: entityId },
+    });
+    const linked = (await get(f, "/characters")).body as {
+      id: string;
+      storyEntityId: string | null;
+    }[];
+    expect(linked[0]!.storyEntityId).toBe(entityId);
+  });
+});
+
 describe("the DB constraints are the subject, not the service guard in front of them", () => {
   // Every refusal above arrives through the HTTP API, and the service
   // validators (validateStateHistory, validateStanceHistory,

@@ -360,6 +360,26 @@ export interface CanonServices {
     sourceId: string;
   }): Promise<void>;
 
+  /**
+   * Attach one evidence citation to an existing active fact (NF-WF-016 /
+   * GAP-057 — the attach half of the evidence lifecycle). The span is
+   * validated exactly like creation (`resolveSourceEvidence`); the audit
+   * action is `canon.fact-source-added`.
+   */
+  addSource(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    factId: string;
+    source: {
+      chapterVersionId?: string | null;
+      referenceVersionId?: string | null;
+      quote: string;
+      start: number;
+      end: number;
+    };
+  }): Promise<{ id: string }>;
+
   proposeCandidate(input: {
     actorUserId: string;
     workspaceId: string;
@@ -964,6 +984,61 @@ export function createCanonServices(deps: {
           reason: reason ?? null,
         },
       });
+    },
+
+    async addSource({ actorUserId, workspaceId, novelId, factId, source }) {
+      await gate(workspaceId, novelId, actorUserId, "canon:manage");
+      // Scope through the stored row: a fact id from another workspace must
+      // 404 exactly as a nonexistent one does (ADR-0008 §6).
+      const fact = await db.canonFact.findFirst({
+        where: { id: factId, novelId, workspaceId },
+        select: { id: true, status: true },
+      });
+      if (!fact) throw new NotFoundError("canon fact");
+      if (fact.status !== "ACTIVE") {
+        throw new ConflictError(
+          "evidence can only be attached to an active fact — this fact is " +
+            fact.status.toLowerCase(),
+        );
+      }
+      // Validate the evidence span BEFORE writing: an unverifiable quote
+      // must never be stored as proof (a citation pointing at the wrong
+      // text is worse than no citation). Same rule as createFact.
+      const sourceRow = await resolveSourceEvidence(source, workspaceId, novelId);
+      const createdId = await db.$transaction(async (tx) => {
+        const row = await tx.canonFactSource.create({
+          data: {
+            canonFactId: fact.id,
+            ...sourceRow,
+            createdById: actorUserId,
+          },
+          select: { id: true },
+        });
+        // `canon_fact_sources` is covered by C1, so the head still
+        // advances and the revision is still recorded (C4) — the same
+        // classification as `fact.unlinkSource`.
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "fact.addSource",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["canon_fact_sources"],
+          items: [
+            { entityType: "CanonFactSource", entityId: row.id, operation: "CREATE" },
+          ],
+        });
+        return row.id;
+      });
+      await audit.record({
+        actorUserId,
+        workspaceId,
+        action: "canon.fact-source-added",
+        entityType: "CanonFactSource",
+        entityId: createdId,
+        payload: { novelId, factId, sourceKind: sourceRow.sourceKind },
+      });
+      return { id: createdId };
     },
 
     async unlinkSource({ actorUserId, workspaceId, novelId, factId, sourceId }) {

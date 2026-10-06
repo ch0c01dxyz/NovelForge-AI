@@ -1229,6 +1229,181 @@ describe("evidence must resolve to a real span in an immutable revision", () => 
   });
 });
 
+describe("the attach half of the evidence lifecycle (GAP-057 / NF-WF-016 Q2)", () => {
+  // Detach (`DELETE .../sources/:sourceId`) exists without an attach — the
+  // route below closes the asymmetric lifecycle: a fact created in haste can
+  // still be properly cited. Same span validation as creation.
+  it("attaches a validated citation to an existing fact", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const chapter = await db.chapter.create({
+      data: { novelId, number: 1, title: "One", status: "DRAFT", createdById: owner.userId },
+    });
+    const text = "His hair was black as ink.";
+    const version = await db.chapterVersion.create({
+      data: { chapterId: chapter.id, number: 1, content: text, wordCount: 6, authorId: owner.userId },
+    });
+    await db.chapter.update({ where: { id: chapter.id }, data: { currentVersionId: version.id } });
+
+    // Created WITHOUT evidence — attach it after.
+    const fact = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+    });
+    expect(fact.statusCode).toBe(201);
+    const factId = (fact.body as { id: string }).id;
+
+    const start = text.indexOf("black");
+    const add = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts/${factId}/sources`,
+      headers: { cookie: owner.cookie },
+      payload: { chapterVersionId: version.id, quote: "black", start, end: start + 5 },
+    });
+    expect(add.statusCode, add.body).toBe(201);
+    const sourceId = (add.json() as { id: string }).id;
+    const stored = await db.canonFactSource.findUniqueOrThrow({ where: { id: sourceId } });
+    expect(stored.sourceKind).toBe("CHAPTER");
+    expect(text.slice(stored.start, stored.end)).toBe(stored.quote);
+
+    // A quote that does not match the span is refused, not stored.
+    const bad = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts/${factId}/sources`,
+      headers: { cookie: owner.cookie },
+      payload: { chapterVersionId: version.id, quote: "blue", start, end: start + 5 },
+    });
+    expect(bad.statusCode).toBe(409);
+    expect((bad.json() as { error: string }).error).toBe("CONFLICT");
+    expect(await db.canonFactSource.count({ where: { canonFactId: factId } })).toBe(1);
+  });
+
+  it("404s for a foreign fact id, and 409s for a retracted fact", async () => {
+    const owner = await seedUser("owner@example.com");
+    const other = await seedUser("other@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const wsB = await seedWorkspace(other.userId, "wb");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const chapter = await db.chapter.create({
+      data: { novelId, number: 2, title: "Two", status: "DRAFT", createdById: owner.userId },
+    });
+    const text = "A red cloak.";
+    const version = await db.chapterVersion.create({
+      data: { chapterId: chapter.id, number: 1, content: text, wordCount: 3, authorId: owner.userId },
+    });
+    const fact = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "cloak",
+      objectText: "red",
+    });
+    const factId = (fact.body as { id: string }).id;
+
+    const add = (ws: string, n: string, f: string, cookie: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/workspaces/${ws}/novels/${n}/canon/facts/${f}/sources`,
+        headers: { cookie },
+        payload: { chapterVersionId: version.id, quote: "red", start: 2, end: 5 },
+      });
+
+    // A foreign workspace cannot reach the fact.
+    expect((await add(wsB.workspaceId, wsB.novelId, factId, other.cookie)).statusCode).toBe(404);
+    // A wrong fact id cannot reach the source path either.
+    expect((await add(workspaceId, novelId, entityId, owner.cookie)).statusCode).toBe(404);
+    expect(await db.canonFactSource.count({ where: { canonFactId: factId } })).toBe(0);
+
+    // A retracted fact cannot take new evidence.
+    const retract = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts/${factId}/retract`,
+      headers: { cookie: owner.cookie },
+      payload: { reason: "changed my mind" },
+    });
+    expect(retract.statusCode, retract.body).toBe(204);
+    const afterRetract = await add(workspaceId, novelId, factId, owner.cookie);
+    expect(afterRetract.statusCode).toBe(409);
+    expect(await db.canonFactSource.count({ where: { canonFactId: factId } })).toBe(0);
+  });
+
+  it("400s on malformed evidence and rejects unauthenticated callers", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+    const fact = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "hair-colour",
+      objectText: "black",
+    });
+    const factId = (fact.body as { id: string }).id;
+    const url = `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts/${factId}/sources`;
+
+    // No body at all → 400, not a silent default.
+    const empty = await app.inject({
+      method: "POST",
+      url,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(empty.statusCode).toBe(400);
+
+    // Both source kinds → 409 (exactly one), not a 400 field error.
+    const both = await app.inject({
+      method: "POST",
+      url,
+      headers: { cookie: owner.cookie },
+      payload: {
+        chapterVersionId: "00000000-0000-4000-8000-000000000001",
+        referenceVersionId: "00000000-0000-4000-8000-000000000002",
+        quote: "x",
+        start: 0,
+        end: 1,
+      },
+    });
+    expect(both.statusCode).toBe(409);
+
+    const anon = await app.inject({ method: "POST", url, payload: {} });
+    expect(anon.statusCode).toBe(401);
+  });
+
+  it("writes the canon.fact-source-added audit row (evidence, not silence)", async () => {
+    const owner = await seedUser("owner@example.com");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Ling Fan");
+
+    const chapter = await db.chapter.create({
+      data: { novelId, number: 3, title: "Three", status: "DRAFT", createdById: owner.userId },
+    });
+    const text = "Green eyes.";
+    const version = await db.chapterVersion.create({
+      data: { chapterId: chapter.id, number: 1, content: text, wordCount: 2, authorId: owner.userId },
+    });
+    const fact = await createFact(owner.cookie, workspaceId, novelId, {
+      entityId,
+      predicate: "eye-colour",
+      objectText: "green",
+    });
+    const factId = (fact.body as { id: string }).id;
+
+    const add = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts/${factId}/sources`,
+      headers: { cookie: owner.cookie },
+      payload: { chapterVersionId: version.id, quote: "Green", start: 0, end: 5 },
+    });
+    expect(add.statusCode, add.body).toBe(201);
+
+    const rows = await db.auditLog.findMany({
+      where: { action: "canon.fact-source-added", entityId: (add.json() as { id: string }).id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.actorUserId).toBe(owner.userId);
+  });
+});
+
 describe("the DB constraints are the subject, not the service guard in front of them", () => {
   // Every refusal in the suites above arrives through the HTTP API, and the
   // service guards — resolveObject, verifySpan, the source-kind derivation —

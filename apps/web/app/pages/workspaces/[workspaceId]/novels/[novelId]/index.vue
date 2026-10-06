@@ -31,6 +31,17 @@ import {
 import { countWords as countWordsStripped, stripHtmlTags } from "../../../../../utils/htmlText";
 import type RunStatusPanel from "../../../../../components/generation/RunStatusPanel.vue";
 import type GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
+// ---------- NF-WF-016 workspace panels ----------
+import WorkspaceDrawer from "../../../../../components/workspace/WorkspaceDrawer.vue";
+import CharacterPanel from "../../../../../components/workspace/CharacterPanel.vue";
+import RelationshipPanel from "../../../../../components/workspace/RelationshipPanel.vue";
+import WorldPanel from "../../../../../components/workspace/WorldPanel.vue";
+import CanonReviewPanel from "../../../../../components/workspace/CanonReviewPanel.vue";
+import TimelinePanel from "../../../../../components/workspace/TimelinePanel.vue";
+import PlanningPanel from "../../../../../components/workspace/PlanningPanel.vue";
+import ResearchPanel from "../../../../../components/workspace/ResearchPanel.vue";
+import NarrativePanel from "../../../../../components/workspace/NarrativePanel.vue";
+import HealthMemoryPanel from "../../../../../components/workspace/HealthMemoryPanel.vue";
 
 interface ChapterSummary {
   id: string;
@@ -640,9 +651,76 @@ async function onMoveScene(payload: {
   }
 }
 
+// ---------- NF-WF-016 authoring workspace ----------
+// One drawer hosts the nine domain panels (Invariant 1). The story-structure
+// nav (design mockup :655-663, extended per Invariant 7a) opens them; the
+// header outline button opens planning. No AI calls here — the panels are
+// deterministic authoring UI over the frozen routes.
+type WorkspacePanelKey =
+  | "characters"
+  | "relationships"
+  | "world"
+  | "timeline"
+  | "canon"
+  | "research"
+  | "planning"
+  | "narrative"
+  | "health";
+
+const workspacePanel = ref<WorkspacePanelKey | null>(null);
+
+const workspaceNavItems: { key: WorkspacePanelKey; labelKey: string }[] = [
+  { key: "characters", labelKey: "workspace.nav.characters" },
+  { key: "relationships", labelKey: "workspace.nav.relationships" },
+  { key: "world", labelKey: "workspace.nav.world" },
+  { key: "timeline", labelKey: "workspace.nav.timeline" },
+  { key: "canon", labelKey: "workspace.nav.canon" },
+  { key: "research", labelKey: "workspace.nav.research" },
+  { key: "planning", labelKey: "workspace.nav.planning" },
+  { key: "narrative", labelKey: "workspace.nav.narrative" },
+  { key: "health", labelKey: "workspace.nav.health" },
+];
+
+const workspacePanelTitle = computed(() =>
+  workspacePanel.value ? t(`workspace.nav.${workspacePanel.value}`) : "",
+);
+
+/** Continuity-guardian state: the footer's "Canon in sync" binding. */
+const healthFindingCount = ref<number | null>(null);
+
+async function loadHealth() {
+  try {
+    const res = await api<{ findings: { severity: string }[] }>(
+      `${base.value}/story-health`,
+    );
+    healthFindingCount.value = res.findings.length;
+  } catch {
+    // Health is advisory, never blocking: a failed check shows "unknown",
+    // never a false "in sync".
+    healthFindingCount.value = null;
+  }
+}
+
+const healthLabel = computed(() => {
+  if (healthFindingCount.value === null) return t("workspace.health.summary.unknown");
+  if (healthFindingCount.value === 0) return t("workspace.health.summary.inSync");
+  return t("workspace.health.summary.findings", { n: healthFindingCount.value });
+});
+
+function openWorkspacePanel(key: WorkspacePanelKey) {
+  workspacePanel.value = key;
+}
+
+function closeWorkspacePanel() {
+  const wasHealth = workspacePanel.value === "health";
+  workspacePanel.value = null;
+  if (wasHealth) void loadHealth();
+}
+
 onMounted(async () => {
   try {
     await loadChapters();
+    void loadHealth();
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
       await navigateTo(
@@ -708,6 +786,15 @@ async function publish() {
         NovelForge
       </NuxtLink>
       <div class="flex-1" />
+      <!-- NF-WF-016: the header outline button opens the planning panel
+           (design mockup outline-btn :601). -->
+      <button
+        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        :aria-label="t('workspace.nav.planning')"
+        @click="openWorkspacePanel('planning')"
+      >
+        {{ t("workspace.nav.planning") }}
+      </button>
       <div
         class="flex items-center gap-1 rounded-lg border border-nf-border p-0.5 text-[12px]"
         role="group"
@@ -778,6 +865,24 @@ async function publish() {
           >
             {{ c.wordCount.toLocaleString() }}
           </span>
+        </button>
+        <!-- NF-WF-016: the story-structure nav (design mockup :655-663,
+             extended per Invariant 7a) opens the authoring workspace
+             panels in a drawer. -->
+        <div class="mb-2 mt-6 px-2.5 pb-2">
+          <span
+            class="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint"
+            >{{ t("workspace.nav.story") }}</span
+          >
+        </div>
+        <button
+          v-for="item in workspaceNavItems"
+          :key="item.key"
+          class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+          :class="workspacePanel === item.key ? 'bg-nf-accent/10 font-semibold text-nf-accent-hi' : ''"
+          @click="openWorkspacePanel(item.key)"
+        >
+          <span class="truncate">{{ t(item.labelKey) }}</span>
         </button>
       </nav>
 
@@ -1016,6 +1121,26 @@ async function publish() {
           {{ t("chapters.chapter") }}
           <b class="font-semibold text-nf-text-dim">{{ activeChapter?.number ?? "—" }}</b>
         </span>
+        <!-- NF-WF-016: the continuity-guardian binding — "Canon in sync"
+             reflects the live evaluateHealth state, never a cached claim. -->
+        <button
+          class="flex items-center gap-1.5 focus-visible:nf-focus"
+          :aria-label="healthLabel"
+          @click="openWorkspacePanel('health')"
+        >
+          <span
+            class="text-[9px]"
+            :class="
+              healthFindingCount === null
+                ? 'text-nf-text-faint'
+                : healthFindingCount === 0
+                  ? 'text-nf-ok'
+                  : 'text-nf-warn'
+            "
+            >●</span
+          >
+          <span class="font-semibold text-nf-text-dim">{{ healthLabel }}</span>
+        </button>
       </div>
     </footer>
 
@@ -1027,5 +1152,59 @@ async function publish() {
       @approve="onApprove"
       @reject="onReject"
     />
+
+    <!-- NF-WF-016: the authoring workspace drawer. One panel at a time;
+         the panels are deterministic UI over the frozen domain routes. -->
+    <WorkspaceDrawer
+      :open="workspacePanel !== null"
+      :title="workspacePanelTitle"
+      @close="closeWorkspacePanel"
+    >
+      <CharacterPanel
+        v-if="workspacePanel === 'characters'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <RelationshipPanel
+        v-else-if="workspacePanel === 'relationships'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <WorldPanel
+        v-else-if="workspacePanel === 'world'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <TimelinePanel
+        v-else-if="workspacePanel === 'timeline'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <CanonReviewPanel
+        v-else-if="workspacePanel === 'canon'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <ResearchPanel
+        v-else-if="workspacePanel === 'research'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <PlanningPanel
+        v-else-if="workspacePanel === 'planning'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <NarrativePanel
+        v-else-if="workspacePanel === 'narrative'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <HealthMemoryPanel
+        v-else-if="workspacePanel === 'health'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+    </WorkspaceDrawer>
   </div>
 </template>

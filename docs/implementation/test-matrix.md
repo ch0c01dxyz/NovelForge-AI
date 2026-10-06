@@ -1742,3 +1742,64 @@ the real `{error:"CONFLICT"}` envelope). Post-fix re-run:
 reader 10/10, editor 18/18, utils 10/10, selection-AI 5/5, axe 2/2
 (45/45); scenes API 12/12 on scratch DB; API `tsc`, web `vue-tsc`,
 `pnpm lint` all clean.
+
+## NF-WF-016 research/world/planning/character workspace completion — 2026-10-06
+
+Implementer actor separate from contract author/contract-reviewer.
+Backend MODEL_UNVERIFIED per GAP-013. Scratch DBs only
+(`novelforge_test_*`). No schema migration (GAP-052 respected). The
+ONLY permitted backend addition is `POST
+/api/workspaces/:workspaceId/canon/facts/:factId/sources` (Q2);
+GAP-057 CLOSED on the span-validation tests below.
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/canon.test.ts` (apps/api) | **60/60** (4 new: the attach half of the evidence lifecycle — valid attach, 404-foreign/409-retracted, 400-malformed-evidence span validation, `canon.fact-source-added` audit row) |
+| Full web suite (`npx vitest run`, apps/web) | **244/244** (37 files) |
+| Full API suite (`npx vitest run`, apps/api) | **592/592** (29 files) |
+| `pnpm e2e` (011 loop no-regression) | **20/20** (3 files), BASELINE-OK |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+| i18n key audit (573 static `workspace.*` keys + 14 enum-family leaf sets) | All resolve in en AND id (enum leaves caught by a post-handoff re-audit of template-literal lookups) |
+
+Web coverage (component tests, all fetch-mocked, en+id): characters 12
+(create validates key client-side + POST + refetch, delete confirm +
+404 honest, state-span 409 overlap, bad range client-side, knowledge
+UUID validation + access verdicts, arcs + milestones, read-only
+story-entity link, roving-tabindex tabs); relationships 10 (roster +
+stances tab, bonds tab, roster 403 + retry, same-character guard,
+stance at-chapter hit/miss, bond create with members/structure/chapters,
+member guard, delete confirm, transitions + interaction weight guard +
+stage-at + neglect); world/canon 15 (entities by kind, delete-409 on
+cited entity, fact evidence quotes + retract + 409, Q8 REFUSES creation
+without a citation, fact create with valid citation, live-fact 409,
+attach/detach citation, proposal conflict + acknowledgment + reject +
+head-mismatch 409, application by ID read-only + 404); timeline/planning
+50 across 12 view files + TimelinePanel/PlanningPanel (events, timeline
+entries, threads + status change, promises + transitions, causal edges,
+synopses create/archive/delete, sagas, outline nodes, outline versions
+approve/supersede + horizon read/update, panel tab switching);
+research/narrative/health 24 (reference create + invalid-key guard,
+reference detail, version add + publish confirm, ingest trigger,
+retrieval search sends `mode=AUTHOR` + 404 mapping, non-canon boundary
+labelled, DNA empty state + JSON guards + PUT save, SCALE display-only
+pinned note, policy delete confirm, antagonist create with 1-based
+chapters, health findings + identities register + memory status +
+rebuild). Axe: 4 files (characters, world-canon, research-narrative-health,
+timeline-planning), 0 violations (wcag2aa+wcag22aa, en+id).
+
+API coverage (new): `addSource` — valid chapter-version citation attach,
+404 for a foreign fact id, 409 for a retracted fact, 400 on malformed
+evidence (span validation), `canon.fact-source-added` audit row written;
+no other API surface touched.
+
+No-regression: the full web suite (244), full API suite (592) and the
+011 e2e loop (20/20 BASELINE-OK) all green on the same tree, so the
+007/015 writer flows, generation loop, ApplyBar, publish gate and
+reader/discovery pages behave as before to the extent the suites cover.
+UI flows themselves are exercised via component tests with mocked
+fetch; no live-browser walkthrough was performed.
+
+Manual a11y: the automated half is green (axe, both locales); the
+named screen-reader pass is PENDING human verification.

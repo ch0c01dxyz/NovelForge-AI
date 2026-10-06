@@ -1940,3 +1940,40 @@ exercised (GAP-013); (3) the full screen-reader pass is a human task
 (GAP-051); (4) the studio page itself (tab shell, role gating) has no
 dedicated test — its children are covered and the gates are
 progressive enhancement over the server enforcement.
+
+## NF-WF-018B — Platform administration: gateways, models, profiles, routing (2026-10-06)
+
+Executed on this host (native PostgreSQL 16.15 + pgvector on localhost:5432,
+Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+Implementer actor separate from the 018 contract author/reviewer, the
+018A/018C implementers, and the future diff reviewer; backends
+MODEL_UNVERIFIED per GAP-013. 018A (studio) and 018C (receipts) were NOT
+touched.
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/platform-admin.test.ts` (apps/api) | **9/9** — masked gateway list (no value/ciphertext in the body), write-only rotate (stored ciphertext decrypts to the NEW key only; the old one fails), delete=revoke cascade (models + mappings deleted, attempts SetNull), audit rows identity-only, workspace OWNER (non-SUPER_ADMIN) 403 on all 12 platform routes, session `platformRole` field (`SUPER_ADMIN` vs `null`), audit-log filtering + non-allowlisted action → 400, routing-strategy read-only + 403, health-check trigger with audit row |
+| New web tests: `GatewayList.test.ts` + `GatewayForm.test.ts` + `usePlatformAdmin.test.ts` | **12/12** — masked badges, no credential material in the DOM, apiKey never prefilled (absent in edit mode), rotate shows only the apiKey field, wipe-after-submit, Esc dismiss, session `platformRole` read, frozen `/api/gateways` path, `isSuperAdmin` gating predicate |
+| `app/a11y/platform-admin.axe.test.ts` | **10/10** — zero axe violations (wcag2aa + wcag22aa) on GatewayList, GatewayForm (create), ModelCatalog, ProfileMappings, RoutingOverview, in en and id |
+| i18n parity check | **72/72** `platformAdmin.*` keys present in both en and id |
+| Full API suite `npx vitest run` (apps/api) | 36 files, **708/708** — +9 new (platform-admin), no regressions |
+| Full web suite `npx vitest run` (apps/web) | 50 files, **312/312** — +22 new |
+| `pnpm e2e` (011 author-preview loop) | 3 files, **20/20** exit 0 — no-regression vs 011 |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+
+GAP-066 deviation recorded before the workaround (standing rule): no frozen
+route served the deployment routing strategy, so 018B adds the read-only
+`GET /api/admin/routing-strategy` (SUPER_ADMIN, `gateway:read` gate, no
+schema change, no new capabilities — the same necessity logic as GAP-064).
+The diff reviewer rules whether this is APPROVE_WITH_FINDINGS or
+CHANGES_REQUESTED.
+
+Honest limitations (not GAPs): (1) no live-model generation was exercised
+(GAP-013); (2) the full screen-reader pass is a human task (GAP-051); (3)
+the admin page shell itself (tab switching, SUPER_ADMIN gating) has no
+dedicated test — its children are covered and the gates are progressive
+enhancement over the server enforcement; (4) the delete=revoke confirm
+dialog requires a second explicit click, but the cascade was verified at
+the API level, not through the UI.

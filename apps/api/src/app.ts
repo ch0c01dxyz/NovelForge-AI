@@ -189,9 +189,20 @@ export async function buildApp(
       users: prismaUserStore(options.db),
       sessions: prismaSessionStore(options.db),
     });
+    // Platform-role lookup, shared by the auth session response
+    // (NF-WF-018B, additive) and the AI platform routes. The role comes
+    // from the user row, not from a membership (constitution §6).
+    const platformRoleOf = async (userId: string) => {
+      const user = await options.db!.user.findUnique({
+        where: { id: userId },
+        select: { platformRole: true },
+      });
+      return user?.platformRole ?? null;
+    };
     await registerAuthRoutes(app, {
       auth,
       secureCookies: env.NODE_ENV === "production",
+      platformRoleOf,
     });
     await registerPlatformRoutes(app, {
       auth,
@@ -258,13 +269,6 @@ export async function buildApp(
       // provider; persistence stays real (CLAUDE.md §25).
       ...(options.createGateway ? { createGateway: options.createGateway } : {}),
     });
-    const platformRoleOf = async (userId: string) => {
-      const user = await options.db!.user.findUnique({
-        where: { id: userId },
-        select: { platformRole: true },
-      });
-      return user?.platformRole ?? null;
-    };
     registerAiRoutes(app, { auth, services: aiServices, platformRoleOf });
 
     // One retrieval service shared by the routes and the workflow executor:

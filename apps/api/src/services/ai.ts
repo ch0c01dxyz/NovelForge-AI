@@ -32,6 +32,21 @@ import {
 import { BadGatewayError, ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
 
+/**
+ * Platform audit actions the 018B admin surface may read (contract
+ * Invariant 1, pinned allowlist). Exported for the route's Zod schema.
+ */
+export const PLATFORM_AUDIT_ACTIONS = [
+  "gateway.created",
+  "gateway.updated",
+  "gateway.deleted",
+  "gateways.health-checked",
+  "model-profile.mapped",
+  "model.updated",
+  "models.synced",
+  "models.sync-failed",
+] as const;
+
 export interface GatewayView {
   id: string;
   name: string;
@@ -147,6 +162,34 @@ export interface AiServices {
     actorPlatformRole: PlatformRole;
     actorUserId: string;
   }): Promise<Array<{ gatewayId: string; healthy: boolean; latencyMs: number }>>;
+  /**
+   * NF-WF-018B: effective deployment routing strategy (read-only).
+   * GAP-066: no frozen route serves this env-level value, so the routing
+   * overview reads it here. `gateway:read` gate; never editable.
+   */
+  getRoutingStrategy(actorPlatformRole: PlatformRole): Promise<{
+    strategy: RoutingStrategy;
+  }>;
+  /**
+   * NF-WF-018B: platform audit trail (read-only). SUPER_ADMIN via the
+   * `gateway:read` gate; `action` is pinned to the platform audit-action
+   * allowlist — anything else is rejected, never silently widened.
+   */
+  listPlatformAuditLog(
+    actorPlatformRole: PlatformRole,
+    query: { action?: string; limit?: number },
+  ): Promise<
+    Array<{
+      id: string;
+      actorUserId: string | null;
+      actorEmail: string | null;
+      action: string;
+      entityType: string;
+      entityId: string | null;
+      payload: unknown;
+      createdAt: Date;
+    }>
+  >;
   /** Workspace-scoped generation. */
   generate(input: {
     actorUserId: string;
@@ -226,6 +269,10 @@ export function createAiServices(deps: {
   routingStrategy?: RoutingStrategy;
 }): AiServices {
   const { db, registry, encryptionKey, audit } = deps;
+  // NF-WF-018B (GAP-066): the effective deployment routing strategy, read
+  // by the routing overview. Env-level only — never editable at runtime.
+  const effectiveRoutingStrategy: RoutingStrategy =
+    deps.routingStrategy ?? "PRIORITY";
   const manager = new GatewayManager(registry, {
     ...(deps.createGateway ? { createGateway: deps.createGateway } : {}),
     ...(deps.routingStrategy ? { defaultStrategy: deps.routingStrategy } : {}),
@@ -574,6 +621,43 @@ export function createAiServices(deps: {
         payload: { checked: results.length, healthy: results.filter((r) => r.healthy).length },
       });
       return results;
+    },
+
+    async getRoutingStrategy(actorPlatformRole) {
+      requirePlatformCapability(actorPlatformRole, "gateway:read");
+      return { strategy: effectiveRoutingStrategy };
+    },
+
+    /**
+     * Platform audit actions the 018B admin surface may read
+     * (contract Invariant 1, pinned allowlist). Workspace-scoped actions
+     * (workflow.*, agent.*, skill.*, generation.*) belong to 018C's
+     * workspace trail — never this route. The route validates `action`
+     * against this allowlist with Zod (400 INVALID_INPUT on anything
+     * else), so the service receives only pinned actions.
+     */
+    async listPlatformAuditLog(actorPlatformRole, query) {
+      requirePlatformCapability(actorPlatformRole, "gateway:read");
+      const { action, limit } = query;
+      const cappedLimit = Math.min(Math.max(limit ?? 50, 1), 200);
+      const rows = await db.auditLog.findMany({
+        where: {
+          action: action ?? { in: [...PLATFORM_AUDIT_ACTIONS] },
+        },
+        orderBy: { createdAt: "desc" },
+        take: cappedLimit,
+        include: { actor: { select: { email: true } } },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        actorUserId: r.actorUserId,
+        actorEmail: r.actor?.email ?? null,
+        action: r.action,
+        entityType: r.entityType,
+        entityId: r.entityId,
+        payload: r.payload,
+        createdAt: r.createdAt,
+      }));
     },
 
     async generate(input) {

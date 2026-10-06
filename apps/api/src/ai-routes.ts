@@ -16,7 +16,7 @@ import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
 import type { PlatformRole } from "@novelforge/auth/authorization";
 import { SESSION_COOKIE } from "./auth-routes.ts";
-import type { AiServices } from "./services/ai.ts";
+import { PLATFORM_AUDIT_ACTIONS, type AiServices } from "./services/ai.ts";
 
 const uuid = z.string().uuid();
 const gatewayParams = z.object({ gatewayId: uuid });
@@ -64,6 +64,11 @@ const updateGatewayBody = z
   .refine((v) => Object.keys(v).length > 0, { message: "empty patch" });
 
 const setModelEnabledBody = z.object({ enabled: z.boolean() });
+
+const platformAuditLogQuery = z.object({
+  action: z.enum(PLATFORM_AUDIT_ACTIONS).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
 
 const setProfileBody = z.object({
   profile: z.enum(PROFILE_VALUES),
@@ -243,6 +248,31 @@ export function registerAiRoutes(
       enabled: body.data.enabled,
     });
     return { status: "ok" };
+  });
+
+  // --- Platform admin (NF-WF-018B, additive) ---
+
+  // Platform audit trail: identity-only rows for gateway/model/profile
+  // events. SUPER_ADMIN via the `gateway:read` gate; `?action=` is pinned
+  // to the allowlist (400 INVALID_INPUT on anything else).
+  app.get("/api/admin/audit-log", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const query = platformAuditLogQuery.safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.listPlatformAuditLog(actor.platformRole, {
+      action: query.data.action,
+      limit: query.data.limit,
+    });
+  });
+
+  // Deployment routing strategy (read-only, env-level — GAP-066).
+  // No frozen route serves this value; the 018B routing overview reads
+  // it here and labels it "deployment config".
+  app.get("/api/admin/routing-strategy", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    return services.getRoutingStrategy(actor.platformRole);
   });
 
   // --- Generations (workspace-scoped) ---

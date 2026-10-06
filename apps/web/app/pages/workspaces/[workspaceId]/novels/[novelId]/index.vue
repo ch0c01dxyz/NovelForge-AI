@@ -33,6 +33,7 @@ import type RunStatusPanel from "../../../../../components/generation/RunStatusP
 import type GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
 // ---------- NF-WF-018A: AI Studio ----------
 import { useAiStudio, type WorkspaceRole } from "../../../../../composables/useAiStudio";
+import { usePlatformAdmin } from "../../../../../composables/usePlatformAdmin";
 // ---------- NF-WF-017 import dialog ----------
 import ImportDialog from "../../../../../components/import-export/ImportDialog.vue";
 import ExportPicker from "../../../../../components/import-export/ExportPicker.vue";
@@ -80,6 +81,14 @@ const studioRole = ref<WorkspaceRole | null>(null);
 const showStudioLink = computed(
   () => studioRole.value !== null && studioRole.value !== "VIEWER",
 );
+
+// ---------- NF-WF-018B: platform admin nav ----------
+// The platform role gates the admin header link; the admin page and every
+// platform route enforce SUPER_ADMIN server-side. Hidden for everyone
+// else (progressive enhancement only).
+const platformAdmin = usePlatformAdmin();
+const platformRole = ref<"SUPER_ADMIN" | null>(null);
+const showAdminLink = computed(() => platformRole.value === "SUPER_ADMIN");
 
 const workspaceId = computed(() => String(route.params.workspaceId ?? ""));
 const novelId = computed(() => String(route.params.novelId ?? ""));
@@ -745,6 +754,12 @@ onMounted(async () => {
     (r) => (studioRole.value = r),
     () => (studioRole.value = null),
   );
+  // NF-WF-018B: best-effort platform-role fetch for the admin link; a
+  // failure only hides the link (the admin page re-checks).
+  platformAdmin.getPlatformRole().then(
+    (r) => (platformRole.value = r),
+    () => (platformRole.value = null),
+  );
   try {
     await loadChapters();
     void loadHealth();
@@ -831,6 +846,16 @@ async function publish() {
         data-testid="ai-studio-link"
       >
         {{ t("aiStudio.navLink") }}
+      </NuxtLink>
+      <!-- NF-WF-018B: platform admin link — SUPER_ADMIN only (progressive
+           enhancement; the admin page and routes enforce server-side). -->
+      <NuxtLink
+        v-if="showAdminLink"
+        to="/admin"
+        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        data-testid="admin-link"
+      >
+        {{ t("platformAdmin.title") }}
       </NuxtLink>
       <div
         class="flex items-center gap-1 rounded-lg border border-nf-border p-0.5 text-[12px]"

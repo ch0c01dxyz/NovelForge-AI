@@ -5072,3 +5072,72 @@ API `tsc --noEmit` exit 0; web `vue-tsc --noEmit` exit 0; zero
 2026-10-06 on this host (native PostgreSQL 16.15 + pgvector on
 localhost:5432, Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs
 only; pnpm 12.5.1).
+
+## NF-WF-018B — Platform administration: gateways, models, profiles, routing (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 018B implementer actor (separate from the 018 contract
+author/reviewer, the 018A/018C implementers, and the future diff reviewer;
+backends MODEL_UNVERIFIED per GAP-013). 018A (studio) and 018C (receipts)
+were NOT touched.
+
+Backend (`apps/api`) — additive only, no schema change, no new
+capabilities, `packages/auth/authorization.ts` untouched, forbidden paths
+(`packages/ai-core/crypto.ts`, `apps/api/src/ai-registry.ts`) untouched:
+
+- `auth-routes.ts` — `platformRoleOf` added to `AuthRoutesOptions`;
+  `GET /api/auth/session` now returns the additive `platformRole:
+  "SUPER_ADMIN" | null` (Invariant 1(c); the Prisma user row carries
+  `platformRole` — verified against the schema + session round-trip test).
+- `services/ai.ts` — exported `PLATFORM_AUDIT_ACTIONS` (the pinned
+  allowlist of 8 platform actions); `getRoutingStrategy` (`gateway:read`
+  gate, returns `deps.routingStrategy ?? "PRIORITY"`); `listPlatformAuditLog`
+  (`gateway:read` gate, action validated by the route's Zod enum, limit
+  default 50 capped 1–200, rows include the actor's email).
+- `ai-routes.ts` — `GET /api/admin/audit-log` (Zod `platformAuditLogQuery`;
+  a non-allowlisted action → 400 INVALID_INPUT) and
+  `GET /api/admin/routing-strategy` (the GAP-066 additive read: no frozen
+  route served the deployment strategy).
+
+Web (`apps/web`) — new `/admin` platform shell, SUPER_ADMIN-gated:
+
+- `composables/usePlatformAdmin.ts` — types + thin fetch wrappers +
+  `getPlatformRole` / `isSuperAdmin` (progressive enhancement; the server
+  enforces).
+- `components/platform-admin/`: `GatewayList.vue` (masked rows —
+  `hasCredential` badge only, never value/ciphertext),
+  `GatewayForm.vue` (create/edit/rotate dialog; `apiKey` never prefilled,
+  wiped after submit; Esc-dismissable with focus return),
+  `ModelCatalog.vue`, `ProfileMappings.vue`, `RoutingOverview.vue`
+  (strategy read-only, honestly labeled "deployment config"; GAP-063
+  no-quota note shown honestly).
+- `pages/admin/index.vue` — SUPER_ADMIN-gated shell (an `admin-forbidden`
+  panel for everyone else), five tabs, delete=revoke confirm dialog,
+  audit-log table with the pinned action filter.
+- Writer page (`novels/[novelId]/index.vue`) — additive "Platform
+  administration" NuxtLink next to the 018A AI Studio link, `v-if`
+  SUPER_ADMIN (server enforces; UI is progressive enhancement).
+- i18n: 72 `platformAdmin.*` keys in en + id (parity verified 72/72).
+
+Tests: `src/platform-admin.test.ts` (API, 9/9 — masked list, write-only
+rotate, revoke cascade, audit identity-only, workspace OWNER 403 on all
+platform routes, session `platformRole`, audit-log filtering +
+non-allowlisted → 400, routing-strategy read-only + 403, health-check
+trigger with audit); `GatewayList.test.ts` (3/3 — masked DOM,
+credential-material absence); `GatewayForm.test.ts` (5/5 — apiKey never
+prefilled, rotate shows only apiKey, wipe-after-submit, Esc dismiss);
+`usePlatformAdmin.test.ts` (4/4); `app/a11y/platform-admin.axe.test.ts`
+(10/10 — zero violations en+id).
+
+GAPs: GAP-066 recorded before the workaround (the routing-strategy read
+is the third additive item — the diff reviewer rules conformance, as
+with GAP-064); GAP-063 stays open (no quota fields); GAP-013
+(MODEL_UNVERIFIED) unchanged; GAP-051 (human screen-reader pass) applies
+to the admin surface too.
+
+Evidence: API **708/708** (36 files, +9 new); web **312/312** (50 files,
++22 new); `pnpm e2e` **20/20** (3 files) exit 0 — BASELINE-OK no-regression; `pnpm lint`
+exit 0; API `tsc --noEmit` exit 0; web `vue-tsc --noEmit` exit 0; zero
+`@ts-ignore`/`@ts-expect-error` in new code. All actually executed
+2026-10-06 on this host (native PostgreSQL 16.15 + pgvector on
+localhost:5432, Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs
+only; pnpm 12.5.1).

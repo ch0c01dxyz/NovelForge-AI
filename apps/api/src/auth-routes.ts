@@ -10,6 +10,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AuthError, SESSION_TTL_MS, type AuthService } from "@novelforge/auth";
+import type { PlatformRole } from "@novelforge/auth/authorization";
 
 export const SESSION_COOKIE = "nf_session";
 
@@ -27,11 +28,16 @@ const loginBody = z.object({
 export interface AuthRoutesOptions {
   auth: AuthService;
   secureCookies: boolean; // true when NODE_ENV === "production"
+  /**
+   * Platform-role lookup for the session response (NF-WF-018B, additive).
+   * The session is the user's own — no new disclosure.
+   */
+  platformRoleOf: (userId: string) => Promise<PlatformRole | null>;
 }
 
 export async function registerAuthRoutes(
   app: FastifyInstance,
-  { auth, secureCookies }: AuthRoutesOptions,
+  { auth, secureCookies, platformRoleOf }: AuthRoutesOptions,
 ): Promise<void> {
   const cookieOptions = {
     httpOnly: true,
@@ -111,6 +117,13 @@ export async function registerAuthRoutes(
     if (!token) return reply.code(401).send({ error: "NO_SESSION" });
     const session = await auth.validateSession(token);
     if (!session) return reply.code(401).send({ error: "INVALID_SESSION" });
-    return { userId: session.userId, expiresAt: session.expiresAt };
+    // NF-WF-018B: additive platformRole so the web app can gate the admin
+    // nav (progressive enhancement; the server enforces). Clients that
+    // ignore it are unaffected.
+    return {
+      userId: session.userId,
+      expiresAt: session.expiresAt,
+      platformRole: await platformRoleOf(session.userId),
+    };
   });
 }

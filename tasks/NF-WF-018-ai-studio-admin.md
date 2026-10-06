@@ -168,7 +168,7 @@ gateway backend — gateway list (masked), create/rotate/revoke
 credentials, enable/disable, priority/weight/timeout/maxRetries
 editing, health-check trigger, model catalog management
 (enable/disable, sync), profile-mapping editing, routing overview.
-UI over existing frozen routes, plus two tiny additive backend
+UI over existing frozen routes, plus three tiny additive backend
 items (Invariant 1).
 
 Inputs: SUPER_ADMIN platform role. Outputs: a platform admin page
@@ -299,9 +299,10 @@ Acceptance (all testable):
   the platform admin page (safe-secrets gateway management,
   models, profiles, routing overview); the receipts surface
   (ledger, failures, evaluations, audit trail).
-- Seven additive backend items: the two audit-read routes, the
+- Eight additive backend items: the two audit-read routes, the
   session `platformRole` field, the run-list `?status=` filter,
-  and the three GAP-064 versions-list routes (018A).
+  the three GAP-064 versions-list routes (018A), and the GAP-066
+  routing-strategy read (018B).
 
 ### Out of scope (with follow-up owner)
 
@@ -359,6 +360,19 @@ base64url — `packages/ai-core/crypto.ts:35`), decrypted per call in
   optional) — the `workflow:read` gate is unchanged; the param
   follows the existing optional-`workflowId` pattern in
   `listRunsQuery`.
+  (e) `GET /api/admin/routing-strategy` — SUPER_ADMIN only
+  (`gateway:read`), returns the deployment routing strategy
+  (`AI_ROUTING_STRATEGY` env, default `"PRIORITY"`) as
+  `{ strategy }`, read-only. No frozen route serves this
+  env-level value (GAP-066): `listGateways` returns a bare
+  `GatewayView[]` and `checkHealth` returns per-gateway results,
+  so the pinned routing-overview acceptance ("the deployment
+  routing strategy as read-only, env-level, honestly labeled
+  'deployment config'") cannot be met without it. Ruled
+  contract-conformant by the 018B diff review (the GAP-064
+  precedent: genuinely necessary for a pinned acceptance,
+  identical gating, additive read-only, no schema change, no
+  new capabilities, recorded before implementation).
 
 ### Invariant 2 — Definition versioning UI: immutable history, exact run pins
 
@@ -824,3 +838,106 @@ clearly marked DRAFT, decision pending (owner: Klein), no
 behavioral impact; acceptable as decision groundwork, not scope
 creep; (b) `docs/adr/` contains other committed ADRs, so the
 location is consistent.
+
+### Round 3 — NF-WF-018B diff review (2026-10-06). Verdict: APPROVE_WITH_FINDINGS (2 findings, fixed inline)
+
+(Reviewer: separate actor from the contract author, the contract
+reviewer, the 018A/018B implementers, and all prior reviewers;
+backend MODEL_UNVERIFIED per GAP-013. Nothing committed — working
+tree only.)
+
+**F1 (P2) — the new test file did not typecheck (6 errors); the
+implementer's "tsc clean" claim was false.** `apps/api`'s
+`tsconfig.json` includes `**/*.ts`, so `src/platform-admin.test.ts`
+is typechecked; the rest of the package is clean but the new file
+had 5 `TS2532` indexed-access violations (`rows[0]`/`results[0]`
+under `noUncheckedIndexedAccess`) plus a `TS2322`/`TS2339` pair
+from `payload?: unknown` breaking `app.inject`'s overload. Fixed
+inline (test-only, no behavior change): `rows[0]!`/
+`results[0]!` after the length assertions, `payload?:
+Record<string, unknown>`. Re-verified: API `tsc --noEmit` exit 0,
+`platform-admin.test.ts` 9/9 green post-fix, web `vue-tsc
+--noEmit` exit 0.
+
+**F2 (P3) — GAP-066 ruling (APPROVE_WITH_FINDINGS, not
+CHANGES_REQUESTED).** The implementer added
+`GET /api/admin/routing-strategy` beyond the contract's additive
+list (the third 018B additive item, the GAP-064 pattern). Ruled
+contract-conformant: (a) genuinely necessary for the pinned
+"routing overview" acceptance — no frozen route serves the
+env-level strategy (`listGateways` returns a bare `GatewayView[]`,
+`checkHealth` returns per-gateway results only; changing either
+shape would break a frozen route); (b) the gate is the identical
+platform pattern (`gateway:read` → SUPER_ADMIN,
+`requirePlatformCapability`, 403 for workspace OWNER — tested);
+(c) minimal additive read-only route returning `{ strategy }`
+(env `AI_ROUTING_STRATEGY`, default `"PRIORITY"`, never
+editable); (d) no schema change, no new capabilities; (e) recorded
+in GAP-066 BEFORE implementation (standing rule). Fixed inline:
+the contract's 018B child scope, Invariant 1 additive-items list
+(now (a)–(e)), and Outputs section now record eight additive
+backend items (the GAP-066 route added).
+
+**GAP-066 CLOSES** on this review (verified: env-level strategy
+served read-only; the UI labels it "Deployment config — set via
+environment, read-only here.").
+
+**Independent verification (reviewer's own, 2026-10-06, this
+host):** `src/platform-admin.test.ts` **9/9** green (re-ran
+myself — masked list (no value/ciphertext in body), rotate
+write-only (new key decrypts, old does not), delete cascade
+(models + mappings removed, attempt rows survive via SetNull),
+audit payloads identity-only, workspace OWNER 403 on every
+platform route incl. both new routes, session `platformRole`
+SUPER_ADMIN/null, audit-log allowlist + `?action=` filter +
+400 on non-allowlisted action, routing-strategy SUPER_ADMIN-only,
+health-check trigger audited); web
+`app/composables/usePlatformAdmin.test.ts` 4/4 +
+`app/a11y/platform-admin.axe.test.ts` 10/10 (0 violations) +
+`app/components/platform-admin/` 8/8 green; API `tsc --noEmit`
+exit 0 (post-F1 fix); web `vue-tsc --noEmit` exit 0; zero
+`@ts-ignore`/`@ts-expect-error` in new files; i18n
+`platformAdmin` subtree en/id leaf parity 91/91. The
+implementer's recorded full-suite claims (API 708/708, web
+312/312, e2e 20/20 BASELINE-OK, lint clean) are consistent with
+my targeted re-runs but are NOT re-claimed here.
+
+**Item-by-item:** (1) Safe secrets — `toGatewayView` is the only
+view returned (`hasCredential` only; verified in code and test);
+create/rotate are write-only (`apiKey` field wiped on mount and
+after submit, never prefilled); `crypto.ts`/`ai-registry.ts`
+untouched (zero diff in `packages/ai-core`); audit rows carry
+identity only (`{name, baseUrl}`, verified frozen write side +
+read test); no credential value/ciphertext found anywhere in the
+web diff, tests, or docs (grep sweep). (2) GAP-066 — ruled above;
+contract updated. (3) Delete=revoke cascade — schema pins exact
+(`AIModel.gatewayId`/`ModelProfileMapping.modelRef` Cascade,
+`GenerationAttempt.gatewayId` SetNull); the test genuinely
+asserts all three outcomes. (4) Session `platformRole` — the
+contract-UNVERIFIED item is now VERIFIED: Prisma `User`
+carries `platformRole PlatformRole?` (`schema.prisma:44`),
+`PlatformRole = { SUPER_ADMIN }` (`:33-35`), the session is the
+user's own (no new disclosure). (5) Audit log routes — Zod enum
+allowlist → 400 `INVALID_INPUT` on anything else; rows include
+actor email, not credential material; workspace-scoped actions
+never appear (018C's trail). (6) Authorization — server enforces
+on every route (the 403 test iterates all 12 platform routes
+for a workspace OWNER); the web admin nav link hides without
+SUPER_ADMIN (progressive enhancement only), and the admin page
+itself notes server enforcement. (7) No 018B/018C scope creep —
+no schema changes, no new capabilities
+(`packages/auth/authorization.ts` untouched), GAP-063 stays open
+(the routing overview shows the quota absence honestly, no
+invented columns), the workspace audit-read route stays 018C's.
+(8) Evidence — see the verification paragraph above.
+
+**Observations (not findings):** (a) the
+`GatewayView {  id: string;` same-line formatting artifact from
+the implementer's interface edit was normalized to the file's
+convention (cosmetic, tsc-clean either way); (b) the 018B
+implementer left an honest procedural note in ISSUES-AND-GAPS.md
+about concurrent vitest/e2e scratch-DB teardown failures —
+environmental, correctly attributed, with the sequential-run
+lesson recorded; (c) no dedicated route-level 413-style test is
+needed for the routing-strategy read (read-only GET, no
+payload).

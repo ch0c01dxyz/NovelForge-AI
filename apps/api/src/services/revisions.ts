@@ -44,7 +44,6 @@ import {
   computeSelectivePreview,
   resolveSelection,
   SelectiveRestoreError,
-  type DependencyConflict,
   type ResolvedSelection,
   type SelectivePreview,
   type SelectiveScope,

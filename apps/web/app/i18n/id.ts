@@ -1182,5 +1182,21 @@ export const id = {
         generic: "Impor gagal ({code}).",
       },
     },
+    export: {
+      button: "Ekspor",
+      dialogTitle: "Ekspor novel",
+      dialogDescription:
+        "Unduh seluruh novel dalam format yang dipilih. Draf disertakan — ini naskah Anda sendiri, bukan tampilan terbit.",
+      formatLabel: "Format",
+      download: "Unduh",
+      downloading: "Menyiapkan…",
+      sizeNotice:
+        "Ekspor adalah unduhan seluruh novel dengan batas ukuran; novel yang sangat besar ditolak, bukan dipotong.",
+      errors: {
+        EXPORT_TOO_LARGE: "Novel terlalu besar untuk diunduh langsung.",
+        invalid: "Beberapa isian tidak valid.",
+        generic: "Ekspor gagal ({code}).",
+      },
+    },
   },
 } as const;

@@ -488,7 +488,7 @@ describe("import/export", () => {
     ).toBe(2);
   });
 
-  it("exports the whole novel as markdown, ordered, with separator", async () => {
+  it("exports the whole novel as markdown, ordered (017B F1 shape, no --- chapter separators)", async () => {
     const owner = await seedUser("owner11@t.io");
     const ids = await seedNovel(owner.userId, "exp-ws");
     const c1 = await makeChapter(owner.cookie, ids, "Alpha");
@@ -507,7 +507,10 @@ describe("import/export", () => {
     expect(body).toContain("# 1. Alpha");
     expect(body).toContain("alpha content");
     expect(body).toContain("# 2. Beta");
-    expect(body).toContain("---");
+    // 017B F1: chapters are separated by blank lines only — a `---`
+    // separator would re-import as an <hr> inside the previous chapter.
+    expect(body).not.toContain("---");
+    expect(body.indexOf("# 1. Alpha")).toBeLessThan(body.indexOf("# 2. Beta"));
   });
 
   it("import is isolated per tenant: non-member 404", async () => {

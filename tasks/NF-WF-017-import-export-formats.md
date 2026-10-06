@@ -759,6 +759,107 @@ counts, no acceptance evidence) — a process failure; the independent
 verification above is the evidence for this round. (3) No new GAPs:
 GAP-061 closes on the evidence above; GAP-053 stays with 017C.
 
+### Round 3 — 2026-10-06 — 017B diff review — verdict: APPROVE_WITH_FINDINGS
+
+Reviewed the exact uncommitted 017B diff on top of `576cb86` (017A
+commit). 017A's import pipeline (`import-normalize.ts`, import routes,
+`ImportDialog`) and 017C's GAP-053 files (`canon.ts`,
+`canon-applications.ts`, `public-discovery.ts`) are absent from this
+diff — no scope creep. Backends MODEL_UNVERIFIED per GAP-013. I am a
+separate actor from the contract author, contract reviewer, 017A
+implementer, 017B implementer, and the 017C implementer.
+
+**Findings (R1 fixed inline in the working tree; R2 recorded, not fixed):**
+
+- **R1 (P2) — EPUB chapter documents were not well-formed XML.** The
+  contract pins "a valid EPUB — one XHTML content document per
+  chapter". `renderEpub` embedded the frozen sanitized-HTML content
+  raw, but sanitize-html serializes void elements HTML-style, so
+  `<hr>`/`<br>` broke XML well-formedness (verified: `OEBPS/ch001.
+  xhtml` and `ch002.xhtml` failed `xml.etree.ElementTree` parsing;
+  OPF/NCX were fine). Fixed: `renderEpub` now self-closes the two
+  allowlist void elements (`<br/>`, `<hr/>`) before embedding;
+  `sample.epub` regenerated via the committed `generate-fixtures.mjs`.
+  Re-verified: all XHTML docs parse as XML, mimetype remains first +
+  stored (uncompressed), container/OPF/NCX unchanged.
+- **R2 (P3, honest open gap) — PDF export throws on non-WinAnsi prose.**
+  `renderPdf` embeds only Helvetica/HelveticaBold (WinAnsi/CP1252);
+  verified on this host against the repo's `pdf-lib@1.17.1` that
+  `drawText` throws `WinAnsi cannot encode "中"` for CJK/emoji, which
+  propagates as a 500 from the export route. TXT/MD/DOCX/EPUB are
+  UTF-8 and unaffected. Not a 017B deviation (the contract's PDF pin
+  is chapter-per-section layout, met for WinAnsi content); recorded
+  as new **GAP-062** (open, follow-up owner — closure needs a
+  Unicode-capable embedded font, an ADR-level packaging decision, or
+  an actionable typed refusal instead of a 500).
+
+**Verification (checked items 1–8 of the review brief):**
+
+1. **Libraries** — `docx@9.5.1` (MIT), `pdf-lib@1.17.1` (MIT),
+   `jszip@3.10.1` (MIT/GPL-3.0 dual, usable under MIT):
+   commercial-safe; all API-side only (no web-bundle imports of
+   pdf-lib/docx/jszip anywhere under `apps/web`; the lockfile diff is
+   a pure devDependencies→dependencies move for docx/pdf-lib, no
+   version changes). docx gives real Heading styles, pdf-lib pure-JS
+   paginated layout, hand-built EPUB on jszip is the lightest correct
+   approach (no heavy EPUB library needed).
+2. **F1 shapes, byte-level** — TXT: `{n}. {title}\n===\n` + no `---`
+   (asserted verbatim in `export-render.test.ts`); MD: `# N. Title`,
+   prose h2 → `**text**`, never `## ` (regex-asserted). Round-trip
+   tests call the FROZEN `splitImportBlocks`/`normalizeTextImport`
+   from `services/import-normalize.ts` (017A's module — not stubs)
+   and assert identical order/titles/prose. The `manuscript.test.ts`
+   assertion change (no `---` chapter separators) is F1-contract-
+   driven: the old `# N. Title` + `---` shape was exactly what round-1
+   F1 invalidated, because `---` re-imports as an `<hr>` in the
+   previous chapter under the frozen md importer.
+3. **EXPORT_BYTE_CAP = 15_000_000** — pre-render estimate (raw source
+   bytes) + post-render guard, both throwing `ExportError(413,
+   "EXPORT_TOO_LARGE")`, mapped through the platform typed-error
+   branch in `platform-routes.ts`. Matches Q8 (implementer pins,
+   reviewer verifies) and coheres with `IMPORT_BODY_LIMIT` (15M).
+4. **Route** — `GET .../export?format=` Zod enum with `md` default
+   (backward compatible: no-param → markdown, same content-type as the
+   frozen route); unknown format → 400 `INVALID_INPUT` (tested);
+   `chapter:read` gate and tenant isolation unchanged (gate +
+   `workspaceId` in the novel query); slug-sanitized filename keeps
+   the new extension; content-disposition/content-type per format.
+5. **Round-trip honesty** — genuinely uses the frozen importers; the
+   two fidelity prices (strip-rule space artifact on inline tags,
+   `#`-escape preserved verbatim on re-import) are documented in
+   `test-matrix.md`'s "Honest limitations" and in the test comments —
+   not hidden.
+6. **No scope creep** — `import-normalize.ts`, `canon.ts`,
+   `canon-applications.ts`, `public-discovery.ts`,
+   `packages/auth/authorization.ts`, and the Prisma schema are all
+   absent from the diff.
+7. **Own runs (actually executed 2026-10-06 on this host — do NOT
+   re-claim as full suites):** `export-render.test.ts` **14/14**
+   (post-R1 fix, includes the committed-fixture byte-compare for
+   txt/md); `export-chapters.test.ts` **8/8** (real scratch DB
+   `novelforge_test_export`); web `exportPicker.test.ts` + `export-
+   picker.axe.test.ts` **8/8** (0 axe violations); API `tsc
+   --noEmit` exit 0; zero `@ts-ignore`/`@ts-expect-error` in new
+   files. Consistent with the implementer's recorded claims (API
+   660/660, web 260/260, e2e 20/20 BASELINE-OK, lint clean), which are
+   NOT re-claimed here.
+8. **No forbidden-path violations** — no schema changes/migrations,
+   no new capabilities, exports read member chapters (drafts
+   included) via `chapter:read`, never the public-reader view; no
+   canon promotion anywhere in the export path; no async-job
+   infrastructure; whole-novel only.
+
+**Observations (not findings):** (1) no dedicated route-level 413
+test — the typed-error branch follows the established 012/017A
+pattern and `ExportError(413)` is renderer-tested; acceptable.
+(2) MD list items export as plain `- item` (inline markup inside
+lists doesn't round-trip) — an inherited price of the frozen md
+importer's list handling, minor. (3) Chapter titles with embedded
+newlines would split oddly on round-trip — pre-existing condition of
+the frozen shape, not a 017B regression. (4) The docx fixture embeds
+real core-property timestamps (noted as structural-only in
+`generate-fixtures.mjs`); txt/md fixtures are byte-compared.
+
 ## Backend verification (contract author)
 
 Every normative backend claim in this contract was verified against

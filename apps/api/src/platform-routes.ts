@@ -30,6 +30,7 @@ import { PolicyError, PublicationError } from "./services/policy-errors.ts";
 // error field, so the import dialog can map them to actionable en/id
 // messages. Same position as the other typed-error branches.
 import { ImportError } from "./services/import-normalize.ts";
+import { ExportError } from "./services/export-render.ts";
 
 const slug = z
   .string()
@@ -126,6 +127,13 @@ export async function registerPlatformRoutes(
     }
     if (error instanceof ImportError) {
       return reply.code(error.statusCode).send({ error: error.code });
+    }
+    // NF-WF-017B: typed export refusals (EXPORT_TOO_LARGE) carry the
+    // machine-readable code as the envelope's error field, so the export
+    // picker can map them to actionable en/id messages. Same position as
+    // the other typed-error branches.
+    if (error instanceof ExportError) {
+      return reply.code(error.status).send({ error: error.code });
     }
     // NF-WF-012: typed publication-lifecycle refusals (ALREADY_PUBLISHED,
     // NOT_SCHEDULED, NOVEL_ARCHIVED) carry the machine-readable code as

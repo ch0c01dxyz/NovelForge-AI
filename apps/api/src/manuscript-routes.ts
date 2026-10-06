@@ -331,18 +331,27 @@ export function registerManuscriptRoutes(
     },
   );
 
+  // NF-WF-017B: `?format=md|txt|docx|pdf|epub` (default `md` — backward
+  // compatible with the frozen md-only route). Unknown format → 400.
+  const exportQuery = z.object({
+    format: z.enum(["md", "txt", "docx", "pdf", "epub"]).default("md"),
+  });
+
   app.get("/api/workspaces/:workspaceId/novels/:novelId/export", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;
     const params = novelScopeParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-    const { filename, content } = await services.exportNovel({
+    const query = exportQuery.safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    const { filename, contentType, buffer } = await services.exportNovel({
       actorUserId,
       ...params.data,
+      format: query.data.format,
     });
     return reply
       .header("content-disposition", `attachment; filename="${filename}"`)
-      .type("text/markdown; charset=utf-8")
-      .send(content);
+      .type(contentType)
+      .send(buffer);
   });
 }

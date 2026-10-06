@@ -1182,6 +1182,22 @@ export const en = {
         generic: "Import failed ({code}).",
       },
     },
+    export: {
+      button: "Export",
+      dialogTitle: "Export novel",
+      dialogDescription:
+        "Download the whole novel in the chosen format. Drafts are included — this is your own manuscript, not the published view.",
+      formatLabel: "Format",
+      download: "Download",
+      downloading: "Preparing…",
+      sizeNotice:
+        "Exports are whole-novel downloads with a size cap; very large novels are refused instead of truncated.",
+      errors: {
+        EXPORT_TOO_LARGE: "The novel is too large for a direct download.",
+        invalid: "Some fields are invalid.",
+        generic: "Export failed ({code}).",
+      },
+    },
   },
 } as const;
 

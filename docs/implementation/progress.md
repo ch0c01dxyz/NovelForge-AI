@@ -4862,3 +4862,60 @@ API `tsc --noEmit` exit 0; web `vue-tsc --noEmit` exit 0. All green, actually
 executed 2026-10-06 on this host (native PostgreSQL 16.15 + pgvector on
 localhost:5432, Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only;
 pnpm 12.5.1).
+
+## NF-WF-017B — Export formats (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 017B implementer actor (separate from the 017 contract
+author/reviewer and the 017A/017C implementers; backends MODEL_UNVERIFIED
+per GAP-013). 017A's import pipeline and 017C's GAP-053 scope were NOT
+touched.
+
+Backend (`apps/api`): new `src/services/export-render.ts` — HTML → the five
+retained export formats from the frozen 015 sanitized-HTML source:
+`renderTxt` (F1 setext: `{n}. {title}` + `===` underline, no `---`
+separators), `renderMarkdown` (F1: `# N. Title`, prose `h2` → `**bold**`
+never `## `, blockquote → `> `, lists → `- `/`N. `, `hr` → `---`;
+chapters separated by blank lines only), `renderDocx` (docx 9.5.1, chapter
+titles as Heading 1, prose h2 as Heading 2, blockquote indent), `renderPdf`
+(pdf-lib 1.17.1, A4, chapter-per-section, manual text flow), `renderEpub`
+(hand-built on jszip: mimetype first + uncompressed, container.xml,
+content.opf, toc.ncx, one XHTML per chapter). `renderExport` entry point
+with the pinned Q8 sync byte cap (15_000_000 source bytes, pre-render
+estimate + post-render guard → `ExportError(413, "EXPORT_TOO_LARGE")`
+mapped through the platform typed-error branch). `docx`/`pdf-lib` moved
+from devDependencies to dependencies (runtime document generation; jszip
+was already a dep). Plain-text chapter rows (no block tags) follow the 013
+reader dual-format rule: blank-line paragraphs, never dropped.
+
+`exportNovel` now takes `format?` (default `md`) and returns
+`{filename, contentType, buffer}`; the route gained `?format=` (Zod enum,
+unknown → 400 INVALID_INPUT). Backward compatible: no-param requests still
+get markdown. `chapter:read` gate and tenant isolation unchanged — exports
+are the author's own chapters including drafts (member surface, never the
+public reader's published-only view); no new capabilities; no schema
+changes.
+
+Frontend (`apps/web`): new `ExportPicker.vue`
+(`components/import-export/`) — format radio list (5 retained formats),
+sync download via object URL, typed-error → en/id messages, Esc + focus
+return, `role="dialog"`/`aria-modal`, no AI-orange per §15; pinned into the
+writer page header (Export ⤓ button next to Import ⤒); i18n
+`importExport.export` keys en+id.
+
+Corrections during implementation (ordinary, not GAPs): list items fused in
+the TXT/MD renderers (`topLevelBlocks` returns `ul` as one block) — fixed
+by per-`<li>` parsing; `useApi` is JSON-only so the picker fetches binary
+directly; the picker URL double-prefixed `/api/api/…` (fixed to the useApi
+convention); Esc needed `immediate: true` on the open watcher; lint errors
+(unused import, generate-fixtures.mjs node globals) fixed inline.
+
+New GAPs recorded before completion (standing rule): none — no contract
+deviation. GAP-053 stays with 017C; GAP-013 (MODEL_UNVERIFIED) unchanged.
+
+Evidence: API **660/660** (33 files; new: export-render 14, export-chapters
+8); web **260/260** (41 files; incl. exportPicker 6, axe 2 files 0
+violations en+id); `pnpm e2e` **20/20** BASELINE-OK (no-regression vs 011);
+`pnpm lint` exit 0; API `tsc --noEmit` exit 0; web `vue-tsc --noEmit` exit 0.
+All green, actually executed 2026-10-06 on this host (native PostgreSQL
+16.15 + pgvector on localhost:5432, Redis 7.0.15 on 6379, scratch
+`novelforge_test_*` DBs only; pnpm 12.5.1).

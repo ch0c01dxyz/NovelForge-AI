@@ -33,6 +33,7 @@ import type RunStatusPanel from "../../../../../components/generation/RunStatusP
 import type GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
 // ---------- NF-WF-017 import dialog ----------
 import ImportDialog from "../../../../../components/import-export/ImportDialog.vue";
+import ExportPicker from "../../../../../components/import-export/ExportPicker.vue";
 // ---------- NF-WF-016 workspace panels ----------
 import WorkspaceDrawer from "../../../../../components/workspace/WorkspaceDrawer.vue";
 import CharacterPanel from "../../../../../components/workspace/CharacterPanel.vue";
@@ -672,6 +673,8 @@ type WorkspacePanelKey =
 const workspacePanel = ref<WorkspacePanelKey | null>(null);
 // ---------- NF-WF-017A: import dialog ----------
 const importDialogOpen = ref(false);
+// NF-WF-017B: export picker dialog state.
+const exportPickerOpen = ref(false);
 async function onImported() {
   await loadChapters();
 }
@@ -858,6 +861,15 @@ async function publish() {
             @click="importDialogOpen = true"
           >
             ⤒
+          </button>
+          <button
+            class="rounded border border-nf-border-strong px-1.5 text-[13px] leading-5 text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+            :aria-label="t('importExport.export.button')"
+            :title="t('importExport.export.button')"
+            data-testid="export-open"
+            @click="exportPickerOpen = true"
+          >
+            ⤓
           </button>
         </div>
         <p v-if="loading" class="px-2.5 text-[13px] text-nf-text-faint">{{ t("common.loading") }}</p>
@@ -1222,6 +1234,13 @@ async function publish() {
         :novel-id="novelId"
       />
     </WorkspaceDrawer>
+    <!-- NF-WF-017B: export picker -->
+    <ExportPicker
+      :open="exportPickerOpen"
+      :workspace-id="workspaceId"
+      :novel-id="novelId"
+      @close="exportPickerOpen = false"
+    />
     <!-- NF-WF-017A: import dialog -->
     <ImportDialog
       :open="importDialogOpen"

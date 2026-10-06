@@ -36,6 +36,8 @@ import {
   type ImportFormat,
   type ImportPart,
 } from "./import-normalize.ts";
+// NF-WF-017B: export rendering (HTML → TXT/Markdown/PDF/DOCX/EPUB).
+import { renderExport, type ExportFormat } from "./export-render.ts";
 
 export interface ManuscriptServices {
   createChapter(input: {
@@ -127,7 +129,8 @@ export interface ManuscriptServices {
     actorUserId: string;
     workspaceId: string;
     novelId: string;
-  }): Promise<{ filename: string; content: string }>;
+    format?: ExportFormat;
+  }): Promise<{ filename: string; contentType: string; buffer: Buffer }>;
   /** Version history, newest first (manuscript safety / recovery). */
   listVersions(input: {
     actorUserId: string;
@@ -798,32 +801,47 @@ export function createManuscriptServices(
       });
     },
 
-    /** Export: whole novel as Markdown (ATX headings, ordered). */
+    /**
+     * Export: whole novel in the requested retained format (017B).
+     * Source is the frozen 015 sanitized-HTML current-version content,
+     * member `chapter:read` scope (includes drafts — the author's own
+     * chapters, never the public reader's published-only view).
+     */
     async exportNovel(input: {
       actorUserId: string;
       workspaceId: string;
       novelId: string;
-    }): Promise<{ filename: string; content: string }> {
+      format?: ExportFormat;
+    }): Promise<{ filename: string; contentType: string; buffer: Buffer }> {
       await gate(input.workspaceId, input.novelId, input.actorUserId, "chapter:read");
       const novel = await db.novel.findFirst({
         where: { id: input.novelId, workspaceId: input.workspaceId },
-        select: { slug: true },
+        select: { slug: true, title: true },
       });
       const chapters = await db.chapter.findMany({
         where: { novelId: input.novelId },
         orderBy: { number: "asc" },
         include: { currentVersion: { select: { content: true } } },
       });
-      const body = chapters
-        .map(
-          (c) =>
-            `# ${c.number}. ${c.title}\n\n${c.currentVersion?.content ?? "_No content yet._"}`,
-        )
-        .join("\n\n---\n\n");
+      const format: ExportFormat = input.format ?? "md";
+      const { buffer, contentType, extension } = await renderExport(
+        format,
+        novel?.title ?? "Novel",
+        novel?.slug ?? "novel",
+        chapters.map((c) => ({
+          number: c.number,
+          title: c.title,
+          content: c.currentVersion?.content ?? "",
+        })),
+      );
       // Slug is kebab-validated at creation; sanitize anyway so a future
       // validation regression cannot smuggle quotes/CRLF into the header.
       const safe = (novel?.slug ?? "novel").replace(/[^a-z0-9-]/gi, "");
-      return { filename: `${safe || "novel"}.md`, content: body };
+      return {
+        filename: `${safe || "novel"}.${extension}`,
+        contentType,
+        buffer,
+      };
     },
 
     async listVersions({ actorUserId, workspaceId, novelId, chapterId }) {

@@ -1827,3 +1827,38 @@ devDependencies, never shipped). No live-browser walkthrough was performed;
 UI flows are covered by component tests with mocked API. Manual a11y:
 automated half green (axe, both locales); named screen-reader pass remains
 human verification (project-wide).
+
+## NF-WF-017B — Export formats (2026-10-06)
+
+Executed on this host (native PostgreSQL 16.15 + pgvector on localhost:5432,
+Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+Implementer actor separate from the 017 contract author/reviewer and the
+017A/017C implementers; backends MODEL_UNVERIFIED per GAP-013. 017A's import
+pipeline and 017C's GAP-053 scope were NOT touched.
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/export-render.test.ts` (apps/api) | **14/14** — F1 shapes (TXT setext, no `---`; MD `# N. Title` + h2→bold, never `## `), round-trip export→frozen `splitImportBlocks` (order, titles, prose), PDF/DOCX/EPUB structural validity, byte-cap EXPORT_TOO_LARGE 413, committed-fixture byte stability, plain-text row fallback |
+| `npx vitest run src/export-chapters.test.ts` (apps/api) | **8/8** — per-format route (content-type, content-disposition, chapters in order), `md` default backward compat, unknown format → 400, tenant 404, drafts exported under `chapter:read` |
+| Full API suite `npx vitest run` (apps/api) | 33 files, **660/660** |
+| Full web suite `npx vitest run` (apps/web) | 41 files, **260/260** — incl. new `exportPicker` component tests 6/6 and axe 2/2 (0 violations, en+id) |
+| `pnpm e2e` (011 author-preview loop) | 3 files, **20/20** BASELINE-OK — no-regression vs 011 |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+
+Fixtures: real per-format files in `apps/api/test-fixtures/export/`
+(`chapters.json` pinned input; `sample.md`/`sample.txt` byte-compared by
+tests; `sample.pdf`/`sample.docx`/`sample.epub` built by the committed
+`generate-fixtures.mjs`). No live-browser walkthrough was performed; UI
+flows are covered by component tests with mocked fetch. Manual a11y:
+automated half green (axe, both locales); named screen-reader pass remains
+human verification (project-wide).
+
+Honest limitations (not GAPs — documented fidelity prices of the
+round-trip pin): (1) the frozen strip rule replaces each inline tag with a
+space, so `slowly<em>,</em>` strips to "slowly ," — the round-trip prose
+comparison neutralizes this artifact; words and order survive; (2) prose
+lines starting with `#` are backslash-escaped on MD export (the frozen md
+importer would otherwise promote them to chapter boundaries); the escape
+is preserved verbatim on re-import, not unescaped.

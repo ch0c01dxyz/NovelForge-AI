@@ -1977,3 +1977,42 @@ dedicated test — its children are covered and the gates are progressive
 enhancement over the server enforcement; (4) the delete=revoke confirm
 dialog requires a second explicit click, but the cascade was verified at
 the API level, not through the UI.
+
+## NF-WF-018C — Usage, failure, and evaluation receipts (2026-10-06)
+
+Executed on this host (native PostgreSQL 16.15 + pgvector on localhost:5432,
+Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs only; pnpm 12.5.1).
+Implementer actor separate from the 018 contract author/reviewer, the
+018A/018B implementers, and the future diff reviewer; backends
+MODEL_UNVERIFIED per GAP-013. 018A (studio) and 018B (platform admin) were
+NOT touched. The API suite and `pnpm e2e` ran sequentially (never
+concurrently — the standing procedural lesson).
+
+| Check actually run | Result |
+|---|---|
+| `npx vitest run src/receipts.test.ts` (apps/api) | **7/7** — audit-log allowlist filtering (non-allowlisted actions incl. `model-profile.mapped`/`gateway.created` → 400 `INVALID_INPUT`), workspace tenant isolation, non-member → 404, AUTHOR (no `workflow:manage`) → 403; FinalTextReview rows with verdict/violations/revision pin, VIEWER → 403, non-member → 404, cross-workspace novel → 404; frozen ledger routes keep `generation:read` gating (non-member → 404, AUTHOR → 200, VIEWER → 403) |
+| New web tests: `GenerationLedger.test.ts` + `EvaluationReceipts.test.ts` + `AuditTrail.test.ts` + `useReceipts.test.ts` | **15/15** — ledger list, the honest no-cost label, no cost column in the headers, per-attempt detail rows, status filter, locked status; receipts rows (verdict/violations/revision pin), violations detail on select, health labeled "Live computation — not a stored receipt" and run result; audit list, action filter, identity payload on expand; capability matrix (ledger/failures + evaluations vs audit) pinned |
+| `app/a11y/receipts.axe.test.ts` | **8/8** — zero axe violations (wcag2aa + wcag22aa) on GenerationLedger, FailureLog, EvaluationReceipts, AuditTrail, in en and id |
+| i18n parity check | **68/68** `receipts.*` keys present in both en and id |
+| Full API suite `npx vitest run` (apps/api) | 37 files, **715/715** — +7 new (receipts), no regressions |
+| Full web suite `npx vitest run` (apps/web) | 55 files, **335/335** — +23 new |
+| `pnpm e2e` (011 author-preview loop) | 3 files, **20/20** exit 0 — no-regression vs 011 |
+| `pnpm lint` | Exit 0 |
+| `npx tsc --noEmit` (apps/api) | Exit 0 |
+| `npx vue-tsc --noEmit` (apps/web) | Exit 0 |
+
+GAP-067 deviation recorded BEFORE the workaround (standing rule): no
+frozen route served FinalTextReview receipts, so 018C adds the
+read-only `GET /api/workspaces/:workspaceId/novels/:novelId/final-text-reviews`
+(membership + `canon:read` — the identical gate as the frozen POST
+route; no schema change, no new capabilities — the same necessity logic
+as GAP-064/066). The diff reviewer rules whether this is
+APPROVE_WITH_FINDINGS or CHANGES_REQUESTED.
+
+Honest limitations (not GAPs): (1) no live-model generation was
+exercised (GAP-013); (2) the full screen-reader pass is a human task
+(GAP-051); (3) the Receipts tab shell itself (tab switching, capability
+sub-tabs) has no dedicated test — its children are covered and the
+gates are progressive enhancement over the server enforcement; (4) the
+frozen 012 publish gate's internal `latestReceipt` is not read by this
+surface — receipts come from the additive read route.

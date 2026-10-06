@@ -5141,3 +5141,81 @@ exit 0; API `tsc --noEmit` exit 0; web `vue-tsc --noEmit` exit 0; zero
 2026-10-06 on this host (native PostgreSQL 16.15 + pgvector on
 localhost:5432, Redis 7.0.15 on 6379, scratch `novelforge_test_*` DBs
 only; pnpm 12.5.1).
+
+## NF-WF-018C — Usage, failure, and evaluation receipts (IMPLEMENTED, uncommitted, 2026-10-06)
+
+Implemented by the 018C implementer actor (separate from the 018
+contract author/reviewer, the 018A/018B implementers, and the future
+diff reviewer; backends MODEL_UNVERIFIED per GAP-013). 018A (studio)
+and 018B (platform admin) were NOT touched.
+
+Two additive backend items in `apps/api/src/ai-routes.ts` /
+`apps/api/src/services/ai.ts` (no schema change, no new
+capabilities, `packages/auth/authorization.ts` untouched):
+
+- `GET /api/workspaces/:workspaceId/audit-log` — the ONE 018C item
+  the contract authorizes: workspace membership + `workflow:manage`
+  (administrative read, Q6), `?action=` pinned to the 10-action
+  AI-infrastructure allowlist `WORKSPACE_AUDIT_ACTIONS`
+  (`agent.created/published`, `skill.created/published`,
+  `workflow.created/published/deleted/run`,
+  `generation.completed/failed`; the platform-scoped
+  `model-profile.mapped` is excluded), non-allowlisted → 400
+  `INVALID_INPUT`; rows are workspace-scoped with identity only
+  (actor email, never credential material).
+- `GET /api/workspaces/:workspaceId/novels/:novelId/final-text-reviews`
+  — GAP-067 additive read: the pinned "FinalTextReview rows per
+  chapter version" acceptance cannot ride frozen routes (the POST
+  route is write-only; `latestReceipt` is server-internal to the 012
+  gate; the audit payload carries only `{chapterVersionId, verdict}`).
+  Novel-scoped, membership + `canon:read` — the identical gate as the
+  frozen POST route. Returns verdict, hardViolations, advisory,
+  evaluatedPolicies, revisionId, and chapter title/number. The diff
+  reviewer rules on contract conformance (the GAP-064/066 precedent).
+
+Web (`apps/web/app/`):
+
+- `pages/workspaces/[workspaceId]/ai-studio/index.vue` — additive
+  fourth "Receipts" tab on the 018A shell (the marked 018C extension
+  point), with capability-gated sub-tabs: ledger + failures
+  (`generation:read`), evaluations (`canon:read`), audit trail
+  (`workflow:manage`). Server enforces; UI gating is progressive
+  enhancement.
+- `components/ai-studio/GenerationLedger.vue` — usage receipts table
+  (created, task, profile, status, in/out tokens, latency, error
+  category) from the frozen ledger routes; detail panel with
+  per-attempt rows (gateway, model, status, latency); status filter.
+  The header carries the honest label "Tokens and latency only — no
+  cost accounting"; no cost column exists anywhere (Q3).
+- `components/ai-studio/FailureLog.vue` — the ledger locked to
+  FAILED plus the documented no-model 409 category (GAP-028's "not
+  configured" state is a documented category, not a silent error;
+  Invariant 5 — surfaced, not fixed).
+- `components/ai-studio/EvaluationReceipts.vue` — novel picker;
+  durable `FinalTextReview` rows (verdict, violations, revision pin,
+  chapter title/number; row detail shows violations/advisory JSON);
+  story health as an explicitly labeled live computation ("Live
+  computation — not a stored receipt"; results never persisted, Q2).
+- `components/ai-studio/AuditTrail.vue` — action filter over the
+  pinned allowlist, identity rows with expandable payload.
+- `composables/useReceipts.ts` — thin fetch wrapper + capability
+  helpers (`canReadReceipts`, `canReadEvaluations`,
+  `canReadAuditTrail`) mirroring ROLE_CAPABILITIES.
+- i18n: 68 `receipts.*` keys in en + id (parity verified 68/68).
+
+Tests: `src/receipts.test.ts` (API, 7/7 — audit-log allowlist +
+400 on non-allowlisted incl. `model-profile.mapped`, tenant
+isolation, `workflow:manage` gate (AUTHOR → 403), FinalTextReview
+rows with verdict/violations/revision pin + `canon:read` gating,
+frozen ledger routes keep `generation:read` gating);
+`GenerationLedger.test.ts` (4/4 — list, no-cost label + no cost
+column, detail attempts, filter, locked status);
+`EvaluationReceipts.test.ts` (3/3); `AuditTrail.test.ts` (2/2);
+`useReceipts.test.ts` (6/6 — capability matrix);
+`app/a11y/receipts.axe.test.ts` (8/8 — zero violations en+id).
+
+GAPs: GAP-067 recorded BEFORE the workaround (evaluation receipts
+have no frozen read route; the diff reviewer rules conformance —
+the GAP-064/066 precedent); GAP-028 stays open (surfaced honestly,
+not fixed); GAP-013 (MODEL_UNVERIFIED) unchanged; GAP-051 (human
+screen-reader pass) applies to the receipts surface too.

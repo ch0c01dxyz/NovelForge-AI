@@ -47,6 +47,27 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "models.sync-failed",
 ] as const;
 
+/**
+ * Workspace audit actions the 018C receipts surface may read (contract
+ * Invariant 1, pinned allowlist — GAP-067's companion pin). Exported for
+ * the route's Zod schema. AI-infrastructure actions only:
+ * `workflow.*`, `agent.*`, `skill.*`, `generation.*`. `model-profile.mapped`
+ * is platform-scoped and belongs to the 018B platform trail, never this
+ * route. Anything else is rejected with 400, never silently widened.
+ */
+export const WORKSPACE_AUDIT_ACTIONS = [
+  "agent.created",
+  "agent.published",
+  "skill.created",
+  "skill.published",
+  "workflow.created",
+  "workflow.published",
+  "workflow.deleted",
+  "workflow.run",
+  "generation.completed",
+  "generation.failed",
+] as const;
+
 export interface GatewayView {
   id: string;
   name: string;
@@ -243,6 +264,59 @@ export interface AiServices {
     novelId?: string;
     limit?: number;
   }): Promise<GenerationView[]>;
+  /**
+   * NF-WF-018C: workspace AI audit trail (read-only). Workspace
+   * membership + `workflow:manage` (administrative read over the
+   * AI-infrastructure actions). `action` is pinned to
+   * WORKSPACE_AUDIT_ACTIONS — anything else is rejected, never
+   * silently widened. Rows are identity-only (actor email, never
+   * credential material).
+   */
+  listWorkspaceAuditLog(
+    input: { actorUserId: string; workspaceId: string },
+    query: { action?: string; limit?: number },
+  ): Promise<
+    Array<{
+      id: string;
+      actorUserId: string | null;
+      actorEmail: string | null;
+      action: string;
+      entityType: string;
+      entityId: string | null;
+      payload: unknown;
+      createdAt: Date;
+    }>
+  >;
+  /**
+   * NF-WF-018C (GAP-067): FinalTextReview receipts per novel
+   * (read-only). Novel-scoped; workspace membership + `canon:read`
+   * — the identical gate as the frozen POST `reviewFinalText`
+   * route. Returns the durable evaluation receipt rows (verdict,
+   * violations, revision pin) with the chapter title/number for
+   * display. Genuinely necessary for the pinned 018C acceptance
+   * ("FinalTextReview rows per chapter version") — no frozen
+   * route reads receipts (the POST is write-only; `latestReceipt`
+   * is server-internal). No schema change, no new capabilities.
+   */
+  listFinalTextReviews(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+  }): Promise<
+    Array<{
+      id: string;
+      chapterId: string;
+      chapterNumber: number;
+      chapterTitle: string;
+      chapterVersionId: string;
+      verdict: "PASS" | "FAIL";
+      hardViolations: unknown;
+      advisory: unknown;
+      evaluatedPolicies: unknown;
+      revisionId: string;
+      createdAt: Date;
+    }>
+  >;
   getGeneration(input: {
     actorUserId: string;
     workspaceId: string;
@@ -656,6 +730,77 @@ export function createAiServices(deps: {
         entityType: r.entityType,
         entityId: r.entityId,
         payload: r.payload,
+        createdAt: r.createdAt,
+      }));
+    },
+
+    /**
+     * NF-WF-018C: workspace AI audit trail (read-only). Membership +
+     * `workflow:manage`; rows are scoped to the workspace and pinned
+     * to WORKSPACE_AUDIT_ACTIONS (the route's Zod schema rejects
+     * anything else with 400 before this runs).
+     */
+    async listWorkspaceAuditLog(input, query) {
+      await gateWorkspace(input.workspaceId, input.actorUserId, "workflow:manage");
+      const { action, limit } = query;
+      const cappedLimit = Math.min(Math.max(limit ?? 50, 1), 200);
+      const rows = await db.auditLog.findMany({
+        where: {
+          workspaceId: input.workspaceId,
+          action: action ?? { in: [...WORKSPACE_AUDIT_ACTIONS] },
+        },
+        orderBy: { createdAt: "desc" },
+        take: cappedLimit,
+        include: { actor: { select: { email: true } } },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        actorUserId: r.actorUserId,
+        actorEmail: r.actor?.email ?? null,
+        action: r.action,
+        entityType: r.entityType,
+        entityId: r.entityId,
+        payload: r.payload,
+        createdAt: r.createdAt,
+      }));
+    },
+
+    /**
+     * NF-WF-018C (GAP-067): FinalTextReview receipts per novel.
+     * Novel-scoped; membership + `canon:read` — the identical gate
+     * as the frozen POST `reviewFinalText` route. Read-only; no
+     * schema change, no new capabilities.
+     */
+    async listFinalTextReviews(input) {
+      await gateWorkspace(input.workspaceId, input.actorUserId, "canon:read");
+      const novel = await db.novel.findFirst({
+        where: { id: input.novelId, workspaceId: input.workspaceId },
+        select: { id: true },
+      });
+      if (!novel) throw new NotFoundError("novel");
+      const rows = await db.finalTextReview.findMany({
+        where: { novelId: input.novelId, workspaceId: input.workspaceId },
+        orderBy: { createdAt: "desc" },
+        take: 200,
+        include: {
+          chapterVersion: {
+            select: {
+              chapter: { select: { id: true, number: true, title: true } },
+            },
+          },
+        },
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        chapterId: r.chapterVersion.chapter.id,
+        chapterNumber: r.chapterVersion.chapter.number,
+        chapterTitle: r.chapterVersion.chapter.title,
+        chapterVersionId: r.chapterVersionId,
+        verdict: r.verdict as "PASS" | "FAIL",
+        hardViolations: r.hardViolations,
+        advisory: r.advisory,
+        evaluatedPolicies: r.evaluatedPolicies,
+        revisionId: r.revisionId,
         createdAt: r.createdAt,
       }));
     },

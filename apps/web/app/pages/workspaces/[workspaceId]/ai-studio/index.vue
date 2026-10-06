@@ -20,19 +20,28 @@ import {
   type RunDetail,
   type WorkspaceRole,
 } from "../../../../composables/useAiStudio";
+import {
+  canReadReceipts,
+  canReadEvaluations,
+  canReadAuditTrail,
+} from "../../../../composables/useReceipts";
 import { useLocale } from "../../../../composables/useLocale";
 import DefinitionList from "../../../../components/ai-studio/DefinitionList.vue";
 import DefinitionDetail from "../../../../components/ai-studio/DefinitionDetail.vue";
 import RunList from "../../../../components/ai-studio/RunList.vue";
 import RunGraph from "../../../../components/ai-studio/RunGraph.vue";
 import ApprovalsInbox from "../../../../components/ai-studio/ApprovalsInbox.vue";
+import GenerationLedger from "../../../../components/ai-studio/GenerationLedger.vue";
+import FailureLog from "../../../../components/ai-studio/FailureLog.vue";
+import EvaluationReceipts from "../../../../components/ai-studio/EvaluationReceipts.vue";
+import AuditTrail from "../../../../components/ai-studio/AuditTrail.vue";
 
 const route = useRoute();
 const workspaceId = computed(() => String(route.params.workspaceId ?? ""));
 const { t } = useLocale();
 const studio = useAiStudio();
 
-type TabKey = "definitions" | "runs" | "approvals";
+type TabKey = "definitions" | "runs" | "approvals" | "receipts";
 const tab = ref<TabKey>("definitions");
 const role = ref<WorkspaceRole | null>(null);
 const roleLoaded = ref(false);
@@ -46,11 +55,25 @@ const runDetail = ref<RunDetail | null>(null);
 const runDetailLoading = ref(false);
 const runDetailError = ref<string | null>(null);
 
+// NF-WF-018C: receipts sub-tabs, each capability-gated individually.
+type ReceiptsTabKey = "ledger" | "failures" | "evaluations" | "audit";
+const receiptsTab = ref<ReceiptsTabKey>("ledger");
+
 const tabs = computed<{ key: TabKey; labelKey: string; visible: boolean }[]>(() => [
   { key: "definitions" as const, labelKey: "aiStudio.tabs.definitions", visible: canViewStudio(role.value) },
   { key: "runs" as const, labelKey: "aiStudio.tabs.runs", visible: canViewStudio(role.value) },
   { key: "approvals" as const, labelKey: "aiStudio.tabs.approvals", visible: canDecideApprovals(role.value) },
-  // NF-WF-018C: the "receipts" tab is added here by 018C.
+  // NF-WF-018C: the receipts tab (ledger, failures, evaluations, audit).
+  { key: "receipts" as const, labelKey: "receipts.tabs.receipts", visible: canReadReceipts(role.value) },
+]);
+
+// NF-WF-018C: the receipts sub-tabs are each capability-gated
+// individually; the server enforces on every route.
+const receiptsTabs = computed<{ key: ReceiptsTabKey; labelKey: string; visible: boolean }[]>(() => [
+  { key: "ledger" as const, labelKey: "receipts.tabs.ledger", visible: canReadReceipts(role.value) },
+  { key: "failures" as const, labelKey: "receipts.tabs.failures", visible: canReadReceipts(role.value) },
+  { key: "evaluations" as const, labelKey: "receipts.tabs.evaluations", visible: canReadEvaluations(role.value) },
+  { key: "audit" as const, labelKey: "receipts.tabs.audit", visible: canReadAuditTrail(role.value) },
 ]);
 
 const canManage = computed(() => canManageDefinitions(role.value));
@@ -221,6 +244,31 @@ onMounted(async () => {
           :can-decide="canDecide"
           @decided="() => {}"
         />
+      </div>
+
+      <!-- Receipts tab (NF-WF-018C) -->
+      <div v-if="tab === 'receipts'" role="tabpanel">
+        <div class="mb-4 flex gap-1" role="tablist" :aria-label="t('receipts.tabs.receipts')">
+          <button
+            v-for="item in receiptsTabs.filter((x) => x.visible)"
+            :key="item.key"
+            class="rounded-lg px-3 py-1.5 text-[13px] focus-visible:nf-focus"
+            :class="
+              receiptsTab === item.key
+                ? 'bg-nf-accent/15 font-semibold text-nf-accent-hi'
+                : 'text-nf-text-dim hover:text-nf-text'
+            "
+            :aria-selected="receiptsTab === item.key"
+            role="tab"
+            @click="receiptsTab = item.key"
+          >
+            {{ t(item.labelKey) }}
+          </button>
+        </div>
+        <GenerationLedger v-if="receiptsTab === 'ledger'" :workspace-id="workspaceId" />
+        <FailureLog v-else-if="receiptsTab === 'failures'" :workspace-id="workspaceId" />
+        <EvaluationReceipts v-else-if="receiptsTab === 'evaluations'" :workspace-id="workspaceId" />
+        <AuditTrail v-else-if="receiptsTab === 'audit'" :workspace-id="workspaceId" />
       </div>
     </div>
   </div>

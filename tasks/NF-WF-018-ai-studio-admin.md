@@ -299,10 +299,12 @@ Acceptance (all testable):
   the platform admin page (safe-secrets gateway management,
   models, profiles, routing overview); the receipts surface
   (ledger, failures, evaluations, audit trail).
-- Eight additive backend items: the two audit-read routes, the
+- Nine additive backend items: the two audit-read routes, the
   session `platformRole` field, the run-list `?status=` filter,
-  the three GAP-064 versions-list routes (018A), and the GAP-066
-  routing-strategy read (018B).
+  the three GAP-064 versions-list routes (018A), the GAP-066
+  routing-strategy read (018B), and the GAP-067
+  final-text-reviews read (018C — ruled contract-conformant by
+  the 018C diff review, the GAP-064/066 precedent).
 
 ### Out of scope (with follow-up owner)
 
@@ -941,3 +943,13 @@ environmental, correctly attributed, with the sequential-run
 lesson recorded; (c) no dedicated route-level 413-style test is
 needed for the routing-strategy read (read-only GET, no
 payload).
+
+### Round 4 — NF-WF-018C diff review (2026-10-06). Verdict: APPROVE_WITH_FINDINGS (1 finding, fixed inline)
+
+I am a separate actor from the contract author, contract reviewer, the 018A/018B/018C implementers, and all prior reviewers; backends I verify are MODEL_UNVERIFIED per GAP-013.
+
+**F1 (P3) — GAP-067 ruling (APPROVE_WITH_FINDINGS, not CHANGES_REQUESTED).** The implementer added `GET /api/workspaces/:workspaceId/novels/:novelId/final-text-reviews` beyond the contract's additive list — the same necessity logic as the GAP-064/066 precedent: (1) genuinely necessary for the pinned "FinalTextReview rows per chapter version (verdict, violations, revision pin)" acceptance — the frozen POST route is write-only, `latestReceipt` (`final-text-review.ts:239-246`) is server-internal to the 012 publish gate, and the audit action `review.final-text-evaluated` carries only `{chapterVersionId, verdict}` in its payload and is outside the contract's pinned audit allowlist, so the audit trail cannot substitute; (2) additive read-only, minimal shape (`{id, chapterId, chapterNumber, chapterTitle, chapterVersionId, verdict, hardViolations, advisory, evaluatedPolicies, revisionId, createdAt}`), identical membership + `canon:read` gate as the frozen POST route, no schema change, no new capabilities; (3) the deviation was recorded in GAP-067 BEFORE implementation (standing rule). Fixed inline: the contract's additive-items list updated to nine items (Invariant 1 (f): the GAP-067 route added). **GAP-067 CLOSES** on this review.
+
+**Independent verification (reviewer's own, 2026-10-06, repo @ `ba6febd`):** (1) Receipts honesty — ledger reads the frozen `Generation`/`GenerationAttempt` routes (`ai-routes.ts:335,350`, untouched); no cost column or estimate anywhere (only the honest label `receipts.ledger.noCostLabel` en+id); ledger headers are created/task/profile/status/in/out tokens/latency/error category; per-attempt detail rows carry gateway, model, status, latency; `evaluateHealth` is a GET-only story-health route (`story-health-routes.ts:75`) called on demand by `useReceipts.getStoryHealth`, labeled `receipts.evaluations.healthLiveLabel` en+id. (2) Audit-log route — `WORKSPACE_AUDIT_ACTIONS` is the 10-action pinned allowlist (`workflow.*`, `agent.*`, `skill.*`, `generation.*`; `model-profile.mapped` excluded); `?action=` Zod enum → 400 INVALID_INPUT on anything else; membership + `workflow:manage` gate; rows are identity-only (`actorUserId`, `actorEmail`, never credentials). (3) Capability gating — server: ledger `generation:read`, evaluations `canon:read`, audit `workflow:manage`; tests assert 403 (AUTHOR on audit, VIEWER on receipts/evaluations) and 404 (non-member, cross-workspace); UI gating matches `ROLE_CAPABILITIES` (progressive enhancement only). (4) Failure log — FAILED filter works via `locked-status`; the no-model 409 state is a documented first-class category (`receipts.failures.noModelTitle/noModelBody`); error categories come from the pre-existing 8-value `ErrorCategory` enum (sanitized classification, never credentials). (5) No 018A/018B scope creep — the diff touches only 018C routes/services/components/the tab shell; `packages/auth/authorization.ts` and the Prisma schema are untouched; GAP-063 stays open. (6) Evidence — my own runs: `src/receipts.test.ts` **7/7**, web `useReceipts.test.ts` + `AuditTrail.test.ts` + `EvaluationReceipts.test.ts` + `GenerationLedger.test.ts` + `receipts.axe.test.ts` **23/23** (axe 0 violations en+id); API `tsc --noEmit` exit 0; web `vue-tsc --noEmit` exit 0; zero `@ts-ignore`/`@ts-expect-error` in new files. Consistent with the implementer's recorded claims (API 715/715, web 335/335, e2e 20/20 BASELINE-OK, lint clean), which I do NOT re-claim. (7) The 018A tab shell's marked 018C extension point (`// NF-WF-018C: the "receipts" tab is added here by 018C`) was used as authorized — no 018A regression.
+
+**Observations (not findings):** (a) `FailureLog` has no dedicated test file — it is a thin wrapper (locked-status FAILED + the no-model note) over `GenerationLedger`, which is tested; acceptable. (b) The FAILED filter is client-side over the fetched page — consistent with the pinned additive scope (no new ledger route param); acceptable.

@@ -16,12 +16,13 @@ import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
 import type { PlatformRole } from "@novelforge/auth/authorization";
 import { SESSION_COOKIE } from "./auth-routes.ts";
-import { PLATFORM_AUDIT_ACTIONS, type AiServices } from "./services/ai.ts";
+import { PLATFORM_AUDIT_ACTIONS, WORKSPACE_AUDIT_ACTIONS, type AiServices } from "./services/ai.ts";
 
 const uuid = z.string().uuid();
 const gatewayParams = z.object({ gatewayId: uuid });
 const modelParams = z.object({ modelId: uuid });
 const workspaceParams = z.object({ workspaceId: uuid });
+const novelScopeParams = z.object({ workspaceId: uuid, novelId: uuid });
 const generationParams = z.object({
   workspaceId: uuid,
   generationId: uuid,
@@ -67,6 +68,14 @@ const setModelEnabledBody = z.object({ enabled: z.boolean() });
 
 const platformAuditLogQuery = z.object({
   action: z.enum(PLATFORM_AUDIT_ACTIONS).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+// NF-WF-018C: workspace AI audit trail query. `action` is pinned to
+// the AI-infrastructure allowlist (400 INVALID_INPUT on anything
+// else); `model-profile.mapped` is platform-scoped and excluded.
+const workspaceAuditLogQuery = z.object({
+  action: z.enum(WORKSPACE_AUDIT_ACTIONS).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
@@ -274,6 +283,47 @@ export function registerAiRoutes(
     if (!actor) return;
     return services.getRoutingStrategy(actor.platformRole);
   });
+
+  // --- Workspace AI audit trail + evaluation receipts (NF-WF-018C, additive) ---
+
+  // Workspace audit trail: AI-infrastructure actions for the workspace's
+  // own AI activity. Membership + `workflow:manage` (administrative read);
+  // `?action=` is pinned to the allowlist (400 INVALID_INPUT on anything
+  // else). Rows carry identity only — actor email, never credentials.
+  app.get("/api/workspaces/:workspaceId/audit-log", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    const query = workspaceAuditLogQuery.safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.listWorkspaceAuditLog(
+      { actorUserId: actor.userId, workspaceId: params.data.workspaceId },
+      { action: query.data.action, limit: query.data.limit },
+    );
+  });
+
+  // NF-WF-018C (GAP-067): FinalTextReview receipts per novel (read-only).
+  // No frozen route reads receipts (the POST final-text-review route is
+  // write-only; `latestReceipt` is server-internal to the 012 publish
+  // gate), so the pinned "FinalTextReview rows per chapter version"
+  // acceptance needs this read. Novel-scoped; membership + `canon:read`
+  // — the identical gate as the frozen POST route. Read-only, no schema
+  // change, no new capabilities.
+  app.get(
+    "/api/workspaces/:workspaceId/novels/:novelId/final-text-reviews",
+    async (request, reply) => {
+      const actor = await requireActor(request, reply);
+      if (!actor) return;
+      const params = novelScopeParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      return services.listFinalTextReviews({
+        actorUserId: actor.userId,
+        workspaceId: params.data.workspaceId,
+        novelId: params.data.novelId,
+      });
+    },
+  );
 
   // --- Generations (workspace-scoped) ---
 

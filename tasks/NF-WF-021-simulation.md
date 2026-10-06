@@ -7,7 +7,7 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: PLANNED
+Status: IMPLEMENTED
 Milestone / capability IDs: M6 (Advanced recovery and simulation);
 delivery-plan NF-WF-021 (row `:155`).
 Implementer role / requested and resolved model: (one separate actor per

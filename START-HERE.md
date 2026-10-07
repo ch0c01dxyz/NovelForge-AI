@@ -31,14 +31,13 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task (2026-10-07):** GAP-040/043/041 proof work is
-IMPLEMENTED + REVIEWED + PUSHED on `work/gap040-gap043`
-(NF-WF-042/044/045, commits `03f5d8d`/`5769a16`/`d7b8f6e`, battery GREEN
-at `c03a171`); post-review hardening NF-WF-046 is APPROVED and in
-implementation; author local review/acceptance of `c03a171` is pending
-(the author's five directives + GAP-040 clarification are the NF-WF-046
-contract). Do NOT merge `work/gap040-gap043` to main without author
-acceptance.
+**Current dispatch (2026-10-07):** the author accepted integration of
+`work/gap040-gap043` through `ad54faa`. NF-WF-042/044/045 and hardening
+NF-WF-046 are implemented and separately reviewed; the final tested code
+revision is `9265822`. See CURRENT for local merge verification evidence.
+Next, resolve the author-owned GAP-039/063 product decisions before
+dispatching dependent implementation. Human GAP-051 and live release
+acceptance remain separate gates.
 [NF-WF-041](tasks/NF-WF-041-novel-scoped-workflow-history.md)
 resolves GAP-034 and GAP-116 with scoped tests and separate review.
 [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)

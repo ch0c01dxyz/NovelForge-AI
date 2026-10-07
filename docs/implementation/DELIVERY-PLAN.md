@@ -30,19 +30,18 @@ NF-WF-037 closes GAP-083 page wiring and GAP-111/112 integration defects.
 Bounded checks and separate reviews passed. NF-WF-038 fixes Windows template
 line endings after a failed battery attempt; reviewed NF040 pins byte fixtures
 and fixes save-race proof. NF039 is automated green at712cca6 (full API inventory
-in54+3 runs, web, axe, typechecks/lint and additional Nuxt build). Next: freeze
-bounded GAP-040 branch-consumer and GAP-043 compiled-projection proofs —
-IMPLEMENTED + REVIEWED + PUSHED on `work/gap040-gap043` as
-NF-WF-042/044/045 (commits `03f5d8d`/`5769a16`/`d7b8f6e`, battery GREEN
-at `c03a171`); post-review hardening NF-WF-046 (author's five directives
-on `c03a171`) is APPROVED and in implementation; author local
-review/acceptance is pending. Do NOT merge to main without author
-acceptance.
+in54+3 runs, web, axe, typechecks/lint and additional Nuxt build).
+The author accepted integration of `work/gap040-gap043` through `ad54faa`
+on 2026-10-07: NF-WF-042/044/045 and hardening NF-WF-046 are implemented
+and separately reviewed. The final code revision is `9265822`; later
+branch commits change documentation only. CURRENT owns the local merge
+verification receipt. Next: resolve author-owned GAP-039/063 product
+decisions before dispatching dependent implementation.
 NF041 resolves GAP-034 novel-scoped history/approval selection and GAP-116 stale
 detail/cancel responses with scoped API67/web44 tests, lint/typechecks/build0 and
-separate review. NF039's full battery is historical at712cca6; no full rerun of
-NF041 claimed. Older proof
-gaps040/043, UI/E2E alignment041 and source decisions039/063 remain. Historical
+separate review. NF039's full battery is historical at712cca6; CURRENT
+records fresh local API/web tests, lint and typechecks for the accepted
+integration through `ad54faa`. Source decisions039/063 remain. Historical
 queue rows preserve planning context; do not redispatch
 completed implementations. GAP-098 stays closed by author scope decision;
 human GAP-051 and live release acceptance remain open.

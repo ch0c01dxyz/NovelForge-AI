@@ -41,8 +41,36 @@ Next: GAP-040/043/041 proof work is IMPLEMENTED + REVIEWED + PUSHED on
 post-review hardening NF-WF-046 (author's five directives + GAP-040
 clarification) is VERIFIED — implemented, diff-reviewed (APPROVE),
 battery GREEN on the final revision `9265822`, committed and pushed;
-author local review/acceptance is pending. GAP-039/063 source decisions
-remain with the author.
+The author accepted integration through `ad54faa` on 2026-10-07 after
+local review of the source fixes and documentation amendments. This
+acceptance supersedes the earlier pending-acceptance instruction; it
+does not approve production deployment. GAP-039/063 source decisions
+remain with the author. The local merge verification receipt below
+distinguishes current host evidence from reported Ubuntu results.
+
+### Local integration receipt — 2026-10-07
+
+OBSERVED: `main` fast-forwarded from `1a3452b` to the author-accepted
+branch tip `ad54faa`, without conflicts. Production and test code matches
+`9265822`; integration handoff edits affect documentation only.
+Fresh Windows verification used the existing PostgreSQL16 Docker5433 and
+Redis6379 environment, with dedicated test databases and no author-data reset.
+
+| Command | Observed result |
+| --- | --- |
+| `pnpm --filter @novelforge/api exec vitest run --no-file-parallelism` | Exit0; 58 files, 1047 tests passed, including all three E2E files |
+| `pnpm --filter @novelforge/web test` | Exit0; 81 files, 488 tests passed; includes axe suites |
+| `pnpm lint` | Exit0 |
+| `pnpm --filter @novelforge/api exec tsc --noEmit` | Exit0 |
+| `pnpm --filter @novelforge/web exec vue-tsc --noEmit` | Exit0 |
+
+Logs are retained on this host under `TEMP/novelforge-merge-ad54faa`.
+The API run emitted pg query deprecation warnings; these were not test
+failures. No fresh Nuxt build, live gateway/deployment or human screen-reader
+acceptance is claimed. The separate `review_mutations_034` actor reviewed
+the acceptance documentation; this is distinct from the previously approved
+source diff. Engram runtime attribution remains unavailable; this receipt
+is the fallback handoff, not a claimed Engram save.
 
 NF-WF-035–038 are IMPLEMENTED/REVIEWED and pushed through5120f68. GAP-110
 scene revisions, GAP-083 Recovery Center and GAP-111–113 integration defects
@@ -54,7 +82,8 @@ web79 files477/477; E2E3 files20/20; axe20 files91/91; additional Nuxt build0.
 API inventory57 files1034 tests is covered in two runs; axe overlaps web.
 See docs/implementation/039-release-verification-2026-10-07.md for exact commands.
 GAP-034 is now resolved by scoped NF041 evidence above;
-follow-up branch/projection evidence040/043 and UI/E2E alignment041 remain owed.
+follow-up branch/projection evidence040/043 and UI/E2E alignment041 are
+accepted through NF-WF-042/044/045/046 above.
 SCALE039/quota063 require validated-source decisions. No platform completion claim.
 Human GAP-051, live deployment/configuration and Engram host registration remain
 open. Current host has PostgreSQL/Redis but no API/web/storage/gateway listener.

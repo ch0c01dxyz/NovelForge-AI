@@ -1955,7 +1955,47 @@ EVIDENCE: job inventory (OBSERVED 2026-10-07): `memory-rebuild` uses BullMQ retr
 
 IMPACT: after a Redis outage, memory rebuilds do not self-heal; an operator (or the author via the UI) must re-trigger.
 
-STATUS: OPEN — recorded 2026-10-07 by the 023B implementer during verification (not a defect fix per 023 Invariant 1). Owner: follow-up task.
+STATUS: CLOSED 2026-10-07 via NF-WF-030.
+
+RESOLUTION (NF-WF-030 implementer, 2026-10-07): added startup reconciliation
+(`apps/worker/src/memory-reconciliation.ts`):
+- `reconcileMemoryRebuilds({ db, queue, logger })` scans all (novelId, scope)
+  pairs with projection rows, derives freshness via `deriveFreshness`, and
+  re-enqueues rebuild jobs for STALE and FAILED scopes with deterministic
+  jobIds (`memory-rebuild:{novelId}:{scope}:{sourceRevisionId}`).
+- `createQueue` added to `MemoryWorkerDeps` (DI pattern mirroring publication;
+  does NOT import `createMemoryQueue` from `apps/api/src` — NF-WF-026 ESLint
+  rule respected).
+- `startMemoryWorkerApp` runs reconciliation after Redis probe, before the
+  consumer starts; failures are logged loudly and the worker still starts.
+- FAILED scopes re-derive for the head revision (not the failed revision).
+- MISSING scopes are NOT auto-rebuilt (Invariant 9).
+- No false success: queue-unavailable → scopes stay STALE/FAILED in DB.
+- Report shape: `{ checked, stale, requeued, skippedFresh, skippedMissing,
+  failed }` — distinguishes FRESH from MISSING in skipped counts.
+
+PROOF (all OBSERVED 2026-10-07, disposable DB `novelforge_test_memory_recon`):
+- `apps/worker/src/memory-reconciliation.test.ts` 7/7 pass:
+  - Redis-loss simulation: STALE seed → queue state dropped → reconcile →
+    job re-derived with correct jobId → `processRebuild` → OK (2 rows: old
+    STALE + new OK).
+  - No-duplicate: double reconciliation → single job, single OK row;
+    `processRebuild` dedup confirmed (`deduped: true` on re-run).
+  - Failed-job requeue: retained `failed` job removed before re-enqueue
+    (no silent no-op).
+  - No-false-success: broken queue → `requeued: 0`, `failed: 1`, DB rows
+    unchanged (still STALE, no OK row for head).
+  - FRESH-skip: no job enqueued for FRESH scopes.
+  - MISSING-skip: no job for rowless scopes (Invariant 9).
+  - FAILED re-derive: job targets head revision.
+- Existing `memory-jobs.test.ts` 2/2 pass (no regression).
+- `npx tsc --noEmit` clean for `apps/worker` (own files); `pnpm lint` clean
+  for touched files.
+- Job inventory (`docs/implementation/023B-job-inventory.md` §3) updated
+  with the new recovery contract.
+
+NOTE: backends MODEL_UNVERIFIED per GAP-013 (standing). Production Redis
+HA/persistence remains a deployment concern (out of scope per contract).
 
 ## GAP-096 — NF-WF-023B: `notifications` failed fan-outs are not auto-recovered (2026-10-07)
 
@@ -1963,7 +2003,11 @@ EVIDENCE: job inventory (OBSERVED 2026-10-07): the `notifications` queue uses `a
 
 IMPACT: a transient failure during fan-out (e.g. DB blip) means the recipient never gets that notification unless an operator re-drives the job.
 
-STATUS: OPEN — recorded 2026-10-07 by the 023B implementer during verification (not a defect fix per 023 Invariant 1). Owner: follow-up task (consider attempts > 1 with backoff, or a dead-letter re-drive).
+STATUS: CLOSED — 2026-10-07 by NF-WF-031 (contract APPROVE, diff review APPROVE_WITH_FINDINGS with only process/P3 observations).
+
+RESOLUTION: Bounded retry (`attempts: 3`, exponential backoff base 2000ms) applied at both queue-creation sites (`notification-queue.ts` producer, `notification-fanout-jobs.ts` consumer); partial unique index `notifications_new_chapter_dedup_idx` + `skipDuplicates: true` enforce at-most-once delivery; `UnrecoverableError` for poison data (fail fast); preferences read at execution time; enriched failure logging (jobId, attemptsMade, error).
+
+EVIDENCE (OBSERVED 2026-10-07, this host): `notification-fanout-jobs.test.ts` 12/12 pass (transient-retry→delivered, no-duplicate-on-retry, opt-out-between-attempts, poison-fails-fast, queue-config both sites); migration idempotent on empty+populated DB (dedupe keeps earliest); `npx tsc --noEmit` clean (worker, workflow-executor, database); `pnpm lint` exit 0. 023B inventory §4 updated with new retry contract. Contract: `tasks/NF-WF-031-gap096-notification-recovery.md`.
 
 ## GAP-076 update — CLOSED (2026-10-07)
 

@@ -2626,6 +2626,8 @@ model NovelBranch {
   snapshots         Snapshot[]
   checkpoints       Checkpoint[]
   restoreOperations RestoreOperation[]
+  /// NF-WF-027: what-if comparisons using this branch (orphan detection).
+  whatifComparisons WhatifComparison[]
 
   @@unique([novelId, name])
   @@map("novel_branches")
@@ -3144,6 +3146,13 @@ model Notification {
   createdAt     DateTime         @default(now()) @map("created_at")
 
   @@index([userId, readAt, createdAt])
+  // NF-WF-031 (GAP-096): at-most-once per recipient per NEW_CHAPTER
+  // event. The physical object is a PARTIAL unique index (see migration
+  // 20261007_nf_wf_031_notification_dedup) — Prisma cannot express
+  // partial indexes, so this @@unique documents the constraint for
+  // `skipDuplicates` and names it via map. Chapter-identity precedent
+  // (019A): (user_id, type, novel_id, chapter_number).
+  @@unique([userId, type, novelId, chapterNumber], map: "notifications_new_chapter_dedup_idx")
   @@map("notifications")
 }
 
@@ -3263,8 +3272,18 @@ model WhatifComparison {
   status            String   @default("DRAFT")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
+  /// NF-WF-027 (GAP-100): the simulation branch the comparison's runs
+  /// execute on. NULL for pre-027 rows (their live path never worked).
+  /// SET NULL on branch delete — run-time re-verification surfaces
+  /// BRANCH_NOT_FOUND instead of cascading the comparison away.
+  branchId          String?     @map("branch_id") @db.Uuid
+  branch            NovelBranch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  /// NF-WF-027: 'existing' (author-selected) | 'provision' (service-created).
+  /// NULL for pre-027 rows.
+  branchMode        String?     @map("branch_mode")
 
   @@index([novelId])
+  @@index([branchId])
   @@map("whatif_comparisons")
 }
 

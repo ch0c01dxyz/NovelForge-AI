@@ -8,14 +8,19 @@
  * (`apps/worker/src/notification-fanout-jobs.ts`) builds its own
  * `Worker` on the same queue name — never a second queue.
  *
- * Job defaults mirror `@novelforge/workflow-executor`'s
- * `WORKFLOW_DEFAULT_JOB_OPTIONS`: `attempts: 1` (no BullMQ-level retry;
- * a failed fan-out is logged and dropped — notifications are best-effort
- * social data, never story truth), bounded `removeOnComplete`/`removeOnFail`.
+ * Job defaults (NF-WF-031, GAP-096): bounded retry (`attempts: 3`,
+ * exponential backoff base 2000ms) for transient failures. At-most-once
+ * delivery is enforced by the partial unique index
+ * `notifications_new_chapter_dedup_idx` + `skipDuplicates` in the
+ * handler. Failed jobs are retained (5000) for debugging.
  */
 import { Queue } from "bullmq";
 import IORedis from "ioredis";
-import { WORKFLOW_DEFAULT_JOB_OPTIONS } from "@novelforge/workflow-executor";
+import {
+  NOTIFICATION_FANOUT_MAX_ATTEMPTS,
+  NOTIFICATION_FANOUT_RETRY_BASE_MS,
+  WORKFLOW_DEFAULT_JOB_OPTIONS,
+} from "@novelforge/workflow-executor";
 
 export const NOTIFICATION_QUEUE_NAME = "notifications";
 export const NOTIFICATION_FANOUT_JOB_NAME = "fanout";
@@ -55,7 +60,13 @@ export function createNotificationQueue(redisUrl: string): NotificationQueue {
   });
   const queue = new Queue(NOTIFICATION_QUEUE_NAME, {
     connection,
-    defaultJobOptions: { ...WORKFLOW_DEFAULT_JOB_OPTIONS },
+    defaultJobOptions: {
+      ...WORKFLOW_DEFAULT_JOB_OPTIONS,
+      // NF-WF-031 (GAP-096): bounded retry for transient failures.
+      // Dedup is enforced by the partial unique index; retry is safe.
+      attempts: NOTIFICATION_FANOUT_MAX_ATTEMPTS,
+      backoff: { type: "exponential", delay: NOTIFICATION_FANOUT_RETRY_BASE_MS },
+    },
   });
   return {
     add: (name, data, opts) => queue.add(name, data, opts),

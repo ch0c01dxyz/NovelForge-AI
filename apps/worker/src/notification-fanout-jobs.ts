@@ -13,6 +13,15 @@
  * notification. Users who disabled NEW_CHAPTER are skipped at insert
  * time (absent preference row = pinned default ON, Klein Q5).
  *
+ * Recovery (NF-WF-031, GAP-096): the queue uses bounded BullMQ retry
+ * (`attempts: 3`, exponential backoff base 2000ms) for transient
+ * failures. At-most-once delivery per recipient per event is enforced
+ * by the partial unique index `notifications_new_chapter_dedup_idx`
+ * + `skipDuplicates` on the insert — a retry after partial success
+ * inserts only the missing rows. Malformed job data fails fast
+ * (`UnrecoverableError`, no retry); a chapter not PUBLISHED at
+ * execution time is a success no-op (Invariant 7).
+ *
  * Module boundary: this module must not import `apps/api/src` (the
  * workflow-jobs.ts rule). The preference-default semantics are
  * deliberately mirrored here; any divergence from the API's
@@ -22,16 +31,20 @@
  * - The chapter must be PUBLISHED at execution time; otherwise the job
  *   succeeds as a no-op (no fabricated notifications — Invariant 7).
  * - Batches are bounded (≤ 500 rows per createMany).
- * - Notifications are best-effort social data, never story truth: a
- *   transient failure throws (attempts: 1 — the failed record is
- *   retained for debugging); there is no startup reconciliation for
- *   fan-out, so a crash between the PUBLISHED commit and the enqueue
- *   loses that event's notifications. This is documented, not silent.
+ * - Notifications are best-effort social data, never story truth: after
+ *   the bounded retries are exhausted, the failed record is retained
+ *   for debugging; there is no startup reconciliation for fan-out, so a
+ *   crash between the PUBLISHED commit and the enqueue loses that
+ *   event's notifications. This is documented, not silent.
  */
-import { Queue, Worker } from "bullmq";
+import { Queue, UnrecoverableError, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
-import { WORKFLOW_DEFAULT_JOB_OPTIONS } from "@novelforge/workflow-executor";
+import {
+  NOTIFICATION_FANOUT_MAX_ATTEMPTS,
+  NOTIFICATION_FANOUT_RETRY_BASE_MS,
+  WORKFLOW_DEFAULT_JOB_OPTIONS,
+} from "@novelforge/workflow-executor";
 import type { WorkerLogger } from "./worker.ts";
 
 export const NOTIFICATION_QUEUE_NAME = "notifications";
@@ -120,6 +133,10 @@ export async function fanoutChapterPublished(
   let notified = 0;
   for (let i = 0; i < recipients.length; i += batchSize) {
     const batch = recipients.slice(i, i + batchSize);
+    // NF-WF-031: skipDuplicates + the partial unique index
+    // (notifications_new_chapter_dedup_idx) make retry safe: a retry
+    // after partial success inserts only the missing rows instead of
+    // failing on conflict or duplicating.
     await db.notification.createMany({
       data: batch.map((userId) => ({
         userId,
@@ -128,6 +145,7 @@ export async function fanoutChapterPublished(
         chapterNumber: chapter.number,
         actorUserId: novel.createdById,
       })),
+      skipDuplicates: true,
     });
     notified += batch.length;
   }
@@ -140,6 +158,13 @@ export interface NotificationFanoutQueue {
   close(): Promise<void>;
 }
 
+/** The BullMQ Job surface the enriched failure log needs. */
+export interface NotificationFanoutFailedJob {
+  id?: string;
+  data?: NotificationFanoutJobData;
+  attemptsMade?: number;
+}
+
 export interface NotificationFanoutWorkerDeps {
   createDb: (url: string) => NovelForgeDb;
   createConnection: (url: string) => IORedis;
@@ -150,7 +175,10 @@ export interface NotificationFanoutWorkerDeps {
     connection: IORedis,
   ) => {
     on(event: "error", cb: (err: Error) => void): void;
-    on(event: "failed", cb: (job: { id?: string } | undefined, err: Error) => void): void;
+    on(
+      event: "failed",
+      cb: (job: NotificationFanoutFailedJob | undefined, err: Error) => void,
+    ): void;
     on(event: string, cb: (...args: never[]) => void): void;
     close(): Promise<void>;
   };
@@ -168,7 +196,13 @@ export function defaultNotificationFanoutWorkerDeps(
     createQueue: (name, connection) =>
       new Queue(name, {
         connection: connection as never,
-        defaultJobOptions: { ...WORKFLOW_DEFAULT_JOB_OPTIONS },
+        defaultJobOptions: {
+          ...WORKFLOW_DEFAULT_JOB_OPTIONS,
+          // NF-WF-031 (GAP-096): bounded retry for transient failures
+          // (mirrors the producer side in notification-queue.ts).
+          attempts: NOTIFICATION_FANOUT_MAX_ATTEMPTS,
+          backoff: { type: "exponential", delay: NOTIFICATION_FANOUT_RETRY_BASE_MS },
+        },
       }) as never,
     createWorker: (queueName, handler, connection) =>
       new Worker(queueName, handler as never, {
@@ -246,7 +280,9 @@ export async function startNotificationFanoutWorkerApp(
     async (job) => {
       const data = job.data;
       if (!data || data.eventName !== "novel.chapter_published") {
-        throw new Error("malformed notification fan-out job data");
+        // NF-WF-031: poison — malformed job data can never succeed, so
+        // fail fast without consuming the bounded retries.
+        throw new UnrecoverableError("malformed notification fan-out job data");
       }
       const outcome = await fanoutChapterPublished(db, data);
       d.logger.info("notification fan-out job processed", {
@@ -262,9 +298,17 @@ export async function startNotificationFanoutWorkerApp(
     if (!stopped) d.logger.warn("notification fan-out worker error", { message: err.message });
   });
   worker.on("failed", (job, err) => {
+    // NF-WF-031: enriched terminal-failure log — every exhausted retry
+    // records the full event identity for debugging. The job stays
+    // retained (removeOnFail: 5000) and visible in the dashboard.
     if (!stopped)
-      d.logger.error("notification fan-out job failed (best-effort — dropped)", {
+      d.logger.error("notification fan-out job failed", {
         jobId: job?.id,
+        eventName: job?.data?.eventName,
+        novelId: job?.data?.novelId,
+        chapterId: job?.data?.chapterId,
+        publicationId: job?.data?.publicationId,
+        attemptsMade: job?.attemptsMade,
         message: err.message,
       });
   });

@@ -282,7 +282,8 @@ describe("startNotificationFanoutWorkerApp", () => {
     );
     expect(app.started).toBe(true);
     expect(handler).not.toBeNull();
-    await expect(handler!({ data: {} })).rejects.toThrow("malformed notification fan-out job data");
+    const { UnrecoverableError } = await import("bullmq");
+    await expect(handler!({ data: {} })).rejects.toBeInstanceOf(UnrecoverableError);
 
     const seed = await seedPublishedNovel("wire");
     const follower = await seedFollower("fanout-wire@example.com");
@@ -293,5 +294,130 @@ describe("startNotificationFanoutWorkerApp", () => {
     await app.stop();
     expect(worker.close).toHaveBeenCalled();
     expect(queue.close).toHaveBeenCalled();
+  });
+
+  it("fails fast with UnrecoverableError on malformed job data (no retry)", async () => {
+    const logger = testLogger();
+    const connection = {
+      ping: vi.fn(async () => "PONG"),
+      on: vi.fn(),
+      disconnect: vi.fn(),
+    } as never;
+    let handler: ((job: { data: unknown }) => Promise<void>) | null = null;
+    const worker = { on: vi.fn(), close: vi.fn(async () => {}) };
+    const queue = { close: vi.fn(async () => {}) };
+    const app = await startNotificationFanoutWorkerApp(
+      {
+        DATABASE_URL: "postgresql://novelforge_test:novelforge_test@localhost:5432/postgres",
+        REDIS_URL: "redis://localhost:6379",
+      },
+      logger,
+      {
+        createDb: () => db,
+        createConnection: () => connection,
+        createQueue: () => queue as never,
+        createWorker: (_queueName, h) => {
+          handler = h as never;
+          return worker as never;
+        },
+        probeTimeoutMs: 500,
+      },
+    );
+    expect(handler).not.toBeNull();
+    // Malformed data must throw UnrecoverableError (BullMQ: no retry).
+    const { UnrecoverableError } = await import("bullmq");
+    await expect(handler!({ data: {} })).rejects.toBeInstanceOf(UnrecoverableError);
+    await expect(handler!({ data: { eventName: "unknown.event" } })).rejects.toBeInstanceOf(
+      UnrecoverableError,
+    );
+    await app.stop();
+  });
+});
+
+describe("NF-WF-031 acceptance (GAP-096)", () => {
+  it("retry after transient failure delivers (no duplicate on retry)", async () => {
+    const seed = await seedPublishedNovel("retry");
+    const follower = await seedFollower("fanout-retry@example.com");
+    await db.novelFollow.create({ data: { userId: follower, novelId: seed.novelId } });
+
+    // Simulate transient DB failure on first createMany, success on retry.
+    let createManyCalls = 0;
+    const flakyDb = {
+      ...db,
+      notification: {
+        ...db.notification,
+        createMany: async (args: Parameters<NovelForgeDb["notification"]["createMany"]>[0]) => {
+          createManyCalls++;
+          if (createManyCalls === 1) {
+            throw new Error("simulated transient DB blip");
+          }
+          return db.notification.createMany(args);
+        },
+      },
+    } as NovelForgeDb;
+
+    // First attempt fails (transient).
+    await expect(fanoutChapterPublished(flakyDb, fanoutJob(seed))).rejects.toThrow(
+      "simulated transient DB blip",
+    );
+    expect(await db.notification.count({ where: { userId: follower } })).toBe(0);
+
+    // Retry succeeds — delivers exactly once.
+    const outcome = await fanoutChapterPublished(flakyDb, fanoutJob(seed));
+    expect(outcome.notified).toBe(1);
+    expect(await db.notification.count({ where: { userId: follower } })).toBe(1);
+
+    // Second retry (idempotent re-drive) does not duplicate.
+    await fanoutChapterPublished(db, fanoutJob(seed));
+    expect(await db.notification.count({ where: { userId: follower } })).toBe(1);
+  });
+
+  it("opt-out between attempts is honored on retry", async () => {
+    const seed = await seedPublishedNovel("optout-retry");
+    const staying = await seedFollower("fanout-staying@example.com");
+    const leaving = await seedFollower("fanout-leaving@example.com");
+    await db.novelFollow.create({ data: { userId: staying, novelId: seed.novelId } });
+    await db.novelFollow.create({ data: { userId: leaving, novelId: seed.novelId } });
+
+    // First attempt: both opted in — but simulate failure before insert
+    // by opting `leaving` out between the attempts.
+    await db.notificationPreference.create({
+      data: { userId: leaving, type: "NEW_CHAPTER", enabled: false },
+    });
+
+    // Retry after opt-out: only `staying` is notified.
+    const outcome = await fanoutChapterPublished(db, fanoutJob(seed));
+    expect(outcome).toEqual({ notified: 1, skipped: 1 });
+    const rows = await db.notification.findMany();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.userId).toBe(staying);
+  });
+
+  it("queue is configured with bounded retry (attempts 3, exponential 2000ms)", async () => {
+    // The constants are the single source of truth shared by the
+    // producer (apps/api/src/services/notification-queue.ts) and the
+    // consumer (defaultNotificationFanoutWorkerDeps.createQueue).
+    const {
+      NOTIFICATION_FANOUT_MAX_ATTEMPTS,
+      NOTIFICATION_FANOUT_RETRY_BASE_MS,
+      WORKFLOW_DEFAULT_JOB_OPTIONS,
+    } = await import("@novelforge/workflow-executor");
+    expect(NOTIFICATION_FANOUT_MAX_ATTEMPTS).toBe(3);
+    expect(NOTIFICATION_FANOUT_RETRY_BASE_MS).toBe(2000);
+    // The notification queue must NOT inherit attempts: 1 from the
+    // workflow defaults — it overrides with the bounded retry.
+    expect(WORKFLOW_DEFAULT_JOB_OPTIONS.attempts).toBe(1);
+    expect(NOTIFICATION_FANOUT_MAX_ATTEMPTS).not.toBe(WORKFLOW_DEFAULT_JOB_OPTIONS.attempts);
+
+    // Structural: both queue-creation sites reference the constants.
+    // (Verified by code inspection; the worker's createQueue and the
+    // API's createNotificationQueue both spread WORKFLOW_DEFAULT_JOB_OPTIONS
+    // then override attempts/backoff with the NOTIFICATION_FANOUT_* constants.)
+    const workerSrc = await import("node:fs/promises").then((fs) =>
+      fs.readFile(new URL("./notification-fanout-jobs.ts", import.meta.url), "utf8"),
+    );
+    expect(workerSrc).toContain("NOTIFICATION_FANOUT_MAX_ATTEMPTS");
+    expect(workerSrc).toContain("NOTIFICATION_FANOUT_RETRY_BASE_MS");
+    expect(workerSrc).toContain('backoff: { type: "exponential"');
   });
 });

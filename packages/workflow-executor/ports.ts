@@ -214,6 +214,23 @@ export const WORKFLOW_SWEEPER_INTERVAL_MS = 60_000;
 /** Age after which a PENDING run with no job is a crash orphan (invariant 3). */
 export const WORKFLOW_PENDING_ORPHAN_AGE_MS = 5 * 60_000;
 
+/**
+ * NF-WF-031 (GAP-096): bounded retry for the `notifications` fan-out
+ * queue. Notifications are best-effort social data (never story truth);
+ * 3 attempts with exponential backoff (2s base, ~6s total window)
+ * covers transient DB blips without hammering a struggling database.
+ * At-most-once delivery is enforced by the partial unique index
+ * `notifications_new_chapter_dedup_idx` (see migration
+ * 20261007_nf_wf_031_notification_dedup) + `skipDuplicates` in the
+ * fan-out handler — retry without dedup would double-deliver.
+ * Lives here so the API (producer) and the worker (consumer) share one
+ * source of truth.
+ */
+export const NOTIFICATION_FANOUT_MAX_ATTEMPTS = 3;
+
+/** Base delay for exponential backoff between notification fan-out retries. */
+export const NOTIFICATION_FANOUT_RETRY_BASE_MS = 2000;
+
 /** Minimal BullMQ Job surface the sweeper needs. Structurally satisfied
  * by the real `Job` — no adapter, no BullMQ import in the package. */
 export interface RecoveryJobPort {

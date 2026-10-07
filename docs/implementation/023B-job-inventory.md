@@ -25,7 +25,7 @@ No repeatable/cron jobs found (grep for `repeat`/`cron`/`every` across
 | `workflow-runs` | 1 (no BullMQ retry) | n/a | 1000 | 5000 | default (1) | `WORKFLOW_WORKER_LOCK_DURATION_MS` |
 | `publication` | 1 (inherits `WORKFLOW_DEFAULT_JOB_OPTIONS`) | n/a | 1000 | 5000 | 4 | default (30s) |
 | `memory-rebuild` | 5 (`MEMORY_REBUILD_MAX_ATTEMPTS`) | exponential, base 1000ms | 100 | 100 | 4 | default (30s) |
-| `notifications` | 1 (inherits `WORKFLOW_DEFAULT_JOB_OPTIONS`) | n/a | 1000 | 5000 | 2 | default (30s) |
+| `notifications` | 3 (`NOTIFICATION_FANOUT_MAX_ATTEMPTS`) | exponential, base 2000ms | 1000 | 5000 | 2 | default (30s) |
 | `worker-heartbeat` | default (1) | n/a | default | default | default (1) | default (30s) |
 
 ## Recovery contracts
@@ -79,25 +79,43 @@ No repeatable/cron jobs found (grep for `repeat`/`cron`/`every` across
 - **Idempotency:** jobId = publication id; re-fire of an already
   PUBLISHED/UNPUBLISHED row is a no-op success.
 
-### 3. `memory-rebuild` — BullMQ retry with backoff
+### 3. `memory-rebuild` — BullMQ retry with backoff + startup reconciliation
 
 - **Worker crash mid-job:** BullMQ retries up to 5 attempts with
   exponential backoff (1s base). After 5 failures → `failed`, retained
   (100).
-- **Redis loss:** jobs lost; no sweeper. The rebuild is re-triggerable
-  via the API (the memory status surface shows staleness).
-  (Operational note: no reconciliation — recorded as GAP-095.)
+- **Redis loss:** jobs lost; **startup reconciliation re-derives them**
+  (NF-WF-030, GAP-095 CLOSED 2026-10-07). On worker start,
+  `reconcileMemoryRebuilds` scans PostgreSQL (source of truth) for
+  STALE/FAILED projections and re-enqueues rebuild jobs with
+  deterministic jobIds (`memory-rebuild:{novelId}:{scope}:{sourceRevisionId}`).
+  Idempotent (BullMQ jobId dedup + `processRebuild` DB dedup); a retained
+  `failed` job is removed first (re-adding against it is a silent no-op).
+  MISSING scopes are not auto-rebuilt (Invariant 9). If the queue is
+  unavailable, scopes stay STALE/FAILED — never marked healthy (no false
+  success); the next startup retries. Reconciliation failure never
+  prevents the consumer from starting.
 - **Stuck job:** BullMQ lock expiry re-queues to another worker; no
   app-level sweeper.
 
-### 4. `notifications` — at-least-once fan-out, attempts: 1
+### 4. `notifications` — at-least-once fan-out, attempts: 3 (NF-WF-031)
 
 - **Worker crash mid-job:** the fan-out handler is idempotent
-  (notification rows are deduplicated per recipient+event); a crash
-  may cause re-delivery on lock expiry, never silent loss.
-- **Failed job:** `failed`, retained (5000); no retry, no sweeper.
-  Failed fan-outs are visible in the queue dashboard, not
-  auto-recovered. (Operational note — recorded as GAP-096.)
+  (notification rows are deduplicated per recipient+event via the
+  partial unique index `notifications_new_chapter_dedup_idx` +
+  `skipDuplicates`); a crash may cause re-delivery on lock expiry,
+  never silent loss and never duplicates.
+- **Failed job:** `failed`, retained (5000); bounded BullMQ retry
+  (`attempts: 3`, exponential backoff base 2000ms —
+  `NOTIFICATION_FANOUT_MAX_ATTEMPTS` /
+  `NOTIFICATION_FANOUT_RETRY_BASE_MS` in
+  `@novelforge/workflow-executor`). Transient failures (DB blips)
+  auto-recover; malformed job data fails fast (`UnrecoverableError`,
+  no retry); chapter not PUBLISHED at execution time is a success
+  no-op (Invariant 7). Terminal failures log jobId, eventName,
+  novelId, chapterId, publicationId, attemptsMade, and error message.
+  No sweeper (retry covers transient failures).
+  (GAP-096 CLOSED by NF-WF-031.)
 - **Redis loss:** queued fan-outs lost; published events already
   recorded in `notifications` table are unaffected (the fan-out is a
   delivery mechanism, not the record).

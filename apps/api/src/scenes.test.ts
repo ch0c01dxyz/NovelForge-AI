@@ -166,6 +166,86 @@ async function createScene(
 }
 
 describe("scene CRUD", () => {
+  it("restores scene metadata and ordering while retaining later revision history", async () => {
+    const owner = await seedUser("sc-restore@t.io");
+    const ids = await seedNovel(owner.userId, "sc-restore");
+    const ch = await makeChapter(owner.cookie, ids, "Ch 1");
+    const first = (await createScene(owner.cookie, ids, ch.id, { title: "First" })).json() as { id: string };
+    const second = (await createScene(owner.cookie, ids, ch.id, { title: "Second" })).json() as { id: string };
+    const base = `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}`;
+    const checkpoint = await app.inject({ method: "POST", url: `${base}/checkpoints`,
+      headers: { cookie: owner.cookie }, payload: { label: "Scene baseline" } });
+    expect(checkpoint.statusCode, checkpoint.body).toBe(201);
+    const edit = await app.inject({ method: "PATCH", url: `${scenesUrl(ids, ch.id)}/${second.id}`,
+      headers: { cookie: owner.cookie }, payload: { title: "Changed", number: 1 } });
+    expect(edit.statusCode).toBe(200);
+    await createScene(owner.cookie, ids, ch.id, { title: "Later scene" });
+    const before = await db.revision.count({ where: { novelId: ids.novelId } });
+    const preview = await app.inject({ method: "POST", url: `${base}/restores/preview`,
+      headers: { cookie: owner.cookie }, payload: { checkpointId: checkpoint.json().checkpointId, scope: "FULL" } });
+    expect(preview.statusCode, preview.body).toBe(201);
+    const apply = await app.inject({ method: "POST", url: `${base}/restores/${preview.json().restoreOperationId}/apply`,
+      headers: { cookie: owner.cookie } });
+    expect(apply.statusCode, apply.body).toBe(200);
+    expect(await db.scene.findMany({ where: { chapterId: ch.id }, orderBy: { number: "asc" },
+      select: { id: true, number: true, title: true } })).toEqual([
+      { id: first.id, number: 1, title: "First" }, { id: second.id, number: 2, title: "Second" },
+    ]);
+    expect(await db.revision.count({ where: { novelId: ids.novelId } })).toBeGreaterThan(before);
+  });
+
+  it("serializes concurrent scene numbering and revision advancement", async () => {
+    const owner = await seedUser("sc-concurrent@t.io");
+    const ids = await seedNovel(owner.userId, "sc-concurrent");
+    const ch = await makeChapter(owner.cookie, ids, "Ch 1");
+    const before = await db.revision.count({ where: { novelId: ids.novelId } });
+    const responses = await Promise.all(["First", "Second"].map((title) => createScene(owner.cookie, ids, ch.id, { title })));
+    expect(responses.map((res) => res.statusCode)).toEqual([201, 201]);
+    expect(responses.map((res) => res.json().number).sort()).toEqual([1, 2]);
+    expect(await db.revision.count({ where: { novelId: ids.novelId } })).toBe(before + 2);
+  });
+
+  it("versions create, metadata edits and every reordered scene on the checked-out branch", async () => {
+    const owner = await seedUser("sc-revisions@t.io");
+    const ids = await seedNovel(owner.userId, "sc-revisions");
+    const ch = await makeChapter(owner.cookie, ids, "Ch 1");
+    const main = await db.novelBranch.findFirstOrThrow({ where: { novelId: ids.novelId, name: "main" } });
+    const branch = await db.novelBranch.create({ data: { novelId: ids.novelId, workspaceId: ids.workspaceId,
+      name: "scene-revisions", headRevisionId: main.headRevisionId } });
+    await db.novel.update({ where: { id: ids.novelId }, data: { currentBranchId: branch.id } });
+    const first = (await createScene(owner.cookie, ids, ch.id, { title: "First" })).json() as { id: string };
+    const created = await db.novelBranch.findUniqueOrThrow({ where: { id: branch.id } });
+    expect(created.headRevisionId).not.toBe(main.headRevisionId);
+    const creation = await db.revision.findUniqueOrThrow({ where: { id: created.headRevisionId! },
+      include: { changeSet: { include: { items: true } } } });
+    expect(creation.changeSet!.items).toMatchObject([{ entityType: "Scene", entityId: first.id, operation: "CREATE" }]);
+    expect(await db.derivedRebuildIntent.count({ where: { sourceRevisionId: creation.id, projection: "manuscript" } })).toBe(1);
+    const second = (await createScene(owner.cookie, ids, ch.id, { title: "Second" })).json() as { id: string };
+    const edit = await app.inject({ method: "PATCH", url: `${scenesUrl(ids, ch.id)}/${second.id}`,
+      headers: { cookie: owner.cookie }, payload: { title: "Updated", summary: "New summary", number: 1 } });
+    expect(edit.statusCode, edit.body).toBe(200);
+    const head = await db.novelBranch.findUniqueOrThrow({ where: { id: branch.id } });
+    const revision = await db.revision.findUniqueOrThrow({ where: { id: head.headRevisionId! },
+      include: { changeSet: { include: { items: true } } } });
+    expect(revision.changeSet!.items.map((item) => [item.entityId, item.operation]).sort()).toEqual(
+      [[first.id, "UPDATE"], [second.id, "UPDATE"]].sort());
+    expect(await db.derivedRebuildIntent.count({ where: { sourceRevisionId: revision.id, projection: "manuscript" } })).toBe(1);
+    expect((await db.novelBranch.findUniqueOrThrow({ where: { id: main.id } })).headRevisionId).toBe(main.headRevisionId);
+    const beforeNoop = await db.scene.findMany({ where: { chapterId: ch.id }, orderBy: { id: "asc" } });
+    const noop = await app.inject({ method: "PATCH", url: `${scenesUrl(ids, ch.id)}/${second.id}`,
+      headers: { cookie: owner.cookie }, payload: { title: "Updated", summary: "New summary", number: 1 } });
+    expect(noop.statusCode).toBe(200);
+    const clamped = await app.inject({ method: "PATCH", url: `${scenesUrl(ids, ch.id)}/${first.id}`,
+      headers: { cookie: owner.cookie }, payload: { number: 999 } });
+    expect(clamped.statusCode).toBe(200);
+    expect(await db.scene.findMany({ where: { chapterId: ch.id }, orderBy: { id: "asc" } })).toEqual(beforeNoop);
+    expect((await db.novelBranch.findUniqueOrThrow({ where: { id: branch.id } })).headRevisionId).toBe(head.headRevisionId);
+    const refused = await createScene(owner.cookie, ids, ch.id, { title: "Duplicate", number: 1 });
+    expect(refused.statusCode).toBe(409);
+    expect(await db.scene.count({ where: { chapterId: ch.id } })).toBe(2);
+    expect((await db.novelBranch.findUniqueOrThrow({ where: { id: branch.id } })).headRevisionId).toBe(head.headRevisionId);
+  });
+
   it("creates scenes numbered max+1 by default and lists them ordered", async () => {
     const owner = await seedUser("sc-owner1@t.io");
     const ids = await seedNovel(owner.userId, "sc-ws1");

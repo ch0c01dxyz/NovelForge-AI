@@ -25,7 +25,7 @@ import type { AuditService } from "@novelforge/ai-services";
 // The head CAS every covered mutation must take inside its own transaction
 // (STORY-VERSIONING.md C3/C4). Imported directly rather than threaded through
 // the factory: the boundary call has to share the caller's `tx`.
-import { advanceForMutation, assertHeadExpectation } from "./revisions.ts";
+import { advanceForMutation, assertHeadExpectation, type RevisionTx } from "./revisions.ts";
 // NF-WF-017A: the unified import normalization pipeline (TXT/Markdown/
 // PDF/DOCX → import parts). The write path below consumes `ImportPart`.
 import {
@@ -38,6 +38,19 @@ import {
 } from "./import-normalize.ts";
 // NF-WF-017B: export rendering (HTML → TXT/Markdown/PDF/DOCX/EPUB).
 import { renderExport, type ExportFormat } from "./export-render.ts";
+
+/** Serialize scene mutations with checkout/restore before taking child locks. */
+async function lockManuscriptBranch(tx: RevisionTx, novelId: string) {
+  await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
+  const novel = await tx.novel.findUniqueOrThrow({ where: { id: novelId }, select: { currentBranchId: true } });
+  const branch = await tx.novelBranch.findFirst({
+    where: novel.currentBranchId ? { id: novel.currentBranchId, novelId } : { novelId, name: "main" },
+    select: { id: true, name: true },
+  });
+  if (!branch) throw new ConflictError("no checked-out branch exists");
+  await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`, branch.id);
+  return branch;
+}
 
 export interface ManuscriptServices {
   createChapter(input: {
@@ -631,6 +644,7 @@ export function createManuscriptServices(
       const wordCount = countWords(stripHtmlTags(cleanContent));
       // Version append + pointer move in one transaction.
       const version = await db.$transaction(async (tx) => {
+        const branch = await lockManuscriptBranch(tx, novelId);
         // Serialize concurrent saves on the same chapter row.
         await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
         const fresh = await tx.chapter.findUnique({
@@ -675,6 +689,7 @@ export function createManuscriptServices(
           workspaceId,
           novelId,
           operation: "chapter.save",
+          branchName: branch.name,
           origin: "MANUAL",
           actorUserId,
           tables: ["chapters", "chapter_versions"],
@@ -796,11 +811,13 @@ export function createManuscriptServices(
       // revision records the change while the state restore can see does not
       // include it.
       await db.$transaction(async (tx) => {
+        const branch = await lockManuscriptBranch(tx, novelId);
         await tx.chapter.update({ where: { id: chapterId }, data: { status } });
         await advanceForMutation(tx, {
           workspaceId,
           novelId,
           operation: "chapter.setStatus",
+          branchName: branch.name,
           origin: "MANUAL",
           actorUserId,
           tables: ["chapters"],
@@ -991,6 +1008,7 @@ export function createManuscriptServices(
       // Non-destructive (CLAUDE.md §9): restoring appends the old content
       // as a NEW version — history is never rewritten.
       const version = await db.$transaction(async (tx) => {
+        const branch = await lockManuscriptBranch(tx, novelId);
         await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
         const fresh = await tx.chapter.findUnique({
           where: { id: chapterId },
@@ -1024,6 +1042,7 @@ export function createManuscriptServices(
           workspaceId,
           novelId,
           operation: "chapter.restore",
+          branchName: branch.name,
           origin: "MANUAL",
           actorUserId,
           tables: ["chapters", "chapter_versions"],
@@ -1074,7 +1093,11 @@ export function createManuscriptServices(
       // Chapter-row lock serializes numbering against concurrent creates;
       // max+1 cannot collide under it.
       const scene = await db.$transaction(async (tx) => {
+        const branch = await lockManuscriptBranch(tx, novelId);
         await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
+        if (!await tx.chapter.findFirst({ where: { id: chapterId, novelId }, select: { id: true } })) {
+          throw new NotFoundError("chapter");
+        }
         let next = number ?? null;
         if (next === null) {
           const max = await tx.scene.findFirst({
@@ -1085,7 +1108,7 @@ export function createManuscriptServices(
           next = (max?.number ?? 0) + 1;
         }
         try {
-          return await tx.scene.create({
+          const created = await tx.scene.create({
             data: {
               chapterId,
               number: next,
@@ -1094,6 +1117,12 @@ export function createManuscriptServices(
             },
             select: { id: true, number: true, title: true, summary: true },
           });
+          await advanceForMutation(tx, {
+            workspaceId, novelId, actorUserId, branchName: branch.name,
+            operation: "scene.crud", origin: "MANUAL", tables: ["scenes"],
+            items: [{ entityType: "Scene", entityId: created.id, operation: "CREATE" }],
+          });
+          return created;
         } catch (e: unknown) {
           // @@unique([chapterId, number]): an explicit number that is
           // already taken is a client-correctable conflict, not a 500.
@@ -1129,16 +1158,22 @@ export function createManuscriptServices(
       await gate(workspaceId, novelId, actorUserId, "chapter:update");
       await getChapterOr404(chapterId, novelId);
       const updated = await db.$transaction(async (tx) => {
+        const branch = await lockManuscriptBranch(tx, novelId);
         await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
         const scene = await tx.scene.findFirst({
           where: { id: sceneId, chapterId },
-          select: { id: true, number: true },
+          select: { id: true, number: true, title: true, summary: true },
         });
         if (!scene) throw new NotFoundError("scene");
-        if (title !== undefined) {
+        const changedIds = new Set<string>();
+        if ((title !== undefined && title !== scene.title) ||
+            (summary !== undefined && (summary ?? null) !== scene.summary)) {
+          changedIds.add(sceneId);
+        }
+        if (title !== undefined && title !== scene.title) {
           await tx.scene.update({ where: { id: sceneId }, data: { title } });
         }
-        if (summary !== undefined) {
+        if (summary !== undefined && (summary ?? null) !== scene.summary) {
           await tx.scene.update({
             where: { id: sceneId },
             data: { summary: summary ?? null },
@@ -1152,18 +1187,35 @@ export function createManuscriptServices(
           const rows = await tx.scene.findMany({
             where: { chapterId },
             orderBy: [{ number: "asc" }, { id: "asc" }],
-            select: { id: true },
+            select: { id: true, number: true },
           });
           const ids = rows.map((r) => r.id);
+          const oldNumbers = new Map(rows.map((row) => [row.id, row.number]));
           ids.splice(ids.indexOf(sceneId), 1);
           const to = Math.max(0, Math.min(number - 1, ids.length));
           ids.splice(to, 0, sceneId);
+          let reordered = false;
           for (const [i, id] of ids.entries()) {
-            await tx.scene.update({ where: { id }, data: { number: -(i + 1) } });
+            if (oldNumbers.get(id) !== i + 1) {
+              changedIds.add(id);
+              reordered = true;
+            }
           }
-          for (const [i, id] of ids.entries()) {
-            await tx.scene.update({ where: { id }, data: { number: i + 1 } });
+          if (reordered) {
+            for (const [i, id] of ids.entries()) {
+              await tx.scene.update({ where: { id }, data: { number: -(i + 1) } });
+            }
+            for (const [i, id] of ids.entries()) {
+              await tx.scene.update({ where: { id }, data: { number: i + 1 } });
+            }
           }
+        }
+        if (changedIds.size > 0) {
+          await advanceForMutation(tx, {
+            workspaceId, novelId, actorUserId, branchName: branch.name,
+            operation: "scene.crud", origin: "MANUAL", tables: ["scenes"],
+            items: [...changedIds].map((id) => ({ entityType: "Scene", entityId: id, operation: "UPDATE" as const })),
+          });
         }
         return tx.scene.findUniqueOrThrow({
           where: { id: sceneId },
@@ -1192,14 +1244,7 @@ export function createManuscriptServices(
       // authoritative in-tx read (TOCTOU hardening) — see below.
       const deletedBeats = await db.$transaction(async (tx) => {
         // Pin checkout and lock lineage before changing live scene state.
-        await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
-        const novel = await tx.novel.findUniqueOrThrow({ where: { id: novelId }, select: { currentBranchId: true } });
-        const branch = await tx.novelBranch.findFirst({
-          where: novel.currentBranchId ? { id: novel.currentBranchId, novelId } : { novelId, name: "main" },
-          select: { id: true, name: true },
-        });
-        if (!branch) throw new ConflictError("no checked-out branch exists");
-        await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`, branch.id);
+        const branch = await lockManuscriptBranch(tx, novelId);
         // FOR UPDATE conflicts with FK insertion locks, preventing a beat
         // from appearing after the authoritative capability check.
         await tx.$queryRawUnsafe(`SELECT id FROM scenes WHERE id = $1 FOR UPDATE`, sceneId);

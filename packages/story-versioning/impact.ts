@@ -19,11 +19,8 @@ export type ImpactClass = "LOW" | "HIGH";
 /**
  * The operations C3 names, as a closed vocabulary.
  *
- * `sceneCrud` is listed in C3 with no production write path today
- * (`manuscript.ts:4-6` records scenes as schema-only, `planning.ts` only
- * reads them). It is classified here because C3 names the operation class
- * that will owe a revision when that path lands — classifying it is not
- * inventing the path.
+ * `scene.crud` covers manuscript scene creation, metadata and ordering
+ * changes. These LOW mutations still record a revision and rebuild intent.
  */
 export const OPERATIONS = [
   // LOW — C3 "Operations" column

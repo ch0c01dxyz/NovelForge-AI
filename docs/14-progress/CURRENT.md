@@ -543,3 +543,13 @@ deterministic evidence validation, head pinning, and atomic apply.
 8.  NF-0008 Bootstrap Fastify API health/readiness.
 9.  NF-0009 Bootstrap worker health and BullMQ connection.
 10. NF-0010 Cross-platform clean-clone verification on Windows and Ubuntu.
+# Boundary update — NF-WF-036, 2026-10-07
+
+NF-WF-035 pushed at 3086e7c. NF-WF-036 IMPLEMENTED/REVIEWED: GAP-110
+scene create/edit/reorder now records checkout revision/change set and rebuild
+intent atomically. No-op timestamps stay unchanged. Sibling manuscript and
+publication locks follow novel/branch/chapter order. Scene20/20; expanded
+API58/58; worker publication21/21; API typecheck/lint exit0. Separate reviewer
+APPROVE; no full release proof. NF-WF-037 Recovery Center wiring under review,
+GAP-111/112 recorded. Engram attribution remains unavailable; this is fallback
+working context, not an attributed MCP save.

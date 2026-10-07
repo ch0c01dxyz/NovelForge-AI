@@ -2213,6 +2213,42 @@ GAP-109 review follow-up: novel-first locking added to merge and switch with loc
 
 Status: OPEN / P1. Owner: follow-up scene mutation contract.
 Observed during GAP-109 audit: manuscript.createScene and updateScene mutate scenes within transactions but never call advanceForMutation. Their audit entries do not replace immutable revisions or durable invalidation intent. Delete is now branch-aware; this does not prove the other scene mutations meet constitution §2.11.
-Next: define checked-out lineage, reorder change-set scope, published-chapter policy and source invalidation for scene create/update; implement and review a bounded follow-up rather than declaring all scene lifecycle/recovery accepted. Closure: create/update/reorder revisions and rollback/tenant/concurrency tests with no mutation to the wrong branch.
+
+NF-WF-036 verification correction (2026-10-07): first added test drafts used
+PUT for scene edits and expected 200 for restore preview. Actual registered
+contracts are PATCH and 201. Corrected test assumptions from route evidence;
+no API contract changed. Initial create-lineage regression failed on the
+unchanged branch head before the fix, as expected.
+
+NF-WF-036 separate review also found branch/chapter lock inversion in chapter
+save/version-restore and timestamp writes on no-op scene updates. Scope amended
+to share novel/checkout-first locks and skip writes for unchanged final values.
+
+## GAP-111 — Recovery page integration safety seams
+
+Status: OPEN, 2026-10-07. Owner: NF-WF-037.
+Evidence: separate contract reviewer found no route-leave guard in the workspace;
+MergePreview apply omits mode/expected head and can retain old previews during
+loading; SelectiveRestorePanel keeps a preview after selection edits; recovery
+components lack refresh events and a manual checkpoint control.
+Impact: wiring these unchanged components could lose editor text or apply a
+different operation than the visible preview. Next: bounded UI safety repairs,
+checkout-owned checkpoint selection and explicit checkpoint creation using existing
+APIs. Closure: rendered selector/refresh/negative tests, en/id/axe and exact-diff review.
+
+## GAP-112 — Workspace drawer cannot compile as a Vue SFC
+
+Status: OPEN, 2026-10-07. Owner: NF-WF-037 integration repair.
+Evidence: importing the actual workspace page in its navigation test fails with
+`Element is missing end tag` at WorkspaceDrawer.vue:37. The file ends without
+the closing script tag. Typecheck alone did not detect this SFC compiler failure.
+Impact: workspace rendering/build is blocked. Next: restore the missing tag;
+closure: actual page import test and web production build.
+Resolution: NF-WF-036 records create/edit/reorder changes and manuscript rebuild
+intent atomically on checkout lineage. Every renumbered scene is listed, no-op
+writes are skipped, and sibling chapter/publication lock ordering is aligned.
+Status: RESOLVED 2026-10-07, bounded scene mutation scope. Evidence: scene20/20,
+expanded API58/58, publication worker21/21, API typecheck/lint exit0; separate
+review_recovery_034 APPROVE. Human/live release gates remain separate.
 
 GAP-109 closure receipt: final7-file API run113/113; worker5-file recovery46/46; real BullMQ enqueue/dedup1/1. Additional scope receipts in NF-WF-035. Lint/typecheck/diff checks pass; both independent reviewers APPROVE after concurrency findings addressed. No full-release completion claim. GAP-110 and human/live deployment gates remain open; CURRENT/task record retains fallback because Engram session attribution is still unavailable.

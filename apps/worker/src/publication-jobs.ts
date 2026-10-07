@@ -219,7 +219,9 @@ export async function fireScheduledPublication(
     if (row.scheduledFor && row.scheduledFor.getTime() > Date.now()) {
       return { outcome: "noop" as const, publicationId };
     }
-    // Serialize against concurrent mutations (the saveChapter precedent).
+    // Match manuscript/restore lock order before taking any chapter lock.
+    await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, row.novelId);
+    await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE novel_id = $1 AND name = 'main' FOR UPDATE`, row.novelId);
     await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${row.chapterId} FOR UPDATE`;
     const chapter = await tx.chapter.findUnique({
       where: { id: row.chapterId },

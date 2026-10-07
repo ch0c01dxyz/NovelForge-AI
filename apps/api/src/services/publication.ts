@@ -279,7 +279,9 @@ export function createPublicationServices({
     return novel;
   }
 
-  async function lockChapter(tx: RevisionTx, chapterId: string) {
+  async function lockChapter(tx: RevisionTx, novelId: string, chapterId: string) {
+    await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
+    await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE novel_id = $1 AND name = 'main' FOR UPDATE`, novelId);
     await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
   }
 
@@ -331,7 +333,7 @@ export function createPublicationServices({
       }
       const publicationId = randomUUID();
       const row = await db.$transaction(async (tx) => {
-        await lockChapter(tx, chapterId);
+        await lockChapter(tx, novelId, chapterId);
         const chapter = await tx.chapter.findFirst({
           where: { id: chapterId, novelId },
           select: {
@@ -432,7 +434,7 @@ export function createPublicationServices({
       const publicationId = randomUUID();
       const now = new Date();
       const row = await db.$transaction(async (tx) => {
-        await lockChapter(tx, chapterId);
+        await lockChapter(tx, novelId, chapterId);
         const chapter = await tx.chapter.findFirst({
           where: { id: chapterId, novelId },
           select: {
@@ -563,7 +565,7 @@ export function createPublicationServices({
     async unpublishChapter({ actorUserId, workspaceId, novelId, chapterId }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:update");
       const row = await db.$transaction(async (tx) => {
-        await lockChapter(tx, chapterId);
+        await lockChapter(tx, novelId, chapterId);
         const chapter = await tx.chapter.findFirst({
           where: { id: chapterId, novelId },
           select: { id: true, status: true },
@@ -597,7 +599,7 @@ export function createPublicationServices({
         status: "IN_REVIEW",
       });
       const flipped = await db.$transaction(async (tx) => {
-        await lockChapter(tx, chapterId);
+        await lockChapter(tx, novelId, chapterId);
         const advanced = await advanceForMutation(tx, {
           workspaceId,
           novelId,
@@ -641,7 +643,7 @@ export function createPublicationServices({
     }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:publish");
       const row = await db.$transaction(async (tx) => {
-        await lockChapter(tx, chapterId);
+        await lockChapter(tx, novelId, chapterId);
         const chapter = await tx.chapter.findFirst({
           where: { id: chapterId, novelId },
           select: { id: true },

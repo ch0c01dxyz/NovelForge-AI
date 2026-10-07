@@ -27,7 +27,7 @@
  * are public aggregates.
  */
 import type { NovelForgeDb } from "@novelforge/database";
-import { NotFoundError } from "./platform.ts";
+import { NotFoundError } from "@novelforge/ai-services";
 
 /** 400 INVALID_INPUT for engagement input refusals (self-follow). */
 export class EngagementInputError extends Error {

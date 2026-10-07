@@ -18,7 +18,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
 import { SESSION_COOKIE } from "./auth-routes.ts";
-import { NotFoundError } from "./services/platform.ts";
+import { NotFoundError } from "@novelforge/ai-services";
 import {
   PINNED_NOTIFICATION_TYPES,
   type NotificationServices,

@@ -23,16 +23,16 @@ import {
   type E2EContext,
 } from "./setup.ts";
 import { ensureFixture, FIXTURE_CHAPTERS } from "./long-novel.fixture.ts";
-import { createAuditService } from "../services/audit.ts";
-import { createPlanningServices } from "../services/planning.ts";
+import { createAuditService } from "@novelforge/ai-services";
+import { createPlanningServices } from "@novelforge/ai-services";
 import { createManuscriptServices } from "../services/manuscript.ts";
-import { createCanonServices } from "../services/canon.ts";
+import { createCanonServices } from "@novelforge/ai-services";
 import { createCanonApplicationServices } from "../services/canon-applications.ts";
-import { createRetrievalServices } from "../services/retrieval.ts";
-import { createAiServices } from "../services/ai.ts";
-import { createGatewayRegistry } from "../ai-registry.ts";
+import { createRetrievalServices } from "@novelforge/ai-services";
+import { createAiServices } from "@novelforge/ai-services";
+import { createGatewayRegistry } from "@novelforge/ai-services";
 import { createStoryHealthServices } from "../services/story-health.ts";
-import { assertFindingEvidence } from "../services/evidence-findings.ts";
+import { assertFindingEvidence } from "@novelforge/ai-services";
 import { readHeadRevisionId } from "../services/revisions.ts";
 import { e2eCreateGateway } from "./setup.ts";
 

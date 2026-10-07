@@ -24,8 +24,8 @@
  */
 import type { NovelForgeDb } from "@novelforge/database";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
-import { NotFoundError } from "./platform.ts";
-import type { AuditService } from "./audit.ts";
+import { NotFoundError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 
 /**
  * NF-WF-022A: typed endgame refusals. 400s are input validation;

@@ -166,7 +166,7 @@ describe("startWorkflowWorkerApp — fakes", () => {
     let processor: ((job: unknown) => Promise<void>) | null = null;
 
     const app = await startWorkflowWorkerApp(
-      { DATABASE_URL: "postgres://x", REDIS_URL: "redis://localhost:6379" },
+      { DATABASE_URL: "postgres://x", REDIS_URL: "redis://localhost:6379", APP_ENCRYPTION_KEY: "test" },
       logger,
       {
         createDb: () => ({ $disconnect: vi.fn(async () => {}) }) as unknown as NovelForgeDb,
@@ -207,7 +207,7 @@ describe("startWorkflowWorkerApp — fakes", () => {
   it("degrades gracefully when redis is unavailable", async () => {
     const logger = testLogger();
     const app = await startWorkflowWorkerApp(
-      { DATABASE_URL: "postgres://x", REDIS_URL: "redis://localhost:6379" },
+      { DATABASE_URL: "postgres://x", REDIS_URL: "redis://localhost:6379", APP_ENCRYPTION_KEY: "test" },
       logger,
       {
         createDb: () => ({ $disconnect: vi.fn(async () => {}) }) as unknown as NovelForgeDb,

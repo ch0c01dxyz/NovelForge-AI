@@ -47,9 +47,9 @@ import {
   FIXTURE_CHAPTERS,
   type FixtureNovel,
 } from "./long-novel.fixture.ts";
-import { createAuditService } from "../services/audit.ts";
+import { createAuditService } from "@novelforge/ai-services";
 import { createStoryHealthServices } from "../services/story-health.ts";
-import { createMemoryServices } from "../services/memory.ts";
+import { createMemoryServices } from "@novelforge/ai-services";
 import { settleRev, processRebuild, chapterScope } from "@novelforge/memory";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));

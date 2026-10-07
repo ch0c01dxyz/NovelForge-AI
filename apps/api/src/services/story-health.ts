@@ -68,18 +68,18 @@
  */
 import type { NovelForgeDb } from "@novelforge/database";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
-import { NotFoundError } from "./platform.ts";
-import type { AuditService } from "./audit.ts";
+import { NotFoundError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 import { assessDramaWindow, type DramaBeat } from "@novelforge/narrative-rhythm";
-import { MemoryError } from "./memory.ts";
+import { MemoryError } from "@novelforge/ai-services";
 import { readHeadRevisionId, checkedOutBranchId } from "./revisions.ts";
 import { validatePolicyPayloadOnRead } from "./final-text-review.ts";
-import { birthRevisionNumbers } from "./revision-birth.ts";
+import { birthRevisionNumbers } from "@novelforge/ai-services";
 import {
   assertFindingEvidence,
   type EvidenceFinding,
   type FindingEvidence,
-} from "./evidence-findings.ts";
+} from "@novelforge/ai-services";
 
 export const HEALTH_MAX_FINDINGS = 200;
 export const HEALTH_HISTORY_CHAPTERS = 50;

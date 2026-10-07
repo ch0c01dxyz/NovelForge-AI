@@ -22,7 +22,7 @@
  *   `commentAuthorUserId` from the comment row).
  */
 import type { NovelForgeDb } from "@novelforge/database";
-import { NotFoundError } from "./platform.ts";
+import { NotFoundError } from "@novelforge/ai-services";
 
 /**
  * The three pinned preference/event types (Klein Q5, 2026-10-06 — all

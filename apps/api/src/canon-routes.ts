@@ -19,7 +19,7 @@ import { SESSION_COOKIE } from "./auth-routes.ts";
 import {
   STORY_ENTITY_KINDS,
   type CanonServices,
-} from "./services/canon.ts";
+} from "@novelforge/ai-services";
 import type { CanonApplicationServices } from "./services/canon-applications.ts";
 
 const uuid = z.string().uuid();

@@ -27,7 +27,7 @@
  */
 import type { NovelForgeDb, InputJsonValue } from "@novelforge/database";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
-import { NotFoundError } from "./platform.ts";
+import { NotFoundError } from "@novelforge/ai-services";
 import type { SimulationServices } from "./simulation.ts";
 
 /**

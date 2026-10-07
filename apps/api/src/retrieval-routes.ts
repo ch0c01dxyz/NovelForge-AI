@@ -22,7 +22,7 @@ import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import { checkModePair } from "./canon-routes.ts";
-import type { RetrievalServices } from "./services/retrieval.ts";
+import type { RetrievalServices } from "@novelforge/ai-services";
 
 const uuid = z.string().uuid();
 const workspaceParams = z.object({ workspaceId: uuid });

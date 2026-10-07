@@ -55,15 +55,15 @@ import {
   newIdempotencyKey,
   type E2EContext,
 } from "./setup.ts";
-import { createAuditService } from "../services/audit.ts";
-import { createPlanningServices } from "../services/planning.ts";
+import { createAuditService } from "@novelforge/ai-services";
+import { createPlanningServices } from "@novelforge/ai-services";
 import { createManuscriptServices } from "../services/manuscript.ts";
 import { createStoryServices } from "../services/story.ts";
-import { createNarrativeServices } from "../services/narrative.ts";
+import { createNarrativeServices } from "@novelforge/ai-services";
 import {
   assertFindingEvidence,
   type EvidenceFinding,
-} from "../services/evidence-findings.ts";
+} from "@novelforge/ai-services";
 
 let e2e: E2EContext;
 let db: NovelForgeDb;

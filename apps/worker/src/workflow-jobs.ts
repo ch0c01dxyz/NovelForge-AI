@@ -6,12 +6,10 @@
  * restart-recovery sweep. It never imports HTTP; all capabilities arrive as
  * injected deps.
  *
- * Production AI wiring (generate / retrieval / compiler) is NOT
- * constructed here: those service factories live in `apps/api/src`, which
- * this module must not import. The executor is built with worker-side deps
- * (db, audit, DB-backed definition resolvers); step kinds needing the AI
- * path fail with a clear "not configured" error until the factories move
- * to shared packages (recorded in ISSUES-AND-GAPS).
+ * Production AI wiring (NF-WF-026, GAP-028): the executor is built with the
+ * real AI path (generate / retrieval / compiler) via `createWorkerAiPath`
+ * from `@novelforge/ai-services`. The factories live in the shared package,
+ * not `apps/api/src` (NF-WF-004 forbidden path).
  */
 import { Queue, Worker, type ConnectionOptions } from "bullmq";
 import IORedis from "ioredis";
@@ -26,6 +24,8 @@ import {
   type WorkflowExecutor,
 } from "@novelforge/workflow-executor";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
+import { createWorkerAiPath } from "@novelforge/ai-services";
+import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
 import type { WorkerLogger } from "./worker.ts";
 
 /** The BullMQ job payload for a workflow run (see invariant 1). */
@@ -121,15 +121,30 @@ export async function runRecoverySweep(deps: RecoverySweepDeps) {
 export interface WorkerExecutorDeps {
   db: NovelForgeDb;
   logger: WorkerLogger;
+  /** Deployment encryption key for gateway credential decryption (env). */
+  encryptionKey: string;
+  /**
+   * Transport seam for tests: build the adapter for a gateway record.
+   * If omitted, the production OmniRouteGateway is used.
+   */
+  createGateway?: (rec: GatewayRecord) => AIGateway;
 }
 
 /**
  * Build the worker-side executor: db-backed audit and definition
- * resolvers. The AI path (generate / retrieval / compiler) is
- * intentionally absent — see the module docstring.
+ * resolvers, plus the real AI path (generate / retrieval / compiler)
+ * via `createWorkerAiPath` (NF-WF-026, GAP-028).
+ *
+ * The gateway adapter defaults to the production OmniRouteGateway;
+ * credentials come from gateway records decrypted with the
+ * deployment encryption key (author's deployment concern).
  */
 export function createWorkerExecutor(deps: WorkerExecutorDeps): WorkflowExecutor {
-  const { db, logger } = deps;
+  const { db, logger, encryptionKey } = deps;
+  const aiPath = createWorkerAiPath(db, {
+    encryptionKey,
+    ...(deps.createGateway ? { createGateway: deps.createGateway } : {}),
+  });
   return createWorkflowExecutor({
     db,
     audit: {
@@ -146,6 +161,9 @@ export function createWorkerExecutor(deps: WorkerExecutorDeps): WorkflowExecutor
         }).then(() => undefined),
     },
     resolvers: createDbDefinitionResolvers(db),
+    generate: aiPath.generate,
+    retrieval: aiPath.retrieval,
+    compiler: aiPath.compiler,
     dbg: { error: (message, meta) => logger.error(message, meta as Record<string, unknown>) },
   });
 }
@@ -173,7 +191,7 @@ export type WorkflowRedisConnection = ConnectionOptions & {
 
 export interface WorkflowWorkerDeps {
   createDb(url: string): NovelForgeDb;
-  createExecutor(db: NovelForgeDb, logger: WorkerLogger): WorkflowExecutor;
+  createExecutor(db: NovelForgeDb, logger: WorkerLogger, encryptionKey: string): WorkflowExecutor;
   createConnection(url: string): WorkflowRedisConnection;
   createQueue(name: string, connection: unknown): RecoveryQueuePort & { close(): Promise<void> };
   createWorker(
@@ -195,7 +213,8 @@ export interface WorkflowWorkerApp {
 
 const defaultWorkflowWorkerDeps = (logger: WorkerLogger): WorkflowWorkerDeps => ({
   createDb: (url) => createDb(url),
-  createExecutor: (db, l) => createWorkerExecutor({ db, logger: l }),
+  createExecutor: (db, l, encryptionKey) =>
+    createWorkerExecutor({ db, logger: l, encryptionKey }),
   createConnection: (url) =>
     new IORedis(url, {
       maxRetriesPerRequest: null,
@@ -232,7 +251,7 @@ const defaultWorkflowWorkerDeps = (logger: WorkerLogger): WorkflowWorkerDeps => 
  * Postgres and Redis; without Redis there is nothing to recover.
  */
 export async function startWorkflowWorkerApp(
-  env: { DATABASE_URL: string; REDIS_URL: string },
+  env: { DATABASE_URL: string; REDIS_URL: string; APP_ENCRYPTION_KEY: string },
   logger: WorkerLogger,
   deps: Partial<WorkflowWorkerDeps> = {},
 ): Promise<WorkflowWorkerApp> {
@@ -241,7 +260,7 @@ export async function startWorkflowWorkerApp(
   let stopped = false;
 
   const db = d.createDb(env.DATABASE_URL);
-  const executor = d.createExecutor(db, d.logger);
+  const executor = d.createExecutor(db, d.logger, env.APP_ENCRYPTION_KEY);
   const queueConnection = d.createConnection(env.REDIS_URL);
   const workerConnection = d.createConnection(env.REDIS_URL);
 

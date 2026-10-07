@@ -54,9 +54,9 @@
  */
 import type { NovelForgeDb } from "@novelforge/database";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
-import { NotFoundError } from "./platform.ts";
-import { MemoryError } from "./memory.ts";
-import type { AuditService } from "./audit.ts";
+import { NotFoundError } from "@novelforge/ai-services";
+import { MemoryError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 import {
   assessDramaWindow,
   assessScaleAppropriateness,
@@ -69,13 +69,13 @@ import {
   isValidCooldownPayload,
   isValidScalePayload,
   scaleStandingOf,
-} from "./narrative.ts";
+} from "@novelforge/ai-services";
 import { readHeadRevisionId } from "./revisions.ts";
 import {
   assertFindingEvidence,
   type EvidenceFinding,
   type FindingEvidence,
-} from "./evidence-findings.ts";
+} from "@novelforge/ai-services";
 
 export interface ReviewAdvisory {
   rule: string;

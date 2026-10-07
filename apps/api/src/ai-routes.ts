@@ -16,7 +16,7 @@ import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
 import type { PlatformRole } from "@novelforge/auth/authorization";
 import { SESSION_COOKIE } from "./auth-routes.ts";
-import { PLATFORM_AUDIT_ACTIONS, WORKSPACE_AUDIT_ACTIONS, type AiServices } from "./services/ai.ts";
+import { PLATFORM_AUDIT_ACTIONS, WORKSPACE_AUDIT_ACTIONS, type AiServices } from "@novelforge/ai-services";
 
 const uuid = z.string().uuid();
 const gatewayParams = z.object({ gatewayId: uuid });

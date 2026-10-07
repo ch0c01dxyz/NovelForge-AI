@@ -15,7 +15,7 @@
  */
 import type { NovelForgeDb } from "@novelforge/database";
 import type { ModelProfile } from "@novelforge/ai-core";
-import { ConflictError } from "./platform.ts";
+import { ConflictError } from "@novelforge/ai-services";
 
 /** A resolved definition pinned to the version the caller will use. */
 export interface ResolvedAgent {

@@ -21,9 +21,9 @@ import {
   type WorkflowGraph,
 } from "@novelforge/validation";
 import { isUniqueViolation } from "@novelforge/workflow-executor";
-import { ConflictError, NotFoundError } from "./platform.ts";
+import { ConflictError, NotFoundError } from "@novelforge/ai-services";
 import { resolveAgent, resolveSkill } from "./definition-resolution.ts";
-import { createAuditService, type AuditService } from "./audit.ts";
+import { createAuditService, type AuditService } from "@novelforge/ai-services";
 import type { WorkflowQueue } from "./workflow-queue.ts";
 
 /**

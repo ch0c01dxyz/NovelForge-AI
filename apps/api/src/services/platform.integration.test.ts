@@ -10,14 +10,14 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
 import pg from "pg";
-import { createAuditService } from "./audit.ts";
+import { createAuditService } from "@novelforge/ai-services";
 import {
   ConflictError,
   createPlatformServices,
   ForbiddenError,
   NotFoundError,
   type PlatformServices,
-} from "./platform.ts";
+} from "@novelforge/ai-services";
 
 const TEST_DB = "novelforge_test_platform";
 const HERE = fileURLToPath(new URL(".", import.meta.url));

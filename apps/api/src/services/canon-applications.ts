@@ -32,9 +32,9 @@ import {
   sameObject,
   type ClaimObject,
 } from "@novelforge/story-intelligence";
-import { STORY_ENTITY_KINDS } from "./canon.ts";
-import { ConflictError, NotFoundError } from "./platform.ts";
-import type { AuditService } from "./audit.ts";
+import { STORY_ENTITY_KINDS } from "@novelforge/ai-services";
+import { ConflictError, NotFoundError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 // NF-WF-017C (Invariant 3): strip-aware quote pinning on HTML chapter
 // content (the 008 fact-source pin).
 import { strippedContentIncludes } from "./manuscript.ts";

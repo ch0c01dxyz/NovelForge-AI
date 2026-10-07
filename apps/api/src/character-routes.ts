@@ -16,7 +16,7 @@ import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import { ARC_STATUSES, KNOWLEDGE_SOURCES, KNOWLEDGE_STANCES } from "@novelforge/character-intelligence";
-import type { CharacterServices } from "./services/characters.ts";
+import type { CharacterServices } from "@novelforge/ai-services";
 
 const uuid = z.string().uuid();
 const novelParams = z.object({ workspaceId: uuid, novelId: uuid });

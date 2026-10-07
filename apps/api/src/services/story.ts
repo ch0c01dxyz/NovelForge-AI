@@ -36,8 +36,8 @@ import {
 } from "@novelforge/story-intelligence";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 import type { NovelForgeDb } from "@novelforge/database";
-import { ConflictError, NotFoundError } from "./platform.ts";
-import type { AuditService } from "./audit.ts";
+import { ConflictError, NotFoundError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 // Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
 import { createWithRevision } from "./revisions.ts";
 

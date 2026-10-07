@@ -18,9 +18,9 @@
 import type { NovelForgeDb } from "@novelforge/database";
 import { compileSchema, extractJson } from "@novelforge/validation";
 import { requireCapability } from "@novelforge/auth/authorization";
-import { ConflictError, NotFoundError } from "./platform.ts";
+import { ConflictError, NotFoundError } from "@novelforge/ai-services";
 import { resolveAgent, resolveSkill } from "./definition-resolution.ts";
-import type { AiServices } from "./ai.ts";
+import type { AiServices } from "@novelforge/ai-services";
 import {
   fetchAndCompileContext,
   renderContextText,
@@ -32,7 +32,7 @@ import {
   type CompilerRelationshipPort,
   type CompilerRetrievalPort,
   type CompilerStateAssemblyPort,
-} from "./context-compiler.ts";
+} from "@novelforge/ai-services";
 
 /** Minimal structural ports — same pattern as the executor's StepGenerator. */
 interface CanonReader {

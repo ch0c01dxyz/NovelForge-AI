@@ -22,7 +22,7 @@ import {
   EngagementInputError,
   type EngagementServices,
 } from "./services/reader-engagement.ts";
-import { NotFoundError } from "./services/platform.ts";
+import { NotFoundError } from "@novelforge/ai-services";
 
 const uuid = z.string().uuid();
 const chapterNumber = z.coerce.number().int().min(1);

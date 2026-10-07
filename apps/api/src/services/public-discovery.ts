@@ -23,7 +23,7 @@ import {
   requireCapability,
   type Capability,
 } from "@novelforge/auth/authorization";
-import { NotFoundError } from "./platform.ts";
+import { NotFoundError } from "@novelforge/ai-services";
 import {
   areKnownGenreKeys,
   MAX_GENRES_PER_NOVEL,

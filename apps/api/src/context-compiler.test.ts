@@ -26,19 +26,19 @@ import {
   CAST_LIMIT,
   TIERS,
   type ResolvedCompilerInput,
-} from "./services/context-compiler.ts";
-import { createCanonServices } from "./services/canon.ts";
-import { createCharacterServices } from "./services/characters.ts";
-import { createRelationshipServices } from "./services/relationships.ts";
-import { createPlanningServices } from "./services/planning.ts";
-import { createNarrativeServices } from "./services/narrative.ts";
-import { createAuditService } from "./services/audit.ts";
-import { createPlatformServices } from "./services/platform.ts";
+} from "@novelforge/ai-services";
+import { createCanonServices } from "@novelforge/ai-services";
+import { createCharacterServices } from "@novelforge/ai-services";
+import { createRelationshipServices } from "@novelforge/ai-services";
+import { createPlanningServices } from "@novelforge/ai-services";
+import { createNarrativeServices } from "@novelforge/ai-services";
+import { createAuditService } from "@novelforge/ai-services";
+import { createPlatformServices } from "@novelforge/ai-services";
 import { readHeadRevisionId } from "./services/revisions.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import Fastify from "fastify";
 import { registerPlatformRoutes } from "./platform-routes.ts";
-import type { PlatformServices } from "./services/platform.ts";
+import type { PlatformServices } from "@novelforge/ai-services";
 import type { AuthService } from "@novelforge/auth";
 
 // ---------------------------------------------------------------------------

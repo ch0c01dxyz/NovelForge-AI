@@ -24,8 +24,8 @@ import type { FastifyInstance } from "fastify";
 import JSZip from "jszip";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
-import { createAuditService } from "./services/audit.ts";
-import { createPlatformServices } from "./services/platform.ts";
+import { createAuditService } from "@novelforge/ai-services";
+import { createPlatformServices } from "@novelforge/ai-services";
 
 const TEST_DB = "novelforge_test_export";
 const HERE = fileURLToPath(new URL(".", import.meta.url));

@@ -18,7 +18,7 @@ import {
   BOND_TRANSITION_KINDS,
   RELATIONSHIP_STANCES,
 } from "@novelforge/relationship-intelligence";
-import type { RelationshipServices } from "./services/relationships.ts";
+import type { RelationshipServices } from "@novelforge/ai-services";
 
 const uuid = z.string().uuid();
 const novelParams = z.object({ workspaceId: uuid, novelId: uuid });

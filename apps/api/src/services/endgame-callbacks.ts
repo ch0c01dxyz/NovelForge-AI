@@ -23,7 +23,7 @@ import type { Capability } from "@novelforge/auth/authorization";
 import { requireCapability } from "@novelforge/auth/authorization";
 // Shared error vocabulary; the app-wide handler in platform-routes.ts maps
 // these once. EndgameCallbackError is the typed 400/404/409 for endgame refusals.
-import { NotFoundError } from "./platform.ts";
+import { NotFoundError } from "@novelforge/ai-services";
 
 /**
  * NF-WF-022B: typed endgame refusals. 400s are input validation (contract

@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@novelforge/ai-core": "workspace:*",
+    "@novelforge/ai-services": "workspace:*",
     "@novelforge/config": "workspace:*",
     "@novelforge/database": "workspace:*",
     "@novelforge/memory": "workspace:*",

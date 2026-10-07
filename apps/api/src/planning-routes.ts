@@ -17,7 +17,7 @@ import {
   OUTLINE_NODE_KINDS,
   PLANNING_KINDS,
 } from "@novelforge/planning";
-import type { PlanningServices } from "./services/planning.ts";
+import type { PlanningServices } from "@novelforge/ai-services";
 
 const uuid = z.string().uuid();
 const novelParams = z.object({ workspaceId: uuid, novelId: uuid });

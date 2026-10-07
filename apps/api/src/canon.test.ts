@@ -33,8 +33,8 @@ import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
-import { createAuditService } from "./services/audit.ts";
-import { createPlatformServices } from "./services/platform.ts";
+import { createAuditService } from "@novelforge/ai-services";
+import { createPlatformServices } from "@novelforge/ai-services";
 import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
 
 const TEST_DB = "novelforge_test_canon";

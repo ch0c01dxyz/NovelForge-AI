@@ -44,7 +44,7 @@ import {
   type EndgameLedgerEntry,
 } from "./services/endgame-projection.ts";
 import { createEndgameServices } from "./services/endgame.ts";
-import { createAuditService } from "./services/audit.ts";
+import { createAuditService } from "@novelforge/ai-services";
 
 const TEST_DB = "novelforge_test_endgame";
 const HERE = fileURLToPath(new URL(".", import.meta.url));

@@ -19,9 +19,9 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 // Shared error vocabulary with the platform services; requireCapability
 // throws the auth-package ForbiddenError, which the platform routes'
 // setErrorHandler (registered once for the whole app) maps to 403.
-import { NotFoundError, ConflictError } from "./platform.ts";
-import { PolicyError } from "./policy-errors.ts";
-import type { AuditService } from "./audit.ts";
+import { NotFoundError, ConflictError } from "@novelforge/ai-services";
+import { PolicyError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 // The head CAS every covered mutation must take inside its own transaction
 // (STORY-VERSIONING.md C3/C4). Imported directly rather than threaded through
 // the factory: the boundary call has to share the caller's `tx`.

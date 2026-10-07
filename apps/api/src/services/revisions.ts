@@ -34,9 +34,9 @@ import {
 } from "@novelforge/story-versioning";
 // Shared error vocabulary; the app-wide handler in platform-routes.ts maps
 // these once (C5). No new error class, no second setErrorHandler.
-import { ConflictError, NotFoundError } from "./platform.ts";
-import { BranchError } from "./policy-errors.ts";
-import type { AuditService } from "./audit.ts";
+import { ConflictError, NotFoundError } from "@novelforge/ai-services";
+import { BranchError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 // NF-WF-020A: selective restore (DOMAIN / ENTITY / SELECTIVE).
 import {
   executeSelectiveRestore,

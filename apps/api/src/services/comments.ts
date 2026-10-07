@@ -41,9 +41,9 @@ import {
   requireCapability,
   ForbiddenError,
 } from "@novelforge/auth/authorization";
-import { NotFoundError } from "./platform.ts";
-import { RateLimitError } from "./policy-errors.ts";
-import type { AuditService } from "./audit.ts";
+import { NotFoundError } from "@novelforge/ai-services";
+import { RateLimitError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 
 /** Pinned report reasons (contract Invariant 5). */
 export const REPORT_REASONS = [

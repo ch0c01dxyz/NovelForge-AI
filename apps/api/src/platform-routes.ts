@@ -17,13 +17,13 @@ import {
   ForbiddenError,
   NotFoundError,
   type PlatformServices,
-} from "./services/platform.ts";
+} from "@novelforge/ai-services";
 import { InvalidDefinitionError } from "./services/definitions.ts";
-import { HeadConflictError } from "./services/context-compiler.ts";
+import { HeadConflictError } from "@novelforge/ai-services";
 import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 import { CanonApplicationError } from "./services/canon-applications.ts";
-import { MemoryError } from "./services/memory.ts";
-import { BranchError, PolicyError, PublicationError, RateLimitError } from "./services/policy-errors.ts";
+import { MemoryError } from "@novelforge/ai-services";
+import { BranchError, PolicyError, PublicationError, RateLimitError } from "@novelforge/ai-services";
 import { SelectiveRestoreError } from "./services/selective-restore.ts";
 // NF-WF-017A: typed import-file refusals (IMPORT_TOO_LARGE,
 // IMPORT_UNSUPPORTED_TYPE, IMPORT_CORRUPT, IMPORT_ARCHIVE_UNSAFE,

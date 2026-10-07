@@ -16,7 +16,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { AuthService } from "@novelforge/auth";
-import type { MemoryServices } from "./services/memory.ts";
+import type { MemoryServices } from "@novelforge/ai-services";
 
 const SESSION_COOKIE = "nf_session";
 

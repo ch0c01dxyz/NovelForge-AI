@@ -30,8 +30,8 @@ import { createDb, type NovelForgeDb } from "@novelforge/database";
 import { generateSessionToken, hashSessionToken } from "@novelforge/auth";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
-import { createAuditService } from "./services/audit.ts";
-import { createPlatformServices } from "./services/platform.ts";
+import { createAuditService } from "@novelforge/ai-services";
+import { createPlatformServices } from "@novelforge/ai-services";
 import type { Env } from "@novelforge/config";
 import type { PublicationJobData } from "@novelforge/workflow-executor";
 

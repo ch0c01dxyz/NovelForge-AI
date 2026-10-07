@@ -19,8 +19,8 @@ import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
-import { createAuditService } from "./services/audit.ts";
-import { createPlatformServices } from "./services/platform.ts";
+import { createAuditService } from "@novelforge/ai-services";
+import { createPlatformServices } from "@novelforge/ai-services";
 import {
   processRebuild,
   deriveFreshness,
@@ -741,8 +741,8 @@ describe("compiler memory tiers", () => {
     const scope = chapterScope(chapter.id);
     await processRebuild(db, { workspaceId, novelId, scope, sourceRevisionId: rev.id });
 
-    const { fetchAndCompileContext, TIERS } = await import("./services/context-compiler.ts");
-    const { createMemoryServices } = await import("./services/memory.ts");
+    const { fetchAndCompileContext, TIERS } = await import("@novelforge/ai-services");
+    const { createMemoryServices } = await import("@novelforge/ai-services");
     const memory = createMemoryServices({ db, queue: fakeQueue });
     // Bypass auth for the port: the compiler callers gate before compiling.
     const memoryPort = {
@@ -802,7 +802,7 @@ describe("compiler memory tiers", () => {
     const rev = await makeRevision(workspaceId, novelId, branch.id);
     await makeChapter(novelId, 1);
 
-    const { fetchAndCompileContext, TIERS } = await import("./services/context-compiler.ts");
+    const { fetchAndCompileContext, TIERS } = await import("@novelforge/ai-services");
     const emptyPort = {
       listOutlineNodesForCompiler: async () => ({ nodes: [], horizonProblem: null }),
       getApprovedOutline: async () => null,

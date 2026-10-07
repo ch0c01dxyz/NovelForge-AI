@@ -29,7 +29,7 @@ import {
   POLICY_HARDNESSES,
   REPEATED_SEQUENCE_MIN_OCCURRENCES,
 } from "@novelforge/narrative-rhythm";
-import type { NarrativeServices } from "./services/narrative.ts";
+import type { NarrativeServices } from "@novelforge/ai-services";
 
 const uuid = z.string().uuid();
 const novelParams = z.object({ workspaceId: uuid, novelId: uuid });

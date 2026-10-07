@@ -9,7 +9,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { NovelForgeDb } from "@novelforge/database";
-import type { CompiledContext } from "../services/context-compiler.ts";
+import type { CompiledContext } from "@novelforge/ai-services";
 
 export interface QueryMeasurement<T> {
   result: T;

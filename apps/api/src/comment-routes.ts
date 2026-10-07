@@ -31,7 +31,7 @@ import {
   type CommentStatus,
   type ReportReason,
 } from "./services/comments.ts";
-import type { AuditService } from "./services/audit.ts";
+import type { AuditService } from "@novelforge/ai-services";
 import type { NovelForgeDb } from "@novelforge/database";
 
 const uuid = z.string().uuid();

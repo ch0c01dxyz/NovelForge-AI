@@ -27,8 +27,8 @@ import {
   validateGraph,
   type ValidationFailure,
 } from "@novelforge/validation";
-import { ConflictError, NotFoundError } from "./platform.ts";
-import type { AuditService } from "./audit.ts";
+import { ConflictError, NotFoundError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 
 export type Scope = "PLATFORM" | "WORKSPACE";
 export type DefinitionStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";

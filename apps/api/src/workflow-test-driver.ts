@@ -17,23 +17,23 @@ import {
   type ExecuteRunResult,
   type WorkflowExecutor,
 } from "@novelforge/workflow-executor";
-import { createAuditService } from "./services/audit.ts";
-import { createAiServices } from "./services/ai.ts";
-import { createGatewayRegistry } from "./ai-registry.ts";
-import { createRetrievalServices } from "./services/retrieval.ts";
-import { createCanonServices } from "./services/canon.ts";
-import { createPlanningServices } from "./services/planning.ts";
-import { createCharacterServices } from "./services/characters.ts";
-import { createRelationshipServices } from "./services/relationships.ts";
-import { createNarrativeServices } from "./services/narrative.ts";
+import { createAuditService } from "@novelforge/ai-services";
+import { createAiServices } from "@novelforge/ai-services";
+import { createGatewayRegistry } from "@novelforge/ai-services";
+import { createRetrievalServices } from "@novelforge/ai-services";
+import { createCanonServices } from "@novelforge/ai-services";
+import { createPlanningServices } from "@novelforge/ai-services";
+import { createCharacterServices } from "@novelforge/ai-services";
+import { createRelationshipServices } from "@novelforge/ai-services";
+import { createNarrativeServices } from "@novelforge/ai-services";
 import { readHeadRevisionId } from "./services/revisions.ts";
-import { createMemoryServices } from "./services/memory.ts";
-import { createStateAssemblyServices } from "./services/state-assembly.ts";
+import { createMemoryServices } from "@novelforge/ai-services";
+import { createStateAssemblyServices } from "@novelforge/ai-services";
 import { resolveAgent, resolveSkill } from "./services/definition-resolution.ts";
 import {
   fetchAndCompileContext,
   renderContextText,
-} from "./services/context-compiler.ts";
+} from "@novelforge/ai-services";
 
 export interface TestDriver {
   executor: WorkflowExecutor;

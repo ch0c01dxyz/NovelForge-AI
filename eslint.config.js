@@ -28,4 +28,25 @@ export default tseslint.config(
       ],
     },
   },
+  // NF-WF-026 (GAP-028): forbid apps/worker from importing apps/api/src.
+  // The worker must use @novelforge/ai-services for the AI path.
+  {
+    files: ["apps/worker/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              // Matches relative imports like ../../api/src/... and
+              // absolute-like apps/api/src/...
+              group: ["**/api/src/**"],
+              message:
+                "apps/worker must not import from apps/api/src (NF-WF-004 forbidden path). Use @novelforge/ai-services instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

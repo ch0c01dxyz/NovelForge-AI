@@ -46,9 +46,9 @@ import {
   requireCapability,
   type Capability,
 } from "@novelforge/auth/authorization";
-import { NotFoundError, ConflictError } from "./platform.ts";
-import { PublicationError } from "./policy-errors.ts";
-import type { AuditService } from "./audit.ts";
+import { NotFoundError, ConflictError } from "@novelforge/ai-services";
+import { PublicationError } from "@novelforge/ai-services";
+import type { AuditService } from "@novelforge/ai-services";
 import { advanceForMutation, type RevisionTx } from "./revisions.ts";
 import {
   assertPublishReviewGate,

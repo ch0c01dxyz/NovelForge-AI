@@ -1121,7 +1121,11 @@ the review record.
 
 ## GAP-041 — NF-WF-011 contract pins `POST /generate` as the chapter-generation step, but the generation surface starts workflow runs (2026-10-05)
 
-Status: OPEN (contract defect, not a product defect; implementer deviation recorded BEFORE the workaround).
+Status: CLOSED by NF-WF-045 (2026-10-07, commit d7b8f6e, branch work/gap040-gap043).
+
+CLOSURE EVIDENCE: `tasks/NF-WF-011-author-preview-e2e.md` gained a dated "## Amendments (2026-10-07, NF-WF-045)" section (+97/−0, original text untouched, SUPERSEDED markers): Amendment A supersedes the `/generate` step-1 pin (workflow run route + `chapter-generation-review` template; the recorded implementer deviation ratified as review record); Amendment B supersedes the `PATCH /status` step-6 pin (`POST /publication/publish`; FAIL asserts named `HARD_POLICY_VIOLATION`); new step 6b proves Publication + readability via the anonymous public reader (200 with pinned version content verbatim; DRAFT negative → 404 `NOT_FOUND`). Loop 3/3 pass; tsc + eslint clean; contract APPROVED; diff review APPROVE (2 P3 observations, non-blocking).
+
+The original defect description below is historical; the amendments preserve it with review record.
 
 OBSERVED: the NF-WF-011 contract's Invariant 2, step 1 pins
 `POST /api/workspaces/:workspaceId/generate` (`orchestrator-routes.ts:56`)

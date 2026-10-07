@@ -472,9 +472,10 @@ export async function buildApp(
     // Story versioning (M1, NF-WF-002). The C3 services already take the head
     // CAS themselves; this route module owns the operations that are a whole
     // transaction of their own: checkpoint capture, restore preview and apply.
+    const revisionServices = createRevisionServices({ db: options.db, audit });
     registerRevisionRoutes(app, {
       auth,
-      services: createRevisionServices({ db: options.db, audit }),
+      services: revisionServices,
     });
 
     // NF-WF-021A: simulation run lifecycle. Simulations run on branches
@@ -495,11 +496,16 @@ export async function buildApp(
     // NF-WF-024A: evaluated what-if outline simulation. Narrative-level
     // what-if across outline versions (kind='WHATIF' runs); inspect-only,
     // never enters canon/memory/approval pipelines (Invariant 1).
+    // NF-WF-027: revisions service for provision-mode branch creation.
     {
       const simulationServices = createSimulationServices({ db: options.db });
       registerWhatifRoutes(app, {
         auth,
-        services: createWhatifServices({ db: options.db, simulations: simulationServices }),
+        services: createWhatifServices({
+          db: options.db,
+          simulations: simulationServices,
+          revisions: revisionServices,
+        }),
       });
     }
 

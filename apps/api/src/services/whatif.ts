@@ -38,7 +38,12 @@ export type WhatifErrorCode =
   | "OUTLINE_VERSION_NOT_FOUND" // unknown outline version id
   | "BUDGET_EXCEEDED" // tokenBudget exceeded during run
   | "INVALID_STATUS_TRANSITION" // 409: lifecycle transition not allowed
-  | "COMPARISON_NOT_FOUND"; // 404: unknown comparison id
+  | "COMPARISON_NOT_FOUND" // 404: unknown comparison id
+  | "MAIN_BRANCH_FORBIDDEN" // 400: selected branch is the novel's main branch
+  | "BRANCH_NOT_FOUND" // 404: existing branchId unknown or not in novel/workspace
+  | "WHATIF_NO_SNAPSHOT" // 409: branch has no checkpoint (or no head revision)
+  | "WHATIF_MODULE_NOT_ENABLED" // 409: simulation module not enabled for novel
+  | "BRANCH_PROVISION_FAILED"; // 409: provision failed; no partial branch left
 
 export class WhatifError extends Error {
   readonly code: WhatifErrorCode;
@@ -48,9 +53,12 @@ export class WhatifError extends Error {
     this.name = "WhatifError";
     this.code = code;
     this.statusCode =
-      code === "COMPARISON_NOT_FOUND"
+      code === "COMPARISON_NOT_FOUND" || code === "BRANCH_NOT_FOUND"
         ? 404
-        : code === "INVALID_STATUS_TRANSITION"
+        : code === "INVALID_STATUS_TRANSITION" ||
+            code === "WHATIF_NO_SNAPSHOT" ||
+            code === "WHATIF_MODULE_NOT_ENABLED" ||
+            code === "BRANCH_PROVISION_FAILED"
           ? 409
           : 400;
   }
@@ -108,7 +116,21 @@ export interface WhatifComparisonShape {
   tokenSpent: number;
   status: WhatifComparisonStatus;
   createdAt: Date;
+  /** NF-WF-027: the simulation branch the runs execute on (null for pre-027 rows). */
+  branchId: string | null;
+  /** NF-WF-027: 'existing' | 'provision' (null for pre-027 rows). */
+  branchMode: WhatifBranchMode | null;
 }
+
+/**
+ * NF-WF-027 (GAP-100): explicit branch ownership for live comparisons.
+ * Required on createComparison — no default, no silent fallback.
+ */
+export type WhatifBranchMode = "existing" | "provision";
+
+export type WhatifBranchSelection =
+  | { mode: "existing"; branchId: string }
+  | { mode: "provision" };
 
 export interface WhatifServices {
   createComparison(input: {
@@ -119,6 +141,13 @@ export interface WhatifServices {
     maxChapters?: number;
     tokenBudget?: number;
     confirmed: boolean;
+    /**
+     * NF-WF-027: required at the HTTP boundary (Zod-validated). Optional for
+     * direct service calls (e.g., stub-path tests) — if omitted, the comparison
+     * is created without a branch (pre-027 state); the live path refuses with
+     * BRANCH_NOT_FOUND, the stub path works unaffected.
+     */
+    branchSelection?: WhatifBranchSelection;
   }): Promise<WhatifComparisonShape>;
 
   runComparison(input: {
@@ -211,9 +240,26 @@ function canonicalize(value: unknown): string {
 export function createWhatifServices({
   db,
   simulations,
+  revisions,
 }: {
   db: NovelForgeDb;
   simulations: SimulationServices;
+  /**
+   * NF-WF-027: required for `provision` mode (020B `createBranch`).
+   * The what-if service calls `revisions.createBranch()` which gates on
+   * `revision:manage`; the what-if service additionally gates provision
+   * on `simulation:manage` (fail fast at createComparison time).
+   */
+  revisions?: {
+    createBranch(input: {
+      actorUserId: string;
+      workspaceId: string;
+      novelId: string;
+      name: string;
+      fromRevisionId?: string;
+      fromCheckpointId?: string;
+    }): Promise<{ branchId: string; name: string; headRevisionId: string | null }>;
+  };
 }): WhatifServices {
   /** Membership gate — 404 for non-members (ADR-0004), role for caps. */
   async function gate(
@@ -246,6 +292,8 @@ export function createWhatifServices({
     tokenSpent: number;
     status: string;
     createdAt: Date;
+    branchId: string | null;
+    branchMode: string | null;
   }): WhatifComparisonShape {
     return {
       id: row.id,
@@ -258,6 +306,8 @@ export function createWhatifServices({
       tokenSpent: row.tokenSpent,
       status: row.status as WhatifComparisonStatus,
       createdAt: row.createdAt,
+      branchId: row.branchId,
+      branchMode: row.branchMode as WhatifBranchMode | null,
     };
   }
 
@@ -269,6 +319,163 @@ export function createWhatifServices({
     return row;
   }
 
+  /**
+   * NF-WF-027 (GAP-100) Invariant 3: verify branch prerequisites in order.
+   * Used at createComparison (existing mode) and re-verified at runComparison.
+   *
+   * Order:
+   * 1. Branch exists in novel/workspace → BRANCH_NOT_FOUND (404)
+   * 2. Not main → MAIN_BRANCH_FORBIDDEN (400)
+   * 3. Has checkpoint → WHATIF_NO_SNAPSHOT (409)
+   * 4. Has head revision → WHATIF_NO_SNAPSHOT variant (409)
+   * 5. Simulation module enabled → WHATIF_MODULE_NOT_ENABLED (409)
+   *
+   * Returns the branch id on success. Never falls back to main.
+   */
+  async function verifyBranchPrerequisites(
+    workspaceId: string,
+    novelId: string,
+    branchId: string,
+  ): Promise<string> {
+    // 1. Branch exists (tenant-gated).
+    const branch = await db.novelBranch.findFirst({
+      where: { id: branchId, novelId, workspaceId },
+      select: { id: true, name: true, headRevisionId: true },
+    });
+    if (!branch) {
+      throw new WhatifError("BRANCH_NOT_FOUND", "simulation branch not found in this novel");
+    }
+
+    // 2. Not main — explicit refusal, never silent fallback (Invariant 2).
+    if (branch.name.toLowerCase() === "main") {
+      throw new WhatifError(
+        "MAIN_BRANCH_FORBIDDEN",
+        "what-if comparisons cannot run on the main branch; select or provision an isolated simulation branch",
+      );
+    }
+
+    // 3. Checkpoint exists on the branch.
+    const checkpoint = await db.checkpoint.findFirst({
+      where: { novelId, branchId: branch.id },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    if (!checkpoint) {
+      throw new WhatifError(
+        "WHATIF_NO_SNAPSHOT",
+        "no checkpoint exists for the simulation branch; create one first",
+      );
+    }
+
+    // 4. Head revision (canon pin).
+    if (!branch.headRevisionId) {
+      throw new WhatifError("WHATIF_NO_SNAPSHOT", "simulation branch has no head revision");
+    }
+
+    // 5. Simulation module enabled.
+    const module = await db.novelModule.findUnique({
+      where: { novelId_moduleName: { novelId, moduleName: "simulation" } },
+    });
+    if (!module) {
+      throw new WhatifError(
+        "WHATIF_MODULE_NOT_ENABLED",
+        "the simulation module is not enabled for this novel",
+      );
+    }
+
+    return branch.id;
+  }
+
+  /**
+   * NF-WF-027 (GAP-100) Invariant 5: provision a simulation branch + checkpoint
+   * atomically (mechanism B: sequential with compensating delete).
+   *
+   * The checkpoint CANNOT use the standard `createCheckpoint` service — it
+   * refuses non-checked-out branches (409 NOT_ON_CHECKED_OUT_BRANCH), and a
+   * provisioned simulation branch is never checked out. Instead, this creates
+   * the checkpoint row directly, pinning the source revision (the main head
+   * the branch was forked from) with equivalent audit.
+   *
+   * On any failure after branch creation, the branch is deleted (compensating
+   * delete) before throwing BRANCH_PROVISION_FAILED. If the compensating
+   * delete itself fails, the orphan is audit-logged (never silent).
+   */
+  async function provisionBranch({
+    actorUserId,
+    workspaceId,
+    novelId,
+    comparisonShortId,
+  }: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    comparisonShortId: string;
+  }): Promise<string> {
+    if (!revisions) {
+      throw new WhatifError(
+        "BRANCH_PROVISION_FAILED",
+        "branch provisioning unavailable: revisions service not configured",
+      );
+    }
+
+    const branchName = `simulation-whatif-${comparisonShortId}`;
+    let branchId: string | null = null;
+
+    try {
+      const created = await revisions.createBranch({
+        actorUserId,
+        workspaceId,
+        novelId,
+        name: branchName,
+      });
+      branchId = created.branchId;
+
+      if (!created.headRevisionId) {
+        throw new Error("provisioned branch has no head revision");
+      }
+
+      const headRevision = await db.revision.findUnique({
+        where: { id: created.headRevisionId },
+        select: { id: true, snapshot: { select: { id: true } } },
+      });
+      if (!headRevision?.snapshot) {
+        throw new Error("head revision has no snapshot; cannot pin checkpoint");
+      }
+
+      await db.checkpoint.create({
+        data: {
+          workspaceId,
+          novelId,
+          branchId,
+          revisionId: headRevision.id,
+          snapshotId: headRevision.snapshot.id,
+          kind: "MANUAL",
+          label: `what-if provision checkpoint (${branchName})`,
+          note: "NF-WF-027: initial checkpoint for provisioned what-if simulation branch",
+          createdById: actorUserId,
+        },
+      });
+
+      return branchId;
+    } catch (err) {
+      if (branchId) {
+        try {
+          await db.novelBranch.delete({ where: { id: branchId } });
+        } catch (cleanupErr) {
+          console.error(
+            `[whatif] ORPHAN BRANCH: failed to delete partially-provisioned branch ${branchId} ` +
+              `(${branchName}) for novel ${novelId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        }
+      }
+      if (err instanceof WhatifError) throw err;
+      throw new WhatifError(
+        "BRANCH_PROVISION_FAILED",
+        `failed to provision simulation branch: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   return {
     async createComparison({
       actorUserId,
@@ -278,6 +485,7 @@ export function createWhatifServices({
       maxChapters,
       tokenBudget,
       confirmed,
+      branchSelection,
     }) {
       await gate(workspaceId, novelId, actorUserId, "simulation:manage");
 
@@ -322,6 +530,41 @@ export function createWhatifServices({
         throw new WhatifError("INVALID_INPUT", "maxChapters must be between 1 and 10.");
       }
 
+      // NF-WF-027 (GAP-100) Invariant 2: explicit branch ownership.
+      // At the HTTP boundary, branchSelection is required (Zod). For direct
+      // service calls (stub-path tests), it may be omitted — the comparison
+      // is created without a branch (pre-027 state); the live path refuses
+      // with BRANCH_NOT_FOUND, the stub path works unaffected.
+      let branchId: string | null = null;
+      let branchMode: WhatifBranchMode | null = null;
+      if (branchSelection) {
+        if (typeof branchSelection.mode !== "string") {
+          throw new WhatifError(
+            "INVALID_INPUT",
+            "branchSelection is required: { mode: 'existing', branchId } or { mode: 'provision' }",
+          );
+        }
+        if (branchSelection.mode === "existing") {
+        if (!branchSelection.branchId) {
+          throw new WhatifError("INVALID_INPUT", "branchSelection.branchId is required for existing mode");
+        }
+        branchId = await verifyBranchPrerequisites(workspaceId, novelId, branchSelection.branchId);
+        branchMode = "existing";
+      } else if (branchSelection.mode === "provision") {
+        // Provision mode requires BOTH simulation:manage AND revision:manage
+        // (fail fast at create time, never mid-run).
+        await gate(workspaceId, novelId, actorUserId, "revision:manage");
+        const shortId = Math.random().toString(36).slice(2, 10);
+        branchId = await provisionBranch({ actorUserId, workspaceId, novelId, comparisonShortId: shortId });
+        branchMode = "provision";
+        } else {
+          throw new WhatifError(
+            "INVALID_INPUT",
+            `unknown branchSelection.mode: ${(branchSelection as { mode: string }).mode}`,
+          );
+        }
+      }
+
       const row = await db.whatifComparison.create({
         data: {
           workspaceId,
@@ -333,6 +576,8 @@ export function createWhatifServices({
           tokenBudget: budget,
           tokenSpent: 0,
           status: "DRAFT",
+          branchId,
+          branchMode,
         },
       });
       return toShape(row);
@@ -347,6 +592,24 @@ export function createWhatifServices({
           "INVALID_STATUS_TRANSITION",
           `Cannot run comparison in status ${comparison.status}.`,
         );
+      }
+
+      // NF-WF-027 (GAP-100) Invariant 3: re-verify branch prerequisites at
+      // run time (the branch could have been deleted/modified since creation).
+      // This is a LIVE-path requirement only: the stub path (eval harness,
+      // stubGenerator) bypasses the 021A lifecycle and needs no branch
+      // (contract acceptance: stub evaluations unaffected).
+      // Pre-027 rows have NULL branchId — their live path never worked; refuse
+      // with a typed error rather than silently falling back.
+      let branchId: string | undefined;
+      if (!stubGenerator) {
+        if (!comparison.branchId) {
+          throw new WhatifError(
+            "BRANCH_NOT_FOUND",
+            "comparison has no branch (pre-027 row); create a new comparison with branchSelection",
+          );
+        }
+        branchId = await verifyBranchPrerequisites(workspaceId, novelId, comparison.branchId);
       }
 
       const outlineVersionIds = comparison.outlineVersionIds as string[];
@@ -387,6 +650,11 @@ export function createWhatifServices({
             actorUserId,
             workspaceId,
             novelId,
+            // NF-WF-027: the stored branchId for the live path (verified
+            // above); undefined for the stub path (eval harness bypasses
+            // 021A lifecycle and needs no branch). configureRun
+            // prerequisites now succeed on real state for live runs.
+            branchId,
             scenario: {
               initialState: {
                 // Narrative-level what-if: the outline version drives the

@@ -398,6 +398,51 @@ describe("whatif.eval", () => {
     } as unknown as SimulationServices;
     const whatif = createWhatifServices({ db, simulations: mockSimulations });
 
+    // NF-WF-027: the live path requires branch prerequisites. Set up a
+    // minimal existing branch (the budget check fires before any branch
+    // use, but the prerequisite gate runs first).
+    const mainBranch = await db.novelBranch.create({
+      data: { workspaceId, novelId, name: "main" },
+    });
+    const rev = await db.revision.create({
+      data: { workspaceId, novelId, branchId: mainBranch.id, number: 1, origin: "MANUAL" },
+    });
+    const snap = await db.snapshot.create({
+      data: {
+        workspaceId,
+        novelId,
+        branchId: mainBranch.id,
+        revisionId: rev.id,
+        formatVersion: 1,
+        byteSize: 100,
+        payload: {},
+      },
+    });
+    await db.novelBranch.update({ where: { id: mainBranch.id }, data: { headRevisionId: rev.id } });
+    const simBranch = await db.novelBranch.create({
+      data: {
+        workspaceId,
+        novelId,
+        name: `sim-budget-${Date.now()}`,
+        parentBranchId: mainBranch.id,
+        sourceRevisionId: rev.id,
+        headRevisionId: rev.id,
+      },
+    });
+    await db.checkpoint.create({
+      data: {
+        workspaceId,
+        novelId,
+        branchId: simBranch.id,
+        revisionId: rev.id,
+        snapshotId: snap.id,
+        kind: "MANUAL",
+        label: "budget test",
+        createdById: ownerUserId,
+      },
+    });
+    await db.novelModule.create({ data: { novelId, moduleName: "simulation" } });
+
     const v1 = await createOutlineVersion(1, "DRAFT");
     const v2 = await createOutlineVersion(2, "DRAFT");
     const comparison = await whatif.createComparison({
@@ -408,6 +453,7 @@ describe("whatif.eval", () => {
       maxChapters: 3,
       tokenBudget: 100, // < 1000 * 3 estimated live cost
       confirmed: true,
+      branchSelection: { mode: "existing", branchId: simBranch.id },
     });
 
     // No stubGenerator → live cost estimate (1000 * maxChapters = 3000)

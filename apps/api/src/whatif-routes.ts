@@ -35,6 +35,11 @@ const createComparisonBody = z.object({
   tokenBudget: z.number().int().min(1).max(WHATIF_MAX_TOKEN_BUDGET).optional(),
   // Invariant 3: explicit author confirmation required.
   confirmed: z.literal(true),
+  // NF-WF-027 (GAP-100): explicit branch ownership. Required — no default.
+  branchSelection: z.discriminatedUnion("mode", [
+    z.object({ mode: z.literal("existing"), branchId: uuid }),
+    z.object({ mode: z.literal("provision") }),
+  ]),
 });
 
 export interface WhatifRoutesOptions {
@@ -78,6 +83,7 @@ export function registerWhatifRoutes(
         ...(body.data.maxChapters === undefined ? {} : { maxChapters: body.data.maxChapters }),
         ...(body.data.tokenBudget === undefined ? {} : { tokenBudget: body.data.tokenBudget }),
         confirmed: body.data.confirmed,
+        branchSelection: body.data.branchSelection,
       });
       return reply.code(201).send({ comparison });
     },

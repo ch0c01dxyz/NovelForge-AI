@@ -2075,14 +2075,13 @@ Closure evidence: startup/progress/delivery pointers and task 003/023/024 annota
 
 ### GAP-100 — What-if live comparisons cannot configure their runs
 
-Status: BLOCKED / P1. Owner: NF-WF-024A follow-up. whatif.ts creates each run
-without branchId; simulation.configureRun requires it and throws NO_BRANCH.
-HTTP/UI callers do not provide the evaluation-only stubGenerator. Every normal
-comparison therefore aborts. Fix requires explicit branch ownership/provisioning
-contract; recommend an author-selected isolated simulation branch with valid
-checkpoint/module prerequisites, rather than a silent main-branch fallback.
-Do not infer live success from stub evaluations. Closure: composed real service/
-route test of two outlines, no canon mutation, valid isolation, failure recovery.
+Status: CLOSED 2026-10-07 via NF-WF-027.
+
+RESOLUTION: Explicit branch ownership via `branchSelection` (discriminated union: existing/provision). `branchId` + `branchMode` on `WhatifComparison` (FK `ON DELETE SET NULL`). `verifyBranchPrerequisites` (5 ordered checks) at create AND run. Provision mode: mechanism B (sequential + compensating delete), requires BOTH `simulation:manage` AND `revision:manage` (contract option a, fail-fast), dedicated checkpoint seam (direct Prisma row — `createCheckpoint` refuses non-checked-out branches). Typed errors: `MAIN_BRANCH_FORBIDDEN`→400, `BRANCH_NOT_FOUND`→404, `WHATIF_NO_SNAPSHOT`/`WHATIF_MODULE_NOT_ENABLED`/`BRANCH_PROVISION_FAILED`→409. Pre-027 NULL rows → `BRANCH_NOT_FOUND` (no silent fallback). Stub path unaffected (gate scoped to live path only). No TokenBudget revival (GAP-098).
+
+EVIDENCE (OBSERVED 2026-10-07): `whatif.test.ts` 14/14 (10 branch-ownership + 3 live-acceptance + 1 route-level); `whatif.eval.test.ts` 12/12 (stub regression); tsc + eslint clean. All 15 contract acceptance checks verified: live two-outline comparison (COMPLETED, 2 ticks, divergence STRUCTURAL), no canon mutation (8 table counts identical), isolation (simulation-whatif-* branch, main head untouched), main refused 400, 4 negative paths typed, failure recovery (no orphan, no row), migration clean (GAP-107 fixed), route-level 201/200/400/401. Contract: `tasks/NF-WF-027-gap100-whatif-contract.md` (APPROVED). Diff review: APPROVE_WITH_FINDINGS (4 P3 non-blocking).
+
+Original BLOCKED description (historical): whatif.ts creates each run without branchId; simulation.configureRun requires it and throws NO_BRANCH. HTTP/UI callers do not provide the evaluation-only stubGenerator. Every normal comparison therefore aborts.
 
 ### GAP-101 — Semantic preview and apply disagree
 
@@ -2165,7 +2164,7 @@ EVIDENCE: NF-WF-031 implementer (OBSERVED 2026-10-07): `packages/database/prisma
 
 IMPACT: any fresh `migrate deploy` fails; test suites requiring a scratch DB cannot initialize.
 
-STATUS: FIXED 2026-10-07 by NF-WF-027 implementer — typo corrected (`novel_branch` → `novel_branches` in migration.sql line 30). Migration applies cleanly via `prisma migrate deploy`. Recorded by the NF-WF-031 implementer before workaround. Owner: whoever owns the 027 workstream (the migration is untracked; likely a work-in-progress). Workaround for 031 verification: temporarily move the 027 directory aside during test DB setup; restore afterwards. The typo fix (`novel_branch` → `novel_branches`) is out of scope for NF-WF-031.
+STATUS: FIXED 2026-10-07 by NF-WF-027 implementer — typo corrected (`novel_branch` → `novel_branches` in migration.sql line 30). Migration applies cleanly via `prisma migrate deploy` (verified in NF-WF-027 diff review 2026-10-07: applied during whatif.test.ts run). Committed with NF-WF-027. Recorded by the NF-WF-031 implementer before workaround. Owner: whoever owns the 027 workstream (the migration is untracked; likely a work-in-progress). Workaround for 031 verification: temporarily move the 027 directory aside during test DB setup; restore afterwards. The typo fix (`novel_branch` → `novel_branches`) is out of scope for NF-WF-031.
 
 ## GAP-108 — PostgreSQL uninstalled from Ubuntu host (VM reset or package removal) (2026-10-07)
 

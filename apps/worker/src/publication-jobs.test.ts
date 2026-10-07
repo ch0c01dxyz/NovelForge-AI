@@ -28,9 +28,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { createDb, type NovelForgeDb } from "@novelforge/database";
 import pg from "pg";
 import {
+  defaultPublicationWorkerDeps,
   fireScheduledPublication,
+  PUBLICATION_SWEEPER_INTERVAL_MS,
   reconcileScheduledPublications,
   startPublicationWorkerApp,
+  sweepDuePublications,
   type PublicationReconQueue,
 } from "./publication-jobs.ts";
 import { PUBLICATION_QUEUE_NAME, type PublicationJobData } from "@novelforge/workflow-executor";
@@ -429,6 +432,174 @@ describe("reconcileScheduledPublications", () => {
       expect(added).toHaveLength(0);
       expect(removed).toHaveLength(0);
     }
+  });
+});
+
+describe("sweepDuePublications (NF-WF-029 / GAP-094)", () => {
+  it("re-enqueues a stuck past-due publication with no job (delay 0)", async () => {
+    const seed = await seedNovel();
+    const pub = await seedSchedule(seed, new Date(Date.now() - 60_000));
+    const { queue, added } = createFakeQueue();
+
+    const report = await sweepDuePublications({ db, queue, logger: testLogger() });
+    expect(report).toEqual({ scanned: 1, reenqueued: 1, leftAlone: 0 });
+    expect(added).toHaveLength(1);
+    expect(added[0]!.opts.jobId).toBe(pub.id);
+    expect(added[0]!.data.publicationId).toBe(pub.id);
+    expect(added[0]!.opts.delay).toBe(0);
+  });
+
+  it("is bounded: future rows are not scanned; a due row with a live job is left alone", async () => {
+    const seed = await seedNovel();
+    const ch2 = await seedChapter(seed, 2);
+    const future = await seedSchedule(seed, new Date(Date.now() + 3_600_000), "SCHEDULED", ch2);
+    const due = await seedSchedule(seed, new Date(Date.now() - 60_000));
+    const { queue, added } = createFakeQueue({ [due.id]: "delayed" });
+
+    const report = await sweepDuePublications({ db, queue, logger: testLogger() });
+    // Only the due row is scanned (bounded query); its live delayed job
+    // means it is left alone. The future row is never scanned.
+    expect(report).toEqual({ scanned: 1, reenqueued: 0, leftAlone: 1 });
+    expect(added).toHaveLength(0);
+    expect(
+      (await db.publication.findUniqueOrThrow({ where: { id: future.id } })).status,
+    ).toBe("SCHEDULED");
+  });
+
+  it("removes a retained failed job first, then re-enqueues", async () => {
+    const seed = await seedNovel();
+    const pub = await seedSchedule(seed, new Date(Date.now() - 60_000));
+    const { queue, added, removed } = createFakeQueue({ [pub.id]: "failed" });
+
+    const report = await sweepDuePublications({ db, queue, logger: testLogger() });
+    expect(report).toEqual({ scanned: 1, reenqueued: 1, leftAlone: 0 });
+    expect(removed).toEqual([pub.id]);
+    expect(added).toHaveLength(1);
+    expect(added[0]!.opts.jobId).toBe(pub.id);
+  });
+
+  it("re-enqueues a job in unknown state via remove-first (edge case)", async () => {
+    const seed = await seedNovel();
+    const pub = await seedSchedule(seed, new Date(Date.now() - 60_000));
+    const { queue, added, removed } = createFakeQueue({ [pub.id]: "unknown" });
+
+    const report = await sweepDuePublications({ db, queue, logger: testLogger() });
+    expect(report).toEqual({ scanned: 1, reenqueued: 1, leftAlone: 0 });
+    expect(removed).toEqual([pub.id]);
+    expect(added).toHaveLength(1);
+    expect(added[0]!.opts.jobId).toBe(pub.id);
+  });
+
+  it("treats scheduledFor = NULL as due immediately with delay 0 (edge case)", async () => {
+    const seed = await seedNovel();
+    await db.publication.create({
+      data: {
+        novelId: seed.novelId,
+        chapterId: seed.chapterId,
+        chapterVersionId: seed.versionId,
+        revisionId: seed.headRevisionId,
+        status: "SCHEDULED",
+        scheduledFor: null,
+        publishedById: seed.userId,
+      },
+    });
+    const { queue, added } = createFakeQueue();
+
+    const report = await sweepDuePublications({ db, queue, logger: testLogger() });
+    expect(report).toEqual({ scanned: 1, reenqueued: 1, leftAlone: 0 });
+    expect(added).toHaveLength(1);
+    expect(added[0]!.opts.delay).toBe(0);
+  });
+
+  it("concurrent sweeps use the deterministic jobId (no duplicate jobs)", async () => {
+    const seed = await seedNovel();
+    const pub = await seedSchedule(seed, new Date(Date.now() - 60_000));
+    const { queue, added } = createFakeQueue();
+
+    const [r1, r2] = await Promise.all([
+      sweepDuePublications({ db, queue, logger: testLogger() }),
+      sweepDuePublications({ db, queue, logger: testLogger() }),
+    ]);
+    // Both sweeps may observe the missing job and enqueue; every enqueue
+    // uses jobId = publication id, so BullMQ deduplicates to one live job
+    // (and the fire itself is idempotent — Invariant 5).
+    const jobIds = new Set(added.map((a) => a.opts.jobId));
+    expect(jobIds).toEqual(new Set([pub.id]));
+    expect(r1.reenqueued + r2.reenqueued).toBe(2);
+  });
+
+  it("accepts an injected now for deterministic tests", async () => {
+    const seed = await seedNovel();
+    // Due relative to the injected now, future relative to the wall clock.
+    const at = new Date(Date.now() + 3_600_000);
+    await seedSchedule(seed, new Date(at.getTime() - 1000));
+    const { queue, added } = createFakeQueue();
+
+    const report = await sweepDuePublications({ db, queue, logger: testLogger(), now: at });
+    expect(report).toEqual({ scanned: 1, reenqueued: 1, leftAlone: 0 });
+    expect(added).toHaveLength(1);
+    expect(added[0]!.data.publicationId).toBeDefined();
+  });
+});
+
+describe("publication sweeper interval wiring (NF-WF-029)", () => {
+  it("PUBLICATION_SWEEPER_INTERVAL_MS is 60s and the default", () => {
+    expect(PUBLICATION_SWEEPER_INTERVAL_MS).toBe(60_000);
+    expect(defaultPublicationWorkerDeps(testLogger()).sweeperIntervalMs).toBe(60_000);
+  });
+
+  it("runs the sweep on an interval and stops it on stop()", async () => {
+    const logger = testLogger();
+    const dueRow = {
+      id: "pub-sweep-1",
+      novelId: "novel-1",
+      chapterId: "chapter-1",
+      scheduledFor: new Date(Date.now() - 1000),
+    };
+    const fakeDb = {
+      publication: { findMany: vi.fn(async () => [dueRow]) },
+      $disconnect: vi.fn(),
+    } as unknown as NovelForgeDb;
+    const added: { jobId: string }[] = [];
+    const queue = {
+      getJob: vi.fn(async () => undefined),
+      add: vi.fn(async (_n: string, _d: unknown, opts: { jobId: string }) => {
+        added.push({ jobId: opts.jobId });
+      }),
+      close: vi.fn(async () => {}),
+    };
+    const connection = {
+      ping: vi.fn(async () => "PONG"),
+      on: vi.fn(),
+      disconnect: vi.fn(),
+    } as never;
+    const worker = { on: vi.fn(), close: vi.fn(async () => {}) };
+
+    const app = await startPublicationWorkerApp(
+      { DATABASE_URL: "postgres://x", REDIS_URL: "redis://x" },
+      logger,
+      {
+        createDb: () => fakeDb,
+        createConnection: () => connection,
+        createQueue: () => queue as never,
+        createWorker: () => worker as never,
+        probeTimeoutMs: 500,
+        sweeperIntervalMs: 50,
+      },
+    );
+    expect(app.started).toBe(true);
+
+    // Startup pass + at least one interval tick.
+    await new Promise((r) => setTimeout(r, 250));
+    const countAfterRun = added.length;
+    expect(countAfterRun).toBeGreaterThanOrEqual(2);
+    expect(added.every((a) => a.jobId === dueRow.id)).toBe(true);
+
+    await app.stop();
+    expect(app.stopped).toBe(true);
+    await new Promise((r) => setTimeout(r, 150));
+    // The timer was cleared: no further sweeps after stop().
+    expect(added.length).toBe(countAfterRun);
   });
 });
 

@@ -64,10 +64,15 @@ No repeatable/cron jobs found (grep for `repeat`/`cron`/`every` across
   re-derives the schedule from the `publications` table (rows still
   SCHEDULED and due → re-enqueue), so no publication is silently
   dropped.
-- **Stuck job:** no interval sweeper; recovery is on worker restart.
-  A publication stuck SCHEDULED past its due time is picked up at the
-  next deploy/restart. (Operational note: long-lived workers without
-  restarts extend the detection window — recorded as GAP-094.)
+- **Stuck job:** 60s interval sweeper (`sweepDuePublications`,
+  NF-WF-029) plus the startup reconciliation. A publication stuck
+  SCHEDULED past its due time is detected within ≤ 60s + startup and
+  re-enqueued via the shared remove-first-then-enqueue pattern (jobId =
+  publication id; the fire is idempotent, so no double-fire). The sweep
+  query is bounded to due rows
+  (`status = "SCHEDULED" AND (scheduledFor <= now OR scheduledFor IS
+  NULL)`); future-scheduled rows are covered by the startup pass.
+  (GAP-094 CLOSED 2026-10-07.)
 - **Deterministic refusal at fire time** (REVIEW_STALE /
   HARD_POLICY_VIOLATION / novel archived): row → UNPUBLISHED,
   audit-logged, job succeeds (no zombie schedule, no retry).

@@ -1925,7 +1925,29 @@ EVIDENCE: job inventory (`docs/implementation/023B-job-inventory.md`, OBSERVED 2
 
 IMPACT: detection latency is unbounded between restarts. For a long-lived worker process, a stuck publication could wait indefinitely.
 
-STATUS: OPEN — recorded 2026-10-07 by the 023B implementer during verification (not a defect fix per 023 Invariant 1). Owner: follow-up task (consider a publication sweeper or health-check-driven reconciliation).
+STATUS: CLOSED — 2026-10-07 by the NF-WF-029 implementer.
+
+RESOLUTION: Added `sweepDuePublications` interval sweeper (60s,
+`PUBLICATION_SWEEPER_INTERVAL_MS`) to the publication worker, reusing
+the startup reconciliation's remove-first-then-enqueue pattern via the
+extracted `reconcileOnePublication` helper (Invariant 1: reuse, don't
+rewrite; the startup pass behavior is unchanged). Bounded query:
+`WHERE status = "SCHEDULED" AND (scheduledFor <= now OR scheduledFor
+IS NULL)` (Invariant 2). Timer wired in `startPublicationWorkerApp`
+(startup + every 60s, `timer.unref`, `clearInterval` on stop);
+`sweeperIntervalMs` injectable for tests. Concurrent safety via jobId
+dedup + getJob-state-check (Invariant 5); fire idempotency prevents
+double-fire (Invariant 4).
+
+EVIDENCE (OBSERVED 2026-10-07, this host):
+`apps/worker/src/publication-jobs.test.ts` 20/20 (11 existing +
+9 new: stuck re-enqueue, bounded query, failed remove-first, unknown
+remove-first, NULL scheduledFor, concurrent sweeps, injected now,
+interval wiring + stop, constant default). `npx eslint` clean on both
+touched files. `npx tsc --noEmit` (apps/worker): zero errors in
+`publication-jobs.ts` / `publication-jobs.test.ts`.
+Contract: `tasks/NF-WF-029-gap094-publication-sweeper.md`.
+Separate diff review pending.
 
 ## GAP-095 — NF-WF-023B: `memory-rebuild` has no reconciliation after Redis loss (2026-10-07)
 
@@ -2092,3 +2114,11 @@ GAP-106 observed verification: architecture tests exceeded the default 5s timeou
 GAP-106 additional observed lint failure: worker-ai-path.test.ts unused GatewayRecord import; removed without changing behavior.
 
 GAP-106 closure receipt (current Windows host): frozen-lockfile install completed; lint and workspace typecheck exit 0; shared package typecheck after test rewrite exit 0. Worker AI suite 4/4, executor 20/20, shared architecture 2/2, API compiler/canon 95/95 and worker lifecycle unit checks 9 passed/1 integration filtered. Total 130 passed. Separate reviewer approved source repairs; stale GAP-098 dispatch clause corrected. Current pointers require final-revision battery; no live gateway, full release or manual accessibility acceptance claimed. GAP-021 runtime attribution remains unavailable; this record/CURRENT preserve fallback.
+
+## GAP-107 — Untracked migration 027_whatif_branch blocks `prisma migrate deploy` (2026-10-07)
+
+EVIDENCE: NF-WF-031 implementer (OBSERVED 2026-10-07): `packages/database/prisma/migrations/20261007_nf_wf_027_whatif_branch/` is untracked (not in git). Its `migration.sql` line 30 references table `"novel_branch"` (singular) in `REFERENCES "novel_branch"("id")`, but the actual table created by `20261006_nf_wf_020b_branches` is `"novel_branches"` (plural). `prisma migrate deploy` fails with `42P01: relation "novel_branch" does not exist`, blocking scratch DB setup for any test that runs migrations (e.g. `notification-fanout-jobs.test.ts`).
+
+IMPACT: any fresh `migrate deploy` fails; test suites requiring a scratch DB cannot initialize.
+
+STATUS: OPEN — recorded 2026-10-07 by the NF-WF-031 implementer before workaround. Owner: whoever owns the 027 workstream (the migration is untracked; likely a work-in-progress). Workaround for 031 verification: temporarily move the 027 directory aside during test DB setup; restore afterwards. The typo fix (`novel_branch` → `novel_branches`) is out of scope for NF-WF-031.

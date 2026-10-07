@@ -342,17 +342,84 @@ export interface PublicationReconQueue {
 }
 
 /**
- * Startup reconciliation (Invariant 5): scan ALL SCHEDULED rows (not only
- * due ones — a future-scheduled row whose job was lost is the real crash
- * window) and ensure each has a live job:
+ * How often the interval sweeper scans for due-but-unenqueued publications
+ * (NF-WF-029 / GAP-094). Matches `WORKFLOW_SWEEPER_INTERVAL_MS`: (a)
+ * consistency with the existing workflow-runs sweeper reduces operational
+ * surprise; (b) publication fire is time-sensitive but not sub-minute
+ * critical (fire times are author-set, typically minutes/hours ahead);
+ * (c) 60s bounds the GAP-094 detection latency to ≤ 60s + startup, vs.
+ * unbounded today.
+ */
+export const PUBLICATION_SWEEPER_INTERVAL_MS = 60_000;
+
+/** The row shape the reconcilers need. */
+interface ReconcilablePublication {
+  id: string;
+  novelId: string;
+  chapterId: string;
+  scheduledFor: Date | null;
+}
+
+/**
+ * Per-row reconcile: the remove-first-then-enqueue pattern, shared by the
+ * startup pass (`reconcileScheduledPublications`) and the interval sweeper
+ * (`sweepDuePublications`) — NF-WF-029 Invariant 1 (reuse, don't rewrite).
+ *
  * - job missing → enqueue (immediate if due, remaining delay if future);
  * - job in `failed` state (retained transient failure) → remove the
  *   failed record FIRST (re-adding against it is a silent no-op — the
  *   P2-6 hazard), then enqueue;
+ * - job in `unknown` state (no retrievable state — effectively lost) →
+ *   re-enqueue; the fire is idempotent so this is safe;
  * - job in any other state (delayed, waiting, active, completed) → leave
  *   alone (no double-enqueue).
- * - `unknown` state (no retrievable state — effectively lost) →
- *   re-enqueue; the fire is idempotent so this is safe.
+ *
+ * A NULL `scheduledFor` is treated as due immediately (delay 0), matching
+ * the historical `Math.max(0, ...)` fallback.
+ *
+ * Returns `true` when the row was re-enqueued, `false` when left alone.
+ */
+async function reconcileOnePublication({
+  queue,
+  row,
+  logger,
+}: {
+  queue: PublicationReconQueue;
+  row: ReconcilablePublication;
+  logger?: WorkerLogger;
+}): Promise<boolean> {
+  const job = await queue.getJob(row.id);
+  const state = job ? await job.getState() : undefined;
+  if (!job || state === "failed" || state === "unknown") {
+    if (job) await job.remove();
+    const delay = row.scheduledFor
+      ? Math.max(0, row.scheduledFor.getTime() - Date.now())
+      : 0;
+    const data: PublicationJobData = {
+      publicationId: row.id,
+      novelId: row.novelId,
+      chapterId: row.chapterId,
+      scheduledFor: row.scheduledFor?.toISOString() ?? new Date().toISOString(),
+    };
+    await queue.add(PUBLICATION_JOB_NAME, data, {
+      jobId: row.id,
+      delay,
+    });
+    logger?.info("publication schedule reconciled", {
+      publicationId: row.id,
+      previousState: state ?? "missing",
+      delayMs: delay,
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Startup reconciliation (Invariant 5): scan ALL SCHEDULED rows (not only
+ * due ones — a future-scheduled row whose job was lost is the real crash
+ * window) and ensure each has a live job. Per-row logic lives in
+ * `reconcileOnePublication` (shared with the interval sweeper).
  *
  * Single startup pass, owned by the worker (P3-ob) — no concurrent
  * reconciler, so remove-then-enqueue is race-free here.
@@ -373,32 +440,52 @@ export async function reconcileScheduledPublications({
   let reenqueued = 0;
   let leftAlone = 0;
   for (const row of rows) {
-    const job = await queue.getJob(row.id);
-    const state = job ? await job.getState() : undefined;
-    if (!job || state === "failed" || state === "unknown") {
-      if (job) await job.remove();
-      const delay = row.scheduledFor
-        ? Math.max(0, row.scheduledFor.getTime() - Date.now())
-        : 0;
-      const data: PublicationJobData = {
-        publicationId: row.id,
-        novelId: row.novelId,
-        chapterId: row.chapterId,
-        scheduledFor: row.scheduledFor?.toISOString() ?? new Date().toISOString(),
-      };
-      await queue.add(PUBLICATION_JOB_NAME, data, {
-        jobId: row.id,
-        delay,
-      });
-      reenqueued++;
-      logger?.info("publication schedule reconciled", {
-        publicationId: row.id,
-        previousState: state ?? "missing",
-        delayMs: delay,
-      });
-    } else {
-      leftAlone++;
-    }
+    if (await reconcileOnePublication({ queue, row, logger })) reenqueued++;
+    else leftAlone++;
+  }
+  return { scanned: rows.length, reenqueued, leftAlone };
+}
+
+/**
+ * Interval sweep (NF-WF-029 / GAP-094): one bounded pass over SCHEDULED
+ * publications that are due, re-enqueueing any whose BullMQ job is
+ * missing, `failed`, or `unknown` via the shared remove-first-then-enqueue
+ * pattern (`reconcileOnePublication`).
+ *
+ * Bounded (Invariant 2): `WHERE status = "SCHEDULED" AND (scheduledFor <=
+ * now OR scheduledFor IS NULL)` — never the startup pass's unbounded
+ * "all SCHEDULED rows". Rationale: future-scheduled rows still have time
+ * for their delayed jobs to fire, so the interval pass only needs due
+ * rows; a NULL `scheduledFor` is treated as due immediately.
+ *
+ * The `now` parameter defaults to `new Date()`; tests inject a fixed
+ * time. A sweep pass that throws is caught by the interval tick (the
+ * timer survives; the next tick retries) — see `startPublicationWorkerApp`.
+ */
+export async function sweepDuePublications({
+  db,
+  queue,
+  logger,
+  now,
+}: {
+  db: NovelForgeDb;
+  queue: PublicationReconQueue;
+  logger?: WorkerLogger;
+  now?: Date;
+}): Promise<{ scanned: number; reenqueued: number; leftAlone: number }> {
+  const at = now ?? new Date();
+  const rows = await db.publication.findMany({
+    where: {
+      status: "SCHEDULED",
+      OR: [{ scheduledFor: { lte: at } }, { scheduledFor: null }],
+    },
+    select: { id: true, novelId: true, chapterId: true, scheduledFor: true },
+  });
+  let reenqueued = 0;
+  let leftAlone = 0;
+  for (const row of rows) {
+    if (await reconcileOnePublication({ queue, row, logger })) reenqueued++;
+    else leftAlone++;
   }
   return { scanned: rows.length, reenqueued, leftAlone };
 }
@@ -421,6 +508,12 @@ export interface PublicationWorkerDeps {
   };
   probeTimeoutMs: number;
   logger: WorkerLogger;
+  /**
+   * NF-WF-029 (GAP-094): interval between due-publication sweeps.
+   * Defaults to `PUBLICATION_SWEEPER_INTERVAL_MS`; tests inject a short
+   * value to prove the timer wiring.
+   */
+  sweeperIntervalMs: number;
   /**
    * NF-WF-019C: enqueue the `novel.chapter_published` fan-out after a
    * successful fire. Optional seam — tests inject a spy; production
@@ -449,6 +542,7 @@ export function defaultPublicationWorkerDeps(
       }),
     probeTimeoutMs: 10_000,
     logger,
+    sweeperIntervalMs: PUBLICATION_SWEEPER_INTERVAL_MS,
   };
 }
 
@@ -518,6 +612,22 @@ export async function startPublicationWorkerApp(
       message: err instanceof Error ? err.message : String(err),
     });
   }
+
+  // NF-WF-029 (GAP-094): the startup pass covers deploys; the interval
+  // covers stuck jobs without a restart. The tick catches its own errors
+  // so one failed pass never kills the timer — the next tick retries.
+  const sweepTimer = setInterval(() => {
+    if (stopped) return;
+    void sweepDuePublications({ db, queue, logger: d.logger }).catch((err) => {
+      d.logger.error("publication sweep failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }, d.sweeperIntervalMs);
+  sweepTimer.unref?.();
+  d.logger.info("publication sweeper started", {
+    sweeperIntervalMs: d.sweeperIntervalMs,
+  });
 
   // NF-WF-019C: the `notifications` queue for the chapter-published
   // fan-out, on the same connection. Created once here; the
@@ -598,6 +708,7 @@ export async function startPublicationWorkerApp(
     async stop() {
       if (stopped) return;
       stopped = true;
+      clearInterval(sweepTimer);
       await worker.close();
       await queue.close();
       await notificationQueue.close();

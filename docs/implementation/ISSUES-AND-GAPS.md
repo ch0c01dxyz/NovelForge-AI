@@ -1200,7 +1200,11 @@ fixture choice). Do NOT silently edit.
 
 ## GAP-043 — NF-WF-011 G9's compiler-tier half is conditional and can be vacuous (2026-10-05)
 
-Status: OPEN (documented limitation; the gate's authoritative signal is asserted).
+Status: CLOSED by NF-WF-044 (2026-10-07, commit 03f5d8d, branch work/gap040-gap043).
+
+CLOSURE EVIDENCE: new G9 case in `apps/api/src/e2e/gates.test.ts` creates the canon fact BEFORE `processRebuild`, so compiled tier 7/8 blocks are genuinely PRESENT; asserts `provenance.freshness === "STALE"` + `sourceRevisionId === R1` (stale revision, not head) unconditionally. Normative anti-vacuous rules R1–R5 (non-empty guards before every filter/loop; named expected values; zero-PRESENT-blocks = hard failure). One-time negative (rebuild skipped) FAILS on the guard as designed — non-vacuity proven. Fixture nuance (documented): chapters must be IN_REVIEW because `fetchAndCompileContext` ignores input `storyPosition` (by-design contract behavior, verified in `planning.ts:868` / `context-compiler.ts:1232` — not a production defect). Full gates file 11/11 pass; tsc + eslint clean; contract APPROVED; diff review APPROVE.
+
+Historical description retained below.
 
 OBSERVED: the G9 gate test (`apps/api/src/e2e/gates.test.ts`) asserts
 "tier 7/8 blocks MUST carry staleness metadata" only over
@@ -2242,6 +2246,8 @@ RESOLUTION: Reinstalled natively per ENVIRONMENT-PREFLIGHT.md:
 NOTE: The os-intent replay does not manage postgresql/redis (not in dpkg-state.txt); they are manual per ENVIRONMENT-PREFLIGHT.md and will need reinstall after any future VM reset.
 
 RECURRENCE 2026-10-07 (OBSERVED by NF-WF-032 implementer): VM reset wiped PostgreSQL/Redis a second time mid-task. Reinstalled natively using the same procedure (slow mirror removed again, `pg_ctlcluster 16 main start`, `redis-server --daemonize`, GAP-065 re-applied). This is now a known recurring environment event, not a one-off.
+
+RECURRENCE 2026-10-07 (OBSERVED by NF-WF-044 implementer, ~18:00 WIB): on this session's start, `pg_lsclusters` showed the 16/main cluster DOWN (data directory intact) and redis refused connections; the `novelforge_test` role was missing. Coordinator started both services (`pg_ctlcluster 16 main start`, `redis-server --daemonize yes`); implementer recreated the role + `vector` extension per GAP-065. No full reinstall needed this time — services were installed but stopped, and the test role did not survive.
 
 ## GAP-109 — Post-pull audit: runtime and verification regressions
 

@@ -886,8 +886,30 @@ Publication is proven through the reader, not the status flag:
    assertion requires non-empty, verbatim-equal content; a 200 with empty
    or mismatched content fails.
 4. Negative: the same URL for a DRAFT novel returns 404
-   `{ error: "NOT_FOUND" }` — the no-oracle rule (013). The loop uses the
-   deliberately-failing chapter's novel (never published, stays DRAFT).
+   `{ error: "NOT_FOUND" }` — the no-oracle rule (013).
+
+### NF-WF-046 hardening note (2026-10-07) — step 6b
+
+The step-6b implementation was hardened per the author's local review
+of `c03a171` (NF-WF-046, contract APPROVED, diff review APPROVE):
+
+- **Independent DRAFT fixture.** The 404 negative no longer reuses the
+  deliberately-failing chapter's novel from a prior `it()` block. The
+  test seeds its own novel (`seedWorkspace`, DRAFT by default) +
+  chapter inside the test, proves the fixture (novel DRAFT, chapter
+  exists, authenticated read 200) before the anonymous GET → 404
+  NOT_FOUND, and passes in isolation (`vitest run -t`, 1/1).
+- **V1/V2 pinning regression.** After step 6's publish, the loop
+  unpublishes via the official `manuscript.setStatus` PUBLISHED →
+  IN_REVIEW path (ungated, status read back), reads the current
+  version number dynamically, saves V2 with distinct marker content,
+  and asserts `currentVersionId !== V1` while the Publication row
+  still pins `chapterVersionId === V1`. The anonymous reader must
+  return 200 with content equal to V1's stored content (non-empty),
+  NOT equal to V2's content, and `publishedVersionNumber` equal to
+  V1's number. This proves the reader serves the pinned version, not
+  merely the current one. No production changes were made to build
+  this fixture.
 
 ### Amended loop sequence (acceptance mapping)
 

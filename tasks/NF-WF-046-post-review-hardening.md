@@ -6,10 +6,10 @@ and resources with English fallback.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: APPROVED (contract review 2026-10-07 — APPROVE_WITH_FINDINGS, 1P2+1P3 folded in)
+Status: VERIFIED (implementation complete 2026-10-07; contract APPROVED; diff review APPROVE; battery GREEN on `9265822`; pushed to `work/gap040-gap043`)
 Milestone / capability IDs: M9 (post-review hardening; author directives on `c03a171`)
-Implementer role / requested and resolved model: (to be assigned — separate actor from contract author and reviewer)
-Reviewer role / requested and resolved model: (to be assigned — separate actor from contract author and implementer)
+Implementer role / requested and resolved model: separate subagent actor (coordinator-dispatched); resolved model UNKNOWN — backends MODEL_UNVERIFIED per GAP-013
+Reviewer role / requested and resolved model: separate subagent actor (coordinator-dispatched, distinct from implementer); resolved model UNKNOWN — backends MODEL_UNVERIFIED per GAP-013
 Readiness evidence / unresolved decisions / parent acceptance owner: author reviewed `c03a171` locally and issued 5 fix directives + 1 clarification (2026-10-07). Parent coordinator.
 Frozen review manifest / exact artifact paths and identity: (set at implementation dispatch)
 Baseline revision / local changes to preserve: `c03a171` on branch `work/gap040-gap043` (6 commits on `1a3452b`); do NOT merge to main.
@@ -326,26 +326,26 @@ non-emptiness, that is a contract violation.
 
 ## Acceptance and verification
 
-- [ ] **Fix 1**: the DRAFT-reader negative uses an independent fixture
+- [x] **Fix 1**: the DRAFT-reader negative uses an independent fixture
   (novel + chapter proven DRAFT and existing before the 404); the test
   passes in isolation (`vitest run -t` on the single test).
-- [ ] **Fix 2**: pinning regression with `currentVersionId !== published
+- [x] **Fix 2**: pinning regression with `currentVersionId !== published
   chapterVersionId`; reader serves V1's content (equality + inequality
   assertions + `publishedVersionNumber`); no production changes.
-- [ ] **Fix 3**: G9 uses `reviewFinalText` (verdict explicitly PASS) +
+- [x] **Fix 3**: G9 uses `reviewFinalText` (verdict explicitly PASS) +
   `manuscript.setStatus` (status read back as IN_REVIEW); no direct DB
   status update; all R1–R5 anti-vacuous rules and STALE assertions kept.
-- [ ] **Fix 4**: task files' handoff fields completed with OBSERVED values
+- [x] **Fix 4**: task files' handoff fields completed with OBSERVED values
   only (unknown actors marked UNKNOWN); NF-WF-044's broken link fixed;
   CURRENT.md / START-HERE.md / DELIVERY-PLAN.md no longer point at
   completed work as "next"; ISSUES-AND-GAPS.md alignment proposal in the
   handoff (not edited by the implementer).
-- [ ] **Fix 5**: targeted tests green; full 8-box battery GREEN on the
-  final revision with a complete evidence table (command, revision, exit
-  code, counts, skips, failures, limits).
-- [ ] Separate diff review of the exact submitted diff by an actor other
-  than the implementer; findings resolved.
-- [ ] Commit + push to the SAME branch `work/gap040-gap043`; no merge to
+- [x] **Fix 5**: targeted tests green; full 8-box battery GREEN on the
+  final revision (`9265822`) with a complete evidence table (command,
+  revision, exit code, counts, skips, failures, limits).
+- [x] Separate diff review of the exact submitted diff by an actor other
+  than the implementer; findings resolved (APPROVE, 1 P3 informational).
+- [x] Commit + push to the SAME branch `work/gap040-gap043`; no merge to
   main; no deployment.
 
 Record actual results separately from expectations. Zero selected tests
@@ -386,3 +386,48 @@ main; no use of historical test results as evidence for the revised code.
 - The `e2e-loop-409` cross-test dependency: if kept as a secondary
   assertion, its dependency must be explicit; the primary proof is the
   independent fixture.
+
+## Verification receipt (actual results, 2026-10-07)
+
+**Revision:** `9265822` on branch `work/gap040-gap043` (commit "NF-WF-046:
+Post-review hardening of NF-WF-042/044/045"). The battery ran on the
+exact working tree that became this commit (code/test tree identical;
+the commit additionally includes the docs-only ISSUES-AND-GAPS.md
+GAP-108 recurrence note, which does not affect test outcomes).
+
+**Targeted tests (implementer-OBSERVED):**
+- Fix 1: `author-preview.loop.test.ts` full file 3/3; step-6b test in
+  isolation (`vitest run -t`) 1/1 (2 skipped) — negative meaningful
+  standalone.
+- Fix 2: pinning regression — reader serves V1's content (equals V1,
+  not V2, `publishedVersionNumber` = V1's number); steps 7/8
+  unaffected (full loop 3/3).
+- Fix 3: G9 isolation 1/1; full `gates.test.ts` 11/11.
+- `npx tsc --noEmit` (apps/api) exit 0; `pnpm lint` on changed files
+  exit 0.
+
+**Full 8-box battery (implementer-dispatched runner, OBSERVED):**
+
+| Box | Command | Exit | Result |
+|---|---|---|---|
+| 1 | `pnpm lint` (root) | 0 | clean |
+| 2 | `npx tsc --noEmit` (apps/api) | 0 | clean |
+| 3 | `npx vue-tsc --noEmit` (apps/web) | 0 | clean |
+| 4 | `npx vitest run` (apps/api) | 0 | 58/58 files, 1047/1047 tests, 0 skipped |
+| 5 | `npx vitest run` (apps/web) | 0 | 81/81 files, 488/488 tests, 0 skipped |
+| 6 | e2e per-file sequential | 0 | 21/21 (loop 3, gates 11, long-novel 7) |
+| 7 | `*.axe.test.ts` (apps/web) | 0 | 20/20 files, 91/91 tests, zero violations |
+| 8 | new-defect scan | — | none found |
+
+**Verdict: GREEN.** Environment: Ubuntu 24.04.5 LTS, native
+PostgreSQL 16 + Redis, disposable DBs, no Docker. Note: GAP-108
+recurred a 4th time during the battery (full VM reset); ~27 min spent
+on environment recovery, no code defect. Box 4's first attempt failed
+on environment (Prisma P3018, test role lacked superuser); fixed per
+GAP-065 and re-run in full.
+
+**Review receipt:** contract APPROVED (2026-10-07,
+APPROVE_WITH_FINDINGS — 1 P2 + 1 P3 folded in, no re-review needed);
+separate diff review APPROVE (2026-10-07, 1 P3 informational,
+non-blocking). Reviewer: separate subagent actor, resolved model
+UNKNOWN (backends MODEL_UNVERIFIED per GAP-013).

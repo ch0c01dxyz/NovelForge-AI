@@ -653,6 +653,126 @@ describe("G9 — forced-STALE detection", () => {
     expect(staleScope).toBeTruthy();
     expect(staleScope!.freshness).toBe("STALE");
   });
+
+  it("unconditional stale-tier assertion: PRESENT tier 7/8 blocks carry STALE provenance pinned to R1", async () => {
+    // NF-WF-044 (GAP-043): unlike the test above, the canon fact is created
+    // BEFORE processRebuild, so the R1 projection has structural content
+    // and tier 7/8 compile PRESENT (not EMPTY). The anti-vacuous guard then
+    // proves the collection is non-empty before any per-block assertion —
+    // this test FAILS (never passes vacuously) if the fixture cannot
+    // produce PRESENT blocks.
+    const s = svc();
+    const ctx = { actorUserId: ownerId, workspaceId, novelId };
+    const ch = await s.manuscript.createChapter({ ...ctx, title: "E2E Gates Stale Tier Ch" });
+    const chNum = (
+      await db.chapter.findUniqueOrThrow({ where: { id: ch.id }, select: { number: true } })
+    ).number;
+    await s.manuscript.saveChapter({
+      ...ctx,
+      chapterId: ch.id,
+      content: "A chapter whose memory projection holds structural content.\n\nThe harbor bell rang twice.",
+      expectedVersion: null,
+    });
+    // The compiler resolves storyPosition via getStoryPosition (max chapter
+    // with IN_REVIEW/PUBLISHED status); a DRAFT chapter resolves to 0 and
+    // tiers 7/8 compile UNAVAILABLE. Promote via direct DB update — the
+    // review gate is out of scope for this staleness test.
+    await db.chapter.update({ where: { id: ch.id }, data: { status: "IN_REVIEW" } });
+
+    // Canon fact BEFORE the rebuild: visible at R1, so the projection has
+    // structural content (facts) and the compiler emits PRESENT blocks.
+    const entity = await s.canon.createEntity({
+      ...ctx,
+      kind: "ITEM",
+      name: "Stale Tier Chalice",
+      key: "e2e-stale-tier-chalice",
+    });
+    await s.canon.createFact({
+      ...ctx,
+      entityId: entity.id,
+      predicate: "e2e-stale-tier-predicate",
+      objectText: "the chalice holds harbor water",
+      validFromChapter: 1,
+    });
+
+    // Build the projection at R1.
+    const r1 = await readHeadRevisionId(db, novelId);
+    expect(r1).toBeTruthy();
+    const rebuild = await processRebuild(db, {
+      workspaceId,
+      novelId,
+      scope: chapterScope(ch.id),
+      sourceRevisionId: r1!,
+    });
+    expect(rebuild.ok).toBe(true);
+
+    // Verify the projection row exists at R1 with structural content
+    // (R1/R5: never assume the rebuild produced content).
+    const projection = await db.memoryProjection.findUnique({
+      where: {
+        novelId_scope_sourceRevisionId: { novelId, scope: chapterScope(ch.id), sourceRevisionId: r1! },
+      },
+    });
+    expect(projection).toBeTruthy();
+    expect(projection!.buildStatus).toBe("OK");
+    const structural = projection!.structural as {
+      facts: unknown[];
+      threads: unknown[];
+      promises: unknown[];
+    };
+    const structuralCount =
+      structural.facts.length + structural.threads.length + structural.promises.length;
+    expect(structuralCount).toBeGreaterThan(0);
+
+    // Move the head with a second canon revision R2.
+    const entity2 = await s.canon.createEntity({
+      ...ctx,
+      kind: "ITEM",
+      name: "Stale Tier Compass",
+      key: "e2e-stale-tier-compass",
+    });
+    await s.canon.createFact({
+      ...ctx,
+      entityId: entity2.id,
+      predicate: "e2e-stale-tier-predicate-2",
+      objectText: "the compass spins after the head moved",
+      validFromChapter: 1,
+    });
+    const r2 = await readHeadRevisionId(db, novelId);
+    expect(r2).not.toBe(r1);
+
+    // Compile WITHOUT rebuilding.
+    const compiled = await e2e.compileFull({
+      actorUserId: ownerId,
+      workspaceId,
+      novelId,
+      instruction: "Write the next chapter.",
+      storyPosition: chNum,
+    });
+
+    // Anti-vacuous guard (R1/R5): the PRESENT tier 7/8 collection must be
+    // non-empty BEFORE any per-block assertion. A zero-length collection
+    // here means the fixture is broken — the test FAILS.
+    const staleTierBlocks = compiled.blocks.filter(
+      (b) => (b.tier === 7 || b.tier === 8) && b.status === "PRESENT",
+    );
+    expect(staleTierBlocks.length).toBeGreaterThan(0);
+
+    // Every PRESENT block carries STALE provenance pinned to the stale
+    // revision R1 — read from the block's provenance, never defaulted
+    // (R4: the expected values are named, not merely "present").
+    for (const b of staleTierBlocks) {
+      expect(b.provenance.freshness).toBe("STALE");
+      expect(b.provenance.sourceRevisionId).toBe(r1);
+      // The block carries real projection content (P3-2 verified:
+      // extraction populates chapterCoverage for chapter scopes).
+      expect(Array.isArray(b.provenance.chapterCoverage)).toBe(true);
+      expect(b.provenance.chapterCoverage!.length).toBeGreaterThan(0);
+      // Defense in depth: a PRESENT block with empty text would mean the
+      // EMPTY-vs-PRESENT boundary is misclassified.
+      expect(b.text.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe("G10 — evidence-backed findings end to end", () => {

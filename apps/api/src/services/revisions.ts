@@ -693,6 +693,10 @@ export type MergeErrorCode =
   | "MERGE_NO_SNAPSHOT" // 409: missing snapshot at a head
   | "MERGE_DIRTY_TARGET" // 409: target has unsaved changes
   | "NOT_ON_TARGET_BRANCH" // 409: target not checked out
+  | "SEMANTIC_NO_EVIDENCE" // 409 (NF-WF-028): semantic apply, change lacks row evidence
+  | "SEMANTIC_RULE_MISMATCH" // 409 (NF-WF-028): builder re-derivation differs from cited rule
+  | "SEMANTIC_UNRESOLVABLE" // 409 (NF-WF-028): builder returned null (shape violation)
+  | "SEMANTIC_COUPLED_FIELDS" // 409 (NF-WF-028): coupled denylist pair in apply
   | "INVALID_CHECKPOINT_KIND"; // 400: not a pre-operation checkpoint
 
 /**
@@ -1190,6 +1194,12 @@ export interface RevisionServices {
    * evidence) and writes nothing. On a clean merge: one new MERGE revision
    * on the target branch, the merged state written, and
    * `Novel.currentBranchId` set to the target.
+   *
+   * NF-WF-028 (GAP-101): `mode` selects the merge semantics. "conservative"
+   * (default) is byte-identical 020C behavior. "semantic" re-runs the
+   * preview with S1/S2/S3 narrowing under the branch lock and builds
+   * semantically-resolved rows via the resolved-row builder instead of
+   * whole-source-row copy.
    */
   applyMerge(input: {
     actorUserId: string;
@@ -1198,6 +1208,7 @@ export interface RevisionServices {
     sourceBranchId: string;
     targetBranchId?: string;
     expectedHeadRevisionId?: string | null;
+    mode?: "conservative" | "semantic";
   }): Promise<{
     revisionId: string;
     revisionNumber: number;
@@ -2459,8 +2470,11 @@ export function createRevisionServices({
       sourceBranchId,
       targetBranchId,
       expectedHeadRevisionId,
+      mode,
     }) {
       await gate(workspaceId, novelId, actorUserId, "revision:manage");
+      // NF-WF-028: mode defaults to conservative (020C behavior unchanged).
+      const effectiveMode = mode ?? "conservative";
 
       const novel = await db.novel.findFirst({
         where: { id: novelId, workspaceId },
@@ -2498,7 +2512,12 @@ export function createRevisionServices({
       // The preview is recomputed inside the write transaction below; this
       // outer computation is for the conflict refusal, which must happen
       // before any write (delivery-plan :57).
-      const preview = await computeMergePreview(db, novelId, source.id, target.id);
+      // NF-WF-028: recompute with the requested mode so the outer refusal
+      // agrees with the preview the user saw (preview/apply parity).
+      const preview = await withMergeMode(
+        await computeMergePreview(db, novelId, source.id, target.id),
+        effectiveMode,
+      );
       const conflicts = preview.changes.filter(
         (c) => c.kind === "CONFLICT" || c.kind === "DELETED_MODIFIED",
       );
@@ -2528,7 +2547,13 @@ export function createRevisionServices({
       const result = await db.$transaction(async (tx) => {
         // Recompute under the branch lock: the head may have moved between
         // the outer preview and this transaction (C4).
-        const lockedPreview = await computeMergePreview(tx, novelId, source.id, target.id);
+        // NF-WF-028: the locked recompute runs with the requested mode, so
+        // semantic narrowing happens here — never trust the user's preview
+        // citation without re-deriving under the lock.
+        const lockedPreview = await withMergeMode(
+          await computeMergePreview(tx, novelId, source.id, target.id),
+          effectiveMode,
+        );
         const lockedConflicts = lockedPreview.changes.filter(
           (c) => c.kind === "CONFLICT" || c.kind === "DELETED_MODIFIED",
         );
@@ -2550,7 +2575,15 @@ export function createRevisionServices({
           );
         }
 
-        const merged = buildMergedPayload(targetPayload, sourcePayload, lockedPreview.changes);
+        // NF-WF-028: mode-aware payload build. Conservative (default) is
+        // byte-identical 020C behavior; semantic resolves cited rules via
+        // the resolved-row builder (never whole-source-row copy).
+        const merged = await buildMergedPayloadForMode(
+          targetPayload,
+          sourcePayload,
+          lockedPreview.changes,
+          effectiveMode,
+        );
 
         // One MERGE revision on the target branch. `branch.merge` is HIGH
         // (C3), so the PRE_MUTATION checkpoint is captured automatically,
@@ -2607,6 +2640,7 @@ export function createRevisionServices({
           targetBranchId: target.id,
           revisionNumber: result.revisionNumber,
           mergedEntities: result.mergedEntities,
+          mode: effectiveMode,
         },
       });
       return result;
@@ -2964,6 +2998,97 @@ function buildMergedPayload(
 }
 
 /**
+ * NF-WF-028 (GAP-101): mode-aware merged-payload builder.
+ *
+ * "conservative" delegates to `buildMergedPayload` unchanged (byte-identical
+ * 020C behavior). "semantic" builds semantically-resolved changes via the
+ * resolved-row builder; every other CLEAN/ORPHAN_RISK change keeps the
+ * existing whole-source-row logic.
+ *
+ * Splice rule: the resolved row occupies the same index the
+ * whole-source-row clone would have occupied, with the same key
+ * normalization (table + entity-id key, DATABASE column names per C2).
+ *
+ * Refusals are explicit typed 409s (never silent fallback):
+ * - SEMANTIC_NO_EVIDENCE: change lacks base/source/target row evidence
+ * - SEMANTIC_RULE_MISMATCH: builder re-derivation differs from cited rule
+ * - SEMANTIC_COUPLED_FIELDS: coupled denylist pair detected in apply
+ * - SEMANTIC_UNRESOLVABLE: builder returned null (shape violation)
+ *
+ * The mode is NEVER forwarded to the whole-row path: that would silently
+ * discard target-side edits the rules proved disjoint and safe to keep.
+ */
+async function buildMergedPayloadForMode(
+  targetPayload: SnapshotPayload,
+  sourcePayload: SnapshotPayload,
+  changes: MergeChange[],
+  mode: "conservative" | "semantic",
+): Promise<SnapshotPayload> {
+  if (mode !== "semantic") {
+    return buildMergedPayload(targetPayload, sourcePayload, changes);
+  }
+  const { buildResolvedRowDetailed } = await import("./semantic-merge.ts");
+
+  const merged: SnapshotPayload = JSON.parse(JSON.stringify(targetPayload)) as SnapshotPayload;
+  for (const change of changes) {
+    if (change.kind !== "CLEAN" && change.kind !== "ORPHAN_RISK") continue;
+    if (!change.changedOn.includes("source")) continue;
+    const table = tableKeyForEntityType(change.entityType);
+    if (!table) continue;
+    const key = keyColumnFor(table);
+    const rows = (merged[table] ?? []) as Record<string, unknown>[];
+    const idx = rows.findIndex((r) => r?.[key] === change.entityId);
+
+    // Semantic-resolved changes use the builder, not the whole-row copy.
+    if (change.semanticRule) {
+      const built = buildResolvedRowDetailed(change);
+      if (!built.ok) {
+        switch (built.reason) {
+          case "NO_EVIDENCE":
+            throw new MergeError(
+              "SEMANTIC_NO_EVIDENCE",
+              `semantic apply refused for ${change.entityType} ${change.entityId}: missing base/source/target row evidence`,
+            );
+          case "RULE_MISMATCH":
+            throw new MergeError(
+              "SEMANTIC_RULE_MISMATCH",
+              `semantic apply refused for ${change.entityType} ${change.entityId}: re-derived rule differs from cited ${change.semanticRule}`,
+            );
+          case "COUPLED_FIELDS":
+            throw new MergeError(
+              "SEMANTIC_COUPLED_FIELDS",
+              `semantic apply refused for ${change.entityType} ${change.entityId}: coupled denylist pair changed across sides`,
+            );
+          case "SHAPE_VIOLATION":
+            throw new MergeError(
+              "SEMANTIC_UNRESOLVABLE",
+              `semantic apply refused for ${change.entityType} ${change.entityId}: row shape violates ${change.semanticRule} preconditions`,
+            );
+        }
+      }
+      // Same splice position the whole-source-row clone would occupy.
+      if (idx >= 0) rows[idx] = built.row;
+      else rows.push(built.row);
+      merged[table] = rows;
+      continue;
+    }
+
+    // All other changes: existing 020C whole-row logic, unchanged.
+    const sourceRow = payloadRow(sourcePayload, table, change.entityId);
+    const isDelete = change.operations.includes("DELETE") && !sourceRow;
+    if (isDelete) {
+      if (idx >= 0) rows.splice(idx, 1);
+    } else if (sourceRow) {
+      const clone = JSON.parse(JSON.stringify(sourceRow)) as Record<string, unknown>;
+      if (idx >= 0) rows[idx] = clone;
+      else rows.push(clone);
+    }
+    merged[table] = rows;
+  }
+  return merged;
+}
+
+/**
  * Write a payload to the live covered tables: delete in reverse FK order
  * (except the manuscript pair and other non-restore targets), re-insert in
  * FK order, then rewind the chapter pointers in place (C7 steps 2–4).
@@ -3055,6 +3180,35 @@ const SEMANTIC_EDGES: ReadonlyArray<{ dependent: string; referenced: string }> =
  *  5. Attach row evidence (base / source / target) from snapshots when
  *     available. Classification never depends on snapshots.
  */
+/**
+ * NF-WF-028 (GAP-101): apply the requested merge mode to a computed preview.
+ *
+ * "conservative" (default) returns the preview unchanged (020C behavior).
+ * "semantic" narrows CONFLICT → CLEAN via the pinned S1/S2/S3 rules — the
+ * same narrowing `previewMerge` applies, so preview and apply agree.
+ * Pure recomputation; the input preview is not mutated.
+ */
+async function withMergeMode(
+  preview: MergePreview,
+  mode: "conservative" | "semantic",
+): Promise<MergePreview> {
+  if (mode !== "semantic") return preview;
+  const { applySemanticMerge } = await import("./semantic-merge.ts");
+  const changes = applySemanticMerge(preview.changes);
+  const summary = {
+    clean: changes.filter((c) => c.kind === "CLEAN").length,
+    conflict: changes.filter((c) => c.kind === "CONFLICT").length,
+    deletedModified: changes.filter((c) => c.kind === "DELETED_MODIFIED").length,
+    orphanRisk: changes.filter((c) => c.kind === "ORPHAN_RISK").length,
+  };
+  return {
+    ...preview,
+    changes,
+    summary,
+    canApply: summary.conflict === 0 && summary.deletedModified === 0,
+  };
+}
+
 async function computeMergePreview(
   db: RevisionTx,
   novelId: string,

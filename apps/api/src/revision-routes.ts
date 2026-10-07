@@ -120,6 +120,10 @@ const mergePreviewBody = z.object({
 const mergeApplyBody = z.object({
   targetBranchId: uuid.optional(),
   expectedHeadRevisionId: uuid.nullable().optional(),
+  // NF-WF-028 (GAP-101): optional merge mode. Omitted → "conservative"
+  // (020C behavior unchanged). "semantic" = S1/S2/S3 narrowing + resolved-row
+  // builder under the branch lock.
+  mode: z.enum(["conservative", "semantic"]).optional(),
 });
 
 export interface RevisionRoutesOptions {
@@ -390,6 +394,7 @@ export function registerRevisionRoutes(
         ...(body.data.expectedHeadRevisionId === undefined
           ? {}
           : { expectedHeadRevisionId: body.data.expectedHeadRevisionId }),
+        ...(body.data.mode === undefined ? {} : { mode: body.data.mode }),
       });
       return reply.send(result);
     },

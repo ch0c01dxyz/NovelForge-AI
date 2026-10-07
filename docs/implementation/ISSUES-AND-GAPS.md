@@ -2086,13 +2086,13 @@ route test of two outlines, no canon mutation, valid isolation, failure recovery
 
 ### GAP-101 — Semantic preview and apply disagree
 
-Status: BLOCKED / P2. Owner: NF-WF-024C follow-up. Semantic preview clears
-conflicts and advertises canApply, but apply route/service has no mode and
-recomputes conservative conflicts. Existing buildMergedPayload takes whole
-source rows, so simply forwarding mode would lose target S2/S3 edits.
-Remedy: reject unsupported semantic application explicitly until a reviewed
-resolved-row builder and locked mode-aware apply preserve both sides.
-Closure: preview/apply agreement with S1/S2/S3 merged-content assertions,
+Status: CLOSED 2026-10-07 via NF-WF-028.
+
+RESOLUTION: Implemented `buildResolvedRow` (pure, deterministic S1/S2/S3 resolved-row builder) + mode-aware locked apply. `mode?: "conservative" | "semantic"` on `mergeApplyBody` (route) and `applyMerge` (service); locked recompute runs semantic narrowing (never trusts preview citation); mode NEVER forwarded to whole-row `buildMergedPayload`. 4 typed 409s: `SEMANTIC_NO_EVIDENCE`, `SEMANTIC_RULE_MISMATCH`, `SEMANTIC_UNRESOLVABLE`, `SEMANTIC_COUPLED_FIELDS`. 020C safety preserved (CAS, branch lock, checkpoint, audit).
+
+EVIDENCE (OBSERVED 2026-10-07): `semantic-resolve.test.ts` 13/13 (S1/S2/S3 content, 4 refusal paths, determinism, purity); `semantic-apply.test.ts` 4/4 (preview→apply agreement with merged-content assertions, conservative 409, stale-head 409); `semantic-merge.test.ts` 23/23 (024C precision 100%); `merge.test.ts` 12/12 (020C regressions); `branches.test.ts` 12/12; tsc + eslint clean. Contract: `tasks/NF-WF-028-gap101-semantic-contract.md` (APPROVED). Diff review: APPROVE_WITH_FINDINGS (3 P3 non-blocking).
+
+Original BLOCKED description (historical): Semantic preview clears conflicts and advertises canApply, but apply route/service has no mode and recomputes conservative conflicts. Existing buildMergedPayload takes whole source rows, so simply forwarding mode would lose target S2/S3 edits.
 coupled-field refusals, stale-head/rollback/checkpoint and conservative regressions.
 
 ### GAP-102 — Semantic S2 clears coupled metadata conflicts
@@ -2165,4 +2165,22 @@ EVIDENCE: NF-WF-031 implementer (OBSERVED 2026-10-07): `packages/database/prisma
 
 IMPACT: any fresh `migrate deploy` fails; test suites requiring a scratch DB cannot initialize.
 
-STATUS: OPEN — recorded 2026-10-07 by the NF-WF-031 implementer before workaround. Owner: whoever owns the 027 workstream (the migration is untracked; likely a work-in-progress). Workaround for 031 verification: temporarily move the 027 directory aside during test DB setup; restore afterwards. The typo fix (`novel_branch` → `novel_branches`) is out of scope for NF-WF-031.
+STATUS: FIXED 2026-10-07 by NF-WF-027 implementer — typo corrected (`novel_branch` → `novel_branches` in migration.sql line 30). Migration applies cleanly via `prisma migrate deploy`. Recorded by the NF-WF-031 implementer before workaround. Owner: whoever owns the 027 workstream (the migration is untracked; likely a work-in-progress). Workaround for 031 verification: temporarily move the 027 directory aside during test DB setup; restore afterwards. The typo fix (`novel_branch` → `novel_branches`) is out of scope for NF-WF-031.
+
+## GAP-108 — PostgreSQL uninstalled from Ubuntu host (VM reset or package removal) (2026-10-07)
+
+EVIDENCE: NF-WF-027 implementer (OBSERVED 2026-10-07): `/var/lib/postgresql/` does not exist, `pg_lsclusters` not found, `psql` not found, no dpkg postgresql entries, `/etc/postgresql/` missing. PostgreSQL 16 + pgvector 0.6.0 (previously installed natively per ENVIRONMENT-PREFLIGHT.md) are completely gone. Redis also gone: `redis-cli` not found, `redis-server` not found (confirmed 2026-10-07 by coordinator).
+
+IMPACT: All DB-dependent tests blocked. NF-WF-027's 15 acceptance checks cannot run. The 027 implementer reports 9/10 whatif tests pass (pre-DB-loss) with 1 failing (403 gate test needs investigation).
+
+STATUS: RESOLVED 2026-10-07 by coordinator.
+
+RESOLUTION: Reinstalled natively per ENVIRONMENT-PREFLIGHT.md:
+- Removed slow `mirror.cogentco.com` from apt sources (kept `.bak`, per prior MEMORY.md lesson)
+- `apt-get install postgresql-16 postgresql-contrib redis-server postgresql-16-pgvector`
+- `pg_ctlcluster 16 main start` → online on 5432
+- `redis-server --daemonize yes` → PONG
+- Re-applied GAP-065: `CREATE ROLE novelforge_test ... SUPERUSER`, `CREATE EXTENSION vector` in template1
+- Verified: `PGPASSWORD=novelforge_test psql -U novelforge_test -h localhost -d postgres -c "SELECT 1"` → 1
+
+NOTE: The os-intent replay does not manage postgresql/redis (not in dpkg-state.txt); they are manual per ENVIRONMENT-PREFLIGHT.md and will need reinstall after any future VM reset.

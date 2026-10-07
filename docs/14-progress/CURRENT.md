@@ -8,6 +8,28 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
 ## Current dispatch — 2026-10-07 (novel-scoped workflow history repaired)
 
+### Author-approved local/external responsibility split
+
+External Ubuntu coding actors handle bounded implementation, regression tests,
+documentation and separate review for GAP-040/043/041, followed by final automated
+verification on the integrated revision. Follow native environment preflight,
+reviewed task contracts, branches/file ownership and scratch-database isolation.
+Their host receipts do not prove readiness of the author's Windows environment.
+
+The author retains local ownership of SCALE/quota product decisions (GAP-039/063),
+live credential provisioning, human screen-reader audit (GAP-051) and production
+deployment approval. External actors may provide evidence and concrete proposals
+for039/063, but must not choose unresolved product semantics or implement those
+decisions before the local decision is recorded and their task contract reviewed.
+After decisions are recorded here, bounded implementation may be delegated.
+No external task authorizes production deployment or credential disclosure.
+Screen-reader acceptance requires the author's actual human audit; an automated
+axe result or an LLM report cannot close that gate. Integrate and review submitted
+diffs here before treating task closures as accepted project evidence.
+
+This author instruction is recorded locally because Engram runtime attribution
+is unavailable; no attributed memory save is claimed. No credentials are stored.
+
 NF041 is IMPLEMENTED/REVIEWED: GAP-034 novel+chapter filters before limit,
 defensive UI provenance and stale history/start protection; GAP-116 downstream
 detail/cancel response guards. Scoped API67 tests in two disjoint runs; web7

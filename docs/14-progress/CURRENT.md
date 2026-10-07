@@ -6,7 +6,25 @@ exist; integrated product delivery remains PARTIAL**. Historical phase/test
 results below describe their original scope, not completion of all retained
 requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
-## Current dispatch — 2026-10-07
+## Current dispatch — 2026-10-07 (battery rerun)
+
+**NF-WF-023 release battery: GREEN on this host** (Ubuntu 24.04.5, revision `dfd87a3`, 2026-10-07 04:45–05:30 WIB). All 8 boxes ticked with OBSERVED evidence, strictly sequential per Invariant 4:
+1. `pnpm lint` → exit 0 ✅
+2. `tsc --noEmit` (api) → exit 0 ✅
+3. `vue-tsc --noEmit` (web) → exit 0 ✅
+4. API vitest → 53/53 files, 970/970 tests ✅
+5. Web vitest → 77/77 files, 466/466 tests ✅
+6. e2e (per-file sequential) → 20/20 ✅
+7. Axe → 20/20 files, 91/91 tests, zero violations ✅
+8. No new product-defect GAPs ✅
+
+Environment: PostgreSQL 16.15 + pgvector 0.6.0, Redis 7.0.15 (both started manually); GAP-065 re-applied; GAP-105 (role password + DATABASE_URL export) resolved. One transient API flake observed (1/970, non-reproducing across 2 reruns).
+
+**Release decision: SHIP_WITH_KNOWN_GAPS.** Full report: `docs/implementation/023-battery-rerun-2026-10-07.md`.
+
+**Recommended fix order:** GAP-028 (P1, actionable) → GAP-100 (P1, BLOCKED on contract) → GAP-101 (P2, BLOCKED on contract) → GAP-094/095/096 (P3) → GAP-098 (P3, author decision). GAP-051 human gate remains OPEN.
+
+## Previous dispatch — 2026-10-07
 
 Synced baseline: `72b3948`, clean before this audit. Implementation commits now extend through NF-WF-024. The older entries below preserve historical evidence; their "uncommitted", "PLANNED" and "commit next" instructions are superseded by this dispatch snapshot, not current worktree state. They do not prove present-host acceptance.
 

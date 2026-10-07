@@ -1922,7 +1922,11 @@ NEXT ACTION: Follow-up task decides: (a) implement entity persistence per the 02
 
 DECISION 2026-10-07 (author): option (a) — implement entity persistence per the 021A contract. Contract required before implementation (mutation change).
 
-STATUS: OPEN — recorded 2026-10-07 by the 023A implementer during the isolation code audit (standing rule).
+STATUS: CLOSED 2026-10-07 via NF-WF-033.
+
+RESOLUTION: Implemented SimulationEntity persistence. New pure module `simulation-entities.ts`: UUIDv5 `deriveEntityId` (deterministic from `runId:kind:tickCreated:ordinal`), `deriveEntityDeltas` (pure, validating), scenario-kind-keyed entity-rules registry (code, not data; unknown kinds → null = 021A minimal rule). `simulation.ts`: `initialEntities` on createRun (validated pre-write, 400 `INVALID_INPUT` atomic on invalid; persisted with `tickCreated=0` in the creation transaction); per-tick delta derivation (pure, around — never inside — `computeTick`) + application in per-tick atomic transaction; new `listEntities` (run-gated, `simulation:read`). New `GET .../simulations/:runId/entities` route (`?tick=`, `?kind=`). JSON tick state remains authoritative; entities are queryable materialization. No backfill (forward-only). `computeTick` untouched (024B replay intact).
+
+EVIDENCE (OBSERVED 2026-10-07): `simulation-entities.test.ts` 26/26 (8 pure + 6 initial + 5 per-tick + determinism + 4 isolation + no-canon-mutation + route); `simulation.test.ts` 18/18 + causality/debugger (49/49 total, no regressions); `whatif.test.ts` + `whatif.eval.test.ts` 26/26; tsc + eslint clean. Contract: `tasks/NF-WF-033-gap091-entity-persistence.md` (APPROVED). Diff review: APPROVE_WITH_FINDINGS (4 P3 non-blocking; P3-1 contract text amended).
 
 ## GAP-094 — NF-WF-023B: `publication` stuck-job detection only on worker restart, no interval sweeper (2026-10-07)
 

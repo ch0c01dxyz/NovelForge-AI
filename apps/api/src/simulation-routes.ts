@@ -22,6 +22,14 @@ const tickParams = z.object({
   tickNumber: z.coerce.number().int().min(1),
 });
 
+const entityKind = z.enum([
+  "SETTLEMENT",
+  "POPULATION",
+  "RESOURCE",
+  "KNOWLEDGE",
+  "INFRASTRUCTURE",
+]);
+
 const createRunBody = z.object({
   // Optional branch. Omitted → the run is created without a branch and
   // configure 400s NO_BRANCH (contract F3 — 021A does NOT auto-provision).
@@ -32,12 +40,28 @@ const createRunBody = z.object({
       injections: z.record(z.string(), z.array(z.unknown())).optional(),
       seed: z.string().max(100).optional(),
       maxTicks: z.number().int().min(1).max(1000).optional(),
+      // NF-WF-033 (GAP-091): optional initial entities. Validated by the
+      // service (invalid kind/attributes → 400 INVALID_INPUT, no partial
+      // state); persisted with tickCreated = 0.
+      initialEntities: z
+        .array(
+          z.object({
+            kind: entityKind,
+            attributes: z.record(z.string(), z.unknown()),
+          }),
+        )
+        .optional(),
     })
     .optional(),
 });
 
 const stepBody = z.object({
   ticks: z.number().int().min(1).max(100).optional(),
+});
+
+const entitiesQuery = z.object({
+  tick: z.coerce.number().int().min(0).optional(),
+  kind: entityKind.optional(),
 });
 
 export interface SimulationRoutesOptions {
@@ -195,6 +219,27 @@ export function registerSimulationRoutes(
       if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       const tick = await services.getTick({ actorUserId, ...params.data });
       return reply.send({ tick });
+    },
+  );
+
+  // NF-WF-033 (GAP-091): run-scoped entity listing. Additive;
+  // simulation:read. ?tick= (default: run's currentTick), ?kind=.
+  app.get(
+    "/api/workspaces/:workspaceId/novels/:novelId/simulations/:runId/entities",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = runParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const query = entitiesQuery.safeParse(request.query);
+      if (!query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const entities = await services.listEntities({
+        actorUserId,
+        ...params.data,
+        ...(query.data.tick === undefined ? {} : { tick: query.data.tick }),
+        ...(query.data.kind === undefined ? {} : { kind: query.data.kind }),
+      });
+      return reply.send({ entities });
     },
   );
 }

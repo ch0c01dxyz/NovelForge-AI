@@ -25,6 +25,19 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 // Shared error vocabulary; the app-wide handler in platform-routes.ts maps
 // these once. SimulationError is the typed 400/409 for simulation refusals.
 import { NotFoundError } from "@novelforge/ai-services";
+// NF-WF-033 (GAP-091): entity persistence seam. Pure pieces live in the
+// sibling module; the JSON tick state stays the authoritative record.
+import {
+  deriveEntityDeltas,
+  deriveEntityId,
+  isValidEntityKind,
+  resolveEntityRules,
+  validateInitialEntities,
+  EntityValidationError,
+  type EntityDelta,
+  type InitialEntityInput,
+  type SimulationEntityShape,
+} from "./simulation-entities.ts";
 
 /**
  * NF-WF-021A: typed simulation refusals. 400s are prerequisite/input
@@ -96,6 +109,13 @@ export interface SimulationServices {
       injections?: Record<string, unknown[]>;
       seed?: string;
       maxTicks?: number;
+      /// NF-WF-033 (GAP-091): optional initial entities. Validated at run
+      /// creation (invalid kind/attributes → 400 INVALID_INPUT, no partial
+      /// state) and persisted with tickCreated = 0. Empty/absent → zero rows.
+      initialEntities?: Array<{
+        kind: SimulationEntityKind;
+        attributes: Record<string, unknown>;
+      }>;
     };
     /// NF-WF-024A: scenario kind. Defaults to 'STANDARD'. 'WHATIF' tags
     /// narrative-level what-if runs (excluded from 021D's list).
@@ -178,6 +198,20 @@ export interface SimulationServices {
     stateAfter: unknown;
     events: unknown[];
   }>;
+
+  /// NF-WF-033 (GAP-091): run-scoped entity listing. Returns entities live
+  /// at `tick` (default: run's currentTick), optionally filtered by kind,
+  /// ordered by (tickCreated, id). Gated by simulation:read; every query
+  /// resolves through the run gate (no direct novel/workspace-keyed entity
+  /// queries — tenant boundary inherited via runId).
+  listEntities(input: {
+    actorUserId: string;
+    workspaceId: string;
+    novelId: string;
+    runId: string;
+    tick?: number;
+    kind?: SimulationEntityKind;
+  }): Promise<SimulationEntityShape[]>;
 }
 
 /**
@@ -304,31 +338,68 @@ export function createSimulationServices({
         if (!branchRow) throw new NotFoundError("branch");
       }
 
-      const run = await db.simulationRun.create({
-        data: {
-          workspaceId,
-          novelId,
-          branchId: branchRow?.id ?? null,
-          // Q6: dedicated branches recommended, not mandated. A branch
-          // named `simulation-*` is recorded as simulation-dedicated.
-          isSimulationBranch: branchRow ? branchRow.name.startsWith("simulation-") : false,
-          status: "DRAFT",
-          maxTicks: scenario?.maxTicks ?? 20,
-          seed: scenario?.seed ?? "default",
-        },
-      });
+      // NF-WF-033 (GAP-091): validate initialEntities BEFORE any write.
+      // On failure the run is not created — 400 INVALID_INPUT, zero
+      // entity rows, no partial state. (No schema change: the validated
+      // entries are persisted as entity rows below, in the same
+      // transaction as the run + scenario rows.)
+      const initialEntities: InitialEntityInput[] = scenario?.initialEntities ?? [];
+      try {
+        validateInitialEntities(initialEntities);
+      } catch (err) {
+        if (err instanceof EntityValidationError) {
+          throw new SimulationError("INVALID_INPUT", err.message);
+        }
+        throw err;
+      }
 
-      // Create the scenario row (initial conditions + injections).
-      await db.simulationScenario.create({
-        data: {
-          runId: run.id,
-          initialState: (scenario?.initialState ?? {}) as object,
-          injections: (scenario?.injections ?? {}) as object,
-          seed: scenario?.seed ?? "default",
-          // NF-WF-024A: tag the scenario kind. 'STANDARD' (default) or
-          // 'WHATIF' (narrative-level what-if; excluded from 021D's list).
-          kind: kind ?? "STANDARD",
-        },
+      // Run + scenario + initial entities commit atomically. Initial
+      // entities get tickCreated = 0 and deterministic ids
+      // (runId + kind + 0 + array index).
+      const run = await db.$transaction(async (tx) => {
+        const created = await tx.simulationRun.create({
+          data: {
+            workspaceId,
+            novelId,
+            branchId: branchRow?.id ?? null,
+            // Q6: dedicated branches recommended, not mandated. A branch
+            // named `simulation-*` is recorded as simulation-dedicated.
+            isSimulationBranch: branchRow ? branchRow.name.startsWith("simulation-") : false,
+            status: "DRAFT",
+            maxTicks: scenario?.maxTicks ?? 20,
+            seed: scenario?.seed ?? "default",
+          },
+        });
+
+        // Create the scenario row (initial conditions + injections).
+        await tx.simulationScenario.create({
+          data: {
+            runId: created.id,
+            initialState: (scenario?.initialState ?? {}) as object,
+            injections: (scenario?.injections ?? {}) as object,
+            seed: scenario?.seed ?? "default",
+            // NF-WF-024A: tag the scenario kind. 'STANDARD' (default) or
+            // 'WHATIF' (narrative-level what-if; excluded from 021D's list).
+            kind: kind ?? "STANDARD",
+          },
+        });
+
+        for (let i = 0; i < initialEntities.length; i++) {
+          const e = initialEntities[i];
+          if (!e) continue; // unreachable: bounded by length, satisfies noUncheckedIndexedAccess
+          await tx.simulationEntity.create({
+            data: {
+              id: deriveEntityId(created.id, e.kind, 0, i),
+              runId: created.id,
+              kind: e.kind,
+              attributes: e.attributes as object,
+              tickCreated: 0,
+              tickRetired: null,
+            },
+          });
+        }
+
+        return created;
       });
 
       return toShape(run);
@@ -523,28 +594,112 @@ export function createSimulationServices({
         );
         currentState = { ...stateAfter };
 
-        // Persist the tick and its events (simulation tables only —
-        // Invariant 1: never touch canon tables).
-        await db.simulationTick.create({
-          data: {
-            runId: run.id,
-            tickNumber: nextTickNumber,
-            stateBefore: stateBefore as object,
-            stateAfter: stateAfter as object,
-            events: events as object,
-          },
-        });
-        for (const evt of events) {
-          const e = evt as { kind: string; payload: unknown };
-          await db.simulationEvent.create({
+        // NF-WF-033 (GAP-091): resolve the scenario-kind-keyed entity
+        // rules and derive per-tick deltas. Pure — runs BEFORE the
+        // transaction, never inside computeTick (024B). Unknown/
+        // unregistered kinds resolve to null = the 021A minimal rule
+        // (no entity semantics; entities persist untouched).
+        const entityRules = resolveEntityRules(scenario.kind);
+        let deltas: EntityDelta = { upsert: [], retire: [] };
+        if (entityRules) {
+          const liveRows = await db.simulationEntity.findMany({
+            where: {
+              runId: run.id,
+              tickCreated: { lte: nextTickNumber },
+              OR: [{ tickRetired: null }, { tickRetired: { gt: nextTickNumber } }],
+            },
+            select: {
+              id: true,
+              kind: true,
+              attributes: true,
+              tickCreated: true,
+              tickRetired: true,
+            },
+          });
+          const liveEntities: SimulationEntityShape[] = liveRows.map((r) => ({
+            id: r.id,
+            kind: r.kind as SimulationEntityKind,
+            attributes: r.attributes as Record<string, unknown>,
+            tickCreated: r.tickCreated,
+            tickRetired: r.tickRetired,
+          }));
+          try {
+            deltas = deriveEntityDeltas({
+              stateBefore,
+              stateAfter,
+              tickNumber: nextTickNumber,
+              liveEntities,
+              entityRules,
+            });
+          } catch (err) {
+            if (err instanceof EntityValidationError) {
+              // Fail the tick atomically: no tick row, no events, no
+              // entity changes, currentTick unadvanced. Never silently
+              // ignore malformed reducer output.
+              throw new SimulationError("INVALID_INPUT", err.message);
+            }
+            throw err;
+          }
+        }
+
+        // One transaction per tick: the tick row, its event rows, and
+        // the entity delta writes commit together. There is never a
+        // tick whose JSON and whose entities disagree.
+        await db.$transaction(async (tx) => {
+          // Persist the tick and its events (simulation tables only —
+          // Invariant 1: never touch canon tables).
+          await tx.simulationTick.create({
             data: {
               runId: run.id,
               tickNumber: nextTickNumber,
-              kind: e.kind,
-              payload: e.payload as object,
+              stateBefore: stateBefore as object,
+              stateAfter: stateAfter as object,
+              events: events as object,
             },
           });
-        }
+          for (const evt of events) {
+            const e = evt as { kind: string; payload: unknown };
+            await tx.simulationEvent.create({
+              data: {
+                runId: run.id,
+                tickNumber: nextTickNumber,
+                kind: e.kind,
+                payload: e.payload as object,
+              },
+            });
+          }
+
+          // Apply entity deltas atomically with the tick. Upserts with
+          // an id update attributes in place; without an id they create
+          // a row with a deterministic id (ordinal = index among this
+          // tick's creations).
+          let createOrdinal = 0;
+          for (const u of deltas.upsert) {
+            if (u.id !== undefined) {
+              await tx.simulationEntity.update({
+                where: { id: u.id },
+                data: { attributes: u.attributes as object },
+              });
+            } else {
+              await tx.simulationEntity.create({
+                data: {
+                  id: deriveEntityId(run.id, u.kind, nextTickNumber, createOrdinal++),
+                  runId: run.id,
+                  kind: u.kind,
+                  attributes: u.attributes as object,
+                  tickCreated: nextTickNumber,
+                  tickRetired: null,
+                },
+              });
+            }
+          }
+          for (const id of deltas.retire) {
+            await tx.simulationEntity.update({
+              where: { id },
+              data: { tickRetired: nextTickNumber },
+            });
+          }
+        });
 
         results.push({
           tickNumber: nextTickNumber,
@@ -636,6 +791,51 @@ export function createSimulationServices({
         stateAfter: tick.stateAfter,
         events: tick.events as unknown[],
       };
+    },
+
+    async listEntities({ actorUserId, workspaceId, novelId, runId, tick, kind }) {
+      await gate(workspaceId, novelId, actorUserId, "simulation:read");
+      // Tenant boundary inherited via the run: every entity query resolves
+      // through the gated run lookup. Direct novel/workspace-keyed entity
+      // queries are forbidden (they would bypass the run gate).
+      const run = await getRunOrThrow(workspaceId, novelId, runId);
+
+      if (kind !== undefined && !isValidEntityKind(kind)) {
+        throw new SimulationError(
+          "INVALID_INPUT",
+          `unknown entity kind: ${String(kind)}`,
+        );
+      }
+
+      // Lifespan rule (contract, normative): live at tick T iff
+      // tickCreated <= T AND (tickRetired IS NULL OR tickRetired > T).
+      // Default tick: the run's currentTick.
+      const atTick = tick ?? run.currentTick;
+      const rows = await db.simulationEntity.findMany({
+        where: {
+          runId: run.id,
+          tickCreated: { lte: atTick },
+          OR: [{ tickRetired: null }, { tickRetired: { gt: atTick } }],
+          ...(kind !== undefined ? { kind } : {}),
+        },
+        orderBy: [{ tickCreated: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          kind: true,
+          attributes: true,
+          tickCreated: true,
+          tickRetired: true,
+        },
+      });
+      return rows.map(
+        (r): SimulationEntityShape => ({
+          id: r.id,
+          kind: r.kind as SimulationEntityKind,
+          attributes: r.attributes as Record<string, unknown>,
+          tickCreated: r.tickCreated,
+          tickRetired: r.tickRetired,
+        }),
+      );
     },
   };
 }

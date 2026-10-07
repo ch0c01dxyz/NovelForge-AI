@@ -1808,7 +1808,9 @@ EVIDENCE: 020A implementer (2026-10-06): `apps/api/src/selective-restore.test.ts
 
 IMPACT: none on the implementation; test-only environment flakiness. The 020A evidence battery exports `DATABASE_URL` explicitly.
 
-STATUS: OPEN — investigate why `process.loadEnvFile` intermittently fails to provide the correct URL in the vitest worker (possibly a stale `process.env.DATABASE_URL` from the parent, or a race in env loading).
+STATUS: CLOSED 2026-10-07 via NF-WF-047C (commit 119e394, branch work/nf-wf047-external-follow-up).
+
+CLOSURE EVIDENCE: root cause diagnosed and repaired. `process.loadEnvFile()` never overrides existing env vars (proven on Node v24.20.0), so a stale parent `DATABASE_URL` silently won over a correct repo-root `.env` — the D3 reproduction case. New shared helper `apps/api/src/test-utils/resolve-test-database-url.ts` implements the hardened pattern (absent/placeholder → loadEnvFile → loud throw) plus a sanitized parent-vs-`.env` mismatch warning; `selective-restore.test.ts`, `branches.test.ts`, `e2e/setup.ts` migrated. Verified: selective-restore 13/13, branches 11/11, 4/4 regression negatives (missing/invalid fail clearly, never silently select live DB, never leak secrets). Contract APPROVED; Phase 1 diagnostic APPROVED; Phase 2 diff review APPROVE (no findings).
 
 ## GAP-082 — `novelforge_test` DB password resets intermittently; `process.loadEnvFile` fails under `pnpm vitest` (2026-10-06)
 
@@ -1818,7 +1820,7 @@ IMPACT: API tests must be run with `DATABASE_URL` explicitly exported, not relyi
 
 NEXT ACTION: investigate why `process.loadEnvFile` fails under `pnpm vitest` (working directory? pnpm script env?). Workaround (documented): `export DATABASE_URL="postgresql://novelforge_test:test@localhost:5432/novelforge"` before `pnpm vitest run`.
 
-STATUS: OPEN — recorded 2026-10-06 by the 020B implementer; workaround in use. Renumbered from GAP-079 to GAP-082 by the 020B fix actor (2026-10-06): 020C had already claimed GAP-079 for the tsc-blocked entry (line 1713 keeps its number).
+STATUS: CLOSED 2026-10-07 via NF-WF-047C (commit 119e394) — same root cause and repair as GAP-081 (stale parent `DATABASE_URL` silently winning over `.env`; each `ALTER USER` invalidated prior exports). The shared helper's sanitized mismatch warning now gives the operator the missing signal. See GAP-081 closure evidence.
 
 ## GAP-083 — NF-WF-020 Recovery Center UI components are not mounted on any page (2026-10-06)
 

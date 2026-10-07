@@ -1839,7 +1839,7 @@ IMPACT: 021B adds the two Q7-pinned capabilities to `packages/auth/authorization
 
 NEXT ACTION: 021A implementer verifies the capability definitions on integration; 021A diff reviewer confirms no conflict. If 021A was planned to define them differently, reconcile before 021A commits.
 
-STATUS: OPEN — recorded 2026-10-06 by the 021B implementer before the workaround (standing rule).
+STATUS: CLOSED 2026-10-07 via NF-WF-047A evidence audit. Receipt: `packages/auth/authorization.ts:71-72` declares the pair exactly once in the capability list (line 78 is a comment); role mappings verified (OWNER both via filter, ADMIN both 164-165, AUTHOR both 205-206, EDITOR read-only 238, VIEWER neither 244); 021A integration (commit `1992ce4`) introduced no second declaration. Review: 021A implementer verification (CURRENT.md:195) + 021A diff review APPROVE_WITH_FINDINGS (`1992ce4` message) + current-code inspection. The NEXT ACTION is satisfied; no duplicate exists.
 
 ## GAP-085 — 021C implementer: civilization walkthrough UI not built (deferred pending 021A Simulation Center) (2026-10-06)
 
@@ -1935,7 +1935,7 @@ IMPACT: none yet — all changes are additive and non-overlapping. Risk is at co
 
 NEXT ACTION: parent coordinates commit order (022A then 022B, or single unit). 022B's diff reviewer should verify no 022A regressions.
 
-STATUS: OPEN — recorded 2026-10-07 by the 022B implementer (standing rule).
+STATUS: CLOSED 2026-10-07 via NF-WF-047A evidence audit. Receipt: committed as single unit (`d9c2e6f`) — "Committed as single unit (parallel implementers, interleaved shared files)"; 022A diff APPROVE_WITH_FINDINGS (F1 P2 fixed); 022B diff APPROVE_WITH_FINDINGS (3 P3). All changes additive and non-overlapping per the gap's own EVIDENCE section. The commit-time conflict risk cannot materialize.
 
 ## GAP-088 — VM replaced mid-022C; PostgreSQL/Redis reinstalled (2026-10-07)
 

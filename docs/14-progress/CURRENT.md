@@ -8,6 +8,30 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
 ## Current dispatch — 2026-10-07 (novel-scoped workflow history repaired)
 
+### Accepted external follow-up — 2026-10-08
+
+The author accepted integration of `work/nf-wf047-external-follow-up`
+through `89d57f5`. A/B audit and fixture amendments are integrated; C's
+bounded three-caller parser repair received separate local source review
+APPROVE. Local checks on that exact source passed: three API files32/32,
+API typecheck0 and lint on the five affected source/test files0. See the
+047C local acceptance receipt; this is not a fresh full release battery.
+Separate integration-handoff review: `review_mutations_034` APPROVE;
+documentation diff check passed and source/test blobs still match `89d57f5`.
+F is an integrated proposal, not an author-selected SCALE/quota policy.
+E's Ubuntu preparation receipt remains reported host evidence, not a
+locally repeated drill or final release acceptance.
+
+Next external work: create D's explicit missing-input receipt for GAP-018
+if no authorized sanitized dump is available; then prepare a reviewed E
+scope amendment to replace the non-isolated worker-smoke evidence
+(GAP-117) with an owned isolated rerun. Do not restart completed A/B/C/F
+work or migrate the remaining loader sites without a bounded new contract.
+GAP-039/063 decisions, human GAP-051, live credentials/deployment and local
+Engram registration remain author-owned. Runtime Engram attribution is
+unavailable; this is the compact fallback checkpoint, not an MCP save.
+This dispatch supersedes the initial 047 launch instructions below.
+
 ### External follow-up dispatch — NF-WF-047
 
 The author requested a delegated workflow and prompt for remaining work.

@@ -33,6 +33,24 @@ Record actual actor/session handles and requested/resolved models before dispatc
 unknown serving identities remain `MODEL_UNVERIFIED`.
 Engram topic: `novelforge-ai/nf-wf-047/<child>/<role>`; no save is claimed by this plan.
 
+## Resume boundary — accepted integration, 2026-10-08
+
+Submission `89d57f5` is integrated with author acceptance. A/B audit and
+amendment, C's reviewed parser repair and F's decision brief are complete
+within their bounded scopes. Do not replay the original launcher below.
+C's local receipt is32/32 scoped tests plus API typecheck and affected-file
+lint; E's larger Ubuntu receipt is reported evidence, not a fresh local rerun.
+
+Resume with D's missing-input receipt (no populated-upgrade closure without
+the authorized sanitized dump) and a separately reviewed E scope amendment
+for GAP-117: the earlier smoke drained shared Redis jobs and cannot establish
+owned queue isolation. Rerun only the affected worker smoke against verified
+dedicated native Redis and scratch PostgreSQL resources; freeze exact config,
+job, log and cleanup ownership before starting workers. Keep SCALE/quota,
+human accessibility, live credentials and production decisions local.
+Prepare a new work branch from current main, submit independently reviewed
+receipts and push for local acceptance. Do not merge main externally.
+
 ## Global constraints
 
 - Read START-HERE and one operating constitution. Write project artifacts,

@@ -1,5 +1,13 @@
 # NF-WF-047E Native Release Preparation — Receipt
 
+**Local scope annotation — 2026-10-08:** this historical Ubuntu receipt is
+retained as reported preparation evidence. Section6b explicitly consumed
+leftover jobs from shared Redis, so its PASS does not establish the owned
+queue isolation required by NF-WF-047. That isolation check is VERIFY_PENDING
+under GAP-117 until a separately reviewed isolated smoke receipt replaces it.
+Other reported checks retain their original host/revision scope; no local
+rerun or production readiness is implied by integrating this document.
+
 **Task:** NF-WF-047E "Native Release Preparation" (047D BLOCKED → explicitly limited form)
 **Implementer:** separate actor (047E implementer; backends MODEL_UNVERIFIED per GAP-013)
 **Baseline:** branch `work/nf-wf047-external-follow-up` at `444ec38` (verify at final rerun)

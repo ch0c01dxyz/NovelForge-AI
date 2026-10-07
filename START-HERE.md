@@ -42,7 +42,10 @@ Independent external preparation may proceed through
 [NF-WF-047](docs/implementation/EXTERNAL-FOLLOW-UP-WORKFLOW.md): evidence audit,
 fixture amendment, test-environment diagnosis, conditional populated-upgrade
 investigation, native release preparation and proposal-only SCALE/quota research.
-Start with 047A and freeze/review each child contract before dispatch.
+A/B/C and F's proposal are now integrated through `89d57f5` (2026-10-08).
+Do not redispatch them. Continue with D's missing-input disposition and
+E's isolated worker-smoke follow-up (GAP-117); freeze/review exact child
+scope before execution. CURRENT owns acceptance and remaining local gates.
 [NF-WF-041](tasks/NF-WF-041-novel-scoped-workflow-history.md)
 resolves GAP-034 and GAP-116 with scoped tests and separate review.
 [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)

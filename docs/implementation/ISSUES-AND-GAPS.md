@@ -2414,3 +2414,27 @@ Resolution: response generation guards load/cancel success and errors; selected
 workspace/run changes and unmount invalidate requests, and a separate cancel
 token protects newer busy state. Final panel7/7 within web44/44; typecheck/lint/
 build0 and separate exact-diff review APPROVE. No server policy changes.
+
+## GAP-117 — 047E worker smoke consumed shared Redis jobs
+
+Status: OPEN / P2 (release-preparation evidence scope), 2026-10-08.
+Owner: NF-WF-047E isolated-smoke follow-up; separate reviewer required.
+Source: external submission `a83be72`, retained in `89d57f5`;
+`docs/implementation/047E-native-release-receipt.md` section6b.
+DOCUMENTED: the worker smoke started five workers and observed a heartbeat,
+but also drained leftover `novel.chapter_published` fan-out jobs from shared
+Redis. The workflow requires owned queues/resources and must not consume
+unrelated jobs. The earlier PASS is therefore not isolated-smoke acceptance.
+This is a receipt-based finding, not a locally repeated incident. Production
+data impact is UNKNOWN; no production-data loss or application defect is asserted.
+Integration accepts the source changes and retains historical host receipts;
+it does not close this isolation gate or approve production deployment.
+
+Next: freeze/review a bounded E scope amendment; use an owned dedicated native
+Redis instance and disposable PostgreSQL database, verify all worker connections
+use those resources, and observe completion of a uniquely attributed test job.
+Do not flush shared Redis, consume existing queues or alter production workers.
+Closure: exact configuration/target ownership and job lifecycle receipts,
+proof of isolation from shared queues, cleanup of owned resources only, and
+independent review. Keep failed/non-isolated attempts as historical evidence.
+Safe independent work: D's missing-dump disposition and local product decisions.

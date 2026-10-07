@@ -7,7 +7,10 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: IMPLEMENTED (contract review 2026-10-07 — APPROVE, 4 P3 non-blocking; Phase 1 diagnostic APPROVED; Phase 2 scope APPROVED; Phase 2 diff review APPROVE no findings; committed 119e394; GAP-081/082 closed by coordinator in 444ec38; pushed to origin). Scope amendment (2026-10-08, reviewed-findings repair) APPROVED after independent review — parseEnv repair + regression tests IN PROGRESS, pending final diff review.
+Status: VERIFIED for the bounded three-caller repair. Submission `89d57f5`
+contains the parseEnv repair and eight committed regressions from `e0cc98f`.
+Local source diff review APPROVE and scoped verification passed on 2026-10-08;
+the author accepted integration. Historical milestones are retained below.
 Milestone / capability IDs: M8 / CAP-19 (repeatable test setup)
 Implementer role / requested and resolved model: Phase 1 (diagnosis) and Phase 2
 (pilot repair) — separate subagent actors dispatched by the 047 coordinator
@@ -21,19 +24,20 @@ and the implementers); serving identities MODEL_UNVERIFIED per GAP-013.
 Verdicts: contract APPROVE (4 P3); Phase 1 diagnostic APPROVE (1 P3);
 Phase 2 scope APPROVED; Phase 2 diff APPROVE (no findings). Scope-amendment
 reviewer: separate subagent actor (same identity note); verdict
-APPROVE_WITH_FINDINGS (1P2+3P3 folded in). Final diff review of the repair:
-PENDING (explicitly not yet reviewed).
+APPROVE_WITH_FINDINGS (1P2+3P3 folded in). Final source diff review of the
+repair: APPROVE by separate local actor `review_mutations_034` on 2026-10-08.
+No new serving-model identity is asserted by this review record.
 Readiness evidence / unresolved decisions / parent acceptance owner: 047A audit confirmed GAP-081/082 are workaround-only with undiagnosed root cause → 047C PROCEED (workflow 047C section). Parent coordinator `047-coordinator`; parent acceptance: local author.
-Frozen review manifest / exact artifact paths and identity (committed):
-- `apps/api/src/test-utils/resolve-test-database-url.ts` (blob 68309dd4 at
-  HEAD `a83be72`; working tree: parseEnv repair, pending final review)
-- `apps/api/src/test-utils/resolve-test-database-url.test.ts` (NEW,
-  uncommitted; pending final review)
-- `tasks/NF-WF-047C-diagnostic-receipt.md` (blob a7cd59d5, committed 119e394)
-- `tasks/NF-WF-047C-test-environment-stability.md` (blob ef76bf3a at HEAD;
-  working tree: scope amendment + this reconciliation, pending final review)
-This manifest does not hash itself.
-Baseline revision / local changes to preserve: branch `work/nf-wf047-external-follow-up` at current HEAD; preserve existing local changes; do NOT merge to main.
+Frozen review manifest: submitted source revision `89d57f5`, repair `e0cc98f`.
+- `apps/api/src/test-utils/resolve-test-database-url.ts` — blob `166392ad5b89dd1d6534c276c8cf4c6766205b13`.
+- `apps/api/src/test-utils/resolve-test-database-url.test.ts` — blob `91c68f660bedf6e70653d03b82104cdb8ed025a4`.
+- Caller paths at that revision: `apps/api/src/branches.test.ts`,
+  `apps/api/src/selective-restore.test.ts`, `apps/api/src/e2e/setup.ts`.
+- Diagnostic: `tasks/NF-WF-047C-diagnostic-receipt.md` — blob `a7cd59d541e0aaedf680681a75811a4ccfc9b547`.
+The contract is identified by path and submission revision, without self-hashing.
+Baseline: external branch submitted through `89d57f5`; the author accepted
+local integration on 2026-10-08. Earlier no-merge instructions remain
+historical external-worker boundaries; subsequent workers still require local acceptance.
 Engram checkpoint topic key / last confirmed observation reference: `novelforge-ai/nf-wf-047/047C/<role>`; confirm save success; if unavailable, report GAP-021 and keep the fallback in this task file.
 
 ## Goal and reason
@@ -325,3 +329,25 @@ work branch (passphrase at that time); do not merge to main.
 
 **Engram:** unavailable on this host (GAP-021); task-file fallback records
 in this contract. No session ID invented.
+
+## Local acceptance receipt — 2026-10-08
+
+OBSERVED on `89d57f5` using the existing Windows PostgreSQL16 Docker5433
+and Redis6379 services, dedicated scratch databases and no author-data reset:
+
+- `pnpm --filter @novelforge/api exec vitest run src/test-utils/resolve-test-database-url.test.ts src/selective-restore.test.ts src/branches.test.ts --no-file-parallelism`: exit0, three files, 32/32 tests (eight helper regressions).
+- `pnpm --filter @novelforge/api exec tsc --noEmit`: exit0.
+- `pnpm exec eslint apps/api/src/test-utils/resolve-test-database-url.ts apps/api/src/test-utils/resolve-test-database-url.test.ts apps/api/src/selective-restore.test.ts apps/api/src/branches.test.ts apps/api/src/e2e/setup.ts`: exit0.
+
+Logs: host `TEMP/novelforge-review-89d57f5`. The source review by the separate
+`review_mutations_034` actor approved both prior P2 repairs and found one P3
+stale-handoff issue, corrected by this acceptance amendment. No fresh full
+API/worker/web battery, E2E loop, build, live provider or production acceptance
+is claimed. Integration handoff edits affect documentation only.
+
+Historical pre-submission manifest: at `a83be72`, helper blob `68309dd4`
+and contract blob `ef76bf3a` preceded the repair; the new test and amended
+helper were then uncommitted and final review pending. Those descriptions
+were accurate for that boundary and do not describe the accepted submission.
+The earlier STOP scope-freeze note is historical; the later reviewed scope
+amendment and submitted repair supersede it.

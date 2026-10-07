@@ -43,6 +43,12 @@ subsequent bounded children cover GAP-042, GAP-081/082 diagnosis, conditional
 GAP-018 investigation and native release preparation. GAP-039/063 research
 produces proposals only until local decisions are recorded. Child contracts
 require separate review and verified readiness before coding.
+Update 2026-10-08: external submission through `89d57f5` is accepted.
+A/B/C and F's proposal are integrated; C source review APPROVE with scoped
+32/32 local tests, API types and affected-file lint0. D still needs an
+authorized sanitized dump or an explicit blocked receipt. E's historical
+worker smoke consumed shared Redis jobs; GAP-117 requires isolated evidence
+before counting that smoke as compliant. No full release acceptance follows.
 NF041 resolves GAP-034 novel-scoped history/approval selection and GAP-116 stale
 detail/cancel responses with scoped API67/web44 tests, lint/typechecks/build0 and
 separate review. NF039's full battery is historical at712cca6; CURRENT

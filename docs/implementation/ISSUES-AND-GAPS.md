@@ -1179,7 +1179,11 @@ E2E success proves its backend sequence only, not the exact current UI loop.
 
 ## GAP-042 — NF-WF-011 `FIXTURE_REVISIONS = 30` is not exactly attainable through real service paths (2026-10-05)
 
-Status: OPEN (documented limitation; normative constraint still satisfied).
+Status: CLOSED by NF-WF-047B (2026-10-07, commit 98ef8fb, branch work/nf-wf047-external-follow-up).
+
+CLOSURE EVIDENCE: `tasks/NF-WF-011-author-preview-e2e.md` gained a dated "## Amendments (2026-10-07, NF-WF-047B)" section (51 insertions, 0 deletions — append-only, original text preserved verbatim with SUPERSEDED markers): the exact-30 claim is superseded by the normative floor "at least 30 revisions"; the existing guard (`long-novel.fixture.ts:449-453`) is unchanged; Invariant 4 attribution (every measured row through real service paths) re-affirmed; the misleading "(10 chapters per revision)" and "30 revisions × 7 scopes" ratios reconciled. Contract APPROVED; diff review APPROVE (1 P3 informational, non-blocking).
+
+The original defect description below is historical.
 
 OBSERVED: the NF-WF-011 contract pins `FIXTURE_REVISIONS = 30`
 ("10 chapters per revision"). The product's revision machinery makes an

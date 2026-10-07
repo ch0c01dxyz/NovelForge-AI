@@ -929,3 +929,55 @@ The E2E loop replays the UI's exact API sequence, now numbered:
 The loop file's header deviation note is extended (not deleted) to record
 that the generation deviation is now a ratified amendment, keeping the
 original note as history.
+
+## Amendments (2026-10-07, NF-WF-047B)
+
+This section amends the frozen contract above to close GAP-042. The
+original invariant text is preserved verbatim with SUPERSEDED markers;
+nothing above is edited in place. Review record: NF-WF-047B contract
+APPROVED (2026-10-07, contract review — APPROVE, 2 P3 observations
+non-blocking); implementation verified (append-only; `git diff --check`
+clean); separate diff review APPROVE (2026-10-07, 1 P3 informational,
+non-blocking).
+
+### Amendment — Invariant 3 revision-count semantics (GAP-042)
+
+SUPERSEDED (original Invariant 3 exact-count claims, preserved):
+
+> - `FIXTURE_CHAPTERS = 300`, `FIXTURE_REVISIONS = 30` (10 chapters
+>   per revision — every measured row is attributable to a real
+>   revision; no revision-less rows for measured tables).
+
+> 30 revisions × 7 scopes give the memory rebuild real multi-revision work.
+
+AMENDED semantics: `FIXTURE_REVISIONS = 30` is a normative FLOOR, not
+an exact count. The fixture MUST produce at least 30 revisions. The
+existing guard (`apps/api/src/e2e/long-novel.fixture.ts:449-453`,
+verified by source inspection — `if (revisionCount < FIXTURE_REVISIONS)
+throw ...`) is the enforcement, and it is unchanged by this amendment.
+
+Why the floor, not the exact count — DOCUMENTED from GAP-042
+(2026-10-05), not freshly observed: the product's revision machinery
+makes an exact count of 30 unattainable through the real service stack
+the fixture MUST use. Every covered-table mutation advances the head by
+exactly one revision (`advanceHead`, called by `advanceForMutation`
+from every service — `chapter.create`, `chapter.save`, `fact.create`,
+outline approval, character/thread/event creation all advance).
+Building the fixture through the real services yields roughly 4,000
+revisions. The exact ratio is a product-semantics artifact, not a
+fixture choice: roughly 13 revisions per chapter, not "10 chapters per
+revision" — that parenthetical is superseded.
+
+Attribution re-affirmed (Invariant 4's normative requirement): every
+measured row is written through real service paths; the fixture does
+NOT batch rows revision-lessly — that would violate Invariant 4. The
+measurement receipt records the actual revision count observed.
+
+"30 revisions × 7 scopes" is superseded by minimum semantics: the
+floor guarantees the memory rebuild has real multi-revision work; the
+observed count (roughly 4,000) exceeds it — it does not undermine it.
+
+FORBIDDEN by this amendment: changing the fixture builder, lowering
+the floor below 30, reducing the dataset, inventing a revision count,
+or weakening temporal/recovery evidence. Any of these requires a
+separately reviewed scope amendment.

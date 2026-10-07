@@ -817,7 +817,8 @@ original invariant text is preserved verbatim with SUPERSEDED markers;
 nothing above is edited in place. Review record: NF-WF-045 contract
 APPROVED (2026-10-07, contract review — APPROVE, 2 P3 observations
 non-blocking); implementation verified (loop 3/3 pass on the disposable
-E2E database; tsc + eslint clean); separate diff review pending.
+E2E database; tsc + eslint clean); separate diff review APPROVE
+(2026-10-07, 2 P3 observations non-blocking).
 
 ### Amendment A — Invariant 2 step 1 (generation)
 

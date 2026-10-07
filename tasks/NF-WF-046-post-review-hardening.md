@@ -11,7 +11,7 @@ Milestone / capability IDs: M9 (post-review hardening; author directives on `c03
 Implementer role / requested and resolved model: separate subagent actor (coordinator-dispatched); resolved model UNKNOWN — backends MODEL_UNVERIFIED per GAP-013
 Reviewer role / requested and resolved model: separate subagent actor (coordinator-dispatched, distinct from implementer); resolved model UNKNOWN — backends MODEL_UNVERIFIED per GAP-013
 Readiness evidence / unresolved decisions / parent acceptance owner: author reviewed `c03a171` locally and issued 5 fix directives + 1 clarification (2026-10-07). Parent coordinator.
-Frozen review manifest / exact artifact paths and identity: (set at implementation dispatch)
+Frozen review manifest / exact artifact paths and identity: branch `work/gap040-gap043`, commit `9265822` ("NF-WF-046: Post-review hardening of NF-WF-042/044/045"). Artifacts: `apps/api/src/e2e/author-preview.loop.test.ts` (Fix 1+2), `apps/api/src/e2e/gates.test.ts` (Fix 3), `tasks/NF-WF-042-gap040-cross-branch-guards.md`, `tasks/NF-WF-044-gap043-stale-provenance-tests.md`, `tasks/NF-WF-045-gap041-ui-flow-alignment.md`, `tasks/NF-WF-046-post-review-hardening.md`, `START-HERE.md`, `docs/14-progress/CURRENT.md`, `docs/implementation/DELIVERY-PLAN.md`, `docs/implementation/ISSUES-AND-GAPS.md` (Fix 4). Diff review: separate actor, APPROVE 2026-10-07 (1 P3 informational).
 Baseline revision / local changes to preserve: `c03a171` on branch `work/gap040-gap043` (6 commits on `1a3452b`); do NOT merge to main.
 Engram checkpoint topic key / last confirmed observation reference: (coordinator-owned)
 

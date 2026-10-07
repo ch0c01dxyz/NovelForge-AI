@@ -4,8 +4,8 @@
  * Replays the novel page's generation surface EXACT API sequence against
  * the real app (buildApp + real services, fake gateway adapter per
  * GAP-028): generate (workflow run) → drive/approve → save chapter →
- * canon decisions → final-text-review → setStatus PUBLISHED → next-chapter
- * continuity → checkpoint/restore.
+ * canon decisions → final-text-review → publication/publish →
+ * public reader → next-chapter continuity → checkpoint/restore.
  *
  * UI↔E2E DRIFT TRIPWIRE (contract P3 observation 2): this loop mirrors the
  * generation surface method-for-method. If any of these UI methods changes
@@ -31,18 +31,32 @@
  * - FindingsPanel → POST
  *   /api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/final-text-review
  *   { chapterVersionId }
- * - novel page setStatus → PATCH
- *   /api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/status
- *   { status }
+ * - novel page publish() → POST
+ *   /api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/publication/publish
+ *   (the 012 release path; creates the Publication row the public reader
+ *   resolves — GAP-046)
+ * - (public reader, anonymous) → GET /api/public/novels/:slug/chapters/:number
+ *   must serve the pinned chapterVersion's content for the published chapter
  *
- * DEVIATION (recorded as GAP-041 before the workaround): the contract's
- * Invariant 2 step 1 pins POST /api/workspaces/:workspaceId/generate as
- * "starts the chapter workflow run". That route returns a bare generation
- * (no run exists to drive or approve), and the UI never calls it for
- * chapter generation — GenerationPanel starts runs through the workflow
- * run route above. The loop implements the UI's ACTUAL sequence (the
- * contract's normative "replays the UI's EXACT API sequence"); POST
- * /generate is not called here.
+ * DEVIATION (recorded as GAP-041 before the workaround; RATIFIED by the
+ * NF-WF-011 contract's "Amendments (2026-10-07, NF-WF-045)" section — the
+ * original note below is preserved as history): the contract's Invariant 2
+ * step 1 pins POST /api/workspaces/:workspaceId/generate as "starts the
+ * chapter workflow run". That route returns a bare generation (no run
+ * exists to drive or approve), and the UI never calls it for chapter
+ * generation — GenerationPanel starts runs through the workflow run route
+ * above. The loop implements the UI's ACTUAL sequence (the contract's
+ * normative "replays the UI's EXACT API sequence"); POST /generate is not
+ * called here.
+ *
+ * AMENDMENT HISTORY (NF-WF-045, 2026-10-07): the contract's Invariant 2
+ * step 6 pinned PATCH .../chapters/:chapterId/status { status: "PUBLISHED" }
+ * (the 010 gate). The UI's novel page publish() posts to the 012 release
+ * path (POST .../publication/publish) instead — the same review gate
+ * (assertPublishReviewGate) runs on both, and the publish route creates the
+ * Publication row the public reader resolves. The loop now replays the
+ * UI's actual publication call and proves readability through the 013
+ * public reader (new step 6b), not just the PUBLISHED status flag.
  */
 import { createHash } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -196,8 +210,9 @@ afterAll(async () => {
 describe("author-preview E2E loop (G4 + G6)", () => {
   it("asserts the 409 gate path FIRST: a HARD policy violation blocks publication", async () => {
     // The deliberately-failing chapter: HARD COOLDOWN violated → FAIL →
-    // setStatus PUBLISHED → 409 HARD_POLICY_VIOLATION (state-consumers
-    // recipe, adapted to the loop novel).
+    // POST .../publication/publish → 409 HARD_POLICY_VIOLATION (the UI's
+    // novel page publish() call; the shared assertPublishReviewGate runs
+    // on this path — same gate the old PATCH .../status enforced).
     //
     // Uses its OWN novel: the HARD policy must not leak into the full
     // loop's novel (which needs a PASS verdict to reach PUBLISHED).
@@ -265,15 +280,14 @@ describe("author-preview E2E loop (G4 + G6)", () => {
     for (const v of violations) assertFindingEvidence(v);
 
     const blocked = await api(
-      "PATCH",
-      `/api/workspaces/${fws}/novels/${fnovel}/chapters/${chB.chapterId}/status`,
-      { status: "PUBLISHED" },
+      "POST",
+      `/api/workspaces/${fws}/novels/${fnovel}/chapters/${chB.chapterId}/publication/publish`,
     );
     expect(blocked.statusCode).toBe(409);
     expect((asObj(blocked) as { error: string }).error).toBe("HARD_POLICY_VIOLATION");
   }, 120_000);
 
-  it("runs the full 8-step UI sequence: generate → approve → save → canon → review → publish → continuity → checkpoint/restore", async () => {
+  it("runs the full 9-step UI sequence: generate → approve → save → canon → review → publish → public reader → continuity → checkpoint/restore", async () => {
     const manuscript = createManuscriptServices(db, createAuditService(db), {});
     const sctx = { actorUserId: ownerId, workspaceId, novelId };
 
@@ -376,13 +390,69 @@ describe("author-preview E2E loop (G4 + G6)", () => {
       expect(a.evidence.length).toBeGreaterThan(0);
     }
 
-    // -- STEP 6: novel page setStatus → PUBLISHED --
+    // -- STEP 6: novel page publish() → POST .../publication/publish --
+    // The UI's actual publication call (012 release path): creates the
+    // Publication row the public reader resolves. The shared
+    // assertPublishReviewGate runs here (PASS receipt pinned in step 5).
     const published = await api(
-      "PATCH",
-      `/api/workspaces/${workspaceId}/novels/${novelId}/chapters/${ch1.id}/status`,
-      { status: "PUBLISHED" },
+      "POST",
+      `/api/workspaces/${workspaceId}/novels/${novelId}/chapters/${ch1.id}/publication/publish`,
     );
     expect(published.statusCode).toBe(200);
+    const pubRow = await db.publication.findUniqueOrThrow({
+      where: { chapterId: ch1.id },
+      select: { status: true, chapterVersionId: true },
+    });
+    expect(pubRow.status).toBe("PUBLISHED");
+    expect(pubRow.chapterVersionId).toBe(versionId);
+    // Q4: first publish flips the DRAFT novel to ACTIVE (idempotent) —
+    // the public reader only resolves ACTIVE novels.
+    const novelRow = await db.novel.findUniqueOrThrow({
+      where: { id: novelId },
+      select: { status: true, slug: true },
+    });
+    expect(novelRow.status).toBe("ACTIVE");
+
+    // -- STEP 6b: public-reader proof — the published chapter is readable --
+    // Publication is proven through the 013 public reader (anonymous, no
+    // cookie), not the status flag. The reader serves the PINNED
+    // chapterVersion's content (012 Invariant 4), so the returned content
+    // must EQUAL the version saved in step 3 — verbatim, non-empty.
+    const readerApi = async (
+      method: "GET",
+      url: string,
+    ): Promise<ApiResult> => {
+      const res = await e2e.app.inject({ method, url });
+      let parsed: unknown = null;
+      try {
+        parsed = res.body ? JSON.parse(res.body) : null;
+      } catch {
+        parsed = res.body;
+      }
+      return { statusCode: res.statusCode, body: parsed };
+    };
+    const read = await readerApi("GET", `/api/public/novels/${novelRow.slug}/chapters/1`);
+    expect(read.statusCode).toBe(200);
+    const readChapter = (asObj(read) as { chapter: { content: string; number: number } }).chapter;
+    expect(readChapter.number).toBe(1);
+    expect(typeof readChapter.content).toBe("string");
+    expect(readChapter.content.length).toBeGreaterThan(0);
+    // The reader serves the PINNED version's stored content (sanitized on
+    // save) — compare against the version row, not the raw workflow prose.
+    const pinnedContent = (
+      await db.chapterVersion.findUniqueOrThrow({
+        where: { id: versionId },
+        select: { content: true },
+      })
+    ).content;
+    expect(pinnedContent.length).toBeGreaterThan(0);
+    expect(readChapter.content).toBe(pinnedContent);
+    // Negative (no-oracle rule, 013): a DRAFT novel's chapter is not
+    // publicly resolvable — 404 NOT_FOUND. The FAIL novel above never
+    // published, so it stays DRAFT.
+    const readDraft = await readerApi("GET", `/api/public/novels/e2e-loop-409/chapters/1`);
+    expect(readDraft.statusCode).toBe(404);
+    expect((asObj(readDraft) as { error: string }).error).toBe("NOT_FOUND");
 
     // -- STEP 7: next-chapter continuity — 009 N→N+1 over settled state --
     // Chapter 1's settle revision is the max of its manuscript and canon-

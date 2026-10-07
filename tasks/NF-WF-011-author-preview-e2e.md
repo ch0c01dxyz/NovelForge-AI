@@ -809,3 +809,100 @@ is an additive record — no normative contract changes.)
   interim failure was the pre-existing `writer-ui.test.ts` race flake,
   GAP-044). New gaps: GAP-043 (G9 conditional tier half), GAP-044
   (pre-existing race flake). Lint + typechecks clean. Ready to commit.
+
+## Amendments (2026-10-07, NF-WF-045)
+
+This section amends the frozen contract above to close GAP-041. The
+original invariant text is preserved verbatim with SUPERSEDED markers;
+nothing above is edited in place. Review record: NF-WF-045 contract
+APPROVED (2026-10-07, contract review — APPROVE, 2 P3 observations
+non-blocking); implementation verified (loop 3/3 pass on the disposable
+E2E database; tsc + eslint clean); separate diff review pending.
+
+### Amendment A — Invariant 2 step 1 (generation)
+
+SUPERSEDED (original Invariant 2 step 1, preserved):
+
+> 1. `POST /api/workspaces/:workspaceId/generate`
+>    (`orchestrator-routes.ts:56`) with `{ agentKey, instruction,
+>    novelId }` — starts the chapter workflow run.
+
+AMENDED step 1: `POST /api/workspaces/:workspaceId/workflows/:workflowId/run`
+with `{ novelId, input: { chapterNumber, outlineRef }, idempotencyKey }`,
+where `workflowId` is resolved by key `chapter-generation-review`
+(`runs.resolveWorkflowId`) and `idempotencyKey` is fresh per intentional
+start (the backend dedupes a retried submit to the existing run — 200 path).
+
+Review record (GAP-041): three independent checks refute the `/generate`
+pin — `/generate` returns a bare generation with no run row (step 2's
+drive/approve is unimplementable from it); the UI (`GenerationPanel.vue`)
+never calls it for chapter generation; the contract's own Goal section
+already describes "generate (workflow run, fake gateway)". The implementer
+deviation (workflow run route via the real `chapter-generation-review`
+template, `createTestDriver`, approve at AWAITING_APPROVAL) was recorded in
+GAP-041 BEFORE the workaround per Invariant 10 and is ratified by this
+amendment. Invariant 2 step 7's "Next chapter: `POST /generate` for chapter
+N+1" is likewise amended to the run route.
+
+### Amendment B — Invariant 2 step 6 (publication)
+
+SUPERSEDED (original Invariant 2 step 6, preserved):
+
+> 6. `PATCH /api/workspaces/:workspaceId/novels/:novelId/chapters/
+>    :chapterId/status` with `{ status: "PUBLISHED" }`
+>    (`manuscript-routes.ts:138`; the 010 gate runs here — a `FAIL`
+>    receipt or missing receipt MUST 409, and the loop asserts the
+>    409 path on a deliberately-failing chapter before the passing
+>    one).
+
+AMENDED step 6: `POST /api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/publication/publish`
+(the 012 release path — the exact call the novel page's `publish()` makes,
+`index.vue:819`). This creates the Publication row the public reader
+resolves (GAP-046). The gate assertions move with it:
+
+- The deliberate-FAIL chapter asserts the publish route's typed refusal:
+  409 `HARD_POLICY_VIOLATION` via the shared `assertPublishReviewGate`
+  (`manuscript.ts:380` — the same gate the PATCH route enforced, so the
+  UI's `REVIEW_STALE` / `HARD_POLICY_VIOLATION` mapping in `index.vue:827–834`
+  is preserved). The assertion names the code, never "409 or something".
+- The PASS chapter's publish asserts 200 and a Publication row with status
+  PUBLISHED and `chapterVersionId` equal to the pinned version (not merely
+  `chapter.status === "PUBLISHED"`).
+
+### New step 6b — public-reader proof (the readability invariant)
+
+Publication is proven through the reader, not the status flag:
+
+1. The loop novel is ACTIVE before the reader step (013's resolver only
+   resolves ACTIVE novels). No manual promotion: the publish route flips
+   DRAFT→ACTIVE on first publish (Q4, `publication.ts` — idempotent), and
+   the loop asserts `novel.status === "ACTIVE"` after step 6.
+2. `GET /api/public/novels/:slug/chapters/:number` (anonymous, no cookie)
+   returns 200 for the published chapter.
+3. The returned `chapter.content` EQUALS the pinned chapterVersion's stored
+   content (compared against the version row — the content is sanitized on
+   save, so the raw workflow prose is not the comparison target). This
+   proves the reader serves the frozen version (012 Invariant 4). The
+   assertion requires non-empty, verbatim-equal content; a 200 with empty
+   or mismatched content fails.
+4. Negative: the same URL for a DRAFT novel returns 404
+   `{ error: "NOT_FOUND" }` — the no-oracle rule (013). The loop uses the
+   deliberately-failing chapter's novel (never published, stays DRAFT).
+
+### Amended loop sequence (acceptance mapping)
+
+The E2E loop replays the UI's exact API sequence, now numbered:
+
+1. generate — workflow run route + `chapter-generation-review` template
+2. drive → AWAITING_APPROVAL; approve (`decideRun`)
+3. save chapter (PUT → creates the `ChapterVersion`)
+4. canon decisions (create + approve application)
+5. final-text-review PASS
+6. publication/publish (POST → Publication row PUBLISHED)
+6b. public reader — 200 with pinned content; 404 NOT_FOUND negative
+7. next-chapter continuity (009 N→N+1 over settled state)
+8. checkpoint → restore preview → restore apply (non-destructive)
+
+The loop file's header deviation note is extended (not deleted) to record
+that the generation deviation is now a ratified amendment, keeping the
+original note as history.

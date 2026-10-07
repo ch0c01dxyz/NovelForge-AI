@@ -726,67 +726,12 @@ describe("branch switch", () => {
 // ---------------------------------------------------------------------------
 // GAP-040: branch-aware as-of
 // ---------------------------------------------------------------------------
-
-describe("GAP-040 branch-aware as-of", () => {
-  it("cross-branch asOfRevisionId → 400 INVALID_INPUT; same-branch as-of works", async () => {
-    const fx = await seedFixture();
-    await makeCheckpoint(fx, "base");
-    const created = await api(
-      "POST",
-      `/api/workspaces/${fx.workspaceId}/novels/${fx.novelId}/branches`,
-      fx.cookie,
-      { name: "experiment" },
-    );
-    const branchId = (created.json() as { branchId: string }).branchId;
-
-    // A revision on B.
-    await api(
-      "POST",
-      `/api/workspaces/${fx.workspaceId}/novels/${fx.novelId}/branches/${branchId}/switch`,
-      fx.cookie,
-      {},
-    );
-    await makeCheckpoint(fx, "on B");
-    const bRev = await db.revision.findFirstOrThrow({
-      where: { novelId: fx.novelId, branchId },
-      orderBy: { number: "desc" },
-    });
-
-    // Switch back to main; ask memory as-of the B revision → 400.
-    const mainId = (await db.novelBranch.findFirstOrThrow({ where: { novelId: fx.novelId, name: "main" } })).id;
-    await api(
-      "POST",
-      `/api/workspaces/${fx.workspaceId}/novels/${fx.novelId}/branches/${mainId}/switch`,
-      fx.cookie,
-      {},
-    );
-
-    const mem = await api(
-      "POST",
-      `/api/workspaces/${fx.workspaceId}/novels/${fx.novelId}/memory/recall`,
-      fx.cookie,
-      { chapter: 1, asOfRevisionId: bRev.id },
-    );
-    // The route may 404 on missing chapter; the branch refusal must come first as 400.
-    expect([400, 404]).toContain(mem.statusCode);
-    if (mem.statusCode === 400) {
-      expect((mem.json() as { error: string }).error).toBe("INVALID_INPUT");
-    }
-
-    // Same-branch as-of (a main revision) is unaffected.
-    const mainRev = await db.revision.findFirstOrThrow({
-      where: { novelId: fx.novelId, branchId: mainId },
-      orderBy: { number: "desc" },
-    });
-    const mem2 = await api(
-      "POST",
-      `/api/workspaces/${fx.workspaceId}/novels/${fx.novelId}/memory/recall`,
-      fx.cookie,
-      { chapter: 1, asOfRevisionId: mainRev.id },
-    );
-    expect(mem2.statusCode).not.toBe(400);
-  });
-});
+// NF-WF-042: the vacuous test that lived here (non-existent POST
+// /memory/recall, [400, 404] union, .not.toBe(400)-only control) is
+// replaced by src/cross-branch-asof.test.ts — exact 400 INVALID_INPUT
+// negatives + valid controls for all 4 consumers (memory, health,
+// character, timeline), fixture validity proven first, mirrored
+// checked-out=B negative. This block intentionally left empty.
 
 // ---------------------------------------------------------------------------
 // Invariant 9: no publishing from a branch

@@ -855,10 +855,20 @@ and parked approvals by chapterNumber only, mixing same-number chapters from
 different novels. This is a correctness issue as well as truncated history.
 Scope a server+UI follow-up with same-workspace/different-novel negative tests.
 
-Status: OPEN (follow-up task; recorded per NF-WF-007 Invariant 11 and
-contract Q1 resolution).
+NF041 active evidence: UI regression3 failed/1 passed before repair (missing
+query provenance, stale history overwrite, late start emission). First API
+regression failed in incomplete novel fixture creation, not the product filter;
+repair fixture through existing createNovel service before claiming API RED.
+Owner: NF041; contract separately approved; runtime Engram attribution unavailable.
+Corrected API fixture reproduced the actual regression (wrong run ID before limit).
+First post-fix expanded run66/67: only an incorrect outsider403 assertion failed;
+existing gateWorkspace intentionally conceals non-members with404. Preserve that
+authorization behavior and assert exact404; no security workaround or product
+defect inferred from this test expectation. API/web typechecks and lint exit0.
 
-OBSERVED: `GET /api/workspaces/:workspaceId/workflow-runs` filters by
+Status: RESOLVED by NF041 (2026-10-07); historical observations below retained.
+
+Historical observation: `GET /api/workspaces/:workspaceId/workflow-runs` filtered by
 `workflowId` + `limit` only. The NF-WF-007 UI finds runs for a chapter by
 filtering `listRuns` rows client-side on `input.chapterNumber` (the field
 is present on every row, verified). For novels with hundreds of runs this
@@ -871,6 +881,14 @@ query filter (or an `input.<field>` filter) to the list-runs route, with
 the usual validation/test/review. The UI already isolates the filtering
 in one place (`GenerationPanel` chapterHistory computed), so adopting the
 server filter later is a small change.
+
+Resolution: optional novelId UUID/chapterNumber positive-int filters before
+order/limit; chapter filter requires novelId. UI preserves/checks both provenance
+fields and guards stale history/start responses. Workspace inbox/status/limit
+semantics and nonmember404 concealment preserved. Writer-ui12/12 plus unchanged
+definitions/ai-studio55/55, web7 files44/44, API/web typechecks/lint/Nuxt build0;
+separate contract/amendment/exact-diff review APPROVE. See NF041 for failed test
+attempts and corrected fixture/authorization expectations. No full release claim.
 
 ## GAP-035 — NF-WF-008 F5 registration missed `COVERED_TABLES` (found during implementer verification, 2026-10-05)
 
@@ -2334,3 +2352,22 @@ CURRENT while updating its dispatch; diff-check reported whitespace changes.
 Impact: historical record formatting corruption, no product code impact.
 Resolution: restore CURRENT from68facd7 and apply only the exact dispatch
 replacement. Closure: net CURRENT diff versus68facd7 limited to dispatch; diff-check exit0.
+
+## GAP-116 — Late detail/cancellation responses can restore an old run selection
+
+Status: RESOLVED, 2026-10-07. Owner: NF041 reviewed scope amendment.
+Source observation: RunStatusPanel load()/cancel() assign run and emit after
+await without checking current workspace/run or unmount; polling has a stopped
+guard, these sibling paths do not. Impact inferred: old run/approval context can
+reappear after switching selection. Do not claim reproduced until deferred HTTP
+tests run. Next: review bounded amendment, reproduce, guard responses and retest.
+Reproduced before repair: focused panel6 tests,4 failed/2 passed. Old detail
+emitted after run/workspace/clear, old cancellation emitted after run switch.
+Unmount and normal cancellation controls passed before repair; do not count them
+as failing regressions. Scope amendment separately APPROVED.
+Closure: stale detail/cancel and unmount negative tests plus normal selection
+controls, exact-diff review; no server authorization/cancellation changes.
+Resolution: response generation guards load/cancel success and errors; selected
+workspace/run changes and unmount invalidate requests, and a separate cancel
+token protects newer busy state. Final panel7/7 within web44/44; typecheck/lint/
+build0 and separate exact-diff review APPROVE. No server policy changes.

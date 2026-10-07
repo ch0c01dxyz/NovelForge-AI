@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from "vue";
+import { ref, computed, watch, onUnmounted } from "vue";
 /**
  * Run status panel (NF-WF-007 output #2): live run + step rows.
  *
@@ -34,6 +34,8 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const cancelling = ref(false);
 let poller: { stop: () => void } | null = null;
+let responseVersion = 0;
+let cancelRequest = 0;
 
 const isTerminal = computed(() => (run.value ? runs.isTerminal(run.value.status) : true));
 const canCancel = computed(
@@ -123,53 +125,64 @@ function startPolling() {
 }
 
 async function load() {
+  const version = ++responseVersion;
+  run.value = null;
+  error.value = null;
   if (!props.runId) {
-    run.value = null;
+    loading.value = false;
     return;
   }
   loading.value = true;
   error.value = null;
   try {
     const view = await runs.getRun(props.workspaceId, props.runId);
+    if (version !== responseVersion) return;
     run.value = view;
     emit("run-updated", view);
     if (!runs.isTerminal(view.status) && view.status !== "AWAITING_APPROVAL") {
       startPolling();
     }
   } catch (e) {
+    if (version !== responseVersion) return;
     if (e instanceof ApiError && e.status === 404) error.value = t("review.runGone");
     else error.value = e instanceof ApiError ? t("errors.loadFailed") : t("errors.network");
   } finally {
-    loading.value = false;
+    if (version === responseVersion) loading.value = false;
   }
 }
 
 async function cancel() {
   if (!props.runId || cancelling.value) return;
+  const version = ++responseVersion;
   cancelling.value = true;
+  const request = ++cancelRequest;
   try {
     stopPolling();
     const view = await runs.cancelRun(props.workspaceId, props.runId);
+    if (version !== responseVersion) return;
     run.value = view;
     emit("cancelled", view);
     emit("run-updated", view);
   } catch {
+    if (version !== responseVersion) return;
     error.value = t("errors.loadFailed");
   } finally {
-    cancelling.value = false;
+    if (request === cancelRequest) cancelling.value = false;
   }
 }
 
 watch(
-  () => props.runId,
+  () => [props.workspaceId, props.runId],
   () => {
+    cancelRequest++;
+    cancelling.value = false;
     stopPolling();
     void load();
   },
   { immediate: true },
 );
 
-onUnmounted(stopPolling);
+onUnmounted(() => { responseVersion++; cancelRequest++; stopPolling(); });
 
 defineExpose({ reload: load, run });
 </script>

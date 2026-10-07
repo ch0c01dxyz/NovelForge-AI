@@ -6,18 +6,27 @@ exist; integrated product delivery remains PARTIAL**. Historical phase/test
 results below describe their original scope, not completion of all retained
 requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
-## Current dispatch — 2026-10-07 (automated verification complete)
+## Current dispatch — 2026-10-07 (novel-scoped workflow history repaired)
+
+NF041 is IMPLEMENTED/REVIEWED: GAP-034 novel+chapter filters before limit,
+defensive UI provenance and stale history/start protection; GAP-116 downstream
+detail/cancel response guards. Scoped API67 tests in two disjoint runs; web7
+files44/44; API/web typechecks, lint and final Nuxt build0. Separate contract,
+amendment and exact-diff review APPROVE. See tasks/NF-WF-041-novel-scoped-workflow-history.md.
+Full battery below is historical evidence at712cca6, not a rerun of NF041.
+Next: freeze bounded GAP-040 exact branch-consumer proof and GAP-043 compiled
+projection proof; GAP-041 UI/E2E alignment and039/063 source decisions remain.
 
 NF-WF-035–038 are IMPLEMENTED/REVIEWED and pushed through5120f68. GAP-110
 scene revisions, GAP-083 Recovery Center and GAP-111–113 integration defects
 are resolved with scoped evidence. The initial36519e2 battery failed; preserve
 its receipt. The68facd7 follow-up also stopped (GAP-114). Reviewed NF040 fixes
-fixture EOL and GAP-044 race proof (30/30; API tsc/lint0). Fresh NF039 at712cca6
+fixture EOL and GAP-044 race proof (30/30; API tsc/lint0). Previous NF039 at712cca6
 is AUTOMATED GREEN: lint/API/web typechecks0; API54 non-E2E files1014/1014;
 web79 files477/477; E2E3 files20/20; axe20 files91/91; additional Nuxt build0.
 API inventory57 files1034 tests is covered in two runs; axe overlaps web.
 See docs/implementation/039-release-verification-2026-10-07.md for exact commands.
-Next: freeze a bounded GAP-034 novel-scoped history/approval selection task;
+GAP-034 is now resolved by scoped NF041 evidence above;
 follow-up branch/projection evidence040/043 and UI/E2E alignment041 remain owed.
 SCALE039/quota063 require validated-source decisions. No platform completion claim.
 Human GAP-051, live deployment/configuration and Engram host registration remain

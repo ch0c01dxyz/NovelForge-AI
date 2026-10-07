@@ -117,13 +117,15 @@ const runWorkflowBody = z.object({
 
 const listRunsQuery = z.object({
   workflowId: uuid.optional(),
+  novelId: uuid.optional(),
+  chapterNumber: z.coerce.number().int().positive().optional(),
   // NF-WF-018A (Invariant 1(d)): the approvals inbox needs to list parked
   // runs reliably, so the run list accepts an optional run-status filter,
   // following the existing optional-`workflowId` pattern. The
   // `workflow:read` gate is unchanged.
   status: z.nativeEnum(WorkflowRunStatus).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
-});
+}).refine((query) => query.chapterNumber === undefined || query.novelId !== undefined);
 
 // Definition instructions may be long; the graph carries instructions and
 // schemas too. Fastify's 1 MB default would reject payloads the schemas
@@ -619,6 +621,8 @@ export function registerDefinitionRoutes(
       actorUserId: actor.userId,
       workspaceId: params.data.workspaceId,
       ...(query.data.workflowId ? { workflowId: query.data.workflowId } : {}),
+      ...(query.data.novelId ? { novelId: query.data.novelId } : {}),
+      ...(query.data.chapterNumber !== undefined ? { chapterNumber: query.data.chapterNumber } : {}),
       ...(query.data.status ? { status: query.data.status } : {}),
       ...(query.data.limit !== undefined ? { limit: query.data.limit } : {}),
     });

@@ -703,7 +703,7 @@ describe("writer UI loop (API-level)", () => {
     expect(await db.workflowRun.count({ where: { workflowId: fx.workflowId } })).toBe(1);
   });
 
-  it("runs-by-chapter: listRuns rows carry input for client-side filtering", async () => {
+  it("runs-by-chapter: listRuns rows retain input provenance", async () => {
     const fx = await seedLoop("filter");
     await parkRun(fx);
     const listed = await app.inject({
@@ -719,5 +719,49 @@ describe("writer UI loop (API-level)", () => {
         (r.input as { chapterNumber?: unknown } | null)?.chapterNumber === fx.chapterNumber,
     );
     expect(mine.length).toBeGreaterThan(0);
+  });
+
+  it("filters novel and numeric chapter before limit without narrowing the workspace inbox", async () => {
+    const fx = await seedLoop("scoped-history");
+    const originalId = await parkRun(fx);
+    const original = await db.workflowRun.findUniqueOrThrow({ where: { id: originalId } });
+    const owner = await db.workspace.findUniqueOrThrow({ where: { id: fx.workspaceId } });
+    const otherNovel = await createPlatformServices({ db, audit: createAuditService(db) }).createNovel({
+      actorUserId: owner.ownerId, workspaceId: fx.workspaceId, title: "Other novel", slug: "other-novel",
+    });
+    const base = {
+      workflowId: fx.workflowId, workflowVersionId: original.workflowVersionId,
+      workflowVersionNumber: original.workflowVersionNumber, workspaceId: fx.workspaceId,
+      status: "AWAITING_APPROVAL" as const, startedAt: new Date(original.startedAt.getTime() + 1000),
+    };
+    await db.workflowRun.createMany({ data: [
+      ...Array.from({ length: 105 }, () => ({ ...base, novelId: otherNovel.id, input: { chapterNumber: 1 } })),
+      { ...base, novelId: fx.novelId, input: { chapterNumber: 2 } },
+      { ...base, novelId: fx.novelId, input: { chapterNumber: "1" } },
+      { ...base, novelId: null, input: { chapterNumber: 1 } },
+    ] });
+    const list = (query: string, cookie = fx.cookie, workspaceId = fx.workspaceId) => app.inject({
+      method: "GET", url: `/api/workspaces/${workspaceId}/workflow-runs?${query}`, headers: { cookie },
+    });
+    const scoped = `workflowId=${fx.workflowId}&novelId=${fx.novelId}&chapterNumber=1&status=AWAITING_APPROVAL&limit=1`;
+    const response = await list(scoped);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().map((r: { id: string }) => r.id)).toEqual([originalId]);
+    expect((await list(`novelId=${fx.novelId}&chapterNumber=1&status=FAILED`)).json()).toEqual([]);
+    expect((await list(`workflowId=${crypto.randomUUID()}&novelId=${fx.novelId}&chapterNumber=1`)).json()).toEqual([]);
+    const global = await list("status=AWAITING_APPROVAL&limit=200");
+    expect(global.json()).toHaveLength(109);
+    expect(global.json().some((r: { novelId: string }) => r.novelId === otherNovel.id)).toBe(true);
+    const foreign = await seedWorkspace(owner.ownerId, "foreign-history");
+    expect((await list(`novelId=${foreign.novelId}&chapterNumber=1`)).json()).toEqual([]);
+    expect((await list(scoped, fx.cookie, foreign.workspaceId)).json()).toEqual([]);
+    const outsider = await seedUser("history-outsider@example.com");
+    expect((await list(scoped, outsider.cookie)).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: `/api/workspaces/${fx.workspaceId}/workflow-runs?${scoped}` })).statusCode).toBe(401);
+    for (const query of ["chapterNumber=1", `novelId=${fx.novelId}&chapterNumber=0`,
+      `novelId=${fx.novelId}&chapterNumber=-1`, `novelId=${fx.novelId}&chapterNumber=1.5`,
+      `novelId=${fx.novelId}&chapterNumber=text`, "novelId=invalid"]) {
+      expect((await list(query)).statusCode, query).toBe(400);
+    }
   });
 });

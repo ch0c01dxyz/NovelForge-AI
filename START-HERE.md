@@ -31,9 +31,11 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** freeze a bounded GAP-034 novel-scoped workflow history and
-approval-selection contract. [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)
-is automated green at712cca6 after reviewed repairs035–038/040; see the exact receipts
+**Current next task:** freeze bounded GAP-040 branch-consumer and GAP-043 compiled
+projection evidence tasks. [NF-WF-041](tasks/NF-WF-041-novel-scoped-workflow-history.md)
+resolves GAP-034 and GAP-116 with scoped tests and separate review.
+[NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)
+is historical automated green at712cca6 after reviewed repairs035–038/040; see the exact receipts
 in CURRENT. GAP-110 scene revisions and GAP-083 Recovery Center wiring are
 implemented and reviewed. Older evidence/contract gaps remain; keep release,
 live deployment and human GAP-051 evidence separate.

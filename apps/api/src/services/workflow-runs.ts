@@ -142,6 +142,8 @@ export interface WorkflowRunServices {
     actorUserId: string;
     workspaceId: string;
     workflowId?: string;
+    novelId?: string;
+    chapterNumber?: number;
     /**
      * NF-WF-018A (Invariant 1(d)): optional run-status filter — the
      * approvals inbox lists `AWAITING_APPROVAL` runs through it.
@@ -649,6 +651,9 @@ export function createWorkflowRunServices(deps: {
         where: {
           workspaceId: input.workspaceId,
           ...(input.workflowId ? { workflowId: input.workflowId } : {}),
+          ...(input.novelId ? { novelId: input.novelId } : {}),
+          ...(input.chapterNumber !== undefined
+            ? { input: { path: ["chapterNumber"], equals: input.chapterNumber } } : {}),
           // NF-WF-018A (Invariant 1(d)): optional status filter — the
           // approvals inbox lists AWAITING_APPROVAL runs through it.
           ...(input.status ? { status: input.status } : {}),

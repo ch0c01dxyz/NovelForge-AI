@@ -30,8 +30,12 @@ NF-WF-037 closes GAP-083 page wiring and GAP-111/112 integration defects.
 Bounded checks and separate reviews passed. NF-WF-038 fixes Windows template
 line endings after a failed battery attempt; reviewed NF040 pins byte fixtures
 and fixes save-race proof. NF039 is automated green at712cca6 (full API inventory
-in54+3 runs, web, axe, typechecks/lint and additional Nuxt build). Next: freeze a
-bounded GAP-034 novel-scoped history/approval-selection contract. Older proof
+in54+3 runs, web, axe, typechecks/lint and additional Nuxt build). Next: freeze
+bounded GAP-040 branch-consumer and GAP-043 compiled-projection proof contracts.
+NF041 resolves GAP-034 novel-scoped history/approval selection and GAP-116 stale
+detail/cancel responses with scoped API67/web44 tests, lint/typechecks/build0 and
+separate review. NF039's full battery is historical at712cca6; no full rerun of
+NF041 claimed. Older proof
 gaps040/043, UI/E2E alignment041 and source decisions039/063 remain. Historical
 queue rows preserve planning context; do not redispatch
 completed implementations. GAP-098 stays closed by author scope decision;

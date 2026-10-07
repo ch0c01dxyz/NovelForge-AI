@@ -42,6 +42,7 @@ export interface RunView {
 export interface RunListItem {
   id: string;
   workflowId: string;
+  novelId: string | null;
   status: string;
   input: unknown;
   startedAt: string;
@@ -135,10 +136,14 @@ export function useWorkflowRuns() {
   async function listRuns(opts: {
     workspaceId: string;
     workflowId?: string;
+    novelId?: string;
+    chapterNumber?: number;
     limit?: number;
   }): Promise<RunListItem[]> {
     const q = new URLSearchParams();
     if (opts.workflowId) q.set("workflowId", opts.workflowId);
+    if (opts.novelId) q.set("novelId", opts.novelId);
+    if (opts.chapterNumber !== undefined) q.set("chapterNumber", String(opts.chapterNumber));
     if (opts.limit !== undefined) q.set("limit", String(opts.limit));
     const suffix = q.toString() ? `?${q.toString()}` : "";
     return api<RunListItem[]>(`/workspaces/${opts.workspaceId}/workflow-runs${suffix}`);

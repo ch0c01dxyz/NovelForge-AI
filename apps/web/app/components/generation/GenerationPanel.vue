@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from "vue";
+import { ref, computed, watch, onUnmounted } from "vue";
 /**
  * Generation panel (NF-WF-007 output #1): start form + run history.
  *
@@ -26,6 +26,7 @@ interface ChapterRef {
 
 interface RunHistoryItem {
   id: string;
+  novelId: string | null;
   status: string;
   input: unknown;
   startedAt: string;
@@ -52,7 +53,8 @@ const outlineId = ref<string>("");
 const targetWords = ref<string>("");
 const styleNotes = ref("");
 const history = ref<RunHistoryItem[]>([]);
-const parkedRun = ref<RunHistoryItem | null>(null);
+let selectionVersion = 0;
+let historyRequest = 0;
 const starting = ref(false);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -68,57 +70,64 @@ function inputChapterNumber(item: RunHistoryItem): number | null {
   return typeof n === "number" ? n : null;
 }
 
-/** Q1: runs-by-chapter found by client-side filtering on input.chapterNumber. */
+/** Verify provenance even when the server has already filtered the list. */
 const chapterHistory = computed(() =>
-  history.value.filter((r) => inputChapterNumber(r) === props.chapter?.number),
+  history.value.filter((r) => r.novelId === props.novelId && inputChapterNumber(r) === props.chapter?.number),
 );
+const parkedRun = computed(() => chapterHistory.value.find((r) => r.status === "AWAITING_APPROVAL") ?? null);
 
-async function refresh() {
-  if (!props.chapter) return;
+async function refresh(version: number) {
+  if (!props.chapter) { loading.value = false; return; }
   loading.value = true;
   error.value = null;
   try {
     const wid = await runs.resolveWorkflowId(props.workspaceId, "chapter-generation-review");
+    if (version !== selectionVersion) return;
     workflowId.value = wid;
     templateMissing.value = wid === null;
   } catch (e) {
+    if (version !== selectionVersion) return;
     if (!(e instanceof ApiError)) error.value = t("errors.network");
     else error.value = t("errors.loadFailed");
   } finally {
-    loading.value = false;
+    if (version === selectionVersion) loading.value = false;
   }
 }
 
 async function loadOutlinesAndHistory() {
   if (!props.chapter || !workflowId.value) return;
+  const version = selectionVersion;
+  const request = ++historyRequest;
+  const { workspaceId, novelId, chapter } = props;
+  const wid = workflowId.value;
   try {
     const { api } = useApi();
     const [ovs, hs] = await Promise.all([
       api<OutlineVersionView[]>(
-        `/workspaces/${props.workspaceId}/novels/${props.novelId}/planning/outline-versions`,
+        `/workspaces/${workspaceId}/novels/${novelId}/planning/outline-versions`,
       ),
-      runs.listRuns({ workspaceId: props.workspaceId, workflowId: workflowId.value, limit: 100 }),
+      runs.listRuns({ workspaceId, workflowId: wid, novelId, chapterNumber: chapter.number, limit: 100 }),
     ]);
+    if (version !== selectionVersion || request !== historyRequest) return;
     outlines.value = ovs;
     const approved = ovs.find((o) => o.status === "APPROVED");
     outlineId.value = approved?.id ?? "";
     history.value = hs.map((h) => ({
       id: h.id,
+      novelId: h.novelId,
       status: h.status,
       input: h.input,
       startedAt: h.startedAt,
     }));
-    parkedRun.value =
-      history.value.find(
-        (r) => r.status === "AWAITING_APPROVAL" && inputChapterNumber(r) === props.chapter?.number,
-      ) ?? null;
   } catch (e) {
+    if (version !== selectionVersion || request !== historyRequest) return;
     error.value = e instanceof ApiError ? t("errors.loadFailed") : t("errors.network");
   }
 }
 
 async function startRun() {
   if (!props.chapter || !workflowId.value || starting.value) return;
+  const version = selectionVersion;
   starting.value = true;
   startError.value = null;
   try {
@@ -138,9 +147,11 @@ async function startRun() {
       // submit to the existing run (200 path).
       idempotencyKey: runs.newIdempotencyKey(),
     });
+    if (version !== selectionVersion) return;
     emit("run-started", { runId: run.id, statusUrl });
     await loadOutlinesAndHistory();
   } catch (e) {
+    if (version !== selectionVersion) return;
     startError.value = t("generation.startFailed");
   } finally {
     starting.value = false;
@@ -160,14 +171,23 @@ function runStatusLabel(status: string): string {
 }
 
 watch(
-  () => [props.workspaceId, props.novelId, props.chapter?.id],
+  () => [props.workspaceId, props.novelId, props.chapter?.id, props.chapter?.number],
   () => {
-    parkedRun.value = null;
+    const version = ++selectionVersion;
+    workflowId.value = null;
+    templateMissing.value = false;
+    outlines.value = [];
+    outlineId.value = "";
+    error.value = null;
+    startError.value = null;
     history.value = [];
-    void refresh().then(() => loadOutlinesAndHistory());
+    void refresh(version).then(() => {
+      if (version === selectionVersion) return loadOutlinesAndHistory();
+    });
   },
   { immediate: true },
 );
+onUnmounted(() => { selectionVersion++; });
 
 defineExpose({ refresh: loadOutlinesAndHistory });
 </script>

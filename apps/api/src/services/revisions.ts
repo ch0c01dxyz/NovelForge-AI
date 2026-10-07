@@ -29,6 +29,9 @@ import {
   projectionsForTables,
   requiresCheckpoint,
   validateSnapshotComplete,
+  verifyCrossDomainCoherence,
+  toCrossDomainConflicts,
+  type CrossDomainConflict,
   type Projection,
   type SnapshotPayload,
 } from "@novelforge/story-versioning";
@@ -626,6 +629,13 @@ export interface RestorePreview {
   /** Projections the restore invalidates (C7 step 6). */
   projections: Projection[];
   outsideScope: readonly { table: string; reason: string }[];
+  /**
+   * NF-WF-032 (GAP-004): cross-domain coherence violations in the
+   * hypothetical post-restore state (payload for REWOUND tables, live for
+   * PINNED/REFERENCE). Surfaced, not refused — the user decides whether
+   * to proceed (020A precedent). Empty when the restored state is coherent.
+   */
+  crossDomainConflicts: CrossDomainConflict[];
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +745,71 @@ function payloadIds(payload: SnapshotPayload, table: string): string[] {
   return rows
     .map((r) => (r as Record<string, unknown>)?.[key])
     .filter((id): id is string => typeof id === "string");
+}
+
+/**
+ * NF-WF-032 (GAP-004): load live rows for the tables the coherence
+ * predicate needs beyond the snapshot payload — PINNED tables (never
+ * rewound) and REFERENCE tables (never in the payload).
+ *
+ * Returns rows keyed by DATABASE column names, matching the payload shape.
+ */
+async function loadCoherenceLiveRows(
+  db: RevisionTx,
+  novelId: string,
+): Promise<Record<string, Record<string, unknown>[]>> {
+  const result: Record<string, Record<string, unknown>[]> = {};
+  // PINNED tables (from TABLE_SCOPE — all three are novel-scoped).
+  for (const table of ["chapters", "chapter_versions", "publications"]) {
+    const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT * FROM "${table}" t WHERE ${scopeFor(table)}`,
+      novelId,
+    );
+    result[table] = rows;
+  }
+  // REFERENCE tables: references are workspace- or novel-scoped;
+  // reference_versions hang off references.
+  const references = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT * FROM "references" WHERE "workspace_id" IN (SELECT "workspace_id" FROM "novels" WHERE "id" = $1)`,
+    novelId,
+  );
+  result["references"] = references;
+  const referenceIds = references
+    .map((r) => r["id"])
+    .filter((id): id is string => typeof id === "string");
+  if (referenceIds.length > 0) {
+    const versions = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT * FROM "reference_versions" WHERE "reference_id" = ANY($1::uuid[])`,
+      referenceIds,
+    );
+    result["reference_versions"] = versions;
+  } else {
+    result["reference_versions"] = [];
+  }
+  return result;
+}
+
+/**
+ * NF-WF-032 (GAP-004): compute cross-domain conflicts for the hypothetical
+ * post-restore state. REWOUND tables come from the payload (what restore
+ * will write); PINNED and REFERENCE tables come from live rows (never
+ * rewound). P1 (rewind fidelity) is skipped — restore hasn't run yet.
+ * Surfaced, not refused.
+ */
+async function computeCrossDomainConflicts(
+  db: RevisionTx,
+  novelId: string,
+  payload: SnapshotPayload,
+): Promise<CrossDomainConflict[]> {
+  const live = await loadCoherenceLiveRows(db, novelId);
+  const state: Record<string, Record<string, unknown>[]> = { ...live };
+  // REWOUND tables: the payload is the post-restore state.
+  for (const t of COVERED_TABLES) {
+    if (!t.restoreTarget) continue;
+    state[t.key] = (payload[t.key] ?? []) as Record<string, unknown>[];
+  }
+  const report = verifyCrossDomainCoherence(state);
+  return toCrossDomainConflicts(report);
 }
 
 /**
@@ -874,6 +949,10 @@ async function computePreview(
     if (!payloadChapterIds.has(c.id)) retainedPostBoundaryChapterIds.push(c.id);
   }
 
+  // NF-WF-032 (GAP-004): surface cross-domain coherence of the hypothetical
+  // post-restore state. Surfaced, not refused — the user decides.
+  const crossDomainConflicts = await computeCrossDomainConflicts(db, novelId, payload);
+
   return {
     headRevisionId,
     counts,
@@ -885,6 +964,7 @@ async function computePreview(
     // Restore rewrites every covered table, so every projection is invalid.
     projections: projectionsForTables([...COVERED_TABLE_NAMES]),
     outsideScope: OUTSIDE_SCOPE,
+    crossDomainConflicts,
   };
 }
 
@@ -2062,6 +2142,81 @@ export function createRevisionServices({
           skippedPublishedPointers: result.publishedPointerConflicts.length,
         },
       });
+
+      // NF-WF-032 (GAP-004): post-commit advisory coherence check. Never
+      // blocking, never repairing — the report is audit-logged whether
+      // coherent or not (constitution §5: surfaced, never silent).
+      // A failure here does not roll back the restore: the restore itself
+      // is the recovery mechanism.
+      try {
+        const advisoryPayload = await loadCheckpointPayload(db, operation.sourceCheckpointId, novelId);
+        const livePinnedRef = await loadCoherenceLiveRows(db, novelId);
+        const state: Record<string, Record<string, unknown>[]> = { ...livePinnedRef };
+        // REWOUND tables: live rows post-restore (for P1 fidelity check).
+        for (const t of COVERED_TABLES) {
+          if (!t.restoreTarget) continue;
+          const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+            `SELECT * FROM "${t.key}" t WHERE ${scopeFor(t.key)}`,
+            novelId,
+          );
+          state[t.key] = rows;
+        }
+        // R for P6: the checkpoint's revision number.
+        const cpRev = await db.checkpoint.findFirst({
+          where: { id: operation.sourceCheckpointId },
+          select: { revision: { select: { id: true, number: true } } },
+        });
+        const revisionNumbers: Record<string, number> = {};
+        if (cpRev?.revision) {
+          revisionNumbers[cpRev.revision.id] = cpRev.revision.number;
+          // Also map memory_projections' sourceRevisionIds to numbers.
+          const projRevs = await db.revision.findMany({
+            where: {
+              id: {
+                in: (state["memory_projections"] ?? [])
+                  .map((r) => r["source_revision_id"])
+                  .filter((id): id is string => typeof id === "string"),
+              },
+            },
+            select: { id: true, number: true },
+          });
+          for (const r of projRevs) revisionNumbers[r.id] = r.number;
+        }
+        const report = verifyCrossDomainCoherence(state, {
+          payload: advisoryPayload as unknown as Record<string, Record<string, unknown>[]>,
+          revisionNumber: cpRev?.revision?.number,
+          revisionNumbers,
+        });
+        await audit?.record({
+          actorUserId,
+          workspaceId,
+          action: "restore.coherence_checked",
+          entityType: "RestoreOperation",
+          entityId: operation.id,
+          payload: {
+            novelId,
+            checkpointId: operation.sourceCheckpointId,
+            revisionNumber: result.revisionNumber,
+            coherent: report.coherent,
+            violationCount: report.violations.length,
+            violations: JSON.parse(JSON.stringify(report.violations)),
+          },
+        });
+      } catch (err) {
+        // The advisory check must never fail the restore. Log and continue.
+        await audit?.record({
+          actorUserId,
+          workspaceId,
+          action: "restore.coherence_check_failed",
+          entityType: "RestoreOperation",
+          entityId: operation.id,
+          payload: {
+            novelId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        });
+      }
+
       return result;
     },
 

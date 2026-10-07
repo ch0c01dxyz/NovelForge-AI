@@ -2315,3 +2315,12 @@ Strict byte comparison retained; focused2-file30/30 pass; separate review APPROV
 Fresh full-inventory verification pending in NF039; failed68facd7 receipt retained.
 
 Historical GAP-109 closure receipt (before NF-WF-036): final7-file API run113/113; worker5-file recovery46/46; real BullMQ enqueue/dedup1/1. Additional scope receipts in NF-WF-035. Lint/typecheck/diff checks pass; both independent reviewers APPROVE after concurrency findings addressed. No full-release completion claim. GAP-110 and human/live deployment gates remain open; CURRENT/task record retains fallback because Engram session attribution is still unavailable.
+
+## GAP-115 — Progress update replaced historical Markdown literals
+
+Status: RESOLVED, 2026-10-07. Owner: NF-WF-040 documentation correction.
+Observed: d60b8f7 accidentally converted historical backtick+n sequences in
+CURRENT while updating its dispatch; diff-check reported whitespace changes.
+Impact: historical record formatting corruption, no product code impact.
+Resolution: restore CURRENT from68facd7 and apply only the exact dispatch
+replacement. Closure: parent diff limited to dispatch and diff-check exit0.

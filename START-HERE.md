@@ -38,6 +38,11 @@ revision is `9265822`. See CURRENT for local merge verification evidence.
 Next, resolve the author-owned GAP-039/063 product decisions before
 dispatching dependent implementation. Human GAP-051 and live release
 acceptance remain separate gates.
+Independent external preparation may proceed through
+[NF-WF-047](docs/implementation/EXTERNAL-FOLLOW-UP-WORKFLOW.md): evidence audit,
+fixture amendment, test-environment diagnosis, conditional populated-upgrade
+investigation, native release preparation and proposal-only SCALE/quota research.
+Start with 047A and freeze/review each child contract before dispatch.
 [NF-WF-041](tasks/NF-WF-041-novel-scoped-workflow-history.md)
 resolves GAP-034 and GAP-116 with scoped tests and separate review.
 [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)

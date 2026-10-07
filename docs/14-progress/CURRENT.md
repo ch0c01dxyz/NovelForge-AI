@@ -8,6 +8,23 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
 ## Current dispatch — 2026-10-07 (novel-scoped workflow history repaired)
 
+### External follow-up dispatch — NF-WF-047
+
+The author requested a delegated workflow and prompt for remaining work.
+[NF-WF-047](../implementation/EXTERNAL-FOLLOW-UP-WORKFLOW.md) defines six
+bounded children: audit (A), GAP-042 amendment (B), GAP-081/082 diagnosis
+and proven fixes (C), conditional GAP-018 populated-upgrade investigation
+(D), native release preparation (E), and SCALE/quota proposals (F).
+Start with A; prepare/freeze/review child contracts before dispatch.
+This is a planning artifact, not evidence that any child has executed.
+Separate plan review: `review_mutations_034` APPROVE; referenced links and
+package commands checked, documentation diff check passed. No product code
+changed and no new runtime test execution is claimed for this planning task.
+The external coordinator commits/pushes a work branch for local acceptance;
+it does not merge main, make product decisions or approve deployment.
+Engram runtime attribution is unavailable at this boundary (GAP-021);
+this record is the compact fallback checkpoint, with no MCP save claimed.
+
 ### Author-approved local/external responsibility split
 
 External Ubuntu coding actors handle bounded implementation, regression tests,

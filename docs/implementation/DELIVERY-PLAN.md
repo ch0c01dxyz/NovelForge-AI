@@ -37,6 +37,12 @@ and separately reviewed. The final code revision is `9265822`; later
 branch commits change documentation only. CURRENT owns the local merge
 verification receipt. Next: resolve author-owned GAP-039/063 product
 decisions before dispatching dependent implementation.
+The author authorized independent external follow-up via
+[NF-WF-047](EXTERNAL-FOLLOW-UP-WORKFLOW.md). Execute the evidence audit first;
+subsequent bounded children cover GAP-042, GAP-081/082 diagnosis, conditional
+GAP-018 investigation and native release preparation. GAP-039/063 research
+produces proposals only until local decisions are recorded. Child contracts
+require separate review and verified readiness before coding.
 NF041 resolves GAP-034 novel-scoped history/approval selection and GAP-116 stale
 detail/cancel responses with scoped API67/web44 tests, lint/typechecks/build0 and
 separate review. NF039's full battery is historical at712cca6; CURRENT

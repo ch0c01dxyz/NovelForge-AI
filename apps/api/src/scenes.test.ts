@@ -429,6 +429,21 @@ describe("scene CRUD", () => {
     expect(beatAudits).toBe(3);
   });
 
+  it("records scene deletion on the checked-out branch, leaving main head unchanged", async () => {
+    const owner = await seedUser("sc-branch-owner@t.io");
+    const ids = await seedNovel(owner.userId, "sc-branch-ws");
+    const ch = await makeChapter(owner.cookie, ids, "Ch 1");
+    const scene = (await createScene(owner.cookie, ids, ch.id, { title: "Alternate" })).json() as { id: string };
+    const main = await db.novelBranch.findFirstOrThrow({ where: { novelId: ids.novelId, name: "main" } });
+    const branch = await db.novelBranch.create({ data: { novelId: ids.novelId, workspaceId: ids.workspaceId,
+      name: "alternate-delete", headRevisionId: main.headRevisionId } });
+    await db.novel.update({ where: { id: ids.novelId }, data: { currentBranchId: branch.id } });
+    const res = await app.inject({ method: "DELETE", url: `${scenesUrl(ids, ch.id)}/${scene.id}`, headers: { cookie: owner.cookie } });
+    expect(res.statusCode).toBe(200);
+    expect((await db.novelBranch.findUniqueOrThrow({ where: { id: main.id } })).headRevisionId).toBe(main.headRevisionId);
+    expect((await db.novelBranch.findUniqueOrThrow({ where: { id: branch.id } })).headRevisionId).not.toBe(main.headRevisionId);
+  });
+
   it("delete with no linked beats returns empty deletedBeats", async () => {
     const owner = await seedUser("sc-owner6c@t.io");
     const ids = await seedNovel(owner.userId, "sc-ws6c");

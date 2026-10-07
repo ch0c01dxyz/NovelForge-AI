@@ -722,6 +722,20 @@ describe("per-tick deltas", () => {
     expect(entities[0]?.attributes).toMatchObject({ count: 10 }); // unchanged
   });
 
+  it("a later tick failure preserves the durable cursor for retry", async () => {
+    let calls = 0;
+    __registerEntityRulesForTesting("TEST_BATCH_FAILURE", () => {
+      calls++;
+      if (calls === 2) return { upsert: [{ id: "00000000-0000-4000-8000-000000000000", kind: "POPULATION", attributes: {} }], retire: [] };
+      return { upsert: [], retire: [] };
+    });
+    const { services, base, runId } = await serviceFixture("TEST_BATCH_FAILURE");
+    await expect(services.stepRun({ ...base, ticks: 2 })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    const persisted = await db.simulationTick.count({ where: { runId } });
+    expect((await db.simulationRun.findUniqueOrThrow({ where: { id: runId } })).currentTick).toBe(persisted);
+    await expect(services.stepRun({ ...base, ticks: 1 })).resolves.toBeDefined();
+  });
+
   it("kind filter returns only matching rows", async () => {
     __registerEntityRulesForTesting("TEST_COUNTER", counterReducer());
     const { fx, runId } = await serviceFixture("TEST_COUNTER");

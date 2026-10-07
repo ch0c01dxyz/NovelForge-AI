@@ -1191,6 +1191,18 @@ export function createManuscriptServices(
       // Note: the canon:manage gate is evaluated inside the transaction on the
       // authoritative in-tx read (TOCTOU hardening) — see below.
       const deletedBeats = await db.$transaction(async (tx) => {
+        // Pin checkout and lock lineage before changing live scene state.
+        await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
+        const novel = await tx.novel.findUniqueOrThrow({ where: { id: novelId }, select: { currentBranchId: true } });
+        const branch = await tx.novelBranch.findFirst({
+          where: novel.currentBranchId ? { id: novel.currentBranchId, novelId } : { novelId, name: "main" },
+          select: { id: true, name: true },
+        });
+        if (!branch) throw new ConflictError("no checked-out branch exists");
+        await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`, branch.id);
+        // FOR UPDATE conflicts with FK insertion locks, preventing a beat
+        // from appearing after the authoritative capability check.
+        await tx.$queryRawUnsafe(`SELECT id FROM scenes WHERE id = $1 FOR UPDATE`, sceneId);
         const scene = await tx.scene.findFirst({
           where: { id: sceneId, chapterId },
           select: { id: true, title: true },
@@ -1223,6 +1235,7 @@ export function createManuscriptServices(
           workspaceId,
           novelId,
           operation: "scene.delete",
+          branchName: branch.name,
           origin: "MANUAL",
           actorUserId,
           tables: ["outline_nodes", "scenes"],

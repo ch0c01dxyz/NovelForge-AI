@@ -646,6 +646,15 @@ export function createSimulationServices({
         // the entity delta writes commit together. There is never a
         // tick whose JSON and whose entities disagree.
         await db.$transaction(async (tx) => {
+          // Claim this cursor atomically with tick/entity writes. A later tick
+          // failure must not strand the run behind its committed history.
+          const claimed = await tx.simulationRun.updateMany({
+            where: { id: run.id, status: "RUNNING", currentTick },
+            data: { currentTick: nextTickNumber, ...(nextTickNumber >= run.maxTicks ? { status: "COMPLETED" } : {}) },
+          });
+          if (claimed.count !== 1) {
+            throw new SimulationError("INVALID_STATUS_TRANSITION", "run status or cursor changed while stepping");
+          }
           // Persist the tick and its events (simulation tables only —
           // Invariant 1: never touch canon tables).
           await tx.simulationTick.create({
@@ -710,14 +719,7 @@ export function createSimulationServices({
         currentTick = nextTickNumber;
       }
 
-      const updated = await db.simulationRun.update({
-        where: { id: run.id },
-        data: {
-          currentTick,
-          // Auto-complete when maxTicks is reached.
-          ...(currentTick >= run.maxTicks ? { status: "COMPLETED" } : {}),
-        },
-      });
+      const updated = await getRunOrThrow(workspaceId, novelId, runId);
 
       return { run: toShape(updated), ticks: results };
     },

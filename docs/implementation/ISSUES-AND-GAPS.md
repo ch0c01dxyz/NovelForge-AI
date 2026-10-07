@@ -2194,3 +2194,25 @@ RESOLUTION: Reinstalled natively per ENVIRONMENT-PREFLIGHT.md:
 NOTE: The os-intent replay does not manage postgresql/redis (not in dpkg-state.txt); they are manual per ENVIRONMENT-PREFLIGHT.md and will need reinstall after any future VM reset.
 
 RECURRENCE 2026-10-07 (OBSERVED by NF-WF-032 implementer): VM reset wiped PostgreSQL/Redis a second time mid-task. Reinstalled natively using the same procedure (slow mirror removed again, `pg_ctlcluster 16 main start`, `redis-server --daemonize`, GAP-065 re-applied). This is now a known recurring environment event, not a one-off.
+
+## GAP-109 — Post-pull audit: runtime and verification regressions
+
+Status: RESOLVED (bounded NF-WF-035 repair) / P1. Owner: current post-pull repair, baseline e538180.
+Evidence: BullMQ 5.81.5 rejects memory job IDs containing four/five colon components; API triggerRebuild and new reconciler generate these IDs (scope itself contains a colon). Mock queues miss the real failure. Simulation stepRun commits tick/entity rows before updating currentTick at the end of the batch, so a later tick failure leaves the cursor behind durable history. What-if RUNNING transition is unconditional after a stale read, violating the single-executor contract. Provisioned branch defaults to checked-out rather than required main head; comparison insertion failure lies outside provisioning cleanup. Separate review also identifies scene-delete branch/lock and merge pre-lock reread hazards.
+Action: reproduce runtime bugs; repair shared job identity, atomic tick cursor and guarded comparison claim; inspect branch/checkpoint/lock/cleanup boundaries before mutation repairs. Keep human/live release gates separate.
+Verification failures: what-if setup invokes npx via execFileSync, not executable on Windows; focused lint/typecheck/test results recorded after completion.
+Closure: adversarial regressions, applicable suites and independent exact-diff review; no full release claim from focused checks.
+
+GAP-109 independent review: scene-delete lacked an FK-serializing scene lock and checked-out lineage, restore advisory compared SQL JSON timestamps to JS Dates, failed projection reconciliation skipped completed BullMQ jobs, and scheduled notification producers retained attempts:1. All affected closures require fresh regression evidence. The first real BullMQ queue regression FAILED with "Custom Id cannot contain :" before the shared-ID repair.
+
+GAP-109 additional verification blocker: Prisma rejected memory-reconciliation.test.ts db push --accept-data-loss. Replaced destructive schema push with reviewed migrate deploy on novelforge_test_memory_recon; no consent override or guard bypass used.
+
+GAP-109 review follow-up: novel-first locking added to merge and switch with locked checkout/head/dirty validation; revision create wrappers lock novel/main before FK child writes to avoid scene-delete lock inversion. Orphan audit is guarded and falls back to an operator log during DB outages while preserving typed refusal.
+
+## GAP-110 — Scene create/update lack revision mutation records
+
+Status: OPEN / P1. Owner: follow-up scene mutation contract.
+Observed during GAP-109 audit: manuscript.createScene and updateScene mutate scenes within transactions but never call advanceForMutation. Their audit entries do not replace immutable revisions or durable invalidation intent. Delete is now branch-aware; this does not prove the other scene mutations meet constitution §2.11.
+Next: define checked-out lineage, reorder change-set scope, published-chapter policy and source invalidation for scene create/update; implement and review a bounded follow-up rather than declaring all scene lifecycle/recovery accepted. Closure: create/update/reorder revisions and rollback/tenant/concurrency tests with no mutation to the wrong branch.
+
+GAP-109 closure receipt: final7-file API run113/113; worker5-file recovery46/46; real BullMQ enqueue/dedup1/1. Additional scope receipts in NF-WF-035. Lint/typecheck/diff checks pass; both independent reviewers APPROVE after concurrency findings addressed. No full-release completion claim. GAP-110 and human/live deployment gates remain open; CURRENT/task record retains fallback because Engram session attribution is still unavailable.

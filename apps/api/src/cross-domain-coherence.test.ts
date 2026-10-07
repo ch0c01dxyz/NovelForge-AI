@@ -184,7 +184,10 @@ async function liveRows(table: string): Promise<Record<string, unknown>[]> {
       : table === "canon_fact_sources"
         ? `"canon_fact_id" IN (SELECT "id" FROM "canon_facts" WHERE "novel_id" = $1)`
         : `"novel_id" = $1`;
-  return db.$queryRawUnsafe(`SELECT * FROM "${table}" WHERE ${scope}`, novelId);
+  const rows = await db.$queryRawUnsafe<{ row: Record<string, unknown> }[]>(
+    `SELECT to_jsonb(t) AS row FROM "${table}" t WHERE ${scope}`, novelId,
+  );
+  return rows.map((r) => r.row);
 }
 
 // ---------------------------------------------------------------------------
@@ -257,8 +260,8 @@ describe("applyRestore advisory check (NF-WF-032)", () => {
     const checked = auditCalls.find((c) => c.action === "restore.coherence_checked");
     expect(checked, "advisory audit-log row missing").toBeDefined();
     const p = checked!.payload as { coherent: boolean; violationCount: number };
-    expect(typeof p.coherent).toBe("boolean");
-    expect(typeof p.violationCount).toBe("number");
+    expect(p.coherent).toBe(true);
+    expect(p.violationCount).toBe(0);
   });
 });
 

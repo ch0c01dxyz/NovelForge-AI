@@ -167,16 +167,14 @@ describe("reconcileMemoryRebuilds (NF-WF-030)", () => {
     await admin.query(`CREATE DATABASE "${IT_DB}"`);
     await admin.end();
 
-    // Apply schema via `db push` (not `migrate deploy`): syncs the current
-    // schema directly, robust against in-progress migration files from
-    // parallel tasks. Test only needs the tables, not migration history.
+    // Apply reviewed migrations to this dedicated scratch database.
     const { execFileSync } = await import("node:child_process");
     const path = await import("node:path");
     const { fileURLToPath } = await import("node:url");
     const HERE = path.dirname(fileURLToPath(import.meta.url));
     const DB_PACKAGE_ROOT = path.join(HERE, "..", "..", "..", "packages", "database");
     const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js");
-    execFileSync(process.execPath, [PRISMA_CLI, "db", "push", "--accept-data-loss"], {
+    execFileSync(process.execPath, [PRISMA_CLI, "migrate", "deploy"], {
       stdio: "pipe",
       cwd: DB_PACKAGE_ROOT,
       env: { ...process.env, DATABASE_URL: IT_URL },
@@ -271,7 +269,7 @@ describe("reconcileMemoryRebuilds (NF-WF-030)", () => {
     expect(okRows.length).toBe(1);
   });
 
-  it("re-queues a retained failed job (no silent no-op)", async () => {
+  it.each(["failed", "completed"])("re-queues a retained %s job when projection is stale", async (state) => {
     const logger = testLogger();
     const seed = await seedNovel(db);
     await seedProjection(db, seed, { sourceRevisionId: seed.oldRevisionId, buildStatus: "OK" });
@@ -279,7 +277,7 @@ describe("reconcileMemoryRebuilds (NF-WF-030)", () => {
     const queue = mockQueue();
     const jobId = memoryRebuildJobId(seed.novelId, seed.scope, seed.headRevisionId);
     // A previous attempt failed and the job record was retained.
-    queue.jobs.set(jobId, { data: {}, state: "failed" });
+    queue.jobs.set(jobId, { data: {}, state });
 
     const report = await reconcileMemoryRebuilds({ db, queue, logger });
     expect(report.requeued).toBe(1);

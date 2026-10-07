@@ -31,6 +31,8 @@ import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
 import {
+  NOTIFICATION_FANOUT_MAX_ATTEMPTS,
+  NOTIFICATION_FANOUT_RETRY_BASE_MS,
   PUBLICATION_QUEUE_NAME,
   PUBLICATION_JOB_NAME,
   WORKFLOW_DEFAULT_JOB_OPTIONS,
@@ -533,7 +535,13 @@ export function defaultPublicationWorkerDeps(
     createQueue: (name, connection) =>
       new Queue(name, {
         connection: connection as never,
-        defaultJobOptions: { ...WORKFLOW_DEFAULT_JOB_OPTIONS },
+        defaultJobOptions: {
+          ...WORKFLOW_DEFAULT_JOB_OPTIONS,
+          ...(name === NOTIFICATION_QUEUE_NAME ? {
+            attempts: NOTIFICATION_FANOUT_MAX_ATTEMPTS,
+            backoff: { type: "exponential", delay: NOTIFICATION_FANOUT_RETRY_BASE_MS },
+          } : {}),
+        },
       }) as never,
     createWorker: (queueName, handler, connection) =>
       new Worker(queueName, handler as never, {

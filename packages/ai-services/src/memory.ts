@@ -11,6 +11,7 @@
 import type { NovelForgeDb } from "@novelforge/database";
 import {
   MEMORY_RECENT_CHAPTERS_DEFAULT,
+  memoryRebuildJobId,
   chapterScope,
   parseScope,
   deriveFreshness,
@@ -334,7 +335,7 @@ export function createMemoryServices(deps: {
     }
 
     for (const scope of scopes) {
-      const jobId = `memory-rebuild:${novelId}:${scope}:${sourceRevisionId}`;
+      const jobId = memoryRebuildJobId(novelId, scope, sourceRevisionId);
       await queue.add(
         "rebuild",
         { workspaceId, novelId, scope, sourceRevisionId },

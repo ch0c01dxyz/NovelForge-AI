@@ -508,6 +508,9 @@ export function createPlanningServices(deps: {
       if (!existing) throw new NotFoundError("outline node");
       // Count check INSIDE the transaction (C4).
       await db.$transaction(async (tx) => {
+        // Same lock order as scene deletion and outline creation.
+        await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
+        await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE novel_id = $1 AND name = 'main' FOR UPDATE`, novelId);
         const deleted = await tx.outlineNode.deleteMany({
           where: { id: outlineNodeId, novelId },
         });

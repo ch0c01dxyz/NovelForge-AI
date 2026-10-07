@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * @novelforge/memory — revision-derived chapter/arc memory (NF-WF-009).
  *
@@ -38,4 +39,9 @@ export function parseScope(scope: string): { kind: "chapter" | "arc"; id: string
     return { kind: "arc", id: scope.slice(ARC_SCOPE_PREFIX.length) };
   }
   return null;
+}
+
+/** Shared deterministic BullMQ-safe identity; scopes contain colons. */
+export function memoryRebuildJobId(novelId: string, scope: string, sourceRevisionId: string): string {
+  return `memory-rebuild-${createHash("sha256").update(JSON.stringify([novelId, scope, sourceRevisionId])).digest("hex")}`;
 }

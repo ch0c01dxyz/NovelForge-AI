@@ -85,7 +85,7 @@ Inputs:
 
 Outputs:
 - `reconcileMemoryRebuilds({ db, queue, logger }) → ReconciliationReport` (proposed name; implementer may rename with reviewer approval).
-- Re-derived rebuild jobs with deterministic jobIds (`memory-rebuild:{novelId}:{scope}:{sourceRevisionId}`), enqueued on the existing queue.
+- Re-derived rebuild jobs with deterministic jobIds (`memoryRebuildJobId(novelId, scope, sourceRevisionId)` from @novelforge/memory (SHA256 tuple identity; NF-WF-035 corrects the BullMQ-invalid colon format)), enqueued on the existing queue.
 
 Out of scope:
 - Interval sweeper (GAP-095 asks for reconciliation after Redis loss; the bounded fix is startup reconciliation, mirroring `publication`. If the implementer finds startup-only insufficient, record a follow-up GAP rather than expanding scope silently).
@@ -113,7 +113,7 @@ Out of scope:
 - `"FRESH"`: skip.
 
 ### Idempotency (no duplicate mutations)
-- JobId is deterministic: `memory-rebuild:{novelId}:{scope}:{sourceRevisionId}`. BullMQ dedupes on jobId — re-adding an existing job is a no-op (or replaces, never duplicates).
+- JobId is deterministic: `memoryRebuildJobId(novelId, scope, sourceRevisionId)` from @novelforge/memory (SHA256 tuple identity; NF-WF-035 corrects the BullMQ-invalid colon format). BullMQ dedupes on jobId — re-adding an existing job is a no-op (or replaces, never duplicates).
 - `processRebuild` additionally dedupes at the DB level: if a row exists with `buildStatus: "OK"` for `(novelId, scope, sourceRevisionId)`, it returns `{ deduped: true }` without rebuilding.
 - Reconciliation must be safe to run multiple times (startup is not the only trigger in tests).
 

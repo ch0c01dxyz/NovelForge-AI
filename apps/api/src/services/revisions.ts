@@ -557,6 +557,9 @@ export function createWithRevision(db: NovelForgeDb) {
     options?: { entityId?: string; itemOperation?: "CREATE" | "UPDATE" | "DELETE" },
   ): Promise<T> {
     return db.$transaction(async (tx) => {
+      // Match checkout/scene mutation lock order: novel, branch, child rows.
+      await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, scope.novelId);
+      await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE novel_id = $1 AND name = 'main' FOR UPDATE`, scope.novelId);
       const row = await write(tx);
       const entityId = options?.entityId ?? (row as { id?: string }).id;
       if (!entityId) {
@@ -1600,6 +1603,7 @@ export function createRevisionServices({
     });
 
     const result = await db.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
       const payload = await loadCheckpointPayload(
         tx,
         operation.sourceCheckpointId,
@@ -2014,6 +2018,7 @@ export function createRevisionServices({
       });
 
       const result = await db.$transaction(async (tx) => {
+        await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
         const payload = await loadCheckpointPayload(tx, operation.sourceCheckpointId, novelId);
 
         // Step 0 — before the first write. Every payload chapter id must be
@@ -2155,11 +2160,11 @@ export function createRevisionServices({
         // REWOUND tables: live rows post-restore (for P1 fidelity check).
         for (const t of COVERED_TABLES) {
           if (!t.restoreTarget) continue;
-          const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(
-            `SELECT * FROM "${t.key}" t WHERE ${scopeFor(t.key)}`,
+          const rows = await db.$queryRawUnsafe<{ row: Record<string, unknown> }[]>(
+            `SELECT ${jsonbProjection(t.key)} AS row FROM "${t.key}" t WHERE ${scopeFor(t.key)}`,
             novelId,
           );
-          state[t.key] = rows;
+          state[t.key] = rows.map((r) => r.row);
         }
         // R for P6: the checkpoint's revision number.
         const cpRev = await db.checkpoint.findFirst({
@@ -2438,6 +2443,16 @@ export function createRevisionServices({
       const targetPayload = targetSnapshot.payload as unknown as SnapshotPayload;
 
       const result = await db.$transaction(async (tx) => {
+        // Serialize live-state replacement with merge/checkout mutations.
+        await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
+        await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE id IN ($1, $2) ORDER BY id FOR UPDATE`, current.id, target.id);
+        const lockedNovel = await tx.novel.findUniqueOrThrow({ where: { id: novelId } });
+        const lockedCurrent = await tx.novelBranch.findUniqueOrThrow({ where: { id: current.id } });
+        const lockedTarget = await tx.novelBranch.findUniqueOrThrow({ where: { id: target.id } });
+        const actualCurrentId = lockedNovel.currentBranchId ?? (current.name === "main" ? current.id : null);
+        if (actualCurrentId !== current.id || lockedCurrent.headRevisionId !== current.headRevisionId || lockedTarget.headRevisionId !== target.headRevisionId || await isBranchDirty(tx, novelId, lockedCurrent.headRevisionId) !== dirty) {
+          throw new ConflictError("branch state changed while switching; refresh and retry");
+        }
         let autoCheckpointId: string | null = null;
 
         // Save the dirty state first (takes the current branch's lock).
@@ -2700,6 +2715,18 @@ export function createRevisionServices({
       }
 
       const result = await db.$transaction(async (tx) => {
+        // Lock novel then both heads before deriving live-state evidence.
+        await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
+        await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE id IN ($1, $2) ORDER BY id FOR UPDATE`, source.id, target.id);
+        const lockedSource = await tx.novelBranch.findUniqueOrThrow({ where: { id: source.id } });
+        const lockedTarget = await tx.novelBranch.findUniqueOrThrow({ where: { id: target.id } });
+        const currentNovel = await tx.novel.findUniqueOrThrow({ where: { id: novelId } });
+        if ((currentNovel.currentBranchId && currentNovel.currentBranchId !== target.id) || (!currentNovel.currentBranchId && lockedTarget.name !== "main")) {
+          throw new MergeError("NOT_ON_TARGET_BRANCH", "target branch is no longer checked out");
+        }
+        if (await isBranchDirty(tx, novelId, lockedTarget.headRevisionId)) {
+          throw new MergeError("MERGE_DIRTY_TARGET", "target has unsaved changes");
+        }
         // Recompute under the branch lock: the head may have moved between
         // the outer preview and this transaction (C4).
         // NF-WF-028: the locked recompute runs with the requested mode, so
@@ -2720,8 +2747,8 @@ export function createRevisionServices({
           );
         }
 
-        const sourcePayload = await snapshotForRevision(tx, source.headRevisionId!);
-        const targetPayload = await snapshotForRevision(tx, target.headRevisionId!);
+        const sourcePayload = await snapshotForRevision(tx, lockedSource.headRevisionId!);
+        const targetPayload = await snapshotForRevision(tx, lockedTarget.headRevisionId!);
         // snapshotsAvailable was verified above; re-verify under the lock.
         if (!sourcePayload || !targetPayload) {
           throw new MergeError(

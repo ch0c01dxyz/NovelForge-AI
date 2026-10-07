@@ -530,3 +530,7 @@ per tick (e.g., `population.count ← state.population`,
 state.{irrigationKnown,irrigationBuilt}`). This contract does not
 normatively pin that mapping; it is shown here so the reviewer can
 verify the seam carries enough information.
+
+## Atomicity clarification — NF-WF-035, 2026-10-07
+
+The prior section assumed cursor and tick writes were already atomic. Post-pull audit found one transaction per tick with a separate end-of-batch cursor update. NF-WF-035 moves guarded cursor/status advancement into each tick transaction. Earlier successful ticks persist if a later tick fails; their cursor remains correct, and the failed tick writes nothing. Full-batch rollback is not claimed. See GAP-109 and the repair regression.

@@ -57,7 +57,7 @@ async function setupDb() {
 
   // Run migrations
   const TEST_URL = withDb(BASE_URL, TEST_DB);
-  execFileSync("npx", ["prisma", "migrate", "deploy"], {
+  execFileSync(process.execPath, [path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js"), "migrate", "deploy"], {
     cwd: DB_PACKAGE_ROOT,
     env: { ...process.env, DATABASE_URL: TEST_URL },
     stdio: "pipe",
@@ -191,7 +191,7 @@ beforeAll(async () => {
 }, 60000);
 
 afterAll(async () => {
-  await db.$disconnect();
+  await db?.$disconnect();
 });
 
 beforeEach(async () => {
@@ -434,14 +434,30 @@ describe("NF-WF-027: branch ownership", () => {
       data: { headRevisionId: rev.id },
     });
 
+    const alternate = await db.novelBranch.create({ data: {
+      workspaceId, novelId, name: "different-checked-out", headRevisionId: rev.id,
+    } });
+    const alternateRev = await db.revision.create({ data: {
+      workspaceId, novelId, branchId: alternate.id, number: 101, origin: "MANUAL",
+    } });
+    await db.novelBranch.update({ where: { id: alternate.id }, data: { headRevisionId: alternateRev.id } });
+    await db.novel.update({ where: { id: novelId }, data: { currentBranchId: alternate.id } });
     const comparison = await whatif.createComparison({
-      actorUserId: ownerUserId,
-      workspaceId,
-      novelId,
-      outlineVersionIds: [v1, v2],
-      confirmed: true,
-      branchSelection: { mode: "provision" },
+      actorUserId: ownerUserId, workspaceId, novelId, outlineVersionIds: [v1, v2],
+      confirmed: true, branchSelection: { mode: "provision" },
     });
+    await db.novel.update({ where: { id: novelId }, data: { currentBranchId: mainBranchId } });
+    expect((await db.novelBranch.findUniqueOrThrow({ where: { id: comparison.branchId! } })).headRevisionId).toBe(rev.id);
+
+    // A failed comparison insert must compensate its newly provisioned branch.
+    const branchCount = await db.novelBranch.count({ where: { novelId } });
+    const insert = vi.spyOn(db.whatifComparison, "create").mockRejectedValueOnce(new Error("insert failed"));
+    try {
+      await expect(whatif.createComparison({ actorUserId: ownerUserId, workspaceId, novelId,
+        outlineVersionIds: [v1, v2], confirmed: true, branchSelection: { mode: "provision" },
+      })).rejects.toMatchObject({ code: "BRANCH_PROVISION_FAILED" });
+    } finally { insert.mockRestore(); }
+    expect(await db.novelBranch.count({ where: { novelId } })).toBe(branchCount);
 
     expect(comparison.branchMode).toBe("provision");
     expect(comparison.branchId).toBeTruthy();
@@ -547,6 +563,22 @@ describe("NF-WF-027: branch ownership", () => {
 });
 
 describe("NF-WF-027: live comparison acceptance", () => {
+  it("claims a comparison once under concurrent execution", async () => {
+    const simulations = createSimulationServices({ db });
+    const whatif = createWhatifServices({ db, simulations });
+    const branchId = await createTestBranch("claim-race");
+    const comparison = await whatif.createComparison({ actorUserId: ownerUserId, workspaceId, novelId,
+      outlineVersionIds: [await createOutlineVersion(901), await createOutlineVersion(902)],
+      confirmed: true, branchSelection: { mode: "existing", branchId }, maxChapters: 1 });
+    const results = await Promise.allSettled([1, 2].map(() => whatif.runComparison({
+      actorUserId: ownerUserId, workspaceId, novelId, comparisonId: comparison.id,
+      stubGenerator: () => ({ test: true }),
+    })));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(failed.reason).toMatchObject({ code: "INVALID_STATUS_TRANSITION" });
+  });
+
   /** Ensure main has a head revision with snapshot (provision source). */
   async function ensureMainHead(): Promise<void> {
     const main = await db.novelBranch.findUnique({

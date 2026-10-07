@@ -6,7 +6,17 @@ exist; integrated product delivery remains PARTIAL**. Historical phase/test
 results below describe their original scope, not completion of all retained
 requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
-## Current dispatch — 2026-10-07 (post-pull audit)
+## Current dispatch — 2026-10-07 (e538180 audit)
+
+Pulled nine commits from eb065cf to e538180; task027–034 implementations are present. The prior dispatch and Ubuntu battery below are historical. GAP-109 records defects discovered despite reported closures; NF-WF-035 is the bounded repair. GAP-110 records missing scene create/update revision bookkeeping and requires a separate bounded contract.
+
+Current next step: NF-WF-035 is included in this commit; proceed to GAP-110 and final-revision NF-WF-023. Full platform/release, live provider configuration and human GAP-051 are not accepted by these focused tests.
+
+Windows preflight: existing nf-pg-5433 and Redis reused; frozen-lockfile dependencies restored and Prisma generated. Existing reviewed migrations deployed only to dedicated scratch databases. Real Redis checks use DB15 and unique owned queue/test metadata; no production queue consumer or flush. Engram runtime attribution unavailable (GAP-021); no checkpoint save claimed.
+
+NF-WF-035 receipts: final restore/branch/selective/semantic/scene/planning/coherence API run113/113; worker recovery46/46; real BullMQ test1/1; additional focused receipts in the task include what-if/memory31/31, expanded API108/108, story-versioning58/58 and semantic36/36. Do not add overlapping runs into a completion percentage. Lint, workspace typecheck and final affected API/shared typechecks exit0; separate reviews APPROVE. Full release battery not run. Initial evidence: BullMQ ID regression failed before repair and passed after; Windows npx setup fixed; Prisma destructive db push refused and replaced by migrate deploy without bypass.
+
+## Historical dispatch — 2026-10-07 (cc8d515 audit)
 
 Pulled four commits by fast-forward from dfd87a3 to cc8d515. NF-WF-026 production worker factories are present; GAP-028 code wiring is no longer a new implementation task. Its fake-gateway AGENT evidence is not live provider/BullMQ deployment acceptance. GAP-098 removal is documented as author-directed in facac9f; this audit does not independently infer that approval from code alone.
 

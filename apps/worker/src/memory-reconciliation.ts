@@ -7,9 +7,9 @@
  * re-derives rebuild jobs for them.
  *
  * Guarantees (mirroring `reconcileScheduledPublications`):
- * - Idempotent: deterministic jobIds (`memory-rebuild:{novelId}:{scope}:{sourceRevisionId}`)
+ * - Idempotent: deterministic jobIds (the shared SHA256 tuple identity)
  *   make concurrent/double reconciliation safe (BullMQ dedupes); a job in
- *   `failed`/`unknown` state is removed first (re-adding against it is a
+ *   `failed`/`unknown`/`completed` state when PostgreSQL remains stale is removed first (re-adding against it is a
  *   silent no-op — the P2-6 hazard).
  * - No false success: never writes a healthy row; if the queue is
  *   unavailable, scopes stay STALE/FAILED in the DB and the next startup
@@ -26,6 +26,7 @@ import IORedis from "ioredis";
 import type { NovelForgeDb } from "@novelforge/database";
 import {
   deriveFreshness,
+  memoryRebuildJobId,
   MEMORY_REBUILD_QUEUE_NAME,
   MEMORY_REBUILD_MAX_ATTEMPTS,
   MEMORY_REBUILD_RETRY_BASE_MS,
@@ -57,13 +58,7 @@ export type MemoryReconciliationReport = {
 };
 
 /** Deterministic jobId — must match the API's `triggerRebuild` format. */
-export function memoryRebuildJobId(
-  novelId: string,
-  scope: string,
-  sourceRevisionId: string,
-): string {
-  return `memory-rebuild:${novelId}:${scope}:${sourceRevisionId}`;
-}
+export { memoryRebuildJobId } from "@novelforge/memory";
 
 /**
  * Create the `memory-rebuild` queue against a shared connection.
@@ -155,7 +150,7 @@ export async function reconcileMemoryRebuilds({
       const existing = await queue.getJob(jobId);
       if (existing) {
         const state = await existing.getState();
-        if (state === "failed" || state === "unknown") {
+        if (state === "failed" || state === "unknown" || state === "completed") {
           await existing.remove();
           logger?.info("memory rebuild stale job removed before requeue", {
             novelId,
@@ -164,7 +159,7 @@ export async function reconcileMemoryRebuilds({
             previousState: state,
           });
         } else {
-          // Job already queued/running/completed — BullMQ dedupes; skip.
+          // Job already queued/running — BullMQ dedupes; skip.
           logger?.info("memory rebuild job already present; skipping", {
             novelId,
             scope,

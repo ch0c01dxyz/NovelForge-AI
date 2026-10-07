@@ -415,6 +415,9 @@ export function createWithRevision(db: NovelForgeDb) {
     options?: { entityId?: string; itemOperation?: "CREATE" | "UPDATE" | "DELETE" },
   ): Promise<T> {
     return db.$transaction(async (tx) => {
+      // Match checkout/scene mutation lock order: novel, branch, child rows.
+      await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, scope.novelId);
+      await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE novel_id = $1 AND name = 'main' FOR UPDATE`, scope.novelId);
       const row = await write(tx);
       const entityId = options?.entityId ?? (row as { id?: string }).id;
       if (!entityId) {

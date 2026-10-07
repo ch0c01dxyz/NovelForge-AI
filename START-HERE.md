@@ -31,9 +31,9 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** verify NF-WF-023 on the final post-refactor revision, then prepare the reviewed GAP-100 what-if contract. NF-WF-026 worker AI wiring is committed in `cc8d515`; do not reimplement it. The Ubuntu battery at `dfd87a3` is historical pre-refactor evidence, not acceptance of the current tree.
+**Current next task:** continue after the reviewed [NF-WF-035 runtime repair](tasks/NF-WF-035-post-sync-runtime-repair.md), included in this commit: address GAP-110 through a bounded scene create/update revision contract and run NF-WF-023 against the final revision.
 
-The post-pull audit repairs test portability and verification fidelity under GAP-106. See [CURRENT](docs/14-progress/CURRENT.md) for host-specific receipts. GAP-028 has a worker-executor AGENT test with a fake gateway; it does not prove a configured live deployment. GAP-100 and GAP-101 remain blocked pending reviewed mutation contracts; GAP-094–096 and the GAP-051 human gate remain open. GAP-098's author-scoped token-budget removal is recorded separately; do not recreate the deleted tracker speculatively. Full release remains unaccepted.
+Pulled baseline: `e538180`; tasks027–034 have implementation commits and reported gap closures. The post-pull audit found real runtime regressions under GAP-109; do not substitute historical closure reports for current verification. NF-WF-035 repairs comparison claims/provision compensation, tick cursors, merge/checkout locks, scene-delete lineage, restore coherence and memory/notification queue recovery. See [CURRENT](docs/14-progress/CURRENT.md) for actual host receipts. The GAP-051 human accessibility gate and live deployment/final-release verification remain open. Do not recreate the author-removed GAP-098 tracker.
 
 ## New-host environment preparation
 

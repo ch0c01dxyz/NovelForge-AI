@@ -400,6 +400,20 @@ export function createWhatifServices({
    * delete) before throwing BRANCH_PROVISION_FAILED. If the compensating
    * delete itself fails, the orphan is audit-logged (never silent).
    */
+  async function recordProvisionOrphan(workspaceId: string, novelId: string, actorUserId: string, branchId: string, err: unknown): Promise<void> {
+    console.error(`[whatif] ORPHAN BRANCH ${branchId} for novel ${novelId}: ${String(err)}`);
+    try {
+      await db.auditLog.create({ data: {
+        actorUserId, workspaceId, action: "whatif.branch_cleanup_failed",
+        entityType: "NovelBranch", entityId: branchId,
+        payload: { novelId, reason: String(err) },
+      } });
+    } catch (auditErr) {
+      // A database outage can also prevent durable audit. Preserve typed refusal.
+      console.error(`[whatif] orphan audit unavailable for branch ${branchId}: ${String(auditErr)}`);
+    }
+  }
+
   async function provisionBranch({
     actorUserId,
     workspaceId,
@@ -422,7 +436,10 @@ export function createWhatifServices({
     let branchId: string | null = null;
 
     try {
+      const main = await db.novelBranch.findFirst({ where: { novelId, name: "main" }, select: { headRevisionId: true } });
+      if (!main?.headRevisionId) throw new Error("main branch has no head revision");
       const created = await revisions.createBranch({
+        fromRevisionId: main.headRevisionId,
         actorUserId,
         workspaceId,
         novelId,
@@ -462,10 +479,7 @@ export function createWhatifServices({
         try {
           await db.novelBranch.delete({ where: { id: branchId } });
         } catch (cleanupErr) {
-          console.error(
-            `[whatif] ORPHAN BRANCH: failed to delete partially-provisioned branch ${branchId} ` +
-              `(${branchName}) for novel ${novelId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-          );
+          await recordProvisionOrphan(workspaceId, novelId, actorUserId, branchId, cleanupErr);
         }
       }
       if (err instanceof WhatifError) throw err;
@@ -565,7 +579,9 @@ export function createWhatifServices({
         }
       }
 
-      const row = await db.whatifComparison.create({
+      let row;
+      try {
+        row = await db.whatifComparison.create({
         data: {
           workspaceId,
           novelId,
@@ -580,6 +596,15 @@ export function createWhatifServices({
           branchMode,
         },
       });
+      } catch (err) {
+        if (branchMode !== "provision" || !branchId) throw err;
+        try {
+          await db.novelBranch.delete({ where: { id: branchId } });
+        } catch (cleanupErr) {
+          await recordProvisionOrphan(workspaceId, novelId, actorUserId, branchId, cleanupErr);
+        }
+        throw new WhatifError("BRANCH_PROVISION_FAILED", `comparison persistence failed: ${String(err)}`);
+      }
       return toShape(row);
     },
 
@@ -616,10 +641,13 @@ export function createWhatifServices({
       const maxChapters = comparison.maxChapters;
       const tokenBudget = comparison.tokenBudget;
 
-      await db.whatifComparison.update({
-        where: { id: comparison.id },
+      const claimed = await db.whatifComparison.updateMany({
+        where: { id: comparison.id, status: { in: ["DRAFT", "READY"] } },
         data: { status: "RUNNING" },
       });
+      if (claimed.count !== 1) {
+        throw new WhatifError("INVALID_STATUS_TRANSITION", "comparison was already claimed");
+      }
 
       // Create one 021A run per outline version (kind='WHATIF').
       // Each run's initialState carries the outline version id + status

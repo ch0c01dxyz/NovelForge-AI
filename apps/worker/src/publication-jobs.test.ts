@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
 import pg from "pg";
+import IORedis from "ioredis";
 import {
   defaultPublicationWorkerDeps,
   fireScheduledPublication,
@@ -660,5 +661,21 @@ describe("startPublicationWorkerApp", () => {
     // point is it ran without throwing).
     await expect(handler!({ data: {} })).rejects.toThrow("malformed publication job data");
     await app.stop();
+  });
+});
+
+describe("scheduled notification producer retry policy", () => {
+  it("uses notification attempts for the producer, retaining publication defaults", async () => {
+    const { NOTIFICATION_FANOUT_MAX_ATTEMPTS, NOTIFICATION_FANOUT_RETRY_BASE_MS } = await import("@novelforge/workflow-executor");
+    const { NOTIFICATION_QUEUE_NAME } = await import("./notification-fanout-jobs.ts");
+    const connection = new IORedis("redis://localhost:6379/15", { lazyConnect: true, maxRetriesPerRequest: null });
+    await connection.connect();
+    const queue = defaultPublicationWorkerDeps(testLogger()).createQueue(NOTIFICATION_QUEUE_NAME, connection);
+    try {
+      await (queue as unknown as { waitUntilReady(): Promise<unknown> }).waitUntilReady();
+      const options = (queue as unknown as { defaultJobOptions: { attempts: number; backoff: unknown } }).defaultJobOptions;
+      expect(options.attempts).toBe(NOTIFICATION_FANOUT_MAX_ATTEMPTS);
+      expect(options.backoff).toEqual({ type: "exponential", delay: NOTIFICATION_FANOUT_RETRY_BASE_MS });
+    } finally { await queue.close(); await connection.quit(); }
   });
 });

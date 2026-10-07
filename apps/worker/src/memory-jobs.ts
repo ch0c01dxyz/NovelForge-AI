@@ -21,10 +21,24 @@ import {
   type MemoryRebuildJobData,
 } from "@novelforge/memory";
 import type { WorkerLogger } from "./worker.ts";
+import {
+  createMemoryReconQueue,
+  reconcileMemoryRebuilds,
+  type MemoryReconQueue,
+} from "./memory-reconciliation.ts";
 
 export interface MemoryWorkerDeps {
   createDb: (url: string) => NovelForgeDb;
   createConnection: (url: string) => IORedis;
+  /**
+   * NF-WF-030 (GAP-095): queue factory for startup reconciliation.
+   * Mirrors the publication worker's DI pattern; defaults to
+   * `createMemoryReconQueue` (never imports `createMemoryQueue` from
+   * `apps/api/src` — NF-WF-026 ESLint `no-restricted-imports`).
+   */
+  createQueue: (connection: IORedis) => MemoryReconQueue & {
+    close(): Promise<void>;
+  };
   createWorker: (
     queueName: string,
     handler: (job: { data: MemoryRebuildJobData; id?: string }) => Promise<void>,
@@ -45,6 +59,7 @@ export function defaultMemoryWorkerDeps(logger: WorkerLogger): MemoryWorkerDeps 
     createDb,
     createConnection: (url) =>
       new IORedis(url, { maxRetriesPerRequest: null, enableOfflineQueue: false }),
+    createQueue: (connection) => createMemoryReconQueue(connection),
     createWorker: (queueName, handler, connection) =>
       new Worker(queueName, handler as never, {
         connection: connection as never,
@@ -109,6 +124,22 @@ export async function startMemoryWorkerApp(
     };
   }
 
+  // NF-WF-030 (GAP-095): startup reconciliation — after Redis loss,
+  // queued rebuild jobs are gone and nothing re-derives them. Scan
+  // PostgreSQL (source of truth) for STALE/FAILED projections and
+  // re-derive rebuild jobs. A failed pass is logged loudly but never
+  // prevents the consumer from starting (publication pattern).
+  let queue: (MemoryReconQueue & { close(): Promise<void> }) | undefined;
+  try {
+    queue = d.createQueue(connection);
+    const report = await reconcileMemoryRebuilds({ db, queue, logger: d.logger });
+    d.logger.info("memory startup reconciliation complete", report);
+  } catch (err) {
+    d.logger.error("memory startup reconciliation failed", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const worker = d.createWorker(
     MEMORY_REBUILD_QUEUE_NAME,
     async (job) => {
@@ -166,6 +197,7 @@ export async function startMemoryWorkerApp(
       if (stopped) return;
       stopped = true;
       await worker.close();
+      await queue?.close();
       connection.disconnect();
       await db.$disconnect();
     },

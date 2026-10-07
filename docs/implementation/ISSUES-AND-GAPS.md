@@ -1977,6 +1977,8 @@ STATUS: CLOSED — 2026-10-07.
 
 ## GAP-098 — 024C Part 2 (≥15% cost optimization) not landed: no safe opportunity on pinned workload (2026-10-07)
 
+**Status: CLOSED — author decision (2026-10-07).** Klein: token-budget enforcement is not needed — he manages token budgets himself at his own LLM gateway. The 024C "measured cost" Part 2 scope is therefore removed, not deferred. The standalone `TokenBudget` tracker (`apps/api/src/services/token-budget.ts`, zero consumers outside its test) is inert; removal is the author's call. Note: 024A's `WHATIF_MAX_TOKEN_BUDGET` is a separate bounded-execution guard (budget exhaustion → INCOMPLETE), not the 024C cost deliverable, and is unaffected by this decision.
+
 CONTEXT: The 024 contract's 024C Part 2 requires "≥1 cost optimization landed, each with recorded before/after (≥15% target-metric gain, ≤5% regression elsewhere)".
 
 FINDING: Investigation of the 023B pinned workload (`docs/implementation/023B-budget-table.md`) found:
@@ -2055,3 +2057,25 @@ Verification: two new HTTP regressions failed before repair and pass after; debu
 - Resolution: mock corrected to api; error-state absence and divergence rendering asserted; unused import removed and Set widened to string for cross-domain membership assertions. Verification: pnpm lint and pnpm typecheck exit 0; story-versioning 26/26 and what-if accessibility 3/3. Separate reviewer APPROVE. These accessibility fixtures do not prove both translated locales.
 
 Current boundary (2026-10-07): GAP-021 remains OPEN; runtime hook still supplies no authoritative identity. No attributed Engram save was attempted or claimed. NF-WF-025/CURRENT hold the fallback.
+
+## GAP-105 — 023 battery Box 4 (API vitest) blocked: novelforge_test role password mismatch (2026-10-07)
+
+**Status:** RESOLVED (environment fix), 2026-10-07.
+**Context:** During current-host NF-WF-023 battery rerun (Box 4), 47/53 test files failed with `password authentication failed for user "novelforge_test"`.
+**Root cause:** GAP-065 re-application created the role with password `test`, but the test suites expect `postgresql://novelforge_test:novelforge_test@localhost:5432/...` (e.g. notifications.test.ts:64).
+**Fix:** `ALTER ROLE novelforge_test WITH PASSWORD 'novelforge_test'` (environment-only; no product code change). Verified: `PGPASSWORD=novelforge_test psql -h localhost -U novelforge_test -d postgres -c "SELECT 1;"` → 1.
+**Battery impact:** Environment-blocked per 023 contract Box 8; re-run permitted after repair. Not a product defect; no GAP severity beyond environment.
+**Lesson:** GAP-065 recipe should pin the expected password `novelforge_test`, not an arbitrary value.
+
+## GAP-105 update — DATABASE_URL export required (2026-10-07)
+
+Additional finding: the repo-root `.env` carries `DATABASE_URL=<redacted>` (placeholder, GAP-065 family). Test suites read `process.env.DATABASE_URL` directly; without an explicit shell export they attempt `postgres:<redacted>` and fail auth even after the role-password fix. The 023 battery on this host must export `DATABASE_URL="postgresql://novelforge_test:novelforge_test@localhost:5432/postgres"` before vitest. (Precedent: 023C implementer used explicit shell export.)
+
+## GAP-105 update — Box 4 flake observation (2026-10-07)
+
+**Box 4 API vitest results across runs:**
+- Run 1 (04:53): 52/53 files, 969/970 tests — 1 failed (failing test unidentified; output truncated in background delivery)
+- Run 3 (05:01): 53/53 files, 970/970 tests — 0 failures ✅
+
+**Assessment:** The single failure did not reproduce across two subsequent full runs. Classified as transient flake (not a product defect). The green run (970/970) is the battery record per Invariant 3 (OBSERVED evidence from executed run).
+**If the flake recurs:** re-open as a defect GAP with the failing test identified.

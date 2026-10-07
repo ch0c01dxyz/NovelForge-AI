@@ -1144,6 +1144,13 @@ NEXT: amend the frozen NF-WF-011 contract's Invariant 2 step 1 with the
 review record (replace `/generate` with the workflow run route and the
 `chapter-generation-review` template pin). Do NOT silently edit.
 
+Current audit041 (2026-10-07): publication also diverges. The workspace page
+index.vue publish() posts to /chapters/:id/publication/publish, but
+author-preview.loop.test.ts step6 PATCHes /chapters/:id/status. A future
+contract/test amendment must align both generation and publication, include
+Publication/public-reader evidence, and preserve historical claims. Existing
+E2E success proves its backend sequence only, not the exact current UI loop.
+
 ## GAP-042 — NF-WF-011 `FIXTURE_REVISIONS = 30` is not exactly attainable through real service paths (2026-10-05)
 
 Status: OPEN (documented limitation; normative constraint still satisfied).
@@ -1225,7 +1232,8 @@ the 200/409/no-clobber behavior itself held in every run).
 
 Resolution044: status-derived200 winner assertion, unchanged concurrent requests
 and single version advancement. Export/writer-UI2 files30/30 pass; separate
-exact-diff review APPROVE. Full-inventory battery is separate NF039 evidence.
+exact-diff review APPROVE. Fresh NF039 at712cca6 covers all57 API files1034/1034
+in54 non-E2E plus3 E2E runs. This does not close unrelated evidence gaps.
 
 ## GAP-045 — NF-WF-012 deliberately supersedes NF-WF-010's IN_REVIEW→PUBLISHED carve-out (2026-10-05)
 
@@ -2295,7 +2303,8 @@ string: checks02–05/07 never ran. Fix the temporary driver with named array sp
 retain that failed attempt rather than interpreting its empty counts as success.
 Resolution: normalize line endings at parseAgentFile;10/10 template tests,
 typecheck/targeted lint exit0 and separate exact-diff review APPROVE. Fresh
-NF-WF-039 battery pending; this fix alone does not establish E2E success.
+NF-WF-039 battery was pending at closure. Current receipt at712cca6: dedicated
+E2E3 files20/20, all API inventory and web/axe/typechecks/lint/build pass.
 
 ## GAP-114 — Byte-stable export fixtures changed by Windows checkout
 
@@ -2312,7 +2321,8 @@ separate review, then a new full-inventory verification attempt.
 
 Resolution114: two exact-path LF attributes; i/lf w/lf check-attr/ls-files proof.
 Strict byte comparison retained; focused2-file30/30 pass; separate review APPROVE.
-Fresh full-inventory verification pending in NF039; failed68facd7 receipt retained.
+Fresh NF039 at712cca6: all57 API files1034/1034 in two runs; web477/477 and
+axe91/91 plus lint/typechecks/build exit0. Failed68facd7 receipt retained.
 
 Historical GAP-109 closure receipt (before NF-WF-036): final7-file API run113/113; worker5-file recovery46/46; real BullMQ enqueue/dedup1/1. Additional scope receipts in NF-WF-035. Lint/typecheck/diff checks pass; both independent reviewers APPROVE after concurrency findings addressed. No full-release completion claim. GAP-110 and human/live deployment gates remain open; CURRENT/task record retains fallback because Engram session attribution is still unavailable.
 
@@ -2323,4 +2333,4 @@ Observed: d60b8f7 accidentally converted historical backtick+n sequences in
 CURRENT while updating its dispatch; diff-check reported whitespace changes.
 Impact: historical record formatting corruption, no product code impact.
 Resolution: restore CURRENT from68facd7 and apply only the exact dispatch
-replacement. Closure: parent diff limited to dispatch and diff-check exit0.
+replacement. Closure: net CURRENT diff versus68facd7 limited to dispatch; diff-check exit0.

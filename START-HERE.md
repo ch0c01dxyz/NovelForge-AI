@@ -31,9 +31,11 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** run [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md),
-the fresh release verification follow-up after reviewed NF-WF-035–038. GAP-110 scene revisions and
-GAP-083 Recovery Center wiring are implemented and reviewed. Keep release,
+**Current next task:** freeze a bounded GAP-034 novel-scoped workflow history and
+approval-selection contract. [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)
+is automated green at712cca6 after reviewed repairs035–038/040; see the exact receipts
+in CURRENT. GAP-110 scene revisions and GAP-083 Recovery Center wiring are
+implemented and reviewed. Older evidence/contract gaps remain; keep release,
 live deployment and human GAP-051 evidence separate.
 
 Pulled baseline: `e538180`; tasks027–034 have implementation commits and reported gap closures. The post-pull audit found real runtime regressions under GAP-109; do not substitute historical closure reports for current verification. NF-WF-035 repairs comparison claims/provision compensation, tick cursors, merge/checkout locks, scene-delete lineage, restore coherence and memory/notification queue recovery. See [CURRENT](docs/14-progress/CURRENT.md) for actual host receipts. The GAP-051 human accessibility gate and live deployment/final-release verification remain open. Do not recreate the author-removed GAP-098 tracker.

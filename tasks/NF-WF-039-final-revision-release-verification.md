@@ -1,6 +1,6 @@
 # NF-WF-039 — Final revision release verification
 
-Status: READY / CONTRACT_REVIEWED. Failed execution revision: 68facd7.
+Status: AUTOMATED_VERIFIED / REPORT_REVIEWED. Execution revision: 712cca6; failed68facd7 retained.
 Owner: current Codex verifier. Reviewer: separate review_mutations_034 actor.
 Goal: run a fresh sequential automated battery after reviewed NF-WF-035–038.
 Preserve the failed36519e2 attempt and NF-WF-023's stop-on-new-defect rule;
@@ -43,3 +43,16 @@ then the dedicated pnpm e2e stage as already ordered. Reconcile54 non-E2E plus3
 E2E files = all57 API files; report two runs, never a monolithic suite receipt.
 This avoids duplicate long-novel fixture builds; no test is omitted or filtered
 inside those files. All seven stages remain sequential and stop on failure.
+
+Completed boundary: lint/API/web typechecks0; API non-E2E54 files1014/1014;
+web79 files477/477; dedicated E2E3 files20/20; axe20 files91/91; additional
+Nuxt production build0. All sequential, no suite skipped. Execution25134
+completed0; TEMP/novelforge-release-712cca6 retains logs/results. Full API
+inventory57 files1034 tests is covered in two runs. Automated green only;
+human/live gates and source-audited older gaps remain open. Engram runtime
+attribution unavailable; report/CURRENT are fallback context.
+
+Final evidence/report review APPROVE by separate review_mutations_034 actor,
+2026-10-07: all eight retained exit codes, file/test counts and sequential
+timestamps checked read-only. No independent test rerun or release approval
+claimed. Final handoff commit changes documentation only; tested code remains712cca6.

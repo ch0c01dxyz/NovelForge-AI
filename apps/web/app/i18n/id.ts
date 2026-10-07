@@ -181,6 +181,13 @@ export const id = {
       "Review teks final gagal. Perbaiki masalah yang ditandai dan review ulang sebelum menerbitkan.",
   },
   recovery: {
+    backToWorkspace: "Kembali ke ruang kerja",
+    pageLoadError: "Gagal memuat data pemulihan.",
+    checkoutOnly: "Pemulihan menggunakan checkpoint dari cabang yang sedang aktif. Ganti cabang terlebih dahulu untuk memulihkan cabang lain.",
+    checkpointLabel: "Label checkpoint",
+    createCheckpoint: "Buat checkpoint",
+    selectBranch: "Pilih cabang sumber",
+    saveBeforeLeaving: "Simpan teks dan selesaikan konflik sebelum meninggalkan ruang kerja.",
     title: "Pusat Pemulihan",
     branches: "Cabang",
     createBranch: "Cabang baru",

@@ -181,6 +181,13 @@ export const en = {
       "The final-text review failed. Fix the flagged issues and re-review before publishing.",
   },
   recovery: {
+    backToWorkspace: "Back to the workspace",
+    pageLoadError: "Failed to load recovery data.",
+    checkoutOnly: "Restore and rollback use checkpoints from the checked-out branch. Switch branches first to recover another branch.",
+    checkpointLabel: "Checkpoint label",
+    createCheckpoint: "Create checkpoint",
+    selectBranch: "Select a source branch",
+    saveBeforeLeaving: "Save your text and resolve any conflict before leaving the workspace.",
     title: "Recovery Center",
     branches: "Branches",
     createBranch: "New branch",

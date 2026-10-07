@@ -24,7 +24,13 @@ IDs rather than becoming competing issue logs.
 
 ## Current execution override — 2026-10-07
 
-Use CURRENT's e538180 audit dispatch. Implementations through NF-WF-034 are committed; NF-WF-035 repairs observed GAP-109 runtime regressions; bounded checks and separate reviews passed. NF-WF-035 is included in this commit. Next: address GAP-110 scene create/update revision bookkeeping, and verify NF-WF-023 on the final revision. Historical queue/ledger rows below preserve planning context and do not redispatch completed implementations. Reported closures of GAP-004/055/091/094–096/100/101 do not supersede newly observed regressions. GAP-098 is recorded closed by author scope decision; human GAP-051 and live release acceptance remain open.
+Implementations through NF-WF-034 and repairs NF-WF-035–037 are committed or
+included with this update. NF-WF-036 closes GAP-110 scene mutation revisions;
+NF-WF-037 closes GAP-083 page wiring and GAP-111/112 integration defects.
+Bounded checks and separate reviews passed. Next: NF-WF-023 battery on the final
+revision. Historical queue rows preserve planning context; do not redispatch
+completed implementations. GAP-098 stays closed by author scope decision;
+human GAP-051 and live release acceptance remain open.
 
 ## Historical baseline
 

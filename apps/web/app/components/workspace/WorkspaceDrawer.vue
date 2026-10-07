@@ -84,3 +84,4 @@ watch(
 
 onMounted(() => document.addEventListener("keydown", onKeydown, true));
 onUnmounted(() => document.removeEventListener("keydown", onKeydown, true));
+</script>

@@ -60,7 +60,7 @@ configureAxe({
 const conflictPreview = {
   preview: {
     sourceBranch: { name: "feature" },
-    targetBranch: { name: "main" },
+    targetBranch: { name: "main", headRevisionId: "rev-target" },
     changes: [
       {
         entityType: "CanonFact",
@@ -93,7 +93,7 @@ const conflictPreview = {
 const cleanPreview = {
   preview: {
     sourceBranch: { name: "feature" },
-    targetBranch: { name: "main" },
+    targetBranch: { name: "main", headRevisionId: "rev-target" },
     changes: [
       { entityType: "CanonFact", entityId: "fact-2", kind: "CLEAN", changedOn: ["source"] },
     ],
@@ -117,6 +117,38 @@ const recoverable = {
 };
 
 describe("MergePreview", () => {
+  it("applies the selected semantic mode and pins the preview target head", async () => {
+    apiMock.mockResolvedValue(cleanPreview);
+    const w = mount(MergePreview, { props: { workspaceId: "ws-1", novelId: "novel-1", sourceBranchId: "branch-feature" } });
+    await flushPromises();
+    await w.find('[data-testid="merge-mode-semantic"]').trigger("click");
+    await flushPromises();
+    apiMock.mockResolvedValueOnce({ revisionId: "rev-new" });
+    await w.find('[data-testid="merge-apply-button"]').trigger("click");
+    await flushPromises();
+    const call = apiMock.mock.calls.find(([url]) => url.endsWith("/merge/apply"));
+    expect(JSON.parse(call![1].body)).toMatchObject({ mode: "semantic", expectedHeadRevisionId: "rev-target" });
+    w.unmount();
+  });
+
+  it("invalidates stale previews and ignores out-of-order mode responses", async () => {
+    apiMock.mockResolvedValueOnce(cleanPreview);
+    const w = mount(MergePreview, { props: { workspaceId: "ws-1", novelId: "novel-1", sourceBranchId: "branch-feature" } });
+    await flushPromises();
+    let resolveOld!: (value: unknown) => void;
+    apiMock.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    await w.find('[data-testid="merge-mode-semantic"]').trigger("click");
+    expect(w.find('[data-testid="merge-apply-button"]').exists()).toBe(false);
+    apiMock.mockRejectedValueOnce(new Error("current preview failed"));
+    await w.find('[data-testid="merge-mode-conservative"]').trigger("click");
+    await flushPromises();
+    resolveOld(cleanPreview);
+    await flushPromises();
+    expect(w.find('[data-testid="merge-apply-button"]').exists()).toBe(false);
+    expect(w.find('[data-testid="merge-preview-error"]').text()).toContain("current preview failed");
+    w.unmount();
+  });
+
   beforeEach(() => {
     apiMock.mockReset();
     currentT = tFor(en);

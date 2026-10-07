@@ -553,3 +553,14 @@ API58/58; worker publication21/21; API typecheck/lint exit0. Separate reviewer
 APPROVE; no full release proof. NF-WF-037 Recovery Center wiring under review,
 GAP-111/112 recorded. Engram attribution remains unavailable; this is fallback
 working context, not an attributed MCP save.
+# Boundary update — NF-WF-037, 2026-10-07
+
+NF-WF-036 pushed at2479696. NF-WF-037 IMPLEMENTED/REVIEWED: recovery header
+link/page, server checkpoint/branch choices, manual checkpoint, all4 real
+components, mutation refresh and preview/request pinning. Autosave newer edits,
+failed/in-flight chapter switching and route leave now preserve the buffer.
+GAP-083/111/112 resolved within the bounded scope. Focused web27/27; en/id page
+axe zero in jsdom; web typecheck/lint and Nuxt production build exit0. Separate
+review_mutations_034 APPROVE. Next: sequential NF-WF-023 on the final revision;
+no live browser/manual screen-reader proof. Engram attribution unavailable per
+runtime hook; this file/task is the fallback checkpoint, no MCP save claimed.

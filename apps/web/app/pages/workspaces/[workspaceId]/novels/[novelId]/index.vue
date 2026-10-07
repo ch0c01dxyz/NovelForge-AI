@@ -368,6 +368,11 @@ async function loadChapters() {
 }
 
 async function selectChapter(id: string) {
+  if (saveState.value === "dirty" && !saveInFlight) await saveNow();
+  if (saveInFlight || saveState.value !== "saved") {
+    error.value = t("recovery.saveBeforeLeaving");
+    return;
+  }
   // Switching chapters resets the generation review context.
   reviewRunId.value = null;
   reviewStatusUrl.value = null;
@@ -381,8 +386,6 @@ async function selectChapter(id: string) {
   aiNotice.value = null;
   selAi.reset();
   suggestionAnchor.value = null;
-  // Flush unsaved text for the chapter we're leaving before switching.
-  if (saveState.value === "dirty") await saveNow();
   const seq = ++selectSeq;
   activeId.value = id;
   const detail = await api<ChapterDetail>(`${base.value}/chapters/${id}`);
@@ -440,9 +443,15 @@ async function createChapter() {
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
+let saveInFlight = false;
 // Monotonic token: only the newest selectChapter response may write state.
 let selectSeq = 0;
 onUnmounted(() => clearTimeout(timer));
+onBeforeRouteLeave(() => {
+  if (!saveInFlight && saveState.value === "saved") return true;
+  error.value = t("recovery.saveBeforeLeaving");
+  return false;
+});
 
 function onInput() {
   // NF-WF-015: autosave pauses while a version conflict is unresolved —
@@ -465,8 +474,11 @@ function onEditorBlur() {
 
 async function saveNow() {
   const chapter = activeChapter.value;
-  if (!chapter || saveState.value === "saving" || saveState.value === "conflict") return;
+  if (!chapter || saveInFlight || saveState.value === "conflict") return;
   const savingId = chapter.id;
+  const savingContent = content.value;
+  let newerEdits = false;
+  saveInFlight = true;
   clearTimeout(timer);
   saveState.value = "saving";
   try {
@@ -475,7 +487,7 @@ async function saveNow() {
       {
         method: "PUT",
         body: JSON.stringify({
-          content: content.value,
+          content: savingContent,
           expectedVersion: version.value,
         }),
       },
@@ -486,7 +498,8 @@ async function saveNow() {
     // only the still-active chapter may touch the live editor state.
     if (activeId.value === savingId) {
       version.value = result.version;
-      saveState.value = "saved";
+      newerEdits = content.value !== savingContent;
+      saveState.value = newerEdits ? "dirty" : "saved";
       error.value = null;
     }
   } catch (e) {
@@ -518,6 +531,12 @@ async function saveNow() {
     } else {
       saveState.value = "dirty"; // keep the text; retry on next edit
       error.value = t("errors.saveFailed");
+    }
+  } finally {
+    saveInFlight = false;
+    if (newerEdits && activeId.value === savingId) {
+      clearTimeout(timer);
+      timer = setTimeout(() => void saveNow(), 1500);
     }
   }
 }
@@ -893,6 +912,13 @@ async function publish() {
            (progressive enhancement; the endgame page and every
            endgame route enforce membership + `endgame:read`
            server-side). -->
+      <NuxtLink
+        :to="`${base}/recovery`"
+        class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+        data-testid="recovery-link"
+      >
+        {{ t("recovery.title") }}
+      </NuxtLink>
       <NuxtLink
         :to="`/workspaces/${workspaceId}/novels/${novelId}/endgame`"
         class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"

@@ -117,7 +117,7 @@
  *
  * §15 foundational design; en+id via useLocale(); axe-tested.
  */
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useApi, ApiError } from "../../composables/useApi";
 import { useLocale } from "../../composables/useLocale";
 
@@ -134,6 +134,7 @@ interface RecoverableCheckpoint {
 const props = defineProps<{
   workspaceId: string;
   novelId: string;
+  checkedOutBranchName?: string;
 }>();
 
 const emit = defineEmits<{
@@ -145,7 +146,9 @@ const { api } = useApi();
 
 const loading = ref(true);
 const loadError = ref<string | null>(null);
-const checkpoints = ref<RecoverableCheckpoint[]>([]);
+const allCheckpoints = ref<RecoverableCheckpoint[]>([]);
+const checkpoints = computed(() => allCheckpoints.value.filter((checkpoint) =>
+  !props.checkedOutBranchName || checkpoint.branchName === props.checkedOutBranchName));
 const confirming = ref<RecoverableCheckpoint | null>(null);
 const rollingBackId = ref<string | null>(null);
 const rollbackErrorId = ref<string | null>(null);
@@ -167,7 +170,7 @@ async function load(): Promise<void> {
     const res = await api<{ checkpoints: RecoverableCheckpoint[] }>(
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/recoverable-checkpoints`,
     );
-    checkpoints.value = res.checkpoints;
+    allCheckpoints.value = res.checkpoints;
   } catch (e) {
     loadError.value = e instanceof ApiError ? e.message : String(e);
   } finally {

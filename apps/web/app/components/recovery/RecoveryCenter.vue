@@ -262,6 +262,7 @@ const props = defineProps<{
   workspaceId: string;
   novelId: string;
 }>();
+const emit = defineEmits<{ changed: [] }>();
 
 const { api } = useApi();
 const { t } = useLocale();
@@ -335,6 +336,7 @@ async function onCreate(): Promise<void> {
     createOpen.value = false;
     newName.value = "";
     await load();
+    emit("changed");
   } catch (e) {
     createError.value = e instanceof ApiError ? mapBranchError(e.code) : String(e);
   } finally {
@@ -360,6 +362,7 @@ async function doSwitch(): Promise<void> {
     });
     switchTarget.value = null;
     await load();
+    emit("changed");
   } catch (e) {
     if (e instanceof ApiError && e.code === "DIRTY_SWITCH" && !autoCheckpoint.value) {
       // Surface the dirty warning inline; the author can enable

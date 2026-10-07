@@ -162,7 +162,7 @@
  *
  * §15 foundational design; en+id via useLocale(); axe-tested.
  */
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useApi, ApiError } from "../../composables/useApi";
 import { useLocale } from "../../composables/useLocale";
 
@@ -171,6 +171,7 @@ const props = defineProps<{
   novelId: string;
   checkpointId: string | null;
 }>();
+const emit = defineEmits<{ applied: [] }>();
 
 const { t } = useLocale();
 const { api } = useApi();
@@ -202,6 +203,15 @@ const preview = ref<null | {
 }>(null);
 const acknowledged = ref(false);
 const applied = ref(false);
+type RestorePreview = NonNullable<(typeof preview)["value"]>;
+let selectionSeq = 0;
+watch([() => props.checkpointId, scope, domain, entityType, entityId, tablesInput, entityIdsInput], () => {
+  selectionSeq++;
+  preview.value = null;
+  acknowledged.value = false;
+  applied.value = false;
+  previewing.value = false;
+}, { flush: "sync" });
 
 const conflicts = computed(() => preview.value?.preview.dependencyConflicts ?? []);
 // The gate: ORPHAN_REFERENCE on DOMAIN/SELECTIVE requires acknowledgment.
@@ -237,6 +247,8 @@ function toErrorMessage(e: unknown): string {
 
 async function onPreview(): Promise<void> {
   if (!props.checkpointId) return;
+  const seq = ++selectionSeq;
+  preview.value = null;
   previewing.value = true;
   error.value = "";
   applied.value = false;
@@ -248,15 +260,18 @@ async function onPreview(): Promise<void> {
     };
     const selection = selectionPayload();
     if (selection) body.selection = selection;
-    preview.value = await api(
+    const result = await api<RestorePreview>(
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/restores/preview`,
       { method: "POST", body: JSON.stringify(body) },
     );
+    if (seq === selectionSeq) preview.value = result;
   } catch (e) {
-    error.value = toErrorMessage(e);
-    preview.value = null;
+    if (seq === selectionSeq) {
+      error.value = toErrorMessage(e);
+      preview.value = null;
+    }
   } finally {
-    previewing.value = false;
+    if (seq === selectionSeq) previewing.value = false;
   }
 }
 
@@ -274,6 +289,7 @@ async function onApply(): Promise<void> {
     );
     applied.value = true;
     preview.value = null;
+    emit("applied");
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : t("recovery.applyError");
   } finally {

@@ -88,6 +88,17 @@ function mountPanel() {
 }
 
 describe("SelectiveRestorePanel", () => {
+  it("invalidates a frozen restore preview when selection controls change", async () => {
+    apiMock.mockResolvedValueOnce(previewClean);
+    const w = mountPanel();
+    await w.find('[data-testid="selective-preview-btn"]').trigger("click");
+    await flushPromises();
+    expect(w.find('[data-testid="selective-apply-btn"]').exists()).toBe(true);
+    await w.find('[data-testid="selective-scope"]').setValue("ENTITY");
+    expect(w.find('[data-testid="selective-apply-btn"]').exists()).toBe(false);
+    w.unmount();
+  });
+
   beforeEach(() => {
     apiMock.mockReset();
     currentT = tFor(en);

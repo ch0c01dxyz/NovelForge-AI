@@ -162,7 +162,7 @@
         <button
           type="button"
           data-testid="merge-apply-button"
-          :disabled="!preview.canApply || applying || applied"
+          :disabled="loading || !preview.canApply || applying || applied"
           class="mt-2 rounded-lg border border-nf-border-strong bg-nf-bg-3 px-4 py-2 text-[13px] font-semibold text-nf-text hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50"
           @click="onApply"
         >
@@ -204,7 +204,7 @@ interface MergeChange {
 
 interface MergePreview {
   sourceBranch: { name: string };
-  targetBranch: { name: string };
+  targetBranch: { name: string; headRevisionId: string | null };
   changes: MergeChange[];
   summary: { clean: number; conflict: number; deletedModified: number; orphanRisk: number };
   canApply: boolean;
@@ -233,6 +233,7 @@ const applyError = ref<string | null>(null);
 // NF-WF-024C: merge analysis mode. Conservative (default) = 020C behavior;
 // semantic = deterministic S1/S2/S3 narrowing of CONFLICT → CLEAN.
 const mode = ref<"conservative" | "semantic">("conservative");
+let loadSeq = 0;
 
 const sourceBranchName = computed(() => preview.value?.sourceBranch.name ?? "—");
 const targetBranchName = computed(() => preview.value?.targetBranch.name ?? "—");
@@ -292,6 +293,8 @@ function errorMessage(e: unknown): string {
 }
 
 async function load(): Promise<void> {
+  const seq = ++loadSeq;
+  preview.value = null;
   loading.value = true;
   loadError.value = null;
   try {
@@ -306,23 +309,23 @@ async function load(): Promise<void> {
         body: JSON.stringify(body),
       },
     );
-    preview.value = res.preview;
+    if (seq === loadSeq) preview.value = res.preview;
   } catch (e) {
-    loadError.value = errorMessage(e);
+    if (seq === loadSeq) loadError.value = errorMessage(e);
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
 function setMode(next: "conservative" | "semantic"): void {
-  if (mode.value === next) return;
+  if (mode.value === next || applying.value) return;
   mode.value = next;
   applied.value = false;
   void load();
 }
 
 async function onApply(): Promise<void> {
-  if (!preview.value?.canApply || applying.value) return;
+  if (loading.value || !preview.value?.canApply || applying.value) return;
   applying.value = true;
   applyError.value = null;
   try {
@@ -330,7 +333,8 @@ async function onApply(): Promise<void> {
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/branches/${props.sourceBranchId}/merge/apply`,
       {
         method: "POST",
-        body: JSON.stringify(props.targetBranchId ? { targetBranchId: props.targetBranchId } : {}),
+        body: JSON.stringify({ targetBranchId: props.targetBranchId, mode: mode.value,
+          expectedHeadRevisionId: preview.value.targetBranch.headRevisionId }),
       },
     );
     applied.value = true;
@@ -339,7 +343,7 @@ async function onApply(): Promise<void> {
     applyError.value = errorMessage(e);
     // A conflict discovered at apply time (head moved between preview and
     // apply) reloads the preview so the author sees the new state.
-    if (e instanceof ApiError && e.code === "MERGE_CONFLICTS") await load();
+    if (e instanceof ApiError && (e.code === "MERGE_CONFLICTS" || e.code === "CONFLICT")) await load();
   } finally {
     applying.value = false;
   }

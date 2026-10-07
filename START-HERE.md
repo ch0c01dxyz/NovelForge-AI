@@ -31,7 +31,10 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** continue after the reviewed [NF-WF-035 runtime repair](tasks/NF-WF-035-post-sync-runtime-repair.md), included in this commit: address GAP-110 through a bounded scene create/update revision contract and run NF-WF-023 against the final revision.
+**Current next task:** run [NF-WF-023](tasks/NF-WF-023-production-release.md)
+on the final revision after reviewed NF-WF-035–037. GAP-110 scene revisions and
+GAP-083 Recovery Center wiring are implemented and reviewed. Keep release,
+live deployment and human GAP-051 evidence separate.
 
 Pulled baseline: `e538180`; tasks027–034 have implementation commits and reported gap closures. The post-pull audit found real runtime regressions under GAP-109; do not substitute historical closure reports for current verification. NF-WF-035 repairs comparison claims/provision compensation, tick cursors, merge/checkout locks, scene-delete lineage, restore coherence and memory/notification queue recovery. See [CURRENT](docs/14-progress/CURRENT.md) for actual host receipts. The GAP-051 human accessibility gate and live deployment/final-release verification remain open. Do not recreate the author-removed GAP-098 tracker.
 

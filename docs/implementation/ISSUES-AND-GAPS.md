@@ -1769,7 +1769,12 @@ IMPACT: the Recovery Center UI exists but is unreachable from the novel workspac
 
 NEXT ACTION: parent joint-wiring decision — whether 020B's commit (or a later wiring task) mounts the components into the novel workspace page, given all three children contribute Recovery Center surfaces and a joint wiring is cleaner than three separate mounts. No code change by the fix actor (per the F5 instruction: do NOT mount anything).
 
-STATUS: OPEN — recorded 2026-10-06 by the 020B fix actor (diff-review finding F5, P3).
+STATUS: RESOLVED 2026-10-07 via NF-WF-037. The workspace header links to a
+novel-scoped recovery page mounting all four existing components with server
+branch/checkpoint selectors, manual checkpoint creation and mutation refresh.
+Evidence: focused web27/27, en/id page axe zero, typecheck/lint/build exit0,
+separate review APPROVE. API safety remains server-enforced; this closes page
+reachability, not the human/live release acceptance gate.
 
 ## GAP-084 — 021B implementer: `simulation:read`/`simulation:manage` capabilities added by 021B (021A not yet implemented) (2026-10-06)
 
@@ -2226,7 +2231,7 @@ to share novel/checkout-first locks and skip writes for unchanged final values.
 
 ## GAP-111 — Recovery page integration safety seams
 
-Status: OPEN, 2026-10-07. Owner: NF-WF-037.
+Status: RESOLVED, 2026-10-07. Owner: NF-WF-037.
 Evidence: separate contract reviewer found no route-leave guard in the workspace;
 MergePreview apply omits mode/expected head and can retain old previews during
 loading; SelectiveRestorePanel keeps a preview after selection edits; recovery
@@ -2235,15 +2240,23 @@ Impact: wiring these unchanged components could lose editor text or apply a
 different operation than the visible preview. Next: bounded UI safety repairs,
 checkout-owned checkpoint selection and explicit checkpoint creation using existing
 APIs. Closure: rendered selector/refresh/negative tests, en/id/axe and exact-diff review.
+Separate diff review additionally found autosave marking newer edits saved and
+chapter selection proceeding after a failed/skipped save. NF-WF-037 scope covers
+submitted-content pinning, one in-flight save and guard-before-reset for selection.
+Resolution: pinned merge mode/head and checkpoint branch/head, sequenced previews,
+selection invalidation, refresh events and buffer guards implemented. Verification:
+focused web27/27 with race/refusal tests; separate review APPROVE.
 
 ## GAP-112 — Workspace drawer cannot compile as a Vue SFC
 
-Status: OPEN, 2026-10-07. Owner: NF-WF-037 integration repair.
+Status: RESOLVED, 2026-10-07. Owner: NF-WF-037 integration repair.
 Evidence: importing the actual workspace page in its navigation test fails with
 `Element is missing end tag` at WorkspaceDrawer.vue:37. The file ends without
 the closing script tag. Typecheck alone did not detect this SFC compiler failure.
 Impact: workspace rendering/build is blocked. Next: restore the missing tag;
 closure: actual page import test and web production build.
+Resolution: closing script tag restored. Actual workspace setup tests and Nuxt
+production build pass. No equivalent full-platform completion claim.
 Resolution: NF-WF-036 records create/edit/reorder changes and manuscript rebuild
 intent atomically on checkout lineage. Every renumbered scene is listed, no-op
 writes are skipped, and sibling chapter/publication lock ordering is aligned.

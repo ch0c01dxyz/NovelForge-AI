@@ -28,6 +28,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { resolveTestDatabaseUrl } from "./test-utils/resolve-test-database-url.ts";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
 import { generateSessionToken, hashSessionToken } from "@novelforge/auth";
 import pg from "pg";
@@ -53,14 +54,9 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const DB_PACKAGE_ROOT = path.join(HERE, "..", "..", "..", "packages", "database");
 const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js");
 
-if (!process.env.DATABASE_URL) {
-  try {
-    process.loadEnvFile(path.join(HERE, "..", "..", "..", ".env"));
-  } catch {
-    throw new Error("DATABASE_URL not set and repo-root .env not found — see ADR-0003");
-  }
-}
-const BASE_URL = process.env.DATABASE_URL!;
+const BASE_URL = resolveTestDatabaseUrl({
+  envPath: path.join(HERE, "..", "..", "..", ".env"),
+});
 
 function withDb(url: string, db: string): string {
   const u = new URL(url);

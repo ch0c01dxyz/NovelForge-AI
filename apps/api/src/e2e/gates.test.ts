@@ -26,6 +26,7 @@ import { ensureFixture, FIXTURE_CHAPTERS } from "./long-novel.fixture.ts";
 import { createAuditService } from "@novelforge/ai-services";
 import { createPlanningServices } from "@novelforge/ai-services";
 import { createManuscriptServices } from "../services/manuscript.ts";
+import { createFinalTextReviewServices } from "../services/final-text-review.ts";
 import { createCanonServices } from "@novelforge/ai-services";
 import { createCanonApplicationServices } from "../services/canon-applications.ts";
 import { createRetrievalServices } from "@novelforge/ai-services";
@@ -88,6 +89,7 @@ function svc() {
     audit,
     planning: createPlanningServices({ db, audit }),
     manuscript: createManuscriptServices(db, audit, {}),
+    finalTextReview: createFinalTextReviewServices({ db, audit }),
     canon: createCanonServices({ db, audit, retrieval }),
     canonApps: createCanonApplicationServices({ db, audit }),
   };
@@ -675,9 +677,40 @@ describe("G9 — forced-STALE detection", () => {
     });
     // The compiler resolves storyPosition via getStoryPosition (max chapter
     // with IN_REVIEW/PUBLISHED status); a DRAFT chapter resolves to 0 and
-    // tiers 7/8 compile UNAVAILABLE. Promote via direct DB update — the
-    // review gate is out of scope for this staleness test.
-    await db.chapter.update({ where: { id: ch.id }, data: { status: "IN_REVIEW" } });
+    // tiers 7/8 compile UNAVAILABLE. Promote through the OFFICIAL flow:
+    // reviewFinalText (assert the PASS verdict explicitly) then
+    // manuscript.setStatus to IN_REVIEW (the DRAFT→IN_REVIEW transition
+    // reads the review receipt via assertPublishReviewGate). This proves
+    // the official mutation flow was used — not a direct DB status write.
+    const versionIdForReview = (
+      await db.chapter.findUniqueOrThrow({
+        where: { id: ch.id },
+        select: { currentVersionId: true },
+      })
+    ).currentVersionId;
+    expect(versionIdForReview).toBeTruthy();
+    const verdict = await s.finalTextReview.reviewFinalText({
+      actorUserId: ownerId,
+      workspaceId,
+      novelId,
+      chapterId: ch.id,
+      chapterVersionId: versionIdForReview!,
+    });
+    expect(verdict.verdict).toBe("PASS");
+    await s.manuscript.setStatus({
+      actorUserId: ownerId,
+      workspaceId,
+      novelId,
+      chapterId: ch.id,
+      status: "IN_REVIEW",
+    });
+    const chapterStatus = (
+      await db.chapter.findUniqueOrThrow({
+        where: { id: ch.id },
+        select: { status: true },
+      })
+    ).status;
+    expect(chapterStatus).toBe("IN_REVIEW");
 
     // Canon fact BEFORE the rebuild: visible at R1, so the projection has
     // structural content (facts) and the compiler emits PRESENT blocks.

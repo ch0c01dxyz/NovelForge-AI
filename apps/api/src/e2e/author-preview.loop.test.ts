@@ -447,10 +447,109 @@ describe("author-preview E2E loop (G4 + G6)", () => {
     ).content;
     expect(pinnedContent.length).toBeGreaterThan(0);
     expect(readChapter.content).toBe(pinnedContent);
+
+    // -- Pinning regression (NF-WF-046, fix 2): the reader serves the
+    // PINNED version, not current. Unpublish ch1 via the official
+    // PUBLISHED → IN_REVIEW path (ungated), save a DISTINCT V2, then
+    // prove the reader still serves V1's content.
+    await manuscript.setStatus({
+      actorUserId: ownerId,
+      workspaceId,
+      novelId,
+      chapterId: ch1.id,
+      status: "IN_REVIEW",
+    });
+    const ch1AfterUnpublish = await db.chapter.findUniqueOrThrow({
+      where: { id: ch1.id },
+      select: { status: true },
+    });
+    expect(ch1AfterUnpublish.status).toBe("IN_REVIEW");
+    // Read the current version number dynamically (not hardcoded) —
+    // saveChapter's expectedVersion must match the live version.
+    const v1Number = (
+      await db.chapterVersion.findUniqueOrThrow({
+        where: { id: versionId },
+        select: { number: true },
+      })
+    ).number;
+    const v2Marker = "E2E pinning regression V2 marker: the harbor bell rang thrice, unheard.";
+    await manuscript.saveChapter({
+      actorUserId: ownerId,
+      workspaceId,
+      novelId,
+      chapterId: ch1.id,
+      content: v2Marker,
+      expectedVersion: v1Number,
+    });
+    const ch1AfterV2 = await db.chapter.findUniqueOrThrow({
+      where: { id: ch1.id },
+      select: { currentVersionId: true, status: true },
+    });
+    // V2 is now current; the Publication row must still pin V1.
+    expect(ch1AfterV2.currentVersionId).not.toBe(versionId);
+    const pubRowAfterV2 = await db.publication.findUniqueOrThrow({
+      where: { chapterId: ch1.id },
+      select: { status: true, chapterVersionId: true },
+    });
+    expect(pubRowAfterV2.status).toBe("PUBLISHED");
+    expect(pubRowAfterV2.chapterVersionId).toBe(versionId);
+    // The reader serves the PINNED version's content: equality to V1,
+    // inequality to V2 (proves "not current"), and the published
+    // version number matches V1's number.
+    const v1Content = (
+      await db.chapterVersion.findUniqueOrThrow({
+        where: { id: versionId },
+        select: { content: true },
+      })
+    ).content;
+    const v2Content = (
+      await db.chapterVersion.findUniqueOrThrow({
+        where: { id: ch1AfterV2.currentVersionId! },
+        select: { content: true },
+      })
+    ).content;
+    expect(v1Content.length).toBeGreaterThan(0);
+    expect(v2Content.length).toBeGreaterThan(0);
+    expect(v2Content).not.toBe(v1Content);
+    const readAfterV2 = await readerApi("GET", `/api/public/novels/${novelRow.slug}/chapters/1`);
+    expect(readAfterV2.statusCode).toBe(200);
+    const readChapterAfterV2 = (asObj(readAfterV2) as { chapter: { content: string; publishedVersionNumber: number } }).chapter;
+    expect(readChapterAfterV2.content).toBe(v1Content);
+    expect(readChapterAfterV2.content).not.toBe(v2Content);
+    expect(readChapterAfterV2.publishedVersionNumber).toBe(v1Number);
     // Negative (no-oracle rule, 013): a DRAFT novel's chapter is not
-    // publicly resolvable — 404 NOT_FOUND. The FAIL novel above never
-    // published, so it stays DRAFT.
-    const readDraft = await readerApi("GET", `/api/public/novels/e2e-loop-409/chapters/1`);
+    // publicly resolvable — 404 NOT_FOUND. This uses an INDEPENDENT
+    // fixture seeded inside this test (not the e2e-loop-409 novel from
+    // the previous it() block), so the negative is meaningful when this
+    // test runs in isolation: the 404 can only mean non-publicity, not
+    // "novel does not exist".
+    const draftIds = await seedWorkspace(db, ownerId, "e2e-loop-draft-negative");
+    const draftManuscript = createManuscriptServices(db, createAuditService(db), {});
+    const draftSctx = { actorUserId: ownerId, workspaceId: draftIds.workspaceId, novelId: draftIds.novelId };
+    const draftCh = await draftManuscript.createChapter({ ...draftSctx, title: "E2E Draft Chapter" });
+    await draftManuscript.saveChapter({
+      ...draftSctx,
+      chapterId: draftCh.id,
+      content: "A draft chapter that must never be publicly readable.",
+      expectedVersion: null,
+    });
+    // Fixture-validity proofs BEFORE the negative:
+    const draftNovel = await db.novel.findUniqueOrThrow({
+      where: { id: draftIds.novelId },
+      select: { status: true, slug: true },
+    });
+    expect(draftNovel.status).toBe("DRAFT");
+    expect(
+      await db.chapter.count({ where: { novelId: draftIds.novelId } }),
+    ).toBeGreaterThan(0);
+    // The chapter exists and is readable through the authenticated
+    // surface — the subsequent anonymous 404 can only mean non-publicity.
+    const draftRead = await api(
+      "GET",
+      `/api/workspaces/${draftIds.workspaceId}/novels/${draftIds.novelId}/chapters/${draftCh.id}`,
+    );
+    expect(draftRead.statusCode).toBe(200);
+    const readDraft = await readerApi("GET", `/api/public/novels/${draftNovel.slug}/chapters/1`);
     expect(readDraft.statusCode).toBe(404);
     expect((asObj(readDraft) as { error: string }).error).toBe("NOT_FOUND");
 
@@ -520,7 +619,8 @@ describe("author-preview E2E loop (G4 + G6)", () => {
     const checkpointId = (asObj(cp) as { checkpointId: string }).checkpointId;
     expect(checkpointId).toBeTruthy();
     // Two mutations after the checkpoint, on a fresh DRAFT chapter
-    // (ch1 is PUBLISHED and immutable by step 6).
+    // (ch1 is IN_REVIEW with V2 as current after step 6b's pinning
+    // regression — step 8 isolates its mutations on ch3).
     const ch3 = await manuscript.createChapter({ ...sctx, title: "E2E Chapter 3" });
     await manuscript.saveChapter({
       ...sctx,

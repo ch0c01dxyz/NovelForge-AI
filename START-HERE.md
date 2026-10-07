@@ -31,8 +31,15 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** freeze bounded GAP-040 branch-consumer and GAP-043 compiled
-projection evidence tasks. [NF-WF-041](tasks/NF-WF-041-novel-scoped-workflow-history.md)
+**Current next task (2026-10-07):** GAP-040/043/041 proof work is
+IMPLEMENTED + REVIEWED + PUSHED on `work/gap040-gap043`
+(NF-WF-042/044/045, commits `03f5d8d`/`5769a16`/`d7b8f6e`, battery GREEN
+at `c03a171`); post-review hardening NF-WF-046 is APPROVED and in
+implementation; author local review/acceptance of `c03a171` is pending
+(the author's five directives + GAP-040 clarification are the NF-WF-046
+contract). Do NOT merge `work/gap040-gap043` to main without author
+acceptance.
+[NF-WF-041](tasks/NF-WF-041-novel-scoped-workflow-history.md)
 resolves GAP-034 and GAP-116 with scoped tests and separate review.
 [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)
 is historical automated green at712cca6 after reviewed repairs035–038/040; see the exact receipts

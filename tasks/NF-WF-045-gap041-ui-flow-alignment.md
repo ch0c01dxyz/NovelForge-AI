@@ -9,11 +9,11 @@ actors, with requested aliases distinguished from runtime evidence.
 
 Status: APPROVED (contract review 2026-10-07 — APPROVE, 2 P3 observations non-blocking)
 Milestone / capability IDs: GAP-041 (NF-WF-011 contract defect)
-Implementer role / requested and resolved model: TBD at dispatch
-Reviewer role / requested and resolved model: TBD at dispatch (separate actor)
+Implementer role / requested and resolved model: separate subagent actor; resolved model UNKNOWN (backends MODEL_UNVERIFIED per GAP-013)
+Reviewer role / requested and resolved model: separate subagent actor (contract review + diff review); resolved model UNKNOWN (backends MODEL_UNVERIFIED per GAP-013)
 Readiness evidence / unresolved decisions / parent acceptance owner: parent coordinator
 Frozen review manifest / exact artifact paths and identity: TBD at review
-Baseline revision / local changes to preserve: 1a3452b; branch work/gap040-gap043 (NF-WF-042/044 committed; do not disturb)
+Baseline revision / local changes to preserve: 1a3452b; branch work/gap040-gap043; implementation commit d7b8f6e (2026-10-07); docs commit c03a171 (GAP-041 closure)
 Engram checkpoint topic key / last confirmed observation reference: n/a
 
 ## Goal and reason
@@ -195,6 +195,13 @@ None. Test-file and contract-appendix changes only. No schema, no production
 code, no data migration. Rollback is `git revert`.
 
 ## Documentation and handoff
+
+### Review record (2026-10-07, OBSERVED)
+
+- **Contract review:** APPROVE (2 P3 observations, non-blocking; P3-1 ACTIVE wording, P3-2 sequence mapping).
+- **Diff review:** APPROVE (2 P3 observations, non-blocking; P3-1 task-contract wording vs implementation, P3-2 review-record aging).
+- **Implementation evidence:** loop file 3/3; step 6b: FAIL chapter → 409 `HARD_POLICY_VIOLATION` (named), PASS → 200 + Publication row (PUBLISHED, chapterVersionId pinned), novel ACTIVE via Q4 auto-flip (asserted); public reader 200 with pinned content verbatim + DRAFT negative 404 `NOT_FOUND`; `npx tsc --noEmit` clean; eslint clean. Deviations: (1) content compared against DB-stored version content (sanitized on write — correct oracle); (2) ACTIVE via Q4 auto-flip (stronger than manual promotion). No escalations.
+- **Post-integration battery:** GREEN at `c03a171` (8 boxes; coordinator-owned report).
 
 Follow the MULTI-LLM-ORCHESTRATION.md handoff playbook. The implementer's
 handoff includes: the exact amended loop sequence, the publish-route refusal

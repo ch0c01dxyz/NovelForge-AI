@@ -2257,6 +2257,8 @@ RECURRENCE 2026-10-07 (OBSERVED by NF-WF-032 implementer): VM reset wiped Postgr
 
 RECURRENCE 2026-10-07 (OBSERVED by NF-WF-044 implementer, ~18:00 WIB): on this session's start, `pg_lsclusters` showed the 16/main cluster DOWN (data directory intact) and redis refused connections; the `novelforge_test` role was missing. Coordinator started both services (`pg_ctlcluster 16 main start`, `redis-server --daemonize yes`); implementer recreated the role + `vector` extension per GAP-065. No full reinstall needed this time — services were installed but stopped, and the test role did not survive.
 
+RECURRENCE 2026-10-07 (OBSERVED by NF-WF-046 battery runner, ~19:30 WIB): full VM reset a 4th time — PostgreSQL/Redis/pgvector uninstalled, apt-sources fix reverted. Recovered: removed `mirror.cogentco.com` again, waited out os-intent replay, started services manually, recreated `novelforge_test` per GAP-065. Box 4 first attempt then failed on environment (Prisma P3018: test role lacked superuser for `CREATE EXTENSION vector`); fixed via `ALTER ROLE novelforge_test SUPERUSER`, Box 4 re-run in full. ~27 min of the 49-min battery window spent on environment recovery. No code defect.
+
 ## GAP-109 — Post-pull audit: runtime and verification regressions
 
 Status: RESOLVED (bounded NF-WF-035 repair) / P1. Owner: current post-pull repair, baseline e538180.

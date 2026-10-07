@@ -8,11 +8,11 @@ actors, with requested aliases distinguished from runtime evidence.
 
 Status: APPROVED (contract review 2026-10-07 — APPROVE with 2 P3 observations, non-blocking)
 Milestone / capability IDs: M9 (NF-WF-011 G9 follow-up)
-Implementer role / requested and resolved model: (to be assigned — separate actor from contract author and reviewer)
-Reviewer role / requested and resolved model: (to be assigned — separate actor from contract author and implementer)
+Implementer role / requested and resolved model: separate subagent actor; resolved model UNKNOWN (backends MODEL_UNVERIFIED per GAP-013)
+Reviewer role / requested and resolved model: separate subagent actor (contract review + diff review); resolved model UNKNOWN (backends MODEL_UNVERIFIED per GAP-013)
 Readiness evidence / unresolved decisions / parent acceptance owner: GAP-043 is OPEN (P1); this contract closes it.
 Frozen review manifest / exact artifact paths and identity: (set at implementation dispatch)
-Baseline revision / local changes to preserve: (coordinator-owned at dispatch)
+Baseline revision / local changes to preserve: 1a3452b; branch work/gap040-gap043; implementation commit 03f5d8d (2026-10-07); docs commit e3ecfa1 (GAP-043 closure; GAP-108 recurrence)
 Engram checkpoint topic key / last confirmed observation reference: (coordinator-owned)
 
 ## Goal and reason
@@ -47,7 +47,7 @@ dispatch.
   reconciled).
 - [Evidence policy](../../docs/06-ai/MODEL-EVIDENCE-POLICY.md).
 - [GAP-043](../../docs/implementation/ISSUES-AND-GAPS.md) (line 1201).
-- [NF-WF-011 contract](../../tasks/NF-WF-011-context-compiler.md) (G9 gate;
+- [NF-WF-011 contract](../../tasks/NF-WF-011-author-preview-e2e.md) (G9 gate;
   Invariant 2 freshness; tier 7/8 semantics).
 - Existing implementation:
   - `packages/ai-services/src/context-compiler.ts` (tier 7/8 compilation,
@@ -254,6 +254,13 @@ case (plus fixture-helper changes if needed). Baseline revision:
 (coordinator-owned at dispatch). Rollback: revert the commit.
 
 ## Documentation and handoff
+
+### Review record (2026-10-07, OBSERVED)
+
+- **Contract review:** APPROVE (2 P3 observations, non-blocking; P3-2 chapterCoverage verified — extraction populates it, full assertion kept).
+- **Diff review:** APPROVE (1 P3 observation, non-blocking: full-file run recommended as hygiene).
+- **Implementation evidence:** new G9 test 1/1 (isolation); full `gates.test.ts` 11/11; one-time negative FAILS on the anti-vacuous guard as designed; `npx tsc --noEmit` clean; eslint clean.
+- **Post-integration battery:** GREEN at `c03a171` (8 boxes; coordinator-owned report).
 
 Update on verified evidence only:
 - `docs/implementation/ISSUES-AND-GAPS.md`: GAP-043 closure record

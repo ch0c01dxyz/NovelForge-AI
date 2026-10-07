@@ -8,11 +8,11 @@ actors, with requested aliases distinguished from runtime evidence.
 
 Status: APPROVED (contract review 2026-10-07 — APPROVE_WITH_FINDINGS, 1P2+2P3 folded in)
 Milestone / capability IDs: M9 (010 follow-up; 020B verification)
-Implementer role / requested and resolved model: (to be assigned — separate actor from contract author and reviewer)
-Reviewer role / requested and resolved model: (to be assigned — separate actor from contract author and implementer)
+Implementer role / requested and resolved model: separate subagent actor; resolved model UNKNOWN (backends MODEL_UNVERIFIED per GAP-013)
+Reviewer role / requested and resolved model: separate subagent actor (contract review + diff review); resolved model UNKNOWN (backends MODEL_UNVERIFIED per GAP-013)
 Readiness evidence / unresolved decisions / parent acceptance owner: GAP-040 is OPEN (documented limitation; behavior is safe, semantics incomplete). Closure is VERIFY_PENDING per the 2026-10-07 audit.
 Frozen review manifest / exact artifact paths and identity: (set at implementation dispatch)
-Baseline revision / local changes to preserve: (coordinator-owned)
+Baseline revision / local changes to preserve: 1a3452b; branch work/gap040-gap043; implementation commit 5769a16 (2026-10-07); docs commit 635112e (GAP-040 closure)
 Engram checkpoint topic key / last confirmed observation reference: (coordinator-owned)
 
 ## Goal and reason
@@ -292,6 +292,13 @@ explicit 400 instead of a monotone-but-undefined ceiling. Rollback:
 revert the commits.
 
 ## Documentation and handoff
+
+### Review record (2026-10-07, OBSERVED)
+
+- **Contract review:** APPROVE_WITH_FINDINGS (1 P2 + 2 P3). P2-1 (mirrored negative distinguishing checkedOutBranchId from hardcoded main) folded into the contract before implementation.
+- **Diff review:** APPROVE, no findings. Verified: 9 acceptance tests as specified; no [400,404] unions; fixture-validity proofs; `autoCheckpoint` legitimate; no production changes; service-level testing sound.
+- **Implementation evidence:** new `apps/api/src/cross-branch-asof.test.ts` 12/12; `branches.test.ts` 11/11; `state-consumers.test.ts` 32/32; `npx tsc --noEmit` clean; eslint clean.
+- **Post-integration battery:** GREEN at `c03a171` (8 boxes; coordinator-owned report).
 
 Update on verified evidence only:
 - `docs/implementation/ISSUES-AND-GAPS.md`: GAP-040 closure record

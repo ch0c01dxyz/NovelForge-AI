@@ -31,7 +31,13 @@ Bounded checks and separate reviews passed. NF-WF-038 fixes Windows template
 line endings after a failed battery attempt; reviewed NF040 pins byte fixtures
 and fixes save-race proof. NF039 is automated green at712cca6 (full API inventory
 in54+3 runs, web, axe, typechecks/lint and additional Nuxt build). Next: freeze
-bounded GAP-040 branch-consumer and GAP-043 compiled-projection proof contracts.
+bounded GAP-040 branch-consumer and GAP-043 compiled-projection proofs —
+IMPLEMENTED + REVIEWED + PUSHED on `work/gap040-gap043` as
+NF-WF-042/044/045 (commits `03f5d8d`/`5769a16`/`d7b8f6e`, battery GREEN
+at `c03a171`); post-review hardening NF-WF-046 (author's five directives
+on `c03a171`) is APPROVED and in implementation; author local
+review/acceptance is pending. Do NOT merge to main without author
+acceptance.
 NF041 resolves GAP-034 novel-scoped history/approval selection and GAP-116 stale
 detail/cancel responses with scoped API67/web44 tests, lint/typechecks/build0 and
 separate review. NF039's full battery is historical at712cca6; no full rerun of

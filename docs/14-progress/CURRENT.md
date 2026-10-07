@@ -36,8 +36,12 @@ detail/cancel response guards. Scoped API67 tests in two disjoint runs; web7
 files44/44; API/web typechecks, lint and final Nuxt build0. Separate contract,
 amendment and exact-diff review APPROVE. See tasks/NF-WF-041-novel-scoped-workflow-history.md.
 Full battery below is historical evidence at712cca6, not a rerun of NF041.
-Next: freeze bounded GAP-040 exact branch-consumer proof and GAP-043 compiled
-projection proof; GAP-041 UI/E2E alignment and039/063 source decisions remain.
+Next: GAP-040/043/041 proof work is IMPLEMENTED + REVIEWED + PUSHED on
+`work/gap040-gap043` (NF-WF-042/044/045; battery GREEN at `c03a171`);
+post-review hardening NF-WF-046 (author's five directives + GAP-040
+clarification) is APPROVED and in implementation; author
+local review/acceptance is pending. GAP-039/063 source decisions remain
+with the author.
 
 NF-WF-035–038 are IMPLEMENTED/REVIEWED and pushed through5120f68. GAP-110
 scene revisions, GAP-083 Recovery Center and GAP-111–113 integration defects

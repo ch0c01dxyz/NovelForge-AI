@@ -1093,7 +1093,11 @@ claim is unsupported. Require exact400 negatives and successful same-branch
 controls for each consumer. The original defect description below is historical;
 do not implement a duplicate guard or claim those consumers were tested.
 
-Status: OPEN (documented limitation; behavior is safe, semantics incomplete).
+Status: CLOSED by NF-WF-042 (2026-10-07, commit 5769a16, branch work/gap040-gap043).
+
+CLOSURE EVIDENCE: new `apps/api/src/cross-branch-asof.test.ts` (12 tests) — per-consumer exact negatives (400 `INVALID_INPUT`) + positive controls for memory (`GET /memory/as-of` route), health (`GET /story-health`), character (`assembleCharacterState`), timeline (`assembleTimeline`), plus the mirrored negative (checked-out=B, as-of=main-revision → 400) that proves the guard keys off `checkedOutBranchId` (Invariant 5), not a hardcoded main. Fixture-validity proofs precede every negative; no `[400,404]` unions; old vacuous `branches.test.ts` as-of test replaced with a pointer. All 4 guards (NF-WF-020B) verified correct in code — no production changes needed. New 12/12; branches 11/11; state-consumers 32/32; tsc + eslint clean; contract APPROVED (1P2 folded); diff review APPROVE.
+
+The original defect description below is historical; the guard defect it described was already fixed in NF-WF-020B — this task proved it.
 
 OBSERVED: the contract's Invariant 3 defines "as of revision R" via
 the 009 as-of semantics (009 Invariant 7), which pins cross-branch

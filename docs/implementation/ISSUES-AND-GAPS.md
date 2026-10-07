@@ -849,6 +849,12 @@ deviation.
 
 ## GAP-034 — Server-side runs-by-chapter filter for GET /workflow-runs (NF-WF-007 follow-up, 2026-10-05)
 
+Current audit (2026-10-07, separate reviewer): add novelId together with chapter
+filtering. GenerationPanel reads workspace runs, drops novelId and filters history
+and parked approvals by chapterNumber only, mixing same-number chapters from
+different novels. This is a correctness issue as well as truncated history.
+Scope a server+UI follow-up with same-workspace/different-novel negative tests.
+
 Status: OPEN (follow-up task; recorded per NF-WF-007 Invariant 11 and
 contract Q1 resolution).
 
@@ -1062,6 +1068,13 @@ despite a FAIL receipt for the current version). `manuscript.test.ts`
 
 ## GAP-040 — NF-WF-010: cross-branch asOfRevisionId accepted in health/assembly temporal ceiling (2026-10-05)
 
+Current audit (2026-10-07): source enforcement was added during NF-WF-020B in
+health/state-assembly/memory. Closure is VERIFY_PENDING: branches.test.ts tests
+only memory and allows404 with no chapter fixture; health/assembly header coverage
+claim is unsupported. Require exact400 negatives and successful same-branch
+controls for each consumer. The original defect description below is historical;
+do not implement a duplicate guard or claim those consumers were tested.
+
 Status: OPEN (documented limitation; behavior is safe, semantics incomplete).
 
 OBSERVED: the contract's Invariant 3 defines "as of revision R" via
@@ -1189,7 +1202,7 @@ vacuously without this record.
 
 ## GAP-044 — `writer-ui.test.ts` "forced race — autosave conflict" is flaky under full-suite load (2026-10-05)
 
-Status: OPEN (pre-existing test flakiness; not caused by NF-WF-011).
+Status: RESOLVED by NF-WF-040 (2026-10-07); historical failure below retained.
 
 OBSERVED: full `apps/api` suite on the fresh VM: 529/530 pass. The one
 failure is `src/writer-ui.test.ts > forced race — autosave conflict:
@@ -1209,6 +1222,10 @@ and the 409-losers's did not, keyed by actual status codes rather than
 array position), or serialize the two PUTs. Owner: whoever touches the
 writer-UI tests next; not NF-WF-011 scope (no product code is wrong —
 the 200/409/no-clobber behavior itself held in every run).
+
+Resolution044: status-derived200 winner assertion, unchanged concurrent requests
+and single version advancement. Export/writer-UI2 files30/30 pass; separate
+exact-diff review APPROVE. Full-inventory battery is separate NF039 evidence.
 
 ## GAP-045 — NF-WF-012 deliberately supersedes NF-WF-010's IN_REVIEW→PUBLISHED carve-out (2026-10-05)
 
@@ -2280,5 +2297,21 @@ Resolution: normalize line endings at parseAgentFile;10/10 template tests,
 typecheck/targeted lint exit0 and separate exact-diff review APPROVE. Fresh
 NF-WF-039 battery pending; this fix alone does not establish E2E success.
 
+## GAP-114 — Byte-stable export fixtures changed by Windows checkout
+
+Status: RESOLVED by NF-WF-040, 2026-10-07. Owner: NF-WF-040.
+Evidence: NF-WF-039 at68facd7: API56/57 files,1033/1034 tests; sole failure
+export-render.test.ts "txt/md samples are byte-stable". git ls-files --eol
+reports i/lf w/crlf for export/sample.txt and sample.md. Renderer/generator emit
+LF and committed fixtures use LF; no scoped .gitattributes rule preserves it.
+Impact: Windows checkout invalidates correct byte-stable export evidence.
+Next: pin only these two fixture paths to LF and restore committed working bytes;
+do not weaken the byte comparison. Closure: EOL proof, export regression and
+separate review, then a new full-inventory verification attempt.
+
+
+Resolution114: two exact-path LF attributes; i/lf w/lf check-attr/ls-files proof.
+Strict byte comparison retained; focused2-file30/30 pass; separate review APPROVE.
+Fresh full-inventory verification pending in NF039; failed68facd7 receipt retained.
 
 Historical GAP-109 closure receipt (before NF-WF-036): final7-file API run113/113; worker5-file recovery46/46; real BullMQ enqueue/dedup1/1. Additional scope receipts in NF-WF-035. Lint/typecheck/diff checks pass; both independent reviewers APPROVE after concurrency findings addressed. No full-release completion claim. GAP-110 and human/live deployment gates remain open; CURRENT/task record retains fallback because Engram session attribution is still unavailable.

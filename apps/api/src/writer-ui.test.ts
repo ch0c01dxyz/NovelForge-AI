@@ -528,7 +528,7 @@ describe("writer UI loop (API-level)", () => {
         headers: { cookie: fx.cookie },
       })
     ).json() as { content: string; currentVersion: number };
-    expect(after.content).toBe("winner text");
+    expect(after.content).toBe(a.statusCode === 200 ? "winner text" : "loser text");
     expect(after.currentVersion).toBe(v + 1);
   });
 

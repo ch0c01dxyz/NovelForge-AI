@@ -1,6 +1,6 @@
 # NF-WF-039 — Final revision release verification
 
-Status: READY / CONTRACT_REVIEWED. Code baseline: 5120f68.
+Status: READY / CONTRACT_REVIEWED. Failed execution revision: 68facd7.
 Owner: current Codex verifier. Reviewer: separate review_mutations_034 actor.
 Goal: run a fresh sequential automated battery after reviewed NF-WF-035–038.
 Preserve the failed36519e2 attempt and NF-WF-023's stop-on-new-defect rule;
@@ -32,3 +32,14 @@ unavailable; task/CURRENT are fallback context.
 
 Contract/report APPROVE by review_mutations_034, 2026-10-07. Pin the task
 commit at execution; no product code changes during this battery.
+
+Failed Windows boundary (2026-10-07): lint/API/web typechecks exit0; API56/57
+files and1033/1034 tests. GAP-114 stopped the battery; later stages did not run.
+TEMP/novelforge-release-68facd7 retains logs/results. NF040 repairs it separately.
+
+Reviewed execution amendment (review_recovery_034 APPROVE, 2026-10-07): the
+next committed revision runs API with --no-file-parallelism --exclude 'src/e2e/**',
+then the dedicated pnpm e2e stage as already ordered. Reconcile54 non-E2E plus3
+E2E files = all57 API files; report two runs, never a monolithic suite receipt.
+This avoids duplicate long-novel fixture builds; no test is omitted or filtered
+inside those files. All seven stages remain sequential and stop on failure.

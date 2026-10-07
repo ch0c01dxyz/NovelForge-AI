@@ -6,7 +6,18 @@ exist; integrated product delivery remains PARTIAL**. Historical phase/test
 results below describe their original scope, not completion of all retained
 requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
-## Current dispatch — 2026-10-07 (e538180 audit)
+## Current dispatch — 2026-10-07 (post-repair verification)
+
+NF-WF-035–038 are IMPLEMENTED/REVIEWED and pushed through5120f68. GAP-110
+scene revisions, GAP-083 Recovery Center and GAP-111–113 integration defects
+are resolved with scoped evidence. The initial36519e2 battery failed; preserve
+its receipt. Next: reviewed NF-WF-039 fresh sequential verification after038.
+Human GAP-051, live deployment/configuration and Engram host registration remain
+open. Current host has PostgreSQL/Redis but no API/web/storage/gateway listener.
+Boundary receipts at the end preserve history; this dispatch supersedes old
+next-task instructions, not their historical evidence.
+
+## Historical dispatch — 2026-10-07 (e538180 audit)
 
 Pulled nine commits from eb065cf to e538180; task027–034 implementations are present. The prior dispatch and Ubuntu battery below are historical. GAP-109 records defects discovered despite reported closures; NF-WF-035 is the bounded repair. GAP-110 records missing scene create/update revision bookkeeping and requires a separate bounded contract.
 

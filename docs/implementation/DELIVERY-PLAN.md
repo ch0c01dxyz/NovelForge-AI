@@ -27,7 +27,8 @@ IDs rather than becoming competing issue logs.
 Implementations through NF-WF-034 and repairs NF-WF-035–037 are committed or
 included with this update. NF-WF-036 closes GAP-110 scene mutation revisions;
 NF-WF-037 closes GAP-083 page wiring and GAP-111/112 integration defects.
-Bounded checks and separate reviews passed. Next: NF-WF-023 battery on the final
+Bounded checks and separate reviews passed. NF-WF-038 fixes Windows template
+line endings after a failed battery attempt. Next: NF-WF-039 verification on the final
 revision. Historical queue rows preserve planning context; do not redispatch
 completed implementations. GAP-098 stays closed by author scope decision;
 human GAP-051 and live release acceptance remain open.

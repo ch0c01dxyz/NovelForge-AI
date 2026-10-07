@@ -31,8 +31,8 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** run [NF-WF-023](tasks/NF-WF-023-production-release.md)
-on the final revision after reviewed NF-WF-035–037. GAP-110 scene revisions and
+**Current next task:** run [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md),
+the fresh release verification follow-up after reviewed NF-WF-035–038. GAP-110 scene revisions and
 GAP-083 Recovery Center wiring are implemented and reviewed. Keep release,
 live deployment and human GAP-051 evidence separate.
 

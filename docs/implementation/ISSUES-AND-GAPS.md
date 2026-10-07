@@ -2216,7 +2216,7 @@ GAP-109 review follow-up: novel-first locking added to merge and switch with loc
 
 ## GAP-110 — Scene create/update lack revision mutation records
 
-Status: OPEN / P1. Owner: follow-up scene mutation contract.
+Status: RESOLVED 2026-10-07 / P1. Owner: NF-WF-036. Original defect evidence retained below.
 Observed during GAP-109 audit: manuscript.createScene and updateScene mutate scenes within transactions but never call advanceForMutation. Their audit entries do not replace immutable revisions or durable invalidation intent. Delete is now branch-aware; this does not prove the other scene mutations meet constitution §2.11.
 
 NF-WF-036 verification correction (2026-10-07): first added test drafts used
@@ -2228,6 +2228,13 @@ unchanged branch head before the fix, as expected.
 NF-WF-036 separate review also found branch/chapter lock inversion in chapter
 save/version-restore and timestamp writes on no-op scene updates. Scope amended
 to share novel/checkout-first locks and skip writes for unchanged final values.
+
+Resolution: NF-WF-036 records create/edit/reorder changes and manuscript rebuild
+intent atomically on checkout lineage. Every renumbered scene is listed, no-op
+writes are skipped, and sibling chapter/publication lock ordering is aligned.
+Status: RESOLVED 2026-10-07, bounded scene mutation scope. Evidence: scene20/20,
+expanded API58/58, publication worker21/21, API typecheck/lint exit0; separate
+review_recovery_034 APPROVE. Human/live release gates remain separate.
 
 ## GAP-111 — Recovery page integration safety seams
 
@@ -2257,11 +2264,21 @@ Impact: workspace rendering/build is blocked. Next: restore the missing tag;
 closure: actual page import test and web production build.
 Resolution: closing script tag restored. Actual workspace setup tests and Nuxt
 production build pass. No equivalent full-platform completion claim.
-Resolution: NF-WF-036 records create/edit/reorder changes and manuscript rebuild
-intent atomically on checkout lineage. Every renumbered scene is listed, no-op
-writes are skipped, and sibling chapter/publication lock ordering is aligned.
-Status: RESOLVED 2026-10-07, bounded scene mutation scope. Evidence: scene20/20,
-expanded API58/58, publication worker21/21, API typecheck/lint exit0; separate
-review_recovery_034 APPROVE. Human/live release gates remain separate.
 
-GAP-109 closure receipt: final7-file API run113/113; worker5-file recovery46/46; real BullMQ enqueue/dedup1/1. Additional scope receipts in NF-WF-035. Lint/typecheck/diff checks pass; both independent reviewers APPROVE after concurrency findings addressed. No full-release completion claim. GAP-110 and human/live deployment gates remain open; CURRENT/task record retains fallback because Engram session attribution is still unavailable.
+## GAP-113 — CRLF agent templates fail on Windows
+
+Status: RESOLVED, 2026-10-07. Owner: NF-WF-038.
+Evidence: E2E at36519e2 fails all3 files before collecting tests: chapter-planner.md
+is reported missing frontmatter. Shared parseAgentFile uses a LF-only delimiter
+regex; Git checkout has CRLF. Impact: template loading/seeding is broken on Windows.
+Next: normalize line endings at the shared parser boundary with equivalence and
+malformed-input regressions; separate review, then fresh sequential battery.
+The first battery driver also passed multi-element PowerShell arguments as one
+string: checks02–05/07 never ran. Fix the temporary driver with named array splatting;
+retain that failed attempt rather than interpreting its empty counts as success.
+Resolution: normalize line endings at parseAgentFile;10/10 template tests,
+typecheck/targeted lint exit0 and separate exact-diff review APPROVE. Fresh
+NF-WF-039 battery pending; this fix alone does not establish E2E success.
+
+
+Historical GAP-109 closure receipt (before NF-WF-036): final7-file API run113/113; worker5-file recovery46/46; real BullMQ enqueue/dedup1/1. Additional scope receipts in NF-WF-035. Lint/typecheck/diff checks pass; both independent reviewers APPROVE after concurrency findings addressed. No full-release completion claim. GAP-110 and human/live deployment gates remain open; CURRENT/task record retains fallback because Engram session attribution is still unavailable.

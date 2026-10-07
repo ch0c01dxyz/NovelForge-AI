@@ -564,3 +564,13 @@ axe zero in jsdom; web typecheck/lint and Nuxt production build exit0. Separate
 review_mutations_034 APPROVE. Next: sequential NF-WF-023 on the final revision;
 no live browser/manual screen-reader proof. Engram attribution unavailable per
 runtime hook; this file/task is the fallback checkpoint, no MCP save claimed.
+# Boundary update — NF-WF-038, 2026-10-07
+
+NF-WF-037 pushed at36519e2. Initial final battery stopped/invalid: temporary
+PowerShell driver argument splat failed; actual E2E failed before collection
+because agent-template parser rejected WindowsCRLF. GAP-113 repaired in separately
+reviewed NF-WF-038: template10/10, package typecheck/targeted lint exit0, reviewer
+APPROVE. Failed attempt retained in039 release report. Next: fresh NF-WF-039
+sequential battery on post038 commit. Live API/web/storage/gateway listeners absent;
+no live deployment or manual accessibility proof. Engram attribution unavailable;
+this record is fallback only.

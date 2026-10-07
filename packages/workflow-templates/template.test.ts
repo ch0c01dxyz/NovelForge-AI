@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { validateGraph, compileSchema } from "@novelforge/validation";
-import { CHAPTER_GENERATION_REVIEW, graphsEqual, canonicalizeJson } from "./index.ts";
+import { CHAPTER_GENERATION_REVIEW, graphsEqual, canonicalizeJson, parseAgentFile } from "./index.ts";
 
 const graph = CHAPTER_GENERATION_REVIEW.graph as {
   steps: Array<{
@@ -23,6 +23,15 @@ const graph = CHAPTER_GENERATION_REVIEW.graph as {
 };
 
 describe("chapter generation/review template", () => {
+  it("parses equivalent LF, CRLF and CR templates without relaxing required fields", () => {
+    const source = "---\nkey: planner\nname: Planner\nmodelProfile: reasoning\n---\nFirst line.\nSecond line.\n";
+    const expected = { key: "planner", name: "Planner", modelProfile: "reasoning", instructions: "First line.\nSecond line." };
+    for (const ending of ["\n", "\r\n", "\r"]) {
+      expect(parseAgentFile(source.replace(/\n/g, ending), "planner.md")).toEqual(expected);
+      expect(() => parseAgentFile(source.replace("modelProfile: reasoning\n", "").replace(/\n/g, ending), "planner.md")).toThrow("must define");
+      expect(() => parseAgentFile("key: planner" + ending, "planner.md")).toThrow("missing frontmatter");
+    }
+  });
   it("has the expected identity", () => {
     expect(CHAPTER_GENERATION_REVIEW.key).toBe("chapter-generation-review");
     expect(graph.steps).toHaveLength(20);

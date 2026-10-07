@@ -60,7 +60,8 @@ export interface ChapterTemplate {
 }
 
 /** Minimal frontmatter parser: `---\nkey: value\n---\n<body>`. */
-function parseAgentFile(text: string, filename: string): AgentSpec {
+export function parseAgentFile(text: string, filename: string): AgentSpec {
+  text = text.replace(/\r\n?/g, "\n");
   const m = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text);
   if (!m) throw new Error(`agent spec ${filename} is missing frontmatter`);
   const front: Record<string, string> = {};

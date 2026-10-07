@@ -6,17 +6,25 @@ and resources with English fallback.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: APPROVED (contract review 2026-10-07 — APPROVE_WITH_FINDINGS, 1P2+2P3 folded in; proposal-only, no separate implementation)
+Status: APPROVED (contract review 2026-10-07 — APPROVE_WITH_FINDINGS, 1P2+2P3 folded in; proposal-only, no separate implementation; committed 9424c7e on work/nf-wf047-external-follow-up; pushed to origin). Awaits author product decisions on GAP-039/063 — no implementation authorized.
 Milestone / capability IDs: M3/M5/M8; capabilities CAP-06/14
-Implementer role / requested and resolved model: (to be assigned — separate
-actor from contract author and reviewer; backends MODEL_UNVERIFIED per GAP-013)
-Reviewer role / requested and resolved model: (to be assigned — separate actor
-from contract author and implementer; backends MODEL_UNVERIFIED per GAP-013)
+Implementer role / requested and resolved model: proposal drafter — separate
+subagent actor dispatched by the 047 coordinator; serving identity
+MODEL_UNVERIFIED per GAP-013. (Proposal-only task: the drafter is the
+implementer role; no code implementation exists or is authorized.)
+Reviewer role / requested and resolved model: separate subagent actor
+dispatched by the 047 coordinator (different actor from the drafter);
+serving identity MODEL_UNVERIFIED per GAP-013. Verdict:
+APPROVE_WITH_FINDINGS (1 P2 S1-premise correction + 2 P3, all folded in
+before commit).
 Readiness evidence / unresolved decisions / parent acceptance owner: NF-WF-047
 workflow (`docs/implementation/EXTERNAL-FOLLOW-UP-WORKFLOW.md`); 047A audit
 confirmed GAP-039/063 are author-owned → 047F proceeds as proposal-only.
 Parent acceptance: local author (Klein).
-Frozen review manifest / exact artifact paths and identity: (set at review)
+Frozen review manifest / exact artifact paths and identity:
+- `tasks/NF-WF-047F-scale-quota-proposals.md` (blob c571ed3b, committed
+  9424c7e)
+This manifest does not hash itself.
 Baseline revision / local changes to preserve: branch
 `work/nf-wf047-external-follow-up`; do NOT merge to main.
 Engram checkpoint topic key / last confirmed observation reference:

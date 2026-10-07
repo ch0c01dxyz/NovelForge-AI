@@ -7,12 +7,32 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: APPROVED (contract review 2026-10-07 — APPROVE, 4 P3 observations non-blocking)
+Status: IMPLEMENTED (contract review 2026-10-07 — APPROVE, 4 P3 non-blocking; Phase 1 diagnostic APPROVED; Phase 2 scope APPROVED; Phase 2 diff review APPROVE no findings; committed 119e394; GAP-081/082 closed by coordinator in 444ec38; pushed to origin). Scope amendment (2026-10-08, reviewed-findings repair) APPROVED after independent review — parseEnv repair + regression tests IN PROGRESS, pending final diff review.
 Milestone / capability IDs: M8 / CAP-19 (repeatable test setup)
-Implementer role / requested and resolved model: (to be assigned — separate actor from contract author and reviewer)
-Reviewer role / requested and resolved model: (to be assigned — separate actor from contract author and implementer)
+Implementer role / requested and resolved model: Phase 1 (diagnosis) and Phase 2
+(pilot repair) — separate subagent actors dispatched by the 047 coordinator
+(different actors from the contract author and reviewers); serving identities
+MODEL_UNVERIFIED per GAP-013. Scope-amendment repair implementer: separate
+subagent actor (same identity note); reported READY FOR DIFF REVIEW.
+Reviewer role / requested and resolved model: contract reviewer, Phase 1
+diagnostic reviewer, and Phase 2 diff reviewer — separate subagent actors
+dispatched by the 047 coordinator (each different from the contract author
+and the implementers); serving identities MODEL_UNVERIFIED per GAP-013.
+Verdicts: contract APPROVE (4 P3); Phase 1 diagnostic APPROVE (1 P3);
+Phase 2 scope APPROVED; Phase 2 diff APPROVE (no findings). Scope-amendment
+reviewer: separate subagent actor (same identity note); verdict
+APPROVE_WITH_FINDINGS (1P2+3P3 folded in). Final diff review of the repair:
+PENDING (explicitly not yet reviewed).
 Readiness evidence / unresolved decisions / parent acceptance owner: 047A audit confirmed GAP-081/082 are workaround-only with undiagnosed root cause → 047C PROCEED (workflow 047C section). Parent coordinator `047-coordinator`; parent acceptance: local author.
-Frozen review manifest / exact artifact paths and identity: (set at implementation scope-freeze; a review manifest must not hash itself)
+Frozen review manifest / exact artifact paths and identity (committed):
+- `apps/api/src/test-utils/resolve-test-database-url.ts` (blob 68309dd4 at
+  HEAD `a83be72`; working tree: parseEnv repair, pending final review)
+- `apps/api/src/test-utils/resolve-test-database-url.test.ts` (NEW,
+  uncommitted; pending final review)
+- `tasks/NF-WF-047C-diagnostic-receipt.md` (blob a7cd59d5, committed 119e394)
+- `tasks/NF-WF-047C-test-environment-stability.md` (blob ef76bf3a at HEAD;
+  working tree: scope amendment + this reconciliation, pending final review)
+This manifest does not hash itself.
 Baseline revision / local changes to preserve: branch `work/nf-wf047-external-follow-up` at current HEAD; preserve existing local changes; do NOT merge to main.
 Engram checkpoint topic key / last confirmed observation reference: `novelforge-ai/nf-wf-047/047C/<role>`; confirm save success; if unavailable, report GAP-021 and keep the fallback in this task file.
 
@@ -215,3 +235,93 @@ provides the diagnosis/fix evidence only.
 **Phase 2 acceptance (additive to contract):** the helper emits a loud sanitized warning (no credentials) when parent URL ≠ `.env` URL; missing/placeholder still fails loudly; ADR-0003 §8 both paths preserved; typecheck + lint exit 0; the two migrated test files pass.
 
 **STOP — no implementation edits made.** Coordinator to dispatch separate review of this scope-freeze before any edit.
+
+## Scope amendment (2026-10-08, reviewed-findings repair)
+
+**Trigger:** post-push review of branch tip `a83be72` identified findings in
+the 047C Phase 2 deliverable. This amendment adds the exact repair scope; the
+frozen contract above is otherwise unchanged (append-only, NF-WF-045/047B
+precedent).
+
+**Baseline:** branch `work/nf-wf047-external-follow-up`; reviewed tip
+`a83be72`; actual HEAD `a83be72` (verified 2026-10-08; one workstream file
+modified — this amendment — no unrelated local changes to preserve). Origin fetch deferred to push time (private repo needs
+auth; one passphrase covers fetch+push). Do NOT merge to main.
+
+**Finding 1 — custom dotenv parser.** `readEnvFileDatabaseUrl` in
+`apps/api/src/test-utils/resolve-test-database-url.ts` scans the `.env` file
+line-by-line for `DATABASE_URL=`. It mishandles: quoted values (quotes
+retained in the compared value → spurious mismatch warnings), `export`
+prefixes (line not matched → comparison skipped → stale-parent signal
+missed), and whitespace/comments around `=` (line not matched → signal
+missed). The comparison feeds only the sanitized warning, but a wrong parse
+either warns spuriously or misses the GAP-081/082 signal entirely.
+
+**Repair (exact paths):**
+- EDIT: `apps/api/src/test-utils/resolve-test-database-url.ts` — replace the
+  custom parser with `node:util.parseEnv` (stdlib on Node v24.20.0; handles
+  quotes, `export`, whitespace, comments). Preserve: explicit parent
+  `DATABASE_URL` precedence via `process.loadEnvFile` non-override semantics;
+  placeholder handling; loud failures; sanitized warning (never print
+  credentials); never silently select another database. `parseEnv` output is
+  used for the sanitized parent-vs-file comparison only; it must never be
+  assigned into `process.env` (that would silently break parent precedence).
+- NEW: `apps/api/src/test-utils/resolve-test-database-url.test.ts` —
+  committed regression tests (exact scope below).
+- EDIT: `docs/implementation/ISSUES-AND-GAPS.md` — GAP-081/082 evidence
+  correction (coordinator-owned; see Finding 2).
+- EDIT: `tasks/NF-WF-047C-test-environment-stability.md` — this amendment +
+  handoff reconciliation (Finding 3).
+- EDIT: `tasks/NF-WF-047A-gap-evidence-audit.md`,
+  `tasks/NF-WF-047E-native-release-preparation.md`,
+  `tasks/NF-WF-047F-scale-quota-proposals.md` — handoff reconciliation only.
+- Forbidden: all other files, including the remaining ~53 loader call
+  sites, production code, migrations, CI config.
+
+**Test scope (exact, frozen):** the new test file covers —
+1. Quoted assignment: `DATABASE_URL="postgresql://..."` → quotes stripped;
+   equal parent/file values → no mismatch warning.
+2. `export DATABASE_URL="..."` syntax → parsed; differing parent value →
+   warning fires.
+3. Whitespace/comments: `  DATABASE_URL = postgresql://...  # comment`
+   (space around `=`) → parsed; differing parent value → warning fires.
+   (The old parser does not match this line → signal missed → FAIL on old.)
+4. Equal parent/file values → no mismatch warning.
+5. Different parent/file values → warning fires; warning text contains no
+   credential material (assert password substring and `://` absent).
+6. Missing `DATABASE_URL` (absent parent + missing file) → throws the
+   documented "not found" error.
+7. Placeholder value (parent absent, file holds the placeholder marker) →
+   throws the documented placeholder error.
+8. Invalid configuration (empty-string parent; a file from which no valid
+   `DATABASE_URL` can be extracted — note `parseEnv` is lenient and never
+   throws, so this relies on the loud-throw path) → explicit failure; no
+   silent fallback; no secret leakage in any message.
+- TDD demonstration: run the new tests against the OLD helper first; the
+  parser cases (1–3) must FAIL (recorded as evidence); then apply the fix;
+  all pass.
+- Tests use temp `.env` files and save/restore `process.env.DATABASE_URL`;
+  no database connection is made (dummy URLs only).
+
+**Finding 2 — GAP-081/082 evidence overclaim.** The closure entries claim
+"root cause diagnosed and repaired" as a confirmed historical cause and
+imply a platform-wide fix. Correction (coordinator): describe the bounded
+three-caller improvement; preserve UNKNOWN historical provenance (exact
+stale values not retroactively establishable; D3 reproduces the mechanism,
+not the historical incidents); record the ~53 unmigrated call sites as
+remaining work; do not claim a platform-wide fix or confirmed historical
+cause.
+
+**Finding 3 — stale handoffs.** Reconcile Status, Implementer/Reviewer role
+lines, Frozen review manifest, and review records in 047A/C/E/F with actual
+evidence. Record observed actor separation (separate subagent actors;
+identities MODEL_UNVERIFIED per GAP-013); never invent actor identities or
+review approval; keep pending reviews explicitly pending.
+
+**Verification:** new helper tests; `src/selective-restore.test.ts` +
+`src/branches.test.ts` (serialized); API typecheck; lint on changed files.
+Independent diff review of the final diff before commit. Commit + push the
+work branch (passphrase at that time); do not merge to main.
+
+**Engram:** unavailable on this host (GAP-021); task-file fallback records
+in this contract. No session ID invented.

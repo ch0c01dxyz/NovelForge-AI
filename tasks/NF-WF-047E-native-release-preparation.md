@@ -7,12 +7,25 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: APPROVED (contract review 2026-10-07 — APPROVE, 1 P3 process note non-blocking)
+Status: IMPLEMENTED (contract review 2026-10-07 — APPROVE, 1 P3 process note non-blocking; implementation complete; diff review APPROVE with 1 P3 informational; committed a83be72 on work/nf-wf047-external-follow-up; pushed to origin). Limited form — preparation evidence only, not a release decision; 047D BLOCKED explicitly labeled.
 Milestone / capability IDs: M8 / CAP-19 (repeatable test setup), CAP-20 (release evidence)
-Implementer role / requested and resolved model: (to be assigned — separate actor from contract author and reviewer)
-Reviewer role / requested and resolved model: (to be assigned — separate actor from contract author and implementer)
+Implementer role / requested and resolved model: separate subagent actor
+dispatched by the 047 coordinator (different actor from the contract author
+and the reviewer); serving identity MODEL_UNVERIFIED per GAP-013.
+Implemented the limited-form preparation (environment record, builds,
+suites, drill, smoke); reported READY FOR DIFF REVIEW.
+Reviewer role / requested and resolved model: separate subagent actor
+dispatched by the 047 coordinator (different actor from the contract author
+and the implementer); serving identity MODEL_UNVERIFIED per GAP-013.
+Verdict: APPROVE (1 P3 informational — worker-suite skip identity
+unrecorded).
 Readiness evidence / unresolved decisions / parent acceptance owner: 047D is BLOCKED (no authorized sanitized dump available per workflow 047D section); 047E runs in its explicitly limited form. Parent coordinator `047-coordinator`; parent acceptance: local author. No production acceptance authority is claimed or delegated by this task.
-Frozen review manifest / exact artifact paths and identity: (set at implementation dispatch; a review manifest must not hash itself)
+Frozen review manifest / exact artifact paths and identity:
+- `tasks/NF-WF-047E-native-release-preparation.md` (blob c30f2f97, committed
+  a83be72)
+- `docs/implementation/047E-native-release-receipt.md` (blob f6d224c8,
+  committed a83be72)
+This manifest does not hash itself.
 Baseline revision / local changes to preserve: branch `work/nf-wf047-external-follow-up` at current HEAD (verify before dispatch); preserve existing local changes; do NOT merge to main.
 Engram checkpoint topic key / last confirmed observation reference: `novelforge-ai/nf-wf-047/047E/<role>`; confirm save success; if unavailable, report GAP-021 and keep the fallback in this task file.
 

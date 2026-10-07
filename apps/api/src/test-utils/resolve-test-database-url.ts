@@ -24,6 +24,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 
 const PLACEHOLDER_MARKER = "<redacted>";
 
@@ -34,23 +35,19 @@ function isAbsentOrPlaceholder(url: string | undefined): boolean {
 /**
  * Extract the `DATABASE_URL` value from `.env` file content without
  * loading it into the process environment. Returns `undefined` if the
- * key is absent. Used only for the sanitized parent-vs-file comparison;
- * the value is never printed.
+ * key is absent. Uses `node:util.parseEnv` (stdlib), which correctly
+ * handles quoted values, `export` prefixes, whitespace around `=`, and
+ * trailing comments. Used only for the sanitized parent-vs-file
+ * comparison; the value is never printed.
  */
 function readEnvFileDatabaseUrl(envPath: string): string | undefined {
   let content: string;
   try {
     content = readFileSync(envPath, "utf-8");
+    return parseEnv(content).DATABASE_URL;
   } catch {
     return undefined;
   }
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("DATABASE_URL=")) {
-      return trimmed.slice("DATABASE_URL=".length).trim();
-    }
-  }
-  return undefined;
 }
 
 export interface ResolveTestDatabaseUrlOptions {

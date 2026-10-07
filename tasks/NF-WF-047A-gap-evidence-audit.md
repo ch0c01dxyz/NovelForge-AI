@@ -7,22 +7,27 @@ and its scope.
 Model selection: author-selected at runtime; separate implementer/reviewer
 actors, with requested aliases distinguished from runtime evidence.
 
-Status: READY (contract APPROVED 2026-10-07; implementation complete; diff review APPROVE with 1 P3 folded in; audit report verified)
+Status: READY (contract APPROVED 2026-10-07; implementation complete; diff review APPROVE with 1 P3 folded in; audit report verified; committed f957e0f on work/nf-wf047-external-follow-up; pushed to origin)
 Milestone / capability IDs: M0/M8; CAP-01–21 evidence maintenance.
-Implementer role / requested and resolved model: `047A-implementer` (intended
-assignment, not yet dispatched); resolved model UNKNOWN — backends
-MODEL_UNVERIFIED per GAP-013.
-Reviewer role / requested and resolved model: `047A-reviewer` (intended
-assignment, not yet dispatched; separate actor from the implementer);
-resolved model UNKNOWN — backends MODEL_UNVERIFIED per GAP-013.
+Implementer role / requested and resolved model: separate subagent actor
+dispatched by the 047 coordinator (different actor from the contract author);
+serving identity MODEL_UNVERIFIED per GAP-013. Implemented the source-only
+audit (22 gaps dispositioned); reported READY.
+Reviewer role / requested and resolved model: separate subagent actor
+dispatched by the 047 coordinator (different actor from the contract author
+and the implementer); serving identity MODEL_UNVERIFIED per GAP-013.
+Verdict: APPROVE (1 P3 citation-precision finding folded in before commit).
 Readiness evidence / unresolved decisions / parent acceptance owner: parent
 coordinator `047-coordinator`; parent acceptance: local author. This contract
 requires separate review (APPROVE) before the child is marked READY.
-Frozen review manifest / exact artifact paths and identity: (set at review;
-this draft is unreviewed).
+Frozen review manifest / exact artifact paths and identity:
+- `tasks/NF-WF-047A-gap-evidence-audit.md` (blob 2596f0e4, committed f957e0f)
+- `docs/implementation/ISSUES-AND-GAPS.md` — GAP-084 and GAP-090 CLOSED with
+  exact receipts, applied by the coordinator (same commit)
+This manifest does not hash itself.
 Baseline revision / local changes to preserve: branch
-`work/nf-wf047-external-follow-up` at `fe8e028` (accepted integration
-`6bfe1df` is an ancestor). Do NOT commit. Preserve existing local changes.
+`work/nf-wf047-external-follow-up`; 047A committed as f957e0f and pushed.
+Do NOT merge to main.
 Engram checkpoint topic key / last confirmed observation reference:
 `novelforge-ai/nf-wf-047/047A/<role>`. Engram MCP is UNAVAILABLE on this
 host (GAP-021, re-observed at this boundary — no authoritative runtime

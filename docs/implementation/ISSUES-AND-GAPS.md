@@ -1810,7 +1810,26 @@ IMPACT: none on the implementation; test-only environment flakiness. The 020A ev
 
 STATUS: CLOSED 2026-10-07 via NF-WF-047C (commit 119e394, branch work/nf-wf047-external-follow-up).
 
-CLOSURE EVIDENCE: root cause diagnosed and repaired. `process.loadEnvFile()` never overrides existing env vars (proven on Node v24.20.0), so a stale parent `DATABASE_URL` silently won over a correct repo-root `.env` — the D3 reproduction case. New shared helper `apps/api/src/test-utils/resolve-test-database-url.ts` implements the hardened pattern (absent/placeholder → loadEnvFile → loud throw) plus a sanitized parent-vs-`.env` mismatch warning; `selective-restore.test.ts`, `branches.test.ts`, `e2e/setup.ts` migrated. Verified: selective-restore 13/13, branches 11/11, 4/4 regression negatives (missing/invalid fail clearly, never silently select live DB, never leak secrets). Contract APPROVED; Phase 1 diagnostic APPROVED; Phase 2 diff review APPROVE (no findings).
+CLOSURE EVIDENCE (corrected 2026-10-08 — bounded scope, no overclaim): the
+*mechanism* was reproduced, not the historical incident. D3 (Phase 1 matrix)
+OBSERVED: `process.loadEnvFile()` never overrides existing env vars (proven
+on Node v24.20.0), so a stale parent `DATABASE_URL` silently wins over a
+correct repo-root `.env`. Whether this was the SOLE cause of the 2026-10-06
+incidents is UNKNOWN — exact stale values are not retroactively
+establishable (no shell history); the D3 case reproduces the mechanism, not
+the historical provenance. The repair is a BOUNDED three-caller improvement,
+not a platform-wide fix: new shared helper
+`apps/api/src/test-utils/resolve-test-database-url.ts` (hardened pattern +
+sanitized parent-vs-`.env` mismatch warning) migrated into exactly three
+callers — `selective-restore.test.ts`, `branches.test.ts`, `e2e/setup.ts`.
+The remaining ~53 `loadEnvFile` call sites are UNMIGRATED (follow-up, out of
+047C scope). The helper's own `.env` comparison parser was later found
+defective on quoted/`export`/whitespace syntax and repaired via
+`node:util.parseEnv` with 8 regression tests (committed with this repair).
+Verified: selective-restore 13/13, branches 11/11, 4/4 regression negatives
+(missing/invalid fail clearly, never silently select live DB, never leak
+secrets). Contract APPROVED; Phase 1 diagnostic APPROVED; Phase 2 diff review
+APPROVE (no findings).
 
 ## GAP-082 — `novelforge_test` DB password resets intermittently; `process.loadEnvFile` fails under `pnpm vitest` (2026-10-06)
 
@@ -1820,7 +1839,7 @@ IMPACT: API tests must be run with `DATABASE_URL` explicitly exported, not relyi
 
 NEXT ACTION: investigate why `process.loadEnvFile` fails under `pnpm vitest` (working directory? pnpm script env?). Workaround (documented): `export DATABASE_URL="postgresql://novelforge_test:test@localhost:5432/novelforge"` before `pnpm vitest run`.
 
-STATUS: CLOSED 2026-10-07 via NF-WF-047C (commit 119e394) — same root cause and repair as GAP-081 (stale parent `DATABASE_URL` silently winning over `.env`; each `ALTER USER` invalidated prior exports). The shared helper's sanitized mismatch warning now gives the operator the missing signal. See GAP-081 closure evidence.
+STATUS: CLOSED 2026-10-07 via NF-WF-047C (commit 119e394) — same mechanism and bounded repair as GAP-081. The stale-parent mechanism is REPRODUCED (D3), not confirmed as the historical cause — exact provenance UNKNOWN. Each `ALTER USER` invalidating prior exports is consistent with the mechanism. The shared helper's sanitized mismatch warning now gives the operator the missing signal in the three migrated callers; ~53 call sites remain unmigrated. See GAP-081 closure evidence (corrected 2026-10-08).
 
 ## GAP-083 — NF-WF-020 Recovery Center UI components are not mounted on any page (2026-10-06)
 
@@ -2264,6 +2283,8 @@ RECURRENCE 2026-10-07 (OBSERVED by NF-WF-032 implementer): VM reset wiped Postgr
 RECURRENCE 2026-10-07 (OBSERVED by NF-WF-044 implementer, ~18:00 WIB): on this session's start, `pg_lsclusters` showed the 16/main cluster DOWN (data directory intact) and redis refused connections; the `novelforge_test` role was missing. Coordinator started both services (`pg_ctlcluster 16 main start`, `redis-server --daemonize yes`); implementer recreated the role + `vector` extension per GAP-065. No full reinstall needed this time — services were installed but stopped, and the test role did not survive.
 
 RECURRENCE 2026-10-07 (OBSERVED by NF-WF-046 battery runner, ~19:30 WIB): full VM reset a 4th time — PostgreSQL/Redis/pgvector uninstalled, apt-sources fix reverted. Recovered: removed `mirror.cogentco.com` again, waited out os-intent replay, started services manually, recreated `novelforge_test` per GAP-065. Box 4 first attempt then failed on environment (Prisma P3018: test role lacked superuser for `CREATE EXTENSION vector`); fixed via `ALTER ROLE novelforge_test SUPERUSER`, Box 4 re-run in full. ~27 min of the 49-min battery window spent on environment recovery. No code defect.
+
+RECURRENCE 2026-10-08 (OBSERVED by the 047C scope-amendment implementer, ~01:40 WIB): full VM reset a 5th time mid-task — `pg_isready`/`redis-cli` gone, `/usr/lib/postgresql/` absent, no postgresql service; Node v24.20.0 survived; both working files intact. All required evidence for the repair was obtained before the reset (24/24 DB-suite run completed on unchanged code). Coordinator reinstalling natively (same procedure). No code defect.
 
 ## GAP-109 — Post-pull audit: runtime and verification regressions
 

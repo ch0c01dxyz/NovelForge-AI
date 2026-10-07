@@ -11,14 +11,21 @@
  */
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
-import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
+import type { AIGateway } from "@novelforge/ai-core";
 import { encryptCredential } from "@novelforge/ai-core";
 import { createWorkerAiPath } from "@novelforge/ai-services";
 import { createWorkerExecutor } from "./workflow-jobs.ts";
 import type { WorkerLogger } from "./worker.ts";
 
 const IT_DB = "novelforge_test_worker_ai_path";
-const IT_URL = `postgresql://novelforge_test:novelforge_test@localhost:5432/${IT_DB}`;
+// Keep host credentials/port configurable, but never migrate the supplied database.
+const BASE_URL = process.env.DATABASE_URL ?? "postgresql://novelforge_test:novelforge_test@localhost:5432/postgres";
+function withDb(database: string): string {
+  const url = new URL(BASE_URL);
+  url.pathname = `/${database}`;
+  return url.toString();
+}
+const IT_URL = withDb(IT_DB);
 
 function testLogger(): WorkerLogger {
   return {
@@ -47,7 +54,7 @@ describe("createWorkerAiPath (NF-WF-026)", () => {
   beforeAll(async () => {
     const { Client } = await import("pg");
     const admin = new Client({
-      connectionString: "postgresql://novelforge_test:novelforge_test@localhost:5432/postgres",
+      connectionString: withDb("postgres"),
     });
     await admin.connect();
     await admin.query(`DROP DATABASE IF EXISTS "${IT_DB}"`);
@@ -60,14 +67,13 @@ describe("createWorkerAiPath (NF-WF-026)", () => {
     const HERE = path.dirname(fileURLToPath(import.meta.url));
     const DB_PACKAGE_ROOT = path.join(HERE, "..", "..", "..", "packages", "database");
     const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js");
-    const IT_URL_LOCAL = `postgresql://novelforge_test:novelforge_test@localhost:5432/${IT_DB}`;
     execFileSync(process.execPath, [PRISMA_CLI, "migrate", "deploy"], {
       stdio: "pipe",
       cwd: DB_PACKAGE_ROOT,
-      env: { ...process.env, DATABASE_URL: IT_URL_LOCAL },
+      env: { ...process.env, DATABASE_URL: IT_URL },
     });
 
-    db = createDb(IT_URL_LOCAL);
+    db = createDb(IT_URL);
   }, 120_000);
 
   afterAll(async () => {

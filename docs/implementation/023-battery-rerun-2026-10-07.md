@@ -74,3 +74,7 @@ The automated a11y half is verified (Box 7: zero violations). The manual screen-
 5. **GAP-098** (P3, decision) — Needs author's scope decision: accept token budget as "measured cost" or amend 024 contract.
 
 GAP-100/101 are BLOCKED (not just OPEN) — no code changes until their contracts are reviewed and approved.
+
+## Post-pull evidence boundary — 2026-10-07
+
+This report is preserved as the Ubuntu executor's historical report at dfd87a3. The later shared-service refactor (e23dd8d/cc8d515) invalidates any assumption that this battery proves the current tree. SHIP_WITH_KNOWN_GAPS is the executor's recommendation, not recorded author release approval; GAP-051 remains an explicit open gate. Current-host focused verification is recorded in CURRENT/GAP-106; a complete final-revision battery is still required.

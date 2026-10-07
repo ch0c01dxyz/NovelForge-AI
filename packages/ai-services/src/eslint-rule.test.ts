@@ -1,64 +1,28 @@
-/**
- * NF-WF-026 (GAP-028): Negative test for the ESLint no-restricted-imports rule.
- *
- * Verifies that `apps/worker` files importing from `apps/api/src` are
- * flagged by the rule. This is a CI enforcement check for Invariant 2.
- */
+/** NF-WF-026: enforce the worker import boundary without mutating source files. */
 import { describe, it, expect } from "vitest";
-import { execSync } from "child_process";
-import { writeFileSync, unlinkSync, existsSync } from "fs";
-import { join } from "path";
+import { ESLint } from "eslint";
+import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("../../../", import.meta.url));
+const eslint = new ESLint({ cwd: root });
+const filePath = "apps/worker/src/__boundary-check__.ts";
 
 describe("ESLint no-restricted-imports (NF-WF-026)", () => {
-  it("flags apps/worker importing from apps/api/src", () => {
-    // Create a synthetic violating file in apps/worker
-    // __dirname is packages/ai-services/src, so ../../../ reaches repo root
-    const violatingFile = join(
-      __dirname,
-      "../../../apps/worker/src/__test-violation__.ts"
+  it("flags apps/worker importing from apps/api/src", async () => {
+    const results = await eslint.lintText(
+      'import { createAiServices } from "../../api/src/services/ai.ts"; export const x = createAiServices;',
+      { filePath },
     );
-    writeFileSync(
-      violatingFile,
-      `// Synthetic violation for NF-WF-026 negative test\nimport { createAiServices } from "../../api/src/services/ai.ts";\nexport const x = createAiServices;\n`
+    expect(results.flatMap((r) => r.messages).some((m) => m.ruleId === "no-restricted-imports")).toBe(true);
+  }, 30_000);
+
+  it("allows the shared service import", async () => {
+    const results = await eslint.lintText(
+      'import { createWorkerAiPath } from "@novelforge/ai-services"; export const x = createWorkerAiPath;',
+      { filePath },
     );
-
-    try {
-      // Run ESLint on the violating file — should exit non-zero
-      let eslintOutput = "";
-      let eslintFailed = false;
-      try {
-        eslintOutput = execSync(`npx eslint ${violatingFile} 2>&1`, {
-          encoding: "utf-8",
-          cwd: join(__dirname, "../../.."),
-        });
-      } catch (err) {
-        eslintFailed = true;
-        eslintOutput = (err as { stdout?: string }).stdout ?? String(err);
-      }
-
-      expect(eslintFailed).toBe(true);
-      expect(eslintOutput).toContain("no-restricted-imports");
-    } finally {
-      // Clean up
-      if (existsSync(violatingFile)) {
-        unlinkSync(violatingFile);
-      }
-    }
-  });
-
-  it("passes for apps/worker importing from @novelforge/ai-services", () => {
-    // The real workflow-jobs.ts imports from @novelforge/ai-services — should pass
-    // We check specifically for no-restricted-imports errors, ignoring other lint issues
-    let output = "";
-    try {
-      output = execSync(`npx eslint apps/worker/src/workflow-jobs.ts 2>&1`, {
-        encoding: "utf-8",
-        cwd: join(__dirname, "../../.."),
-      });
-    } catch (err) {
-      output = (err as { stdout?: string }).stdout ?? "";
-    }
-    // Should not contain no-restricted-imports errors (other errors are OK for this test)
-    expect(output).not.toContain("no-restricted-imports");
-  });
+    expect(results).toHaveLength(1);
+    expect(results[0]?.errorCount).toBe(0);
+    expect(results[0]?.warningCount).toBe(0);
+  }, 30_000);
 });

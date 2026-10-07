@@ -2079,3 +2079,16 @@ Additional finding: the repo-root `.env` carries `DATABASE_URL=<redacted>` (plac
 
 **Assessment:** The single failure did not reproduce across two subsequent full runs. Classified as transient flake (not a product defect). The green run (970/970) is the battery record per Invariant 3 (OBSERVED evidence from executed run).
 **If the flake recurs:** re-open as a defect GAP with the failing test identified.
+
+## GAP-106 — NF-WF-026 test portability and post-refactor evidence
+
+Status: RESOLVED (bounded test/documentation repair). Owner: current post-pull audit (baseline cc8d515).
+Evidence: worker-ai-path.test.ts hardcodes Ubuntu PostgreSQL credentials/5432 in three places, ignoring DATABASE_URL. The architecture lint test builds shell commands with unquoted paths and treats unrelated command failures as passing its positive case. START-HERE/CURRENT still select already-delivered work; Ubuntu battery is pinned to dfd87a3, before the new service extraction.
+Action: honor the explicit host connection while fixing the scratch database name; invoke local ESLint without a shell and assert a successful positive case; rerun focused worker/shared tests, lint and typecheck; reconcile dispatch. Never treat pre-refactor battery or a fake gateway as live deployment evidence.
+Closure: current-host checks, separate diff review and clear remaining acceptance boundaries.
+
+GAP-106 observed verification: architecture tests exceeded the default 5s timeout; concurrent lint failed ENOENT on their temporary source file. Replace file mutation/subprocesses with ESLint lintText virtual paths. Initial executor test was environment-blocked (wrong inherited credential); rerun with the verified Docker connection passed 20/20.
+
+GAP-106 additional observed lint failure: worker-ai-path.test.ts unused GatewayRecord import; removed without changing behavior.
+
+GAP-106 closure receipt (current Windows host): frozen-lockfile install completed; lint and workspace typecheck exit 0; shared package typecheck after test rewrite exit 0. Worker AI suite 4/4, executor 20/20, shared architecture 2/2, API compiler/canon 95/95 and worker lifecycle unit checks 9 passed/1 integration filtered. Total 130 passed. Separate reviewer approved source repairs; stale GAP-098 dispatch clause corrected. Current pointers require final-revision battery; no live gateway, full release or manual accessibility acceptance claimed. GAP-021 runtime attribution remains unavailable; this record/CURRENT preserve fallback.

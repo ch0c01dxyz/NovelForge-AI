@@ -6,9 +6,17 @@ exist; integrated product delivery remains PARTIAL**. Historical phase/test
 results below describe their original scope, not completion of all retained
 requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
-## Current dispatch — 2026-10-07 (battery rerun)
+## Current dispatch — 2026-10-07 (post-pull audit)
 
-**NF-WF-023 release battery: GREEN on this host** (Ubuntu 24.04.5, revision `dfd87a3`, 2026-10-07 04:45–05:30 WIB). All 8 boxes ticked with OBSERVED evidence, strictly sequential per Invariant 4:
+Pulled four commits by fast-forward from dfd87a3 to cc8d515. NF-WF-026 production worker factories are present; GAP-028 code wiring is no longer a new implementation task. Its fake-gateway AGENT evidence is not live provider/BullMQ deployment acceptance. GAP-098 removal is documented as author-directed in facac9f; this audit does not independently infer that approval from code alone.
+
+Next: run NF-WF-023 against the final revision containing the reviewed GAP-106 repair; prepare dependency-ready GAP-100/101 contracts. GAP-094–096 and human GAP-051 remain open. The Ubuntu battery below is historical evidence for dfd87a3, not the current Windows host or extracted services.
+
+Current host: reuse nf-pg-5433 (5433) and existing Redis; only dedicated test databases used. Worker AGENT suite 4/4 and executor 20/20 passed with an explicit host DATABASE_URL; shared architecture tests 2/2 pass in-memory. Workspace typecheck exit 0; shared package typecheck rerun after test rewrite exit 0. Initial executor connection failure and architecture-test timeout/source-file race are recorded in GAP-106. Final lint exit 0. API compiler/canon 95/95; worker lifecycle unit checks 9/9 (one real BullMQ integration deliberately filtered out; no production Redis queue used). Total focused checks: 130 passed. Separate reviewer approved the code with one stale GAP-098 documentation finding, corrected. Full API/worker/web release battery and live provider deployment were not run. Engram runtime attribution remains unavailable (GAP-021); no checkpoint save is claimed.
+
+## Historical Ubuntu dispatch — 2026-10-07 (battery rerun)
+
+**Historical NF-WF-023 release battery: reported GREEN on the Ubuntu host** (Ubuntu 24.04.5, revision `dfd87a3`, 2026-10-07 04:45–05:30 WIB). All 8 boxes ticked with OBSERVED evidence, strictly sequential per Invariant 4:
 1. `pnpm lint` → exit 0 ✅
 2. `tsc --noEmit` (api) → exit 0 ✅
 3. `vue-tsc --noEmit` (web) → exit 0 ✅
@@ -20,7 +28,7 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
 Environment: PostgreSQL 16.15 + pgvector 0.6.0, Redis 7.0.15 (both started manually); GAP-065 re-applied; GAP-105 (role password + DATABASE_URL export) resolved. One transient API flake observed (1/970, non-reproducing across 2 reruns).
 
-**Release decision: SHIP_WITH_KNOWN_GAPS.** Full report: `docs/implementation/023-battery-rerun-2026-10-07.md`.
+**Historical executor recommendation: SHIP_WITH_KNOWN_GAPS; not author approval or a current release decision.** Full report: `docs/implementation/023-battery-rerun-2026-10-07.md`.
 
 **Recommended fix order:** GAP-028 (P1, actionable) → GAP-100 (P1, BLOCKED on contract) → GAP-101 (P2, BLOCKED on contract) → GAP-094/095/096 (P3) → GAP-098 (P3, author decision). GAP-051 human gate remains OPEN.
 

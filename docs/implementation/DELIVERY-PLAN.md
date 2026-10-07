@@ -24,7 +24,7 @@ IDs rather than becoming competing issue logs.
 
 ## Current execution override — 2026-10-07
 
-Use CURRENT's post-sync dispatch: the reviewed NF-WF-025 repair is included in this commit; proceed to current-host NF-WF-023 release verification and dependency-ready issue contracts. Code is committed through NF-WF-024 at baseline 72b3948. Older queue statuses below are historical planning context, not redispatch instructions. GAP-100/101 block live what-if/semantic application acceptance; GAP-098 remains open. Do not claim milestone completion from implementation commits.
+Use CURRENT's post-pull dispatch: NF-WF-026 wiring is implemented; GAP-106 verification repair is included in this commit; proceed to final-revision NF-WF-023 verification and dependency-ready GAP-100/101 contracts. Historical Ubuntu battery receipts do not verify the post-refactor tree. Code is committed through NF-WF-026 at pulled baseline cc8d515. Older queue statuses below are historical planning context, not redispatch instructions. GAP-100/101 block live what-if/semantic application acceptance; GAP-098 is recorded CLOSED by scoped author decision in the issue register. Do not claim milestone completion from implementation commits.
 
 ## Historical baseline
 

@@ -1,6 +1,7 @@
 # NF-WF-026 — Production Worker AI Wiring (GAP-028)
 
-Status: APPROVED (contract review round 2, 2026-10-07 — v1 CHANGES_REQUESTED 2P1+4P2+2P3, v2 APPROVE)
+Current status: IMPLEMENTATION COMMITTED (e23dd8d, closure annotation cc8d515), post-pull verification ongoing under GAP-106. The historical checkboxes below are the original acceptance checklist, not new dispatch instructions. No live provider deployment acceptance is inferred.
+Historical contract status: APPROVED (round 2, 2026-10-07 — v1 CHANGES_REQUESTED, v2 APPROVE).
 
 ## Normative vs informative
 

@@ -1,7 +1,11 @@
 # NF-WF-024 — Advanced Intelligence and Measured Optimization
 
 Status: IMPLEMENTATION PRESENT / ACCEPTANCE BLOCKED (2026-10-07).
-Implementation commit: 55998d0. GAP-098, GAP-100 and GAP-101 prevent full contract acceptance; NF-WF-023 release checks are not currently proven green. The prior IMPLEMENTED label described code delivery, not acceptance.
+Implementation commit: 55998d0. GAP-100 and GAP-101 prevent full contract acceptance; NF-WF-023 release checks are not currently proven green. The prior IMPLEMENTED label described code delivery, not acceptance.
+
+## Recorded scope amendment — 2026-10-07
+
+Per the GAP-098 author-decision record and facac9f, 024C measured-cost Part 2 and its standalone TokenBudget tracker were removed from retained scope. Part 2 requirements below are preserved as historical contract text, not current implementation instructions. The separate 024A what-if bounded-execution budget remains required. This annotation references the recorded decision; it does not invent a new approval or prove retained 024 acceptance.
 
 ## Normative vs informative
 

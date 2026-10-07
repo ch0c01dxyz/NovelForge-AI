@@ -31,9 +31,9 @@ completion from a phase number. The accepted repair is recorded in
 5. Read only that task's domain specifications, contracts, callers, and tests.
 6. Implement, verify, obtain a separate review, and update the evidence ledger.
 
-**Current next task:** rerun NF-WF-023 release verification on the current host. The reviewed [NF-WF-025 — post-sync regression repair](tasks/NF-WF-025-post-sync-regression-repair.md) is included in this commit; its bounded tests and separate review are complete. The synced baseline is `72b3948` (2026-10-07), with implementation commits through NF-WF-024; do not redispatch NF-WF-003 from historical PLANNED pointers. Implementation commits are not integrated acceptance evidence.
+**Current next task:** verify NF-WF-023 on the final post-refactor revision, then prepare the reviewed GAP-100 what-if contract. NF-WF-026 worker AI wiring is committed in `cc8d515`; do not reimplement it. The Ubuntu battery at `dfd87a3` is historical pre-refactor evidence, not acceptance of the current tree.
 
-Prioritize GAP-099–104 in the [single issue register](docs/implementation/ISSUES-AND-GAPS.md). After these repairs, rerun NF-WF-023 release checks on the current host and resolve GAP-028 (production workflow executor wiring), GAP-094–096 (reconciliation), and GAP-098 (optimization acceptance). GAP-100 (live what-if branch/context integration) and GAP-101 (semantic preview/apply parity) require reviewed contracts before mutation changes. Full platform release remains unverified.
+The post-pull audit repairs test portability and verification fidelity under GAP-106. See [CURRENT](docs/14-progress/CURRENT.md) for host-specific receipts. GAP-028 has a worker-executor AGENT test with a fake gateway; it does not prove a configured live deployment. GAP-100 and GAP-101 remain blocked pending reviewed mutation contracts; GAP-094–096 and the GAP-051 human gate remain open. GAP-098's author-scoped token-budget removal is recorded separately; do not recreate the deleted tracker speculatively. Full release remains unaccepted.
 
 ## New-host environment preparation
 

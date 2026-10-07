@@ -513,15 +513,13 @@ export const id = {
     renameScene: "Ubah nama adegan",
     deleteScene: "Hapus adegan",
     deleteConfirm:
-      "Hapus adegan ini? Adegan hanya penanda struktural — teks bab tidak terpengaruh.",
+      "Hapus adegan ini? Adegan hanya penanda struktural — teks bab tidak terpengaruh. Beat outline yang merencanakan adegan ini juga akan dihapus.",
     moveUp: "Pindahkan adegan ke atas",
     moveDown: "Pindahkan adegan ke bawah",
     sceneTitlePrompt: "Judul adegan:",
     createFailed: "Tidak dapat membuat adegan.",
     updateFailed: "Tidak dapat memperbarui adegan.",
     deleteFailed: "Tidak dapat menghapus adegan.",
-    deleteBlockedByOutline:
-      "Adegan ini dipakai oleh beat outline — hapus beat tersebut terlebih dahulu, lalu hapus adegan ini.",
     loadFailed: "Tidak dapat memuat adegan.",
   },
   genre: {

@@ -224,8 +224,8 @@ export function registerManuscriptRoutes(
       if (!actorUserId) return;
       const params = sceneParams.safeParse(request.params);
       if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-      await services.deleteScene({ actorUserId, ...params.data });
-      return { status: "ok" };
+      const result = await services.deleteScene({ actorUserId, ...params.data });
+      return { status: "ok", deletedBeats: result.deletedBeats };
     },
   );
 

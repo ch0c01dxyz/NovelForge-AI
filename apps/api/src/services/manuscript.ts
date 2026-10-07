@@ -182,7 +182,9 @@ export interface ManuscriptServices {
     novelId: string;
     chapterId: string;
     sceneId: string;
-  }): Promise<void>;
+  }): Promise<{
+    deletedBeats: Array<{ id: string; title: string; order: number; sagaId: string }>;
+  }>;
 }
 
 export function countWords(text: string): number {
@@ -1180,28 +1182,69 @@ export function createManuscriptServices(
     },
 
     async deleteScene({ actorUserId, workspaceId, novelId, chapterId, sceneId }) {
-      await gate(workspaceId, novelId, actorUserId, "chapter:update");
+      const role = await gate(workspaceId, novelId, actorUserId, "chapter:update");
       await getChapterOr404(chapterId, novelId);
-      await db.$transaction(async (tx) => {
+      // NF-WF-034 (GAP-055): deleting a scene cascades to the outline beats
+      // that plan it (author decision 2026-10-07). Application-level explicit
+      // delete — NOT the schema's silent ON DELETE CASCADE — so every beat
+      // is audit-logged and reported. The schema cascade stays as a safety net.
+      // Note: the canon:manage gate is evaluated inside the transaction on the
+      // authoritative in-tx read (TOCTOU hardening) — see below.
+      const deletedBeats = await db.$transaction(async (tx) => {
         const scene = await tx.scene.findFirst({
           where: { id: sceneId, chapterId },
           select: { id: true, title: true },
         });
         if (!scene) throw new NotFoundError("scene");
-        // Outline beats plan specific scenes (SCENE-kind nodes carry a
-        // NOT NULL sceneId by CHECK constraint) — deleting the anchor
-        // must not silently destroy planning work via the schema's
-        // onDelete: Cascade. Refuse with an actionable 409 instead; the
-        // author deletes the beats first (planning's deleteOutlineNode),
-        // then the scene. (GAP-055 tracks the schema-level question.)
-        const linked = await tx.outlineNode.count({ where: { sceneId } });
-        if (linked > 0) {
-          throw new ConflictError(
-            `this scene is planned by ${linked} outline beat${linked === 1 ? "" : "s"} — ` +
-              `delete those beats first, then delete the scene`,
-          );
+        // Re-select inside the transaction (C4): beats may have changed
+        // between the gate check and the transaction.
+        const beats = await tx.outlineNode.findMany({
+          where: { sceneId, novelId },
+          select: { id: true, title: true, order: true, sagaId: true },
+          orderBy: [{ sagaId: "asc" }, { order: "asc" }],
+        });
+        // Capability gate — fail fast inside the transaction on the
+        // authoritative in-tx read (TOCTOU hardening). Planning's
+        // deleteOutlineNode gates on canon:manage, and EDITOR holds
+        // chapter:update but deliberately NOT canon:manage. Without this
+        // gate an EDITOR could delete outline nodes via scene-delete that
+        // they are forbidden from deleting directly. Throws before any
+        // write; the transaction rolls back.
+        if (beats.length > 0) {
+          requireCapability(role, "canon:manage");
+        }
+        if (beats.length > 0) {
+          await tx.outlineNode.deleteMany({
+            where: { id: { in: beats.map((b) => b.id) } },
+          });
         }
         await tx.scene.delete({ where: { id: sceneId } });
+        await advanceForMutation(tx, {
+          workspaceId,
+          novelId,
+          operation: "scene.delete",
+          origin: "MANUAL",
+          actorUserId,
+          tables: ["outline_nodes", "scenes"],
+          items: [
+            { entityType: "Scene", entityId: sceneId, operation: "DELETE" },
+            ...beats.map((b) => ({
+              entityType: "OutlineNode",
+              entityId: b.id,
+              operation: "DELETE" as const,
+            })),
+          ],
+        });
+        for (const b of beats) {
+          await audit?.record({
+            actorUserId,
+            workspaceId,
+            action: "planning.outline-node-deleted",
+            entityType: "OutlineNode",
+            entityId: b.id,
+            payload: { sagaId: b.sagaId, order: b.order, sceneId },
+          });
+        }
         await audit?.record({
           actorUserId,
           workspaceId,
@@ -1210,7 +1253,14 @@ export function createManuscriptServices(
           entityId: sceneId,
           payload: { chapterId, title: scene.title },
         });
+        return beats.map((b) => ({
+          id: b.id,
+          title: b.title,
+          order: b.order,
+          sagaId: b.sagaId,
+        }));
       });
+      return { deletedBeats };
     },
   };
 }

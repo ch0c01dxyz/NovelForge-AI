@@ -652,13 +652,10 @@ async function onDeleteScene(payload: { chapterId: string; sceneId: string }) {
     });
     if (activeSceneId.value === payload.sceneId) activeSceneId.value = null;
     await loadScenesFor([payload.chapterId]);
-  } catch (e) {
-    // NF-WF-015 (GAP-055): the only 409 this route emits is the
-    // outline-link refusal — name the recovery action.
-    error.value =
-      e instanceof ApiError && e.status === 409
-        ? t("scenes.deleteBlockedByOutline")
-        : t("scenes.deleteFailed");
+  } catch {
+    // NF-WF-034 (GAP-055): the route no longer emits 409 for linked beats
+    // (cascade) — any failure falls through to the generic message.
+    error.value = t("scenes.deleteFailed");
   }
 }
 

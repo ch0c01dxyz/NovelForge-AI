@@ -321,7 +321,7 @@ describe("scene CRUD", () => {
     expect(patchMissing.statusCode).toBe(404);
   });
 
-  it("delete refuses when outline beats plan the scene (no silent cascade)", async () => {
+  it("delete cascades to linked outline beats (NF-WF-034, GAP-055)", async () => {
     const owner = await seedUser("sc-owner6@t.io");
     const ids = await seedNovel(owner.userId, "sc-ws6");
     const ch = await makeChapter(owner.cookie, ids, "Ch 1");
@@ -341,31 +341,220 @@ describe("scene CRUD", () => {
       },
     });
 
-    // Refusal is explicit and recoverable — never a silent cascade into
-    // planning work (the schema FK is onDelete: Cascade; GAP-055).
-    const refused = await app.inject({
-      method: "DELETE",
-      url: `${scenesUrl(ids, ch.id)}/${s.id}`,
-      headers: { cookie: owner.cookie },
-    });
-    expect(refused.statusCode).toBe(409);
-    expect((refused.json() as { error: string }).error).toBe("CONFLICT");
-
-    // The author deletes the beat first (planning's deleteOutlineNode),
-    // then the scene deletes cleanly.
-    await db.outlineNode.delete({ where: { id: node.id } });
+    // Cascade: the beat is deleted with the scene — 200 with deletedBeats,
+    // never a 409 refusal (the old behavior).
     const del = await app.inject({
       method: "DELETE",
       url: `${scenesUrl(ids, ch.id)}/${s.id}`,
       headers: { cookie: owner.cookie },
     });
     expect(del.statusCode).toBe(200);
-    const list = (await app.inject({
-      method: "GET",
-      url: scenesUrl(ids, ch.id),
+    const body = del.json() as {
+      status: string;
+      deletedBeats: Array<{ id: string; title: string; order: number; sagaId: string }>;
+    };
+    expect(body.status).toBe("ok");
+    expect(body.deletedBeats).toHaveLength(1);
+    expect(body.deletedBeats[0]).toMatchObject({
+      id: node.id,
+      title: "Beat",
+      order: 1,
+      sagaId: saga.id,
+    });
+
+    // Both rows are gone.
+    expect(await db.outlineNode.findUnique({ where: { id: node.id } })).toBeNull();
+    expect(await db.scene.findUnique({ where: { id: s.id } })).toBeNull();
+
+    // Audit: one scene.deleted + one planning.outline-node-deleted with
+    // { sagaId, order, sceneId }.
+    const audits = await db.auditLog.findMany({
+      where: { workspaceId: ids.workspaceId },
+      orderBy: { createdAt: "asc" },
+    });
+    const sceneDeleted = audits.filter((a) => a.action === "scene.deleted");
+    expect(sceneDeleted).toHaveLength(1);
+    expect(sceneDeleted[0]!.entityId).toBe(s.id);
+    const beatDeleted = audits.filter((a) => a.action === "planning.outline-node-deleted");
+    expect(beatDeleted).toHaveLength(1);
+    expect(beatDeleted[0]!.entityId).toBe(node.id);
+    expect(beatDeleted[0]!.payload).toMatchObject({
+      sagaId: saga.id,
+      order: 1,
+      sceneId: s.id,
+    });
+  });
+
+  it("delete cascades multiple beats across sagas", async () => {
+    const owner = await seedUser("sc-owner6b@t.io");
+    const ids = await seedNovel(owner.userId, "sc-ws6b");
+    const ch = await makeChapter(owner.cookie, ids, "Ch 1");
+    const s = (await createScene(owner.cookie, ids, ch.id, { title: "Multi" })).json() as { id: string };
+
+    const saga1 = await db.saga.create({
+      data: { novelId: ids.novelId, kind: "SAGA", title: "Saga 1", createdById: owner.userId },
+    });
+    const saga2 = await db.saga.create({
+      data: { novelId: ids.novelId, kind: "SAGA", title: "Saga 2", createdById: owner.userId },
+    });
+    const nodes = await Promise.all(
+      [
+        { sagaId: saga1.id, order: 1, title: "B1" },
+        { sagaId: saga1.id, order: 2, title: "B2" },
+        { sagaId: saga2.id, order: 1, title: "B3" },
+      ].map((n) =>
+        db.outlineNode.create({
+          data: { novelId: ids.novelId, sagaId: n.sagaId, kind: "SCENE", title: n.title, order: n.order, sceneId: s.id },
+        }),
+      ),
+    );
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `${scenesUrl(ids, ch.id)}/${s.id}`,
       headers: { cookie: owner.cookie },
-    })).json() as Array<{ id: string }>;
-    expect(list.find((x) => x.id === s.id)).toBeUndefined();
+    });
+    expect(del.statusCode).toBe(200);
+    const body = del.json() as { deletedBeats: Array<{ id: string }> };
+    expect(body.deletedBeats).toHaveLength(3);
+    const deletedIds = new Set(body.deletedBeats.map((b) => b.id));
+    for (const n of nodes) expect(deletedIds.has(n.id)).toBe(true);
+
+    expect(await db.outlineNode.count({ where: { sceneId: s.id } })).toBe(0);
+    expect(await db.scene.findUnique({ where: { id: s.id } })).toBeNull();
+
+    const beatAudits = await db.auditLog.count({
+      where: { workspaceId: ids.workspaceId, action: "planning.outline-node-deleted" },
+    });
+    expect(beatAudits).toBe(3);
+  });
+
+  it("delete with no linked beats returns empty deletedBeats", async () => {
+    const owner = await seedUser("sc-owner6c@t.io");
+    const ids = await seedNovel(owner.userId, "sc-ws6c");
+    const ch = await makeChapter(owner.cookie, ids, "Ch 1");
+    const s = (await createScene(owner.cookie, ids, ch.id, { title: "Plain" })).json() as { id: string };
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `${scenesUrl(ids, ch.id)}/${s.id}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(del.statusCode).toBe(200);
+    expect((del.json() as { deletedBeats: unknown[] }).deletedBeats).toEqual([]);
+    expect(await db.scene.findUnique({ where: { id: s.id } })).toBeNull();
+  });
+
+  it("delete refuses 403 when EDITOR lacks canon:manage and beats are linked", async () => {
+    const owner = await seedUser("sc-owner6d@t.io");
+    const editor = await seedUser("sc-editor6d@t.io");
+    const ids = await seedNovel(owner.userId, "sc-ws6d");
+    await db.membership.create({
+      data: { workspaceId: ids.workspaceId, userId: editor.userId, role: "EDITOR" },
+    });
+    const ch = await makeChapter(owner.cookie, ids, "Ch 1");
+    const sLinked = (await createScene(owner.cookie, ids, ch.id, { title: "Linked" })).json() as { id: string };
+    const sPlain = (await createScene(owner.cookie, ids, ch.id, { title: "Plain" })).json() as { id: string };
+
+    const saga = await db.saga.create({
+      data: { novelId: ids.novelId, kind: "SAGA", title: "Saga", createdById: owner.userId },
+    });
+    const node = await db.outlineNode.create({
+      data: {
+        novelId: ids.novelId,
+        sagaId: saga.id,
+        kind: "SCENE",
+        title: "Beat",
+        order: 1,
+        sceneId: sLinked.id,
+      },
+    });
+
+    // EDITOR holds chapter:update but not canon:manage — 403, zero rows deleted.
+    const refused = await app.inject({
+      method: "DELETE",
+      url: `${scenesUrl(ids, ch.id)}/${sLinked.id}`,
+      headers: { cookie: editor.cookie },
+    });
+    expect(refused.statusCode).toBe(403);
+    expect(await db.scene.findUnique({ where: { id: sLinked.id } })).not.toBeNull();
+    expect(await db.outlineNode.findUnique({ where: { id: node.id } })).not.toBeNull();
+
+    // Same EDITOR with no linked beats → 200 (chapter:update suffices).
+    const ok = await app.inject({
+      method: "DELETE",
+      url: `${scenesUrl(ids, ch.id)}/${sPlain.id}`,
+      headers: { cookie: editor.cookie },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(await db.scene.findUnique({ where: { id: sPlain.id } })).toBeNull();
+
+    // OWNER (both capabilities) → 200 with cascade.
+    const ownerDel = await app.inject({
+      method: "DELETE",
+      url: `${scenesUrl(ids, ch.id)}/${sLinked.id}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(ownerDel.statusCode).toBe(200);
+    expect((ownerDel.json() as { deletedBeats: unknown[] }).deletedBeats).toHaveLength(1);
+    expect(await db.outlineNode.findUnique({ where: { id: node.id } })).toBeNull();
+  });
+
+  it("delete leaves non-SCENE nodes and other scenes' beats untouched", async () => {
+    const owner = await seedUser("sc-owner6e@t.io");
+    const ids = await seedNovel(owner.userId, "sc-ws6e");
+    const ch = await makeChapter(owner.cookie, ids, "Ch 1");
+    const s1 = (await createScene(owner.cookie, ids, ch.id, { title: "S1" })).json() as { id: string };
+    const s2 = (await createScene(owner.cookie, ids, ch.id, { title: "S2" })).json() as { id: string };
+
+    const saga = await db.saga.create({
+      data: { novelId: ids.novelId, kind: "SAGA", title: "Saga", createdById: owner.userId },
+    });
+    // CHAPTER-kind node (linked to chapter, not scene) — CHECK forbids
+    // sceneId on non-SCENE kinds.
+    const chapterNode = await db.outlineNode.create({
+      data: {
+        novelId: ids.novelId,
+        sagaId: saga.id,
+        kind: "CHAPTER",
+        title: "Chapter beat",
+        order: 1,
+        chapterId: ch.id,
+      },
+    });
+    const otherBeat = await db.outlineNode.create({
+      data: {
+        novelId: ids.novelId,
+        sagaId: saga.id,
+        kind: "SCENE",
+        title: "Other beat",
+        order: 2,
+        sceneId: s2.id,
+      },
+    });
+    await db.outlineNode.create({
+      data: {
+        novelId: ids.novelId,
+        sagaId: saga.id,
+        kind: "SCENE",
+        title: "Own beat",
+        order: 3,
+        sceneId: s1.id,
+      },
+    });
+
+    const del = await app.inject({
+      method: "DELETE",
+      url: `${scenesUrl(ids, ch.id)}/${s1.id}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(del.statusCode).toBe(200);
+    expect((del.json() as { deletedBeats: unknown[] }).deletedBeats).toHaveLength(1);
+
+    // CHAPTER node and the other scene's beat survive.
+    expect(await db.outlineNode.findUnique({ where: { id: chapterNode.id } })).not.toBeNull();
+    expect(await db.outlineNode.findUnique({ where: { id: otherBeat.id } })).not.toBeNull();
+    expect(await db.scene.findUnique({ where: { id: s2.id } })).not.toBeNull();
   });
 
   it("gates: 401 without session, 404 for non-members, 403 for VIEWER", async () => {

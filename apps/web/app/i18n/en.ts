@@ -513,15 +513,13 @@ export const en = {
     renameScene: "Rename scene",
     deleteScene: "Delete scene",
     deleteConfirm:
-      "Delete this scene? Scenes are structural anchors — the chapter text is not affected.",
+      "Delete this scene? Scenes are structural anchors — the chapter text is not affected. Any outline beats planning this scene will also be deleted.",
     moveUp: "Move scene up",
     moveDown: "Move scene down",
     sceneTitlePrompt: "Scene title:",
     createFailed: "Could not create the scene.",
     updateFailed: "Could not update the scene.",
     deleteFailed: "Could not delete the scene.",
-    deleteBlockedByOutline:
-      "This scene is used by outline beats — delete those beats first, then delete the scene.",
     loadFailed: "Could not load scenes.",
   },
   genre: {

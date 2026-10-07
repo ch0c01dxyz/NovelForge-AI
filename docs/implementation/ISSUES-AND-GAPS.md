@@ -1493,10 +1493,13 @@ alternative (schema `ON DELETE` cascade/refuse rule) is a follow-up
 decision for the planning owner, not 015's implementer.
 
 IMPACT: minimal — delete is recoverable through the existing planning
-UI. STATUS: open pending the schema-cascade-vs-refuse decision;
-015's implementation is complete with the 409. Closure check: closes
-when the planning/schema owner records the cascade-vs-refuse decision
-and the route + tests are updated to match.
+UI. STATUS: CLOSED 2026-10-07 via NF-WF-034.
+
+DECISION 2026-10-07 (author, planning owner): CASCADE — deleting a scene automatically deletes the outline node(s) referencing it.
+
+RESOLUTION: Application-level explicit cascade (not the schema's silent ON DELETE CASCADE). `deleteScene`: after `chapter:update` gate + scene lookup, selects linked beats; fail-fast 403 if beats linked and caller lacks `canon:manage` (EDITOR privilege-escalation guard — evaluated inside the transaction on the authoritative in-tx read, TOCTOU-hardened); deletes beats explicitly + scene in one transaction; `advanceForMutation` with `tables: ["outline_nodes", "scenes"]` + per-node DELETE items; per-node audit `planning.outline-node-deleted` with `{ sagaId, order, sceneId }`; response gains `deletedBeats: [{id, title, order, sagaId}]`. Old 409 refusal removed. Writer page: 409 special-case removed, confirm dialog warns about beats, `deleteBlockedByOutline` i18n key removed (en/id parity).
+
+EVIDENCE (OBSERVED 2026-10-07): `scenes.test.ts` 16/16 (5 new cascade tests); `planning.test.ts` 8/8; tsc + eslint clean. Contract: `tasks/NF-WF-034-gap055-scene-delete-cascade.md` (APPROVED). Diff review: APPROVE_WITH_FINDINGS (1 P2 TOCTOU hardening applied pre-commit).
 
 ## GAP-056 — NF-WF-016: `StoryThreadEvent` is schema-only; no route links story events to threads (2026-10-06)
 
@@ -1916,6 +1919,8 @@ EVIDENCE: 023A implementer (2026-10-07): repo-wide grep for `simulationEntity`/`
 IMPACT: No tenant-isolation risk (no queries = no leak). Schema/contract drift: the table exists but is unused; future readers may assume it is populated.
 
 NEXT ACTION: Follow-up task decides: (a) implement entity persistence per the 021A contract, or (b) amend the 021A contract to drop the SimulationEntity primitive and remove the table in a future migration. Do NOT silently start writing to it.
+
+DECISION 2026-10-07 (author): option (a) — implement entity persistence per the 021A contract. Contract required before implementation (mutation change).
 
 STATUS: OPEN — recorded 2026-10-07 by the 023A implementer during the isolation code audit (standing rule).
 

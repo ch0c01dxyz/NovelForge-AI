@@ -7,7 +7,7 @@
  * errors mapped once in the app-wide error handler.
  *
  * Reads require `chapter:read`. Writes require BOTH `chapter:update` and
- * `canon:manage` (enforced here; the service owns only the tenant gate).
+ * `canon:manage` (enforced here and in the service layer).
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -118,7 +118,15 @@ export function registerScaleEvidenceRoutes(
     await requireCapabilities(params.data.workspaceId, params.data.novelId, actorUserId, [
       "chapter:read",
     ]);
-    return services.readCurrent({ actorUserId, ...params.data });
+    try {
+      return await services.readCurrent({ actorUserId, ...params.data });
+    } catch (error) {
+      // Corrupt retained rows fail explicitly with 400 (not 500).
+      if (error instanceof ScaleEvidenceValidationError) {
+        return reply.code(400).send({ error: "INVALID_INPUT", message: error.message });
+      }
+      throw error;
+    }
   });
 
   app.get(`${base}/history`, async (request, reply) => {
@@ -131,13 +139,21 @@ export function registerScaleEvidenceRoutes(
     await requireCapabilities(params.data.workspaceId, params.data.novelId, actorUserId, [
       "chapter:read",
     ]);
-    return services.listHistory({
-      actorUserId,
-      ...params.data,
-      chapterVersionId: query.data.chapterVersionId,
-      beforeSequence: query.data.beforeSequence,
-      limit: query.data.limit,
-    });
+    try {
+      return await services.listHistory({
+        actorUserId,
+        ...params.data,
+        chapterVersionId: query.data.chapterVersionId,
+        beforeSequence: query.data.beforeSequence,
+        limit: query.data.limit,
+      });
+    } catch (error) {
+      // Corrupt retained rows fail explicitly with 400 (not 500).
+      if (error instanceof ScaleEvidenceValidationError) {
+        return reply.code(400).send({ error: "INVALID_INPUT", message: error.message });
+      }
+      throw error;
+    }
   });
 
   app.post(base, { bodyLimit: APPEND_BODY_LIMIT }, async (request, reply) => {

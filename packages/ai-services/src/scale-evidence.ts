@@ -28,6 +28,10 @@ import { randomUUID } from "node:crypto";
 import type { InputJsonValue, NovelForgeDb } from "@novelforge/database";
 import { NARRATIVE_SCALES, type NarrativeScale } from "@novelforge/narrative-rhythm";
 import { verifySpan } from "@novelforge/story-intelligence";
+import {
+  requireCapability,
+  type Capability,
+} from "@novelforge/auth/authorization";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import { verifyEvidenceQuote } from "./manuscript.ts";
 
@@ -114,8 +118,7 @@ function isValidRelevance(value: unknown): value is ScaleClaimRelevance {
 /**
  * Validate one claim against the frozen schema and the enclosing chapter
  * version content. Returns the normalized claim (trimmed strings). Throws
- * ConflictError on any violation — the route maps it to the existing 400
- * validation mapping for schema/quote failures.
+ * ScaleEvidenceValidationError (400) on any schema/quote violation.
  */
 function validateClaim(
   raw: unknown,
@@ -124,6 +127,13 @@ function validateClaim(
 ): ScaleEvidenceClaim {
   const where = `conflicts[${index}]`;
   if (!isRecord(raw)) throw new ScaleEvidenceValidationError(`${where} must be an object`);
+  // Strict schema: reject unknown fields (contract requires strict nested
+  // claim/source schemas; unknown fields are not silently discarded).
+  const allowedClaimKeys = new Set(["scale", "relevance", "explanation", "source"]);
+  for (const key of Object.keys(raw)) {
+    if (!allowedClaimKeys.has(key))
+      throw new ScaleEvidenceValidationError(`${where} has unknown field: ${key}`);
+  }
   if (!isValidScale(raw.scale))
     throw new ScaleEvidenceValidationError(`${where}.scale must be one of the eight narrative scales`);
   if (!isValidRelevance(raw.relevance))
@@ -135,6 +145,12 @@ function validateClaim(
     throw new ScaleEvidenceValidationError(`${where}.explanation exceeds ${MAX_EXPLANATION_LENGTH} characters`);
 
   if (!isRecord(raw.source)) throw new ScaleEvidenceValidationError(`${where}.source must be an object`);
+  // Strict source schema: reject unknown fields.
+  const allowedSourceKeys = new Set(["start", "end", "quote"]);
+  for (const key of Object.keys(raw.source)) {
+    if (!allowedSourceKeys.has(key))
+      throw new ScaleEvidenceValidationError(`${where}.source has unknown field: ${key}`);
+  }
   const { start, end, quote } = raw.source;
   // verifySpan enforces integer, nonnegative, start < end, end <= length.
   if (!verifySpan(content, start as number, end as number))
@@ -208,9 +224,68 @@ function toRecord(row: {
   actorUserId: string;
   createdAt: Date;
 }): ScaleEvidenceSetRecord {
+  // Full revalidation of stored data before serialization (contract:
+  // malformed retained rows fail explicitly; corrupt data must not become
+  // CURRENT). Validation failures are 400, not 409.
+  if (row.declaration !== "CONFLICTS" && row.declaration !== "NO_OPERATIVE_CONFLICT")
+    throw new ScaleEvidenceValidationError(`stored set ${row.id} has invalid declaration`);
+  if (!Number.isInteger(row.sequence) || row.sequence <= 0)
+    throw new ScaleEvidenceValidationError(`stored set ${row.id} has invalid sequence`);
+  const explanation = typeof row.explanation === "string" ? row.explanation : "";
+  if (explanation.length === 0 || explanation.length > MAX_EXPLANATION_LENGTH)
+    throw new ScaleEvidenceValidationError(`stored set ${row.id} has invalid explanation`);
   const conflictsJson = row.conflictsJson;
   if (!Array.isArray(conflictsJson))
-    throw new ConflictError("stored scale evidence set has malformed conflicts");
+    throw new ScaleEvidenceValidationError(`stored set ${row.id} has malformed conflicts`);
+  const conflicts: ScaleEvidenceClaim[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < conflictsJson.length; i++) {
+    const raw = conflictsJson[i];
+    // Reuse the strict claim validator (content-independent checks need
+    // offsets/quotes validated structurally here; quote-vs-content was
+    // verified at write time and the version is immutable).
+    if (!isRecord(raw))
+      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}] must be an object`);
+    const allowedClaimKeys = new Set(["scale", "relevance", "explanation", "source"]);
+    for (const key of Object.keys(raw)) {
+      if (!allowedClaimKeys.has(key))
+        throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}] has unknown field: ${key}`);
+    }
+    if (!isValidScale(raw.scale))
+      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].scale is invalid`);
+    if (!isValidRelevance(raw.relevance))
+      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].relevance is invalid`);
+    if (typeof raw.explanation !== "string" || raw.explanation.length === 0 || raw.explanation.length > MAX_EXPLANATION_LENGTH)
+      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].explanation is invalid`);
+    if (!isRecord(raw.source))
+      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].source must be an object`);
+    const allowedSourceKeys = new Set(["start", "end", "quote"]);
+    for (const key of Object.keys(raw.source)) {
+      if (!allowedSourceKeys.has(key))
+        throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].source has unknown field: ${key}`);
+    }
+    const { start, end, quote } = raw.source;
+    if (typeof start !== "number" || typeof end !== "number" || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start)
+      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].source offsets are invalid`);
+    if (typeof quote !== "string" || quote.length === 0 || quote.length > MAX_QUOTE_LENGTH)
+      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].source.quote is invalid`);
+    const claim: ScaleEvidenceClaim = {
+      scale: raw.scale,
+      relevance: raw.relevance,
+      explanation: raw.explanation,
+      source: { start, end, quote },
+    };
+    const key = claimKey(claim);
+    if (seen.has(key))
+      throw new ScaleEvidenceValidationError(`stored set ${row.id} has duplicate conflict claim`);
+    seen.add(key);
+    conflicts.push(claim);
+  }
+  // Declaration/cardinality coherence (mirrors the DB CHECK).
+  if (row.declaration === "CONFLICTS" && (conflicts.length < 1 || conflicts.length > MAX_CLAIMS))
+    throw new ScaleEvidenceValidationError(`stored set ${row.id} declaration/cardinality mismatch`);
+  if (row.declaration === "NO_OPERATIVE_CONFLICT" && conflicts.length !== 0)
+    throw new ScaleEvidenceValidationError(`stored set ${row.id} declaration/cardinality mismatch`);
   return {
     id: row.id,
     workspaceId: row.workspaceId,
@@ -219,9 +294,9 @@ function toRecord(row: {
     sourceBranchId: row.sourceBranchId,
     sourceRevisionId: row.sourceRevisionId,
     sequence: row.sequence,
-    declaration: row.declaration as ScaleEvidenceDeclaration,
-    explanation: row.explanation,
-    conflicts: conflictsJson as ScaleEvidenceClaim[],
+    declaration: row.declaration,
+    explanation,
+    conflicts,
     previousSetId: row.previousSetId,
     actorUserId: row.actorUserId,
     createdAt: row.createdAt,
@@ -276,19 +351,25 @@ export function createScaleEvidenceServices(deps: {
   const { db } = deps;
 
   /**
-   * Tenant gate. Missing membership is a 404, not a 403 — the caller must
-   * not learn whether a foreign novel exists.
+   * Tenant gate + capability enforcement. Missing membership is a 404, not
+   * a 403 — the caller must not learn whether a foreign novel exists.
+   * Capabilities are enforced inside the service (not only routes) so
+   * direct service callers cannot bypass authorization.
    */
   async function requireNovelMembership(
     workspaceId: string,
     novelId: string,
     actorUserId: string,
+    capabilities: Capability[],
   ) {
     const membership = await db.membership.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: actorUserId } },
-      select: { id: true },
+      select: { id: true, role: true },
     });
     if (!membership) throw new NotFoundError("novel");
+    for (const capability of capabilities) {
+      requireCapability(membership.role, capability);
+    }
     const novel = await db.novel.findFirst({
       where: { id: novelId, workspaceId },
       select: { id: true, currentBranchId: true },
@@ -340,72 +421,91 @@ export function createScaleEvidenceServices(deps: {
 
   return {
     async readCurrent({ workspaceId, novelId, chapterId, actorUserId }) {
-      const novel = await requireNovelMembership(workspaceId, novelId, actorUserId);
-      const chapter = await requireChapter(workspaceId, novelId, chapterId);
+      // Capability + membership gate (404 for non-members, 403 for members
+      // lacking chapter:read). This check is intentionally outside the
+      // RepeatableRead snapshot; all applicability reads below are inside.
+      await requireNovelMembership(workspaceId, novelId, actorUserId, [
+        "chapter:read",
+      ]);
 
-      // Unsaved chapter: null version, UNASSESSED. Never fill absence with
-      // historical or another branch's evidence.
-      if (!chapter.currentVersionId) {
-        return {
-          chapterVersionId: null,
-          branchId: null,
-          currentHeadRevisionId: null,
-          assessment: null,
-          status: "UNASSESSED",
-          staleReasons: ["UNASSESSED"],
-        };
-      }
+      // All applicability reads — checkout, chapter version, branch head,
+      // latest assessment — inside ONE RepeatableRead transaction, so a
+      // concurrent save/checkout cannot combine independently read values
+      // into a false CURRENT response.
+      return db.$transaction(
+        async (tx) => {
+          const chapter = await tx.chapter.findFirst({
+            where: { id: chapterId, novelId, novel: { workspaceId } },
+            select: { id: true, currentVersionId: true },
+          });
+          if (!chapter) throw new NotFoundError("chapter");
 
-      // One consistent snapshot: branch head and latest set are read inside
-      // a single transaction so a concurrent save/checkout cannot produce
-      // a false CURRENT from independently read values.
-      const currentVersionId: string = chapter.currentVersionId;
-      return db.$transaction(async (tx) => {
-        const branch = await tx.novelBranch.findFirst({
-          where: novel.currentBranchId
-            ? { id: novel.currentBranchId, novelId }
-            : { novelId, name: "main" },
-          select: { id: true, headRevisionId: true },
-        });
-        if (!branch) throw new ConflictError("no checked-out branch exists");
-        const latest = await latestSet(tx, branch.id, currentVersionId);
+          // Unsaved chapter: null version, UNASSESSED. Never fill absence
+          // with historical or another branch's evidence.
+          if (!chapter.currentVersionId) {
+            return {
+              chapterVersionId: null,
+              branchId: null,
+              currentHeadRevisionId: null,
+              assessment: null,
+              status: "UNASSESSED" as ScaleEvidenceStatus,
+              staleReasons: ["UNASSESSED" as ScaleEvidenceStaleReason],
+            };
+          }
+          const currentVersionId: string = chapter.currentVersionId;
 
-        if (!latest) {
-          return {
-            chapterVersionId: currentVersionId,
-            branchId: branch.id,
-            currentHeadRevisionId: branch.headRevisionId,
-            assessment: null,
-            status: "UNASSESSED" as ScaleEvidenceStatus,
-            staleReasons: ["UNASSESSED" as ScaleEvidenceStaleReason],
-          };
-        }
+          const novel = await tx.novel.findFirst({
+            where: { id: novelId, workspaceId },
+            select: { currentBranchId: true },
+          });
+          if (!novel) throw new NotFoundError("novel");
+          const branch = await tx.novelBranch.findFirst({
+            where: novel.currentBranchId
+              ? { id: novel.currentBranchId, novelId }
+              : { novelId, name: "main" },
+            select: { id: true, headRevisionId: true },
+          });
+          if (!branch) throw new ConflictError("no checked-out branch exists");
+          const latest = await latestSet(tx, branch.id, currentVersionId);
 
-        const assessment = toRecord(latest);
-        // CURRENT only when the latest set's source revision equals the
-        // branch's actual head (null-safe). Any head change — even an
-        // unrelated one — conservatively yields STALE.
-        const revisionMatches =
-          assessment.sourceRevisionId === branch.headRevisionId;
-        if (revisionMatches) {
+          if (!latest) {
+            return {
+              chapterVersionId: currentVersionId,
+              branchId: branch.id,
+              currentHeadRevisionId: branch.headRevisionId,
+              assessment: null,
+              status: "UNASSESSED" as ScaleEvidenceStatus,
+              staleReasons: ["UNASSESSED" as ScaleEvidenceStaleReason],
+            };
+          }
+
+          const assessment = toRecord(latest);
+          // CURRENT only when the latest set's source revision equals the
+          // branch's actual head (null-safe). Any head change — even an
+          // unrelated one — conservatively yields STALE.
+          const revisionMatches =
+            assessment.sourceRevisionId === branch.headRevisionId;
+          if (revisionMatches) {
+            return {
+              chapterVersionId: currentVersionId,
+              branchId: branch.id,
+              currentHeadRevisionId: branch.headRevisionId,
+              assessment,
+              status: "CURRENT" as ScaleEvidenceStatus,
+              staleReasons: [] as ScaleEvidenceStaleReason[],
+            };
+          }
           return {
             chapterVersionId: currentVersionId,
             branchId: branch.id,
             currentHeadRevisionId: branch.headRevisionId,
             assessment,
-            status: "CURRENT" as ScaleEvidenceStatus,
-            staleReasons: [] as ScaleEvidenceStaleReason[],
+            status: "STALE" as ScaleEvidenceStatus,
+            staleReasons: ["SOURCE_REVISION_CHANGED" as ScaleEvidenceStaleReason],
           };
-        }
-        return {
-          chapterVersionId: currentVersionId,
-          branchId: branch.id,
-          currentHeadRevisionId: branch.headRevisionId,
-          assessment,
-          status: "STALE" as ScaleEvidenceStatus,
-          staleReasons: ["SOURCE_REVISION_CHANGED" as ScaleEvidenceStaleReason],
-        };
-      });
+        },
+        { isolationLevel: "RepeatableRead" },
+      );
     },
 
     async listHistory({
@@ -417,7 +517,9 @@ export function createScaleEvidenceServices(deps: {
       limit,
       actorUserId,
     }) {
-      await requireNovelMembership(workspaceId, novelId, actorUserId);
+      await requireNovelMembership(workspaceId, novelId, actorUserId, [
+        "chapter:read",
+      ]);
       await requireChapter(workspaceId, novelId, chapterId);
       // The version must belong to the route chapter (tenant-safe 404).
       const version = await db.chapterVersion.findFirst({
@@ -441,15 +543,19 @@ export function createScaleEvidenceServices(deps: {
         chapterVersionId,
         ...(beforeSequence !== undefined ? { sequence: { lt: beforeSequence } } : {}),
       };
-      // Fetch one extra to determine the cursor.
+      // Fetch one extra to determine whether another page exists.
       const rows = await db.scaleEvidenceSet.findMany({
         where,
         orderBy: { sequence: "desc" },
         take: take + 1,
       });
       const items = rows.slice(0, take).map(toRecord);
-      const nextRow = rows.length > take ? rows[take] : undefined;
-      const nextBeforeSequence = nextRow ? nextRow.sequence : null;
+      // Exclusive cursor: the last DISPLAYED sequence. The next page uses
+      // `sequence < nextBeforeSequence`, so using the first omitted row
+      // would skip it. Only set when another page exists.
+      const lastItem = items.length > 0 ? items[items.length - 1] : undefined;
+      const nextBeforeSequence =
+        rows.length > take && lastItem ? lastItem.sequence : null;
       return { items, nextBeforeSequence };
     },
 
@@ -467,16 +573,20 @@ export function createScaleEvidenceServices(deps: {
       actorUserId,
     }) {
       if (declaration !== "CONFLICTS" && declaration !== "NO_OPERATIVE_CONFLICT")
-        throw new ConflictError("declaration must be CONFLICTS or NO_OPERATIVE_CONFLICT");
+        throw new ScaleEvidenceValidationError("declaration must be CONFLICTS or NO_OPERATIVE_CONFLICT");
       const trimmedExplanation =
         typeof explanation === "string" ? explanation.trim() : "";
       if (trimmedExplanation.length === 0)
-        throw new ConflictError("explanation is required");
+        throw new ScaleEvidenceValidationError("explanation is required");
       if (trimmedExplanation.length > MAX_EXPLANATION_LENGTH)
-        throw new ConflictError(`explanation exceeds ${MAX_EXPLANATION_LENGTH} characters`);
+        throw new ScaleEvidenceValidationError(`explanation exceeds ${MAX_EXPLANATION_LENGTH} characters`);
 
-      // Membership gate before the transaction (404, not 403).
-      await requireNovelMembership(workspaceId, novelId, actorUserId);
+      // Membership + dual-write capability gate before the transaction
+      // (404 for non-members; 403 for members lacking capabilities).
+      await requireNovelMembership(workspaceId, novelId, actorUserId, [
+        "chapter:update",
+        "canon:manage",
+      ]);
 
       return db.$transaction(async (tx) => {
         // Lock order follows lockManuscriptBranch: novel FOR NO KEY UPDATE,
@@ -511,7 +621,13 @@ export function createScaleEvidenceServices(deps: {
           chapter.id,
         );
 
-        // Recheck all expectations under the locks.
+        // Recheck all expectations under the locks. The chapter row was
+        // re-read above AFTER acquiring its lock, so currentVersionId is
+        // fresh: reject a stale submitted version with 409.
+        if (chapter.currentVersionId !== chapterVersionId)
+          throw new ConflictError("chapter version is no longer current", {
+            currentHeadRevisionId: branch.headRevisionId,
+          });
         if (branch.id !== expectedBranchId)
           throw new ConflictError("checked-out branch changed", {
             currentHeadRevisionId: branch.headRevisionId,

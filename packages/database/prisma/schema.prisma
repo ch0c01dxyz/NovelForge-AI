@@ -3679,7 +3679,7 @@ model ScaleEvidenceSet {
   /// Authenticated user, server-resolved, never client-supplied.
   actorUserId      String   @map("actor_user_id") @db.Uuid
   actor            User     @relation("ScaleEvidenceActor", fields: [actorUserId], references: [id], onDelete: Restrict)
-  createdAt        DateTime @default(now()) @map("created_at")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([sourceBranchId, chapterVersionId, sequence], map: "scale_evidence_sets_branch_version_sequence_key")
   @@index([workspaceId, novelId, sourceBranchId, chapterVersionId, sequence(sort: Desc)], map: "scale_evidence_sets_history_idx")

@@ -2646,3 +2646,97 @@ diagnosis (P2, "test fixture setup does not match implementation") is
 SUPERSEDED by the above. It correctly observed 13/22 failures but incorrectly
 attributed them solely to fixtures; the author's review identified production
 source defects. Retained for provenance; do not act on the superseded diagnosis.
+
+**Repair plan (2026-10-09, branch work/nf-wf-050a-scale-evidence, merge 3054cc3):**
+
+Source fixes (packages/ai-services/src/scale-evidence.ts):
+- Enforce chapter:read / chapter:update+canon:manage inside exported service
+- Re-read chapter/currentVersionId after lock; 409 on stale version
+- readCurrent: all reads inside single RepeatableRead transaction
+- Pagination: exclusive cursor = last displayed sequence (not first omitted)
+- toRecord: full stored-data validation before serialization; corrupt → 400
+- Strict nested claim/source schemas; unknown fields rejected
+- Schema: @db.Timestamptz(6) added to match applied migration (no rewrite)
+
+Test fixes (apps/api/src/scale-evidence.test.ts):
+- Correct chapterVersionId source (save returns {version, wordCount})
+- Use actual expectedVersion for subsequent saves
+- Actor injection → 400 (strict body)
+- Each negative test targets its intended validator
+
+Evidence to add: simultaneous appends, lock/read races, historical-version
+refusal, direct-service role denial, pagination integrity, checkout/headless,
+FULL/selective restore, malformed stored evidence, deletion/create race,
+parent cleanup, empty/populated migrations with checksums.
+
+**Repair complete (2026-10-09 ~03:13 WIB, branch work/nf-wf-050a-scale-evidence):**
+
+Source fixes (packages/ai-services/src/scale-evidence.ts):
+- Service-layer capability enforcement: chapter:read for reads, chapter:update+canon:manage for writes
+- Re-read chapter/currentVersionId after lock; 409 on stale version
+- readCurrent: all applicability reads in single RepeatableRead transaction
+- Pagination: exclusive cursor = last displayed sequence
+- toRecord: full stored-data validation; corrupt → 400 (ScaleEvidenceValidationError)
+- Strict nested claim/source schemas; unknown fields rejected with 400
+
+Test fixes (apps/api/src/scale-evidence.test.ts):
+- chapterVersionId from GET current response (server truth)
+- expectedVersion: actual version numbers (not always null)
+- Actor injection → 400 (strict body)
+- Each negative test reaches intended validator
+
+Route fix (apps/api/src/scale-evidence-routes.ts):
+- GET / and GET /history now catch ScaleEvidenceValidationError → 400 (was 500)
+
+Schema (packages/database/prisma/schema.prisma):
+- @db.Timestamptz(6) added to ScaleEvidenceSet.createdAt (matches applied migration; no rewrite)
+
+Evidence (32/32 tests pass):
+- Simultaneous appends: 1×201 + 1×409, sequences [2,1] no gaps
+- Lock/read race: consistent snapshot
+- Historical-version refusal: 409 "chapter version is no longer current"
+- Direct-service role denial: VIEWER append → 403; reads succeed
+- Pagination: [5,4]→4, [3,2]→2, [1]→null; no dups/skips
+- Checkout/headless: new branch UNASSESSED; headless append 201
+- FULL/selective restore: rows byte-identical; readCurrent STALE not CURRENT
+- Malformed stored: scale "ALIEN" → 400 (not CURRENT, not 500)
+- Deletion/create race: DELETE 409; append 201/409; chain integral
+- Parent cleanup: novel DELETE → scale_evidence_sets 1→0 (FK cascade)
+
+Verification (OBSERVED 2026-10-09):
+- pnpm exec vitest run src/scale-evidence.test.ts → 32/32 pass
+- pnpm exec vitest run src/manuscript.test.ts → 21/21 pass
+- pnpm exec vitest run packages/story-versioning/restore-scope.test.ts → 8/8 pass
+- pnpm --filter @novelforge/ai-services typecheck → clean
+- pnpm --filter @novelforge/api typecheck → clean
+- pnpm exec eslint (all touched files) → clean
+- git diff --check → clean
+- prisma validate: valid
+
+Environment: GAP-108 8th recurrence (VM reset) during repair; PostgreSQL 16
++ pgvector + Redis reinstalled; novelforge_test role recreated; password synced
+to .env DATABASE_URL.
+
+Status: READY for final diff review. GAP-039 remains OPEN (S1 foundation only).
+
+RECURRENCE 2026-10-09 ~02:56 WIB (OBSERVED by coordinator): VM reset wiped
+PostgreSQL/Redis an 8th time mid-task (during 050A repair). `psql` not found,
+`/usr/lib/postgresql/` missing, `pg_ctlcluster` not found. Provisioner
+auto-running apt-get (process 1684) at time of detection. Reinstall in progress
+per ENVIRONMENT-PREFLIGHT.md procedure. This remains a known recurring
+environment event.
+
+**Final diff review (2026-10-09 ~03:20 WIB):** separate reviewer (MODEL_UNVERIFIED)
+verdict **APPROVE_WITH_FINDINGS**.
+
+Findings fixed:
+- P2-1: Invalid declaration/explanation now throws ScaleEvidenceValidationError (400),
+  not ConflictError (409). Three pre-checks in appendSet fixed.
+- P3-1: Stale routes comment corrected (service now enforces capabilities too).
+- P3-2: Mojibake arrow in GAP-118 record fixed.
+
+P3-3 (migration re-proof not re-run): risk low — migration byte-identical to
+separately reviewed version (APPROVE_WITH_FINDINGS at 80a772e); parity by inspection.
+Left open for author if formal re-proof wanted.
+
+All 7 source defects + 4 test defects verified fixed in diff. 32/32 tests pass.

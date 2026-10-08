@@ -2689,3 +2689,43 @@ The first lock probe lacked an established barrier; a corrected rerun cleared
 the PostgreSQL statistics snapshot and confirmed the defect. Owned scratch
 database absence was verified after cleanup. No product merge, working DB
 migration, populated-upgrade acceptance or dependent050B/050C dispatch approved.
+
+### Second repair re-review of `e49254f` — 2026-10-09
+
+Status remains OPEN / P2 after repair of the demonstrated P1 cached-head bug.
+Separate reviewers request changes. Locking queries now return authoritative
+mutable fields; retained quotes/spans reuse the write validator; scoped version
+ownership is checked before staleness. Revised checkpoint-before-assessment
+restore, changed-state selective restore, first-assessment deletion race and
+three-set parent cleanup are meaningful improvements by source inspection.
+
+Remaining blockers:
+
+- Predecessor validation in `scale-evidence.ts` only checks previousSetId
+  presence. Verify the referenced row has the same workspace/novel/branch/version
+  and sequence exactly n-1 before returning retained data or extending its
+  history. A local scratch sequence2 row linked to another novel's set returned
+  CURRENT; append then created sequence3. Add current/history/write corrupt-chain
+  negatives without unbounded full-history scans or silent history repair.
+- `scale-evidence.test.ts:1516` skips the mandatory deterministic held-lock
+  regression. Its revision creation via a separate DB connection waits on the
+  branch FK lock held by the test itself. Create the revision before the lock
+  or through the holder connection; guarantee finally cleanup, unskip and prove
+  rejection/no inserted assessment when a new head commits while append waits.
+- `scale-evidence-migration.test.ts` applies baseline historical SQL directly,
+  without a Prisma migration ledger. Table-data hashes are useful but are not
+  migration ledger checksum proof. Deploy an isolated historical baseline with
+  Prisma, seed it, record ledger/data checksums, then Prisma-deploy050A and prove
+  baseline ledger/data unchanged, no backfill and schema parity.
+- That new migration-test path is absent from the frozen allowed-path list.
+  Record a separately reviewed scope amendment and update the stale task receipt;
+  do not treat the external approval as a waiver of required checks.
+
+Fresh local evidence:58 passed/1 skipped of59 selected tests; API41/42,
+migration2/2, classification8/8 and pure SCALE7/7. Prisma validation/generation,
+both typechecks, changed-source lint and diff whitespace pass. These positives
+do not cover the skipped regression or demonstrated corrupt predecessor defect.
+The scratch probe used valid scoped author data and an intentionally corrupted
+cross-novel predecessor FK; no working data was modified. Both owned scratch
+databases were removed and absence checked. Main remains23261fb; no merge,
+GAP-039 closure or dependent050B/050C implementation dispatch is accepted.

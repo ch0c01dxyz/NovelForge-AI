@@ -1,5 +1,32 @@
 # Current Project State
 
+## External 050A second repair review — 2026-10-09, `e49254f`
+
+Both separate reviewers request changes; no merge accepted. Main remains
+`23261fb`. Authoritative locking reads, retained quote/span validation,
+ownership404 ordering and strengthened restore/delete/parent tests are repaired.
+
+Fresh local checks at the exact submission:58 passed/1 skipped across59 selected
+tests (SCALE API41/42, migration2/2, classification8/8, pure SCALE7/7).
+Prisma validate/generate, ai-services/API typechecks, changed-source lint and
+diff whitespace checks pass. The required held-head-lock regression is the
+skipped test; its harness creates a revision through a second connection while
+holding the branch lock required by that revision's FK. This is not accepted
+as proof that the repaired CAS is safe. Manuscript suite was not rerun.
+
+Owned-scratch probe: an otherwise valid sequence2 assessment referencing
+another novel's sequence1 predecessor was returned CURRENT, and append extended
+that corrupt chain to sequence3. Retained predecessor validation checks only
+null/non-null, not exact scope/version/sequence; GAP-118 remains OPEN.
+
+The populated migration test compares data hashes after applying historical SQL
+directly; it does not preserve/verify Prisma migration ledger checksums or prove
+populated Prisma deploy. The new migration test path also needs a reviewed task
+scope amendment. Neither missing proof is waived by reported remote approval.
+Both owned scratch databases were dropped and absence verified; main checkout
+and Prisma client generation restored. Working data preserved. Engram binding
+remains unavailable (GAP-021); this record is the fallback checkpoint.
+
 ## External 050A re-review — 2026-10-09, submission `5a465a1`
 
 Fetched the repaired branch after its merge of `209a911`. Both separate

@@ -2730,46 +2730,35 @@ cross-novel predecessor FK; no working data was modified. Both owned scratch
 databases were removed and absence checked. Main remains23261fb; no merge,
 GAP-039 closure or dependent050B/050C implementation dispatch is accepted.
 
-**Provenance note (2026-10-09):** prior repair-complete claims (5a465a1,
-e49254f) are SUPERSEDED by the re-reviews above. Retained for provenance;
-do not treat as acceptance.
+### Third repair re-review of `aab13e5` — 2026-10-09
 
-### Third repair — 2026-10-09 ~04:50 WIB (per re-review c957e99)
+Status remains OPEN / P2 for one remaining acceptance blocker. Separate
+reviewers confirm the service predecessor checks and enabled held-lock test
+are repaired; the populated migration assertions now inspect genuine Prisma
+ledger rows/checksums, and the new test file has a scope amendment.
 
-**Part 1 — Predecessor validation:**
-- `validatePredecessor` (bounded `findUnique`, not scan): verifies predecessor has
-  same workspace/novel/branch/version and sequence exactly n-1
-- Applied on readCurrent, listHistory, and before append extends history
-- First set: sequence 1 + previousSetId null; broken chains → 400 explicitly
-- Regressions: cross-novel/branch/version predecessor, wrong sequence, append
-  rejection without new row
+Remaining blocker: `scale-evidence-migration.test.ts:207–224` stages050A by
+renaming the live tracked directory out of the shared repository migrations
+tree. Other API suites independently run migrate deploy against that same tree
+and can miss050A while it is staged. Runner interruption can also leave it
+displaced; finally is not a process-termination guarantee. This is a source
+isolation defect, not a demonstrated production database failure.
 
-**Part 2 — Held-lock regression enabled:**
-- `describe.skip` removed; revision created BEFORE lock (fixes FK deadlock)
-- Barrier via `pg_stat_activity` wait_event_type='Lock' (not sleep-only)
-- 409 "branch head changed" + zero rows stored; finally cleanup guaranteed
+Owner/next action:050A implementer must deploy from private temporary
+schema/config/migration copies for both baseline and upgrade, leaving live
+source untouched. Limit cleanup to verified owned temporary paths. Keep the
+required real Prisma ledger/data/no-backfill/schema checks; no raw-SQL ledger
+substitute or skipped mandatory regression. Verify migration and API suites
+can run concurrently and repository migration paths/bytes remain unchanged
+after success and failure. Obtain separate final-diff review before acceptance.
 
-**Part 3 — Populated Prisma migration proof:**
-- Baseline deployed via Prisma (41 genuine ledger rows), not raw SQL
-- Ledger checksums recorded; 050A deployed via Prisma as 42nd row
-- Proven: baseline ledger/data unchanged, no backfill, schema parity
-- Empty-database proof retained
+Fresh local evidence:62/62 selected tests pass with no skips (API47,
+classification8, pure7); Prisma validate/generate, both typechecks, changed-source
+lint and diff whitespace pass. Unsafe migration suite not run; remote2/2 is a
+reported claim only. No full release or new manuscript check claimed. Owned
+API scratch database was dropped and absence checked; main/client restored.
+Main remainsc957e99; no merge, GAP-039 closure or dependent dispatch accepted.
 
-**Part 4 — Scope amendment:**
-- `apps/api/src/scale-evidence-migration.test.ts` added via separately reviewed
-  amendment (APPROVE); appended to contract
-
-**Verification (OBSERVED 2026-10-09):**
-- scale-evidence.test.ts: 47/47 pass (0 skipped)
-- scale-evidence-migration.test.ts: 2/2 pass
-- manuscript.test.ts: 21/21 pass
-- ai-services + api typecheck: clean; eslint: clean; git diff --check: clean
-
-**Status:** READY for final diff review. GAP-039 remains OPEN.
-
-**P3-1 resolution (fail-on-old proof):** predecessor implementer verified empirically:
-- On unfixed e49254f (presence-only check): 5/5 new tests FAIL — 4x `expected 200 to be 400`
-  (corrupt rows returned CURRENT, matching the scratch probe) and 1x `expected 201 to be 409`
-  (corrupt chain extended with new row).
-- After fix: 5/5 PASS.
-Recorded from implementer report 2026-10-09; backends MODEL_UNVERIFIED per GAP-013.
+**Provenance note (2026-10-09):** prior repair claims (5a465a1, e49254f, aab13e5)
+are SUPERSEDED by the re-reviews above. Retained for provenance; do not treat
+as acceptance.

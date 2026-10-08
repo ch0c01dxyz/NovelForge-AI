@@ -7,14 +7,18 @@
  *
  * Uses a dedicated disposable database
  * (`novelforge_test_scale_evidence_migration`) — never touches the working
- * database. The populated-baseline case applies historical migrations through
- * Prisma itself (`prisma migrate deploy` with the 050A migration staged out
- * of the migrations directory, then restored), so the `_prisma_migrations`
- * ledger — names, checksums, applied steps — is genuine Prisma evidence, not
- * raw-SQL table hashes alone.
+ * database. All `prisma migrate deploy` runs execute against private
+ * temporary copies of the schema/config/migrations owned by this test
+ * (under `os.tmpdir()`); the live repository migrations tree is only ever
+ * read, never renamed, removed, or modified. The populated-baseline case
+ * applies historical migrations through Prisma itself, so the
+ * `_prisma_migrations` ledger — names, checksums, applied steps — is genuine
+ * Prisma evidence, not raw-SQL table hashes alone.
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -29,6 +33,7 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const DB_PACKAGE_ROOT = path.join(HERE, "..", "..", "..", "packages", "database");
 const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js");
 const MIGRATIONS_DIR = path.join(DB_PACKAGE_ROOT, "prisma", "migrations");
+const SCHEMA_PRISMA = path.join(DB_PACKAGE_ROOT, "prisma", "schema.prisma");
 const MIGRATION_050A = "20261008_nf_wf_050a_scale_evidence";
 
 if (!process.env.DATABASE_URL) {
@@ -47,22 +52,84 @@ function withDb(url: string, db: string): string {
 }
 const TEST_URL = withDb(BASE_URL, TEST_DB);
 
-/** Sorted migration directory names, oldest first (excludes the lock file). */
-function migrationDirs(): string[] {
-  return fs
-    .readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
+/** A private Prisma home owned by this test: copied schema + migrations. */
+interface TempPrismaHome {
+  root: string;
+  migrationsDir: string;
 }
 
-/** Run `prisma migrate deploy` against the disposable test database. */
-function prismaMigrateDeploy(): void {
+/**
+ * Build a private temporary Prisma home: the full migrations directory and
+ * schema.prisma are COPIED (never moved) into a temp dir owned by this test;
+ * node_modules is symlinked so `prisma/config` resolves in the generated
+ * config. When `with050A` is false the 050A migration is deleted from the
+ * TEMP COPY only — the live repository tree is never touched.
+ * No .env or secrets are copied; DATABASE_URL is passed via the child env.
+ */
+function makeTempPrismaHome(with050A: boolean): TempPrismaHome {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "050a-mig-"));
+  const migrationsDir = path.join(root, "migrations");
+  fs.cpSync(MIGRATIONS_DIR, migrationsDir, { recursive: true });
+  if (!with050A) {
+    fs.rmSync(path.join(migrationsDir, MIGRATION_050A), { recursive: true, force: true });
+  }
+  fs.copyFileSync(SCHEMA_PRISMA, path.join(root, "schema.prisma"));
+  fs.symlinkSync(path.join(DB_PACKAGE_ROOT, "node_modules"), path.join(root, "node_modules"), "dir");
+  fs.writeFileSync(
+    path.join(root, "prisma.config.ts"),
+    `import { defineConfig } from "prisma/config";\n` +
+      `const DATABASE_URL = process.env.DATABASE_URL ?? "";\n` +
+      `export default defineConfig({\n` +
+      `  schema: "schema.prisma",\n` +
+      `  migrations: { path: "migrations" },\n` +
+      `  datasource: { url: DATABASE_URL },\n` +
+      `});\n`,
+  );
+  return { root, migrationsDir };
+}
+
+/** Run `prisma migrate deploy` with cwd at a private temp Prisma home. */
+function prismaMigrateDeployAt(cwd: string): void {
   execFileSync(process.execPath, [PRISMA_CLI, "migrate", "deploy"], {
     stdio: "pipe",
-    cwd: DB_PACKAGE_ROOT,
+    cwd,
     env: { ...process.env, DATABASE_URL: TEST_URL },
   });
+}
+
+/**
+ * Delete a temp Prisma home. Refuses paths outside os.tmpdir() or without
+ * the expected prefix — cleanup is limited to verified owned temp paths.
+ */
+function removeTempDir(dir: string): void {
+  const resolved = path.resolve(dir);
+  const tmp = path.resolve(os.tmpdir());
+  if (!resolved.startsWith(tmp + path.sep)) {
+    throw new Error(`refusing to delete path outside os.tmpdir(): ${dir}`);
+  }
+  if (!path.basename(resolved).startsWith("050a-mig-")) {
+    throw new Error(`refusing to delete unexpected temp dir: ${dir}`);
+  }
+  fs.rmSync(resolved, { recursive: true, force: true });
+}
+
+/** Fingerprint of the LIVE migrations tree (relative paths + file bytes). */
+function liveMigrationsFingerprint(): string {
+  const entries: string[] = [];
+  const walk = (dir: string, rel: string): void => {
+    for (const e of fs
+      .readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))) {
+      const p = path.join(dir, e.name);
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(p, r);
+      else if (e.isFile()) {
+        entries.push(`${r}:${createHash("md5").update(fs.readFileSync(p)).digest("hex")}`);
+      }
+    }
+  };
+  walk(MIGRATIONS_DIR, "");
+  return createHash("md5").update(entries.join("\n")).digest("hex");
 }
 
 /** Ledger rows: migration name, Prisma checksum, applied steps. */
@@ -115,10 +182,14 @@ afterAll(async () => {
 
 describe("migration: empty database", () => {
   it("prisma migrate deploy creates scale_evidence_sets with the contracted schema", async () => {
-    prismaMigrateDeploy();
-
+    // Deploy from a private temp copy of the full migration set; the live
+    // repository tree is only read, never modified.
+    const home = makeTempPrismaHome(true);
+    const liveBefore = liveMigrationsFingerprint();
     const client = new pg.Client({ connectionString: TEST_URL });
-    await client.connect();
+    try {
+      prismaMigrateDeployAt(home.root);
+      await client.connect();
 
     // Table exists.
     const tbl = await client.query(
@@ -195,8 +266,14 @@ describe("migration: empty database", () => {
     const idxNames = idx.rows.map((r) => r.indexname as string);
     expect(idxNames).toContain("scale_evidence_sets_branch_version_sequence_key");
     expect(idxNames).toContain("scale_evidence_sets_history_idx");
+    } finally {
+      await client.end().catch(() => undefined);
+      removeTempDir(home.root);
+    }
 
-    await client.end();
+    // The live repository migrations tree is untouched (paths and bytes).
+    expect(liveMigrationsFingerprint()).toBe(liveBefore);
+    expect(fs.existsSync(path.join(MIGRATIONS_DIR, MIGRATION_050A))).toBe(true);
   });
 });
 
@@ -204,24 +281,29 @@ describe("migration: populated baseline via Prisma ledger", () => {
   it("baseline via prisma migrate deploy, then 050A upgrade via Prisma: ledger, data and checksums preserved", async () => {
     await freshDatabase();
 
-    // Stage the 050A migration OUT of the migrations directory so the first
-    // `prisma migrate deploy` applies the historical baseline (41 migrations)
-    // through Prisma's own ledger. Staged to a sibling directory on the same
-    // filesystem (rename is atomic there); restored in `finally` no matter what.
-    const stageDir = fs.mkdtempSync(path.join(MIGRATIONS_DIR, "..", ".050a-staging-"));
-    const stagedMigration = path.join(stageDir, MIGRATION_050A);
-    const liveMigration = path.join(MIGRATIONS_DIR, MIGRATION_050A);
-    expect(fs.existsSync(liveMigration), "050A migration dir exists before staging").toBe(true);
-    expect(migrationDirs()).toContain(MIGRATION_050A);
+    // Private temp Prisma homes: baseline WITHOUT 050A (deleted from the temp
+    // copy only) and upgrade WITH the full set. The live repository migrations
+    // tree is only read, never renamed, removed, or modified — concurrent API
+    // suites running `prisma migrate deploy` against the live tree are
+    // unaffected, and runner interruption cannot displace tracked files.
+    const liveBefore = liveMigrationsFingerprint();
+    const baselineHome = makeTempPrismaHome(false);
+    const upgradeHome = makeTempPrismaHome(true);
+    expect(
+      fs.existsSync(path.join(baselineHome.migrationsDir, MIGRATION_050A)),
+      "050A absent from baseline temp copy",
+    ).toBe(false);
+    expect(
+      fs.existsSync(path.join(upgradeHome.migrationsDir, MIGRATION_050A)),
+      "050A present in upgrade temp copy",
+    ).toBe(true);
 
     const client = new pg.Client({ connectionString: TEST_URL });
     await client.connect();
     try {
-      fs.renameSync(liveMigration, stagedMigration);
-
       // 1. Historical baseline through Prisma: writes genuine
       //    `_prisma_migrations` ledger rows (no raw SQL, no `migrate resolve`).
-      prismaMigrateDeploy();
+      prismaMigrateDeployAt(baselineHome.root);
 
       const ledgerBefore = await ledgerRows(client);
       expect(ledgerBefore.length).toBe(41);
@@ -291,9 +373,8 @@ describe("migration: populated baseline via Prisma ledger", () => {
       expect(before.get("novels")!.count).toBeGreaterThan(0);
       expect(before.get("chapter_versions")!.count).toBeGreaterThan(0);
 
-      // 4. Restore the 050A migration and upgrade through Prisma.
-      fs.renameSync(stagedMigration, liveMigration);
-      prismaMigrateDeploy();
+      // 4. Upgrade through Prisma using the full temp migration set.
+      prismaMigrateDeployAt(upgradeHome.root);
 
       // 5. Ledger proof: 42 rows; every baseline row byte-identical
       //    (name, Prisma checksum, applied steps); exactly one new row: 050A.
@@ -341,14 +422,15 @@ describe("migration: populated baseline via Prisma ledger", () => {
       const seenVersion = await db.chapterVersion.findUnique({ where: { id: version.id } });
       expect(seenVersion?.content).toContain("Baseline prose");
     } finally {
-      // Always restore the staged migration directory and clean up.
-      if (fs.existsSync(stagedMigration) && !fs.existsSync(liveMigration)) {
-        fs.renameSync(stagedMigration, liveMigration);
-      }
-      fs.rmSync(stageDir, { recursive: true, force: true });
-      await client.end();
+      // Cleanup is limited to verified owned temp paths; the live repository
+      // tree was never modified, so nothing needs restoring there.
+      await client.end().catch(() => undefined);
+      removeTempDir(baselineHome.root);
+      removeTempDir(upgradeHome.root);
     }
-    // The working tree must be untouched: the migration dir is back in place.
-    expect(fs.existsSync(liveMigration)).toBe(true);
+    // The live repository migrations tree is untouched (paths and bytes),
+    // after both success and any failure inside the private fixture.
+    expect(liveMigrationsFingerprint()).toBe(liveBefore);
+    expect(fs.existsSync(path.join(MIGRATIONS_DIR, MIGRATION_050A))).toBe(true);
   });
 });

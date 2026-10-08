@@ -43,9 +43,11 @@ Independent external preparation may proceed through
 fixture amendment, test-environment diagnosis, conditional populated-upgrade
 investigation, native release preparation and proposal-only SCALE/quota research.
 A/B/C and F's proposal are now integrated through `89d57f5` (2026-10-08).
-Do not redispatch them. Continue with D's missing-input disposition and
-E's isolated worker-smoke follow-up (GAP-117); freeze/review exact child
-scope before execution. CURRENT owns acceptance and remaining local gates.
+Do not redispatch them. D's missing-input receipt and E's corrected isolated
+smoke procedure/reported rerun are integrated through `9fe1443` (2026-10-08).
+GAP-018 remains BLOCKED on a sanitized source dump; GAP-117 remains OPEN
+pending isolation-evidence acceptance. Continue from those gates, with a
+reviewed exact scope. CURRENT owns acceptance and remaining local gates.
 [NF-WF-041](tasks/NF-WF-041-novel-scoped-workflow-history.md)
 resolves GAP-034 and GAP-116 with scoped tests and separate review.
 [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)

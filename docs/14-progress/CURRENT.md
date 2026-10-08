@@ -8,6 +8,25 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
 ## Current dispatch — 2026-10-07 (novel-scoped workflow history repaired)
 
+### Accepted isolated-smoke documentation — 2026-10-08
+
+The author accepted `work/nf-wf047-isolated-smoke` through `9fe1443`.
+Fast-forward integration changed documentation only; product/test source
+still matches `87fea3c`. Separate `review_recovery_034` review APPROVE
+confirmed the four revised-procedure corrections. Diff checks and D's five
+required-reading links passed. No new service, worker or test run is claimed.
+
+D's missing-input receipt and E's amended procedure/reported Ubuntu rerun
+are now integrated. Do not recreate those documents or replay earlier
+dispatch instructions below. GAP-018 remains BLOCKED on an authorized
+sanitized source dump with its actual migration ledger preserved. GAP-117
+remains OPEN pending acceptance of attributable isolation evidence; approval
+of documentation corrections is not an independently repeated runtime drill.
+Next: resolve those specific evidence gates and the author-owned product,
+human and live release decisions. Production deployment is not approved.
+Engram runtime attribution is unavailable; this is the fallback checkpoint,
+not a claimed MCP save.
+
 ### Accepted external follow-up — 2026-10-08
 
 The author accepted integration of `work/nf-wf047-external-follow-up`

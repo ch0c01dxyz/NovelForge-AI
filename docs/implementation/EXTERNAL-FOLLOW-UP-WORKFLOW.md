@@ -35,6 +35,13 @@ Engram topic: `novelforge-ai/nf-wf-047/<child>/<role>`; no save is claimed by th
 
 ## Resume boundary — accepted integration, 2026-10-08
 
+Latest accepted documentation: isolated-smoke submission `9fe1443`.
+D's missing-input receipt and E's corrected procedure/reported rerun now
+exist on main. The previous dispatch paragraph below is historical; do not
+recreate these outputs. Resume only the unresolved GAP-018 input and GAP-117
+evidence-acceptance steps listed in CURRENT. Documentation review does not
+close either runtime gate or authorize deployment.
+
 Submission `89d57f5` is integrated with author acceptance. A/B audit and
 amendment, C's reviewed parser repair and F's decision brief are complete
 within their bounded scopes. Do not replay the original launcher below.

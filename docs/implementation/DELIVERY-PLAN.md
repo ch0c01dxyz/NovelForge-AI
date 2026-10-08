@@ -49,6 +49,11 @@ A/B/C and F's proposal are integrated; C source review APPROVE with scoped
 authorized sanitized dump or an explicit blocked receipt. E's historical
 worker smoke consumed shared Redis jobs; GAP-117 requires isolated evidence
 before counting that smoke as compliant. No full release acceptance follows.
+Update 2026-10-08: isolated-smoke branch through `9fe1443` is accepted as
+documentation and reported preparation evidence. D's receipt exists; E's
+procedure corrections received separate review APPROVE. GAP-018 remains
+BLOCKED and GAP-117 OPEN. Do not redispatch already integrated document work
+or read this merge as runtime/release acceptance; CURRENT owns next evidence gates.
 NF041 resolves GAP-034 novel-scoped history/approval selection and GAP-116 stale
 detail/cancel responses with scoped API67/web44 tests, lint/typechecks/build0 and
 separate review. NF039's full battery is historical at712cca6; CURRENT

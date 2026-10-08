@@ -286,7 +286,7 @@ shared queue was consumed.
 - Disposable PostgreSQL: `novelforge_test_047g117_smoke` (owned; dropped
   after; created via `createdb` as `novelforge_test`).
 - Worker config: `REDIS_URL=redis://localhost:6380`,
-  `DATABASE_URL=postgresql://novelforge_test:novelforge_test@localhost:5432/novelforge_test_047g117_smoke`,
+`DATABASE_URL=<redacted: supplied externally>`
   `NODE_ENV=test`, test S3/OMNIROUTE/encryption values (dummy, per
   `apps/api/src/e2e/setup.ts` pattern). No other env changes.
 
@@ -344,3 +344,116 @@ independent diff review before commit.
 
 **Engram:** unavailable on this host (GAP-021); task-file fallback records
 in this contract. No session ID invented.
+
+## Revised procedure (2026-10-08, Finding 3 — reproducible isolated smoke)
+
+**Trigger:** the reviewed findings require a reproducible procedure with
+independent review BEFORE rerunning. The earlier run's isolation claim
+rested on key-count deltas (INFERRED); this revision adds attributable
+evidence.
+
+**Owned working directory:**
+```bash
+SMOKE_UUID=$(uuidgen)
+SMOKE_DIR="/tmp/gap117-smoke-${SMOKE_UUID}"
+mkdir -p "${SMOKE_DIR}"
+```
+The directory uuid and the job uuid (below) are independent values. All
+Redis and script artifacts live here — never the operator's home directory
+(prevents stale `dump.rdb` contamination). Removed after the run.
+
+**Frozen resources (exact):**
+- Dedicated Redis:
+  ```bash
+  # verify port free BEFORE start (must print nothing)
+  ss -tlnp | grep :6380
+  redis-server --port 6380 --bind 127.0.0.1 --daemonize yes \
+    --save "" --dbfilename "" --dir "${SMOKE_DIR}"
+  redis-cli -p 6380 ping
+  # verify empty AFTER start (must print 0); if not 0, STOP
+  redis-cli -p 6380 DBSIZE
+  ```
+- Disposable PostgreSQL:
+  ```bash
+  createdb -U novelforge_test -h localhost novelforge_test_047g117_smoke
+  # DATABASE_URL supplied externally via environment; never printed
+  pnpm --filter @novelforge/database db:deploy
+  ```
+- Worker start (with isolated env; `DATABASE_URL` from external environment):
+  ```bash
+  REDIS_URL=redis://localhost:6380 NODE_ENV=test \
+    # ... plus dummy S3/OMNIROUTE/encryption per apps/api/src/e2e/setup.ts
+    pnpm --filter @novelforge/worker start
+  ```
+  Run in background; capture logs. Record the startup log line showing
+  `REDIS_URL=redis://localhost:6380` as attributable configuration evidence.
+- Worker config: `REDIS_URL=redis://localhost:6380`, `NODE_ENV=test`,
+  dummy S3/OMNIROUTE/encryption (per `apps/api/src/e2e/setup.ts`).
+  No credentials in Redis URL.
+
+**Reproducible BullMQ enqueue + completion procedure:**
+```javascript
+// enqueue-gap117.mjs — save to ${SMOKE_DIR}/enqueue-gap117.mjs
+// Run with: WORKER_PKG_DIR=<repo>/apps/worker node enqueue-gap117.mjs
+// Uses createRequire anchored at the worker package (ESM bare imports
+// do not resolve from /tmp).
+import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
+const require = createRequire(process.env.WORKER_PKG_DIR + '/package.json');
+const { Queue, QueueEvents } = require('bullmq');
+const jobId = `gap117-isolated-smoke-${randomUUID()}`;
+const connection = { host: '127.0.0.1', port: 6380 };
+const queue = new Queue('worker-heartbeat', { connection });
+const queueEvents = new QueueEvents('worker-heartbeat', { connection });
+await queueEvents.waitUntilReady();
+const job = await queue.add('smoke-test', { smoke: true, run: jobId }, { jobId });
+const completed = await new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('timeout waiting for completed')), 30000);
+  queueEvents.on('completed', ({ jobId: doneId }) => {
+    if (doneId === jobId) { clearTimeout(timer); resolve(new Date().toISOString()); }
+  });
+});
+const state = await job.getState();
+console.log(JSON.stringify({ jobId, bullmqJobId: job.id, completedAt: completed, finalState: state }));
+await queueEvents.close();
+await queue.close();
+```
+Expected output (record verbatim): JSON with `jobId`, `bullmqJobId`,
+`completedAt` (ISO timestamp), `finalState: "completed"`. The job ID is the
+attribution key.
+
+**Completion evidence (OBSERVED):**
+- The script's JSON output: job ID, `completed` event timestamp, final
+  state `completed`.
+- Verify the job key exists on `:6380` only:
+  `redis-cli -p 6380 --scan --pattern "bull:worker-heartbeat:*" | grep <jobId>`
+  and confirm absent on `:6379`.
+
+**Worker-target evidence (OBSERVED):**
+- Record the worker's startup log showing `REDIS_URL=redis://localhost:6380`
+  (sanitized — no credentials).
+- `CLIENT LIST` on `:6380` during the run: record count and that client
+  addresses are 127.0.0.1 (loopback).
+- `CLIENT LIST` on `:6379` before/after: record that no NEW client
+  connections appeared during the run window (INFERRED limit: brief
+  connections may not be captured; state this limit).
+
+**Shared Redis baseline (read-only):**
+- `INFO keyspace` and `bull:*` key count via `SCAN` before and after.
+- Report exactly: "key counts unchanged (X before, X after)". Do NOT claim
+  this proves no jobs were consumed.
+
+**Cleanup (owned only):**
+- Worker: SIGTERM, confirm process gone.
+- Dedicated Redis: `redis-cli -p 6380 shutdown`; confirm connection refused.
+- Disposable DB: `dropdb -U novelforge_test -h localhost novelforge_test_047g117_smoke`;
+  confirm absent from `pg_database`.
+- Owned directory: `rm -rf "${SMOKE_DIR}"`.
+- Never touch `:6379` beyond read-only baseline.
+
+**Historical preservation:** the contaminated first attempt (stale
+`dump.rdb`) and the key-count-based run are retained in the receipt as
+historical evidence. This revision does not rewrite them.
+
+**Verification:** independent review of THIS revised procedure BEFORE
+rerunning; then rerun; then independent diff review of the new receipt.

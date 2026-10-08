@@ -37,24 +37,36 @@ input is missing, so no populated-upgrade evidence is claimed.
 
 ## Required reading
 
-- [Operating constitution](../../AGENTS.md) (§10, §12, §13) or equivalent CLAUDE.md.
-- [Evidence policy](../../docs/06-ai/MODEL-EVIDENCE-POLICY.md).
-- [External follow-up workflow](../implementation/EXTERNAL-FOLLOW-UP-WORKFLOW.md) — 047D section and Resume boundary (2026-10-08).
-- [ISSUES-AND-GAPS](../implementation/ISSUES-AND-GAPS.md) — GAP-018 row.
-- [Backup/restore runbook](../11-deployment/BACKUP-RESTORE-RUNBOOK.md).
+- [Operating constitution](../AGENTS.md) (§10, §12, §13) or equivalent CLAUDE.md.
+- [Evidence policy](../docs/06-ai/MODEL-EVIDENCE-POLICY.md).
+- [External follow-up workflow](../docs/implementation/EXTERNAL-FOLLOW-UP-WORKFLOW.md) — 047D section and Resume boundary (2026-10-08).
+- [ISSUES-AND-GAPS](../docs/implementation/ISSUES-AND-GAPS.md) — GAP-018 row.
+- [Backup/restore runbook](../docs/11-deployment/BACKUP-RESTORE-RUNBOOK.md).
 
 ## Missing input (exact)
 
-The 047D diagnosis requires an **authorized sanitized dump**: a PostgreSQL
-dump of a populated database whose `_prisma_migrations` ledger matches the
-repository's migration set, sanitized of private data, explicitly authorized
-by the local author for this investigation.
+The 047D diagnosis requires an **authorized sanitized source dump**: a
+PostgreSQL dump of a populated database, sanitized of private data,
+explicitly authorized by the local author for this investigation, with its
+ACTUAL `_prisma_migrations` ledger preserved and recorded (not modified to
+match the repository).
 
-**Status 2026-10-08:** no such dump is available on this host. Checked:
-`/tmp/*.dump`, `/tmp/*.sql`, `~/workspace` for sanitized/dump artifacts —
-none found. The historical `.local-backup-novelforge-dev-20261002.sql`
-referenced in GAP-018 is not present on this host and predates the current
-migration set (40 migrations vs the dump's 10).
+**Diagnosis vs acceptance (separated):**
+- *Diagnosis input:* any authorized sanitized dump with its actual ledger
+  intact. The historical drift (GAP-018) IS a ledger mismatch — the dump's
+  ledger need not match the repository's 40 migrations to reproduce and
+  diagnose the partial-apply mechanism. Requiring a 40-migration ledger
+  merely to reproduce the drift is incorrect.
+- *Final upgrade-acceptance criteria:* a fresh dump whose ledger matches the
+  repository's migration set; a `prisma migrate deploy` that does not
+  partially apply; and an empty schema diff against a from-empty database
+  (per the GAP-018 register row).
+
+**Status 2026-10-08:** no authorized sanitized dump is available on this
+host. Checked: `/tmp/*.dump`, `/tmp/*.sql`, `~/workspace` for
+sanitized/dump artifacts — none found. The historical
+`.local-backup-novelforge-dev-20261002.sql` referenced in GAP-018 is not
+present on this host.
 
 ## What this BLOCKED state means
 
@@ -92,8 +104,10 @@ deployment approval.
   MODEL_UNVERIFIED per GAP-013).
 - [x] GAP-018 recorded as BLOCKED with the exact missing input (coordinator-owned register).
 - [x] No populated-upgrade claim appears anywhere in this task's output.
-- [x] Unblock condition stated: author provides an authorized sanitized dump
-      whose `_prisma_migrations` matches the repository's 40 migrations.
+- [x] Unblock condition stated: author provides an authorized sanitized
+      source dump with its actual `_prisma_migrations` ledger preserved
+      (for diagnosis); final acceptance requires a ledger matching the
+      repository's migrations plus a clean deploy and empty schema diff.
 
 ## Checkpoint (Engram unavailable — GAP-021)
 

@@ -1,5 +1,35 @@
 # Current Project State
 
+## External 050A submission review — 2026-10-09
+
+Fetched `origin/work/nf-wf-050a-scale-evidence` at `80a772e`; not merged.
+Separate reviewers `review_recovery_034` and `review_mutations_034` request
+changes. GAP-118 records production defects and invalid acceptance fixtures;
+the external assertion that only fixtures need repair is not accepted.
+Main remains `0a60d4a`: READY denotes the reviewed contract, not accepted code.
+
+Local Windows verification reused Docker PostgreSQL16.15/pgvector0.8.6 on
+port5433. Prisma generation/validation, ai-services/API typechecks, changed
+source lint and submitted diff whitespace checks passed. The scoped Vitest
+run had37 tests:24 passed/13 failed (API9/22; domain/classification15/15).
+Several expected400 tests fail to exercise the intended validator because
+the fixture omits chapterVersionId. No full-platform green is claimed.
+
+Direct probes in the owned scratch database reproduced VIEWER service writes
+to an obsolete text version, history pagination returning sequences3 then1
+instead of3 then2, and malformed stored evidence (`scale: ALIEN`) returned as
+CURRENT. Headless multi-predecessor novel cascade cleanup passed this bounded
+probe; broader populated/restore acceptance remains missing. The initial probe
+setup omitted required creator fields and was corrected before these results.
+One lint attempt was invalidated by checkout timing; rerun at the submitted
+revision passed before returning to main. The owned scratch database was
+dropped and absence verified; main Prisma client generation was restored.
+
+Next: repair the submitted branch against the frozen contract, add missing
+negative/recovery/migration proofs, obtain separate final-diff review, then
+reconsider integration. 050B/050C remain dependent; GAP-039 remains OPEN.
+Engram runtime attribution is unavailable (GAP-021); this is the file fallback.
+
 ## S1 technical contract — 2026-10-08
 
 [NF-WF-050A](../../tasks/NF-WF-050A-scale-evidence-foundation.md) specifies

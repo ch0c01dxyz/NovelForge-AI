@@ -45,9 +45,13 @@ investigation, native release preparation and proposal-only SCALE/quota research
 A/B/C and F's proposal are now integrated through `89d57f5` (2026-10-08).
 Do not redispatch them. D's missing-input receipt and E's corrected isolated
 smoke procedure/reported rerun are integrated through `9fe1443` (2026-10-08).
-GAP-018 remains BLOCKED on a sanitized source dump; GAP-117 remains OPEN
-pending isolation-evidence acceptance. Continue from those gates, with a
-reviewed exact scope. CURRENT owns acceptance and remaining local gates.
+Local [NF-WF-048](tasks/NF-WF-048-local-gap-verification.md) subsequently
+closed GAP-018's bounded recovered-upgrade gate and GAP-117's isolated-smoke
+evidence gate with separate reviews and owned-resource cleanup. See the
+[local receipt](docs/implementation/048-local-gap-verification.md). Historical
+checksum differences remain preserved; this does not approve live repair.
+Next: author-owned GAP-039/063, human GAP-051 and live release gates.
+CURRENT owns acceptance and remaining local gates.
 [NF-WF-041](tasks/NF-WF-041-novel-scoped-workflow-history.md)
 resolves GAP-034 and GAP-116 with scoped tests and separate review.
 [NF-WF-039](tasks/NF-WF-039-final-revision-release-verification.md)

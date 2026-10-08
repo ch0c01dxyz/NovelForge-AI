@@ -8,6 +8,31 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
 ## Current dispatch — 2026-10-07 (novel-scoped workflow history repaired)
 
+### Accepted local gap verification — 2026-10-08
+
+NF-WF-048 closes GAP-018's bounded recovered-upgrade/partial-FK-loss gate
+and GAP-117's isolated worker-smoke evidence gate. Separate source/evidence
+reviews APPROVE. See [local receipt](../implementation/048-local-gap-verification.md)
+and [task](../../tasks/NF-WF-048-local-gap-verification.md). Product code and
+historical migration files are unchanged from `c0830c7`.
+
+Windows reused existing Docker services. Raw backup failure was reproduced;
+reviewed transactional recovery restored the two evidence RESTRICT FKs before
+reviewed ledger resolution. Recovered/empty/replayed schemas match, all40
+migrations applied, original32 tables and ten full ledger rows preserved,
+and cited-version DELETE/orphan/index negative checks passed. Three original
+checksum differences are explicitly preserved; live repair is not approved.
+All five workers started on owned Redis DB14: twelve attributable connections,
+PID socket/disconnect evidence and a uniquely completed heartbeat. Cleanup
+removed only owned resources; DB14 is empty and four scratch DBs are gone.
+
+Scoped driver lint and diff checks passed. No new full API/web suite, live
+provider test, human screen-reader result or production deployment is claimed.
+Next: author-owned GAP-039/063 product decisions, human GAP-051 audit and live
+release gates. Do not redispatch D/E or NF048's completed drills. Earlier
+BLOCKED/OPEN paragraphs below describe their prior boundary and are superseded.
+Engram runtime attribution is unavailable; this is the durable file fallback.
+
 ### Accepted isolated-smoke documentation — 2026-10-08
 
 The author accepted `work/nf-wf047-isolated-smoke` through `9fe1443`.

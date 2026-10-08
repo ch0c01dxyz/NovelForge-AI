@@ -35,6 +35,15 @@ Engram topic: `novelforge-ai/nf-wf-047/<child>/<role>`; no save is claimed by th
 
 ## Resume boundary — accepted integration, 2026-10-08
 
+Current local acceptance: [NF-WF-048](../../tasks/NF-WF-048-local-gap-verification.md)
+closed GAP-018's bounded recovered-upgrade gate and GAP-117's isolation-evidence
+gate with independent reviews and cleanup. See [local receipt](048-local-gap-verification.md).
+Do not redispatch D/E or repeat completed local drills. Product GAP-039/063,
+human GAP-051 and live release decisions remain with the author. Historical
+checksum differences remain untouched; no live repair/deployment is approved.
+The earlier integration boundary below is retained as history and superseded
+for current dispatch; CURRENT owns the next gate.
+
 Latest accepted documentation: isolated-smoke submission `9fe1443`.
 D's missing-input receipt and E's corrected procedure/reported rerun now
 exist on main. The previous dispatch paragraph below is historical; do not

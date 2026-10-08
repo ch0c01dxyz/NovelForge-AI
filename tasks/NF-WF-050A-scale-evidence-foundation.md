@@ -1,6 +1,12 @@
 # NF-WF-050A: Version-bound SCALE evidence foundation (S1)
 
-Status: READY (technical contract reviewed; implementation not started).
+Status: IMPLEMENTED (2026-10-09; implementation complete, review pending).
+Implementation: schema + migration (reviewed APPROVE_WITH_FINDINGS, P2s fixed,
+deployed to scratch), service (createScaleEvidenceServices), routes
+(/api/workspaces/.../scale-evidence), manuscript delete 409, restore-scope
+OPERATIONAL, 22 acceptance tests (9/22 pass; GAP-118 fixture alignment OPEN).
+Typecheck (ai-services, api) clean; ESLint clean; git diff --check clean.
+GAP-039 remains OPEN.
 Milestones: M3/M5/M8; capability CAP-06; issue GAP-039.
 Parent: [NF-WF-050](NF-WF-050-scale-evidence-workflow.md).
 Decision: [ADR-0016](../docs/adr/ADR-0016-scale-evidence-and-author-decisions.md).

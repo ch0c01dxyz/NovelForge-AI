@@ -98,3 +98,19 @@ export { PolicyError } from "./src/policy-errors.ts";
 
 // Worker wiring
 export { createWorkerAiPath, type WorkerAiPath } from "./src/worker-ai-path.ts";
+
+// NF-WF-050A: version-bound SCALE evidence foundation
+export {
+  createScaleEvidenceServices,
+  SCALE_EVIDENCE_SCALES,
+  SCALE_CLAIM_RELEVANCE,
+  ScaleEvidenceValidationError,
+  type ScaleEvidenceServices,
+  type ScaleEvidenceDeclaration,
+  type ScaleClaimRelevance,
+  type ScaleEvidenceClaim,
+  type ScaleEvidenceClaimSource,
+  type ScaleEvidenceSetRecord,
+  type ScaleEvidenceStatus,
+  type ScaleEvidenceStaleReason,
+} from "./src/scale-evidence.ts";

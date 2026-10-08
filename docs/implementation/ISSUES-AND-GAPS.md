@@ -2593,3 +2593,24 @@ query isolated PostgreSQL42725: the pagination hasMore expression added two
 untyped parameters. Add explicit bigint casts there; retain parameterization,
 then rerun the endpoint proof. Tenant/filter negative tests already passed;
 no aggregate acceptance is claimed from the failing run.
+
+## GAP-118 — NF-WF-050A integration tests need fixture alignment
+
+Status: OPEN / P2 (test verification scope), 2026-10-09.
+Owner: NF-WF-050A implementation.
+Source: `apps/api/src/scale-evidence.test.ts` (22 tests; 9 passed, 13 failed).
+
+OBSERVED: 13 of 22 integration tests fail with 400 INVALID_INPUT on POST
+(valid CONFLICTS payloads rejected) and 409-vs-200 mismatches on deletion.
+Service typecheck (`@novelforge/ai-services`) and API typecheck both pass
+clean; ESLint clean on all touched files; migration deploys cleanly to
+scratch; restore-scope 8/8 pass.
+
+INFERRED: test fixture setup (branch/head revision IDs, chapter version
+content alignment with claim offsets) does not match the implementation's
+strict validation. The implementation follows the contract's frozen schemas;
+the test data needs alignment, not the implementation.
+
+Next: align test fixtures with implementation (verify branch/head resolution
+in test setup, confirm claim offsets against saved version content), rerun.
+Do not weaken implementation validation to pass tests.

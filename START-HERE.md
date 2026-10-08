@@ -1,10 +1,15 @@
 # NovelForge V2 --- START HERE
 
+S1 next task: [NF-WF-050A](tasks/NF-WF-050A-scale-evidence-foundation.md) owns
+the exact version-bound SCALE evidence contract and its separate review status.
+050A is READY after separate technical review; this update delivers a contract,
+not a repaired SCALE approval gate. 050B/050C and GAP-039 acceptance remain.
+
 SCALE author direction recorded (2026-10-08):
 [ADR-0016](docs/adr/ADR-0016-scale-evidence-and-author-decisions.md) selects S1
 foundation, S2 follow-up and optional author-reviewed S3. Follow the planned
-[NF-WF-050 stages](tasks/NF-WF-050-scale-evidence-workflow.md); freeze/review
-050A before code dispatch. GAP-039 remains OPEN, not awaiting the S1/S2/S3
+[NF-WF-050 stages](tasks/NF-WF-050-scale-evidence-workflow.md); dispatch the
+reviewed 050A foundation first. GAP-039 remains OPEN, not awaiting the S1/S2/S3
 choice. Author decided incomplete HARD assessment holds approval and requires
 missing-data explanations/examples; optional AI guidance follows S3 enablement.
 

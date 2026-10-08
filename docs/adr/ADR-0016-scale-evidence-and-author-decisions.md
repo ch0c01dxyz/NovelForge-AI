@@ -75,6 +75,23 @@ must not be forced to invent conflict to satisfy SCALE evidence completeness.
 
 ## Alternatives and consequences
 
+### S1 technical boundary — 2026-10-08
+
+[NF-WF-050A](../../tasks/NF-WF-050A-scale-evidence-foundation.md) freezes a
+single append-only assessment-set model, using actual immutable ChapterVersion
+text spans/verified quotes. Mutable scenes/events have no live assessment FK;
+their future adapters require a separately reviewed provenance contract.
+Sets are OPERATIONAL audit history outside story snapshot coverage. They do
+not advance the story head, rewrite canon or protagonist standing. A separate
+assessment-set CAS prevents lost author replacements; the checked-out branch,
+current text version and actual story head bound applicability. Head changes
+conservatively make evidence stale. Version citations preserve assessment
+history and require explicit chapter-deletion conflict handling.
+
+050A delivers the validated authoring API only. 050B separately connects it to
+final-review receipts, author decisions and localized UI; 050C adds optional
+AI proposals. Contract acceptance is not evidence those features are implemented.
+
 S3-only authority and autonomous approval are rejected by the author decision.
 S4 (keeping SCALE outside review verdicts) is not the chosen direction.
 S1 requires modeling/tagging work; S2 adds author decisions; S3 adds optional

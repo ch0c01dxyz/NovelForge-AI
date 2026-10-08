@@ -1,5 +1,24 @@
 # Current Project State
 
+## S1 technical contract — 2026-10-08
+
+[NF-WF-050A](../../tasks/NF-WF-050A-scale-evidence-foundation.md) specifies
+append-only author assessments tied to saved chapter prose, checked-out branch
+and source head. Schema/API validation, independent assessment CAS, tenant/role
+gates, retained recovery history and chapter-deletion conflicts are explicit.
+Separate technical reviewers approved the contract, including a corrected
+`/api` route prefix. 050A is READY; implementation, migration execution and
+runtime tests have not started. Next: bounded 050A
+implementation. GAP-039 remains OPEN; 050B owns HARD gates/UI/receipts and 050C
+optional AI proposals. Engram attribution remains unavailable (GAP-021);
+this record and the task are the fallback, not a claimed MCP checkpoint.
+
+Frozen review manifest: `tasks/NF-WF-050A-scale-evidence-foundation.md`, SHA256
+`0FC5FD9C9A8415BA413247119278DD07FD51A42D95F53C4CEC696C31D24E6E04`.
+Separate reviewers: `review_recovery_034`, `review_mutations_034`. Scope is
+technical contract acceptance only; local Markdown links and Git whitespace
+checks passed. Migration and implementation need their own exact-diff review.
+
 Architecture baseline: V2 with workflow delivery repair accepted in ADR-0013.
 Implementation status: **backend/infrastructure slices across phases 0–9
 exist; integrated product delivery remains PARTIAL**. Historical phase/test
@@ -19,8 +38,9 @@ Author clarified incomplete HARD assessment holds approval and AI should advise
 on missing data with reasons, explanations and examples. Planned UI always has
 an actionable checklist; AI enhancement follows S3 enablement. Pending advice
 never satisfies the gate. Existing SOFT/HARD configuration remains. Initial
-parent and final HARD/guidance amendment review APPROVE; no child is READY.
-Next: prepare/review 050A's exact contract, then S1 foundation implementation.
+parent and final HARD/guidance amendment review APPROVE. At that earlier
+decision boundary no child was READY; the later 050A contract receipt above
+now owns S1 dispatch readiness. S1 foundation implementation remains next.
 Engram runtime binding is unavailable (GAP-021); task/CURRENT are fallback.
 
 ### Usage analytics accepted locally — 2026-10-08

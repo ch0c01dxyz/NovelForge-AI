@@ -1034,6 +1034,19 @@ stockpiled") clears the finding.
 
 ## GAP-039 — NF-WF-010: SCALE policies never FAIL a final-text review (no deterministic proposal source, 2026-10-05)
 
+050A source inspection (2026-10-08, baseline `7c3616d`): Scene has no immutable
+text/span version. Live scene/event foreign keys in retained assessments could
+block restore or erase audit history. Revision advancement rejects tables
+outside snapshot coverage; assessment history must not masquerade as canon.
+Owner: NF-WF-050A. Resolution contract: immutable chapter-version text anchors,
+OPERATIONAL append-only sets, independent assessment CAS and existing story-head
+provenance. ChapterVersion RESTRICT requires an explicit chapter-deletion 409.
+Closure checks belong to 050A's migration, ownership, concurrency, stale-read,
+restore and deletion tests; no implementation or passing runtime check is claimed.
+Separate technical reviewers approved the 050A contract; it is READY for
+bounded implementation. The reviewed HTTP prefix correction is applied.
+GAP-039 stays OPEN through 050B/050C and integrated author-workflow acceptance.
+
 2026-10-08 decision update: author selects S1 foundation, S2 follow-up and
 optional settings-enabled S3. Author alone decides approve/reject/alternative
 for AI proposals. ADR-0016 / NF-WF-050 own the planned work; status remains OPEN

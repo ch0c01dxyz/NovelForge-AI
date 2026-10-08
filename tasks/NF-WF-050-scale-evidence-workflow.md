@@ -1,5 +1,14 @@
 # NF-WF-050: SCALE Evidence Workflow Implementation Plan
 
+2026-10-08 technical-contract update: [050A](NF-WF-050A-scale-evidence-foundation.md)
+defines the S1 storage/authoring boundary. Its technical review status and
+dispatch readiness are owned by that child; no source/schema implementation
+is claimed. The inspected minimal source is immutable chapter-version prose,
+not a new beat model. Append-only OPERATIONAL annotations have an independent
+assessment CAS and source-head applicability pins, without changing story heads.
+050B retains final-review integration, standing decisions/exceptions and UI;
+050C retains optional AI proposals. GAP-039 stays OPEN.
+
 > For agentic workers: execute bounded children under the project's Multi-LLM
 > protocol. Use superpowers:executing-plans when available; no additional
 > harness plugin or provider/model is mandatory.
@@ -63,11 +72,11 @@ Mutation tests use owned disposable databases; migration SQL needs prior review.
 
 ### 050A — S1 structured evidence foundation
 
-- [ ] Freeze a minimal operative-conflict tagging contract using actual stored
+- [x] Freeze a minimal operative-conflict tagging contract using actual stored
   chapter/scene/structured-event identities, not an invented beat table. Pin
   chapterVersionId and relevant source revision; distinguish conflict relevance
   from an entity's mere presence. Specify bounded reads and source evidence.
-- [ ] Define the tag creation/replacement/read API, allowed author roles,
+- [x] Define the tag creation/replacement/read API, allowed author roles,
   validation, append-only audit/revision effects, invalidation and legacy state.
   Decide exact storage and schema in the child ADR amendment/contract review.
 - [ ] Write failing integration tests for valid labels, unknown scale, foreign
@@ -143,8 +152,9 @@ data model or optional extractor alone does not close the gap.
 
 Engram has no authoritative runtime session binding (GAP-021); attributed writes
 are prohibited by the runtime hook. No session was invented and no save claimed.
-This task/CURRENT are the fallback. Next: review the parent plan, then prepare
-and review 050A's exact schema/API/authoring contract. HARD/guidance direction
-and the parent plan are reviewed. No child is READY yet. Documentation-only
+This task/CURRENT are the fallback. Next: implement the reviewed READY 050A
+schema/API/authoring contract. HARD/guidance direction and the parent plan are
+reviewed; 050A's separate contract reviews are recorded in that child/CURRENT.
+050B/050C are not READY. Documentation-only
 verification: required source/test paths exist and git diff checks passed;
 no new runtime tests, live calls, schema edits or working database changes.

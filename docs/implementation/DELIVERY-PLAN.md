@@ -1,5 +1,10 @@
 # NovelForge Workflow Delivery Plan
 
+S1 technical dispatch: [NF-WF-050A](../../tasks/NF-WF-050A-scale-evidence-foundation.md)
+owns the frozen API/storage/authority/recovery contract and READY review gate.
+Implement that bounded foundation before freezing 050B/050C. No SCALE runtime
+or whole author-workflow completion is implied by the contract.
+
 SCALE update (2026-10-08): ADR-0016 records the author-selected S1 foundation,
 S2 follow-up and optional author-reviewed S3. NF-WF-050 owns planned stages:
 structured evidence → deterministic review/author decisions → optional AI

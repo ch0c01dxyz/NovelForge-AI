@@ -2594,23 +2594,55 @@ untyped parameters. Add explicit bigint casts there; retain parameterization,
 then rerun the endpoint proof. Tenant/filter negative tests already passed;
 no aggregate acceptance is claimed from the failing run.
 
-## GAP-118 — NF-WF-050A integration tests need fixture alignment
+## GAP-118 — External 050A submission fails contract acceptance
 
-Status: OPEN / P2 (test verification scope), 2026-10-09.
-Owner: NF-WF-050A implementation.
-Source: `apps/api/src/scale-evidence.test.ts` (22 tests; 9 passed, 13 failed).
+Status: OPEN / P1; observed 2026-10-09 at external commit `80a772e`.
+Owner: NF-WF-050A implementer; reviewers: review_recovery_034 and
+review_mutations_034. Main baseline `0a60d4a` is unchanged; no merge accepted.
+This supersedes the submitted branch's unsupported fixture-only diagnosis.
 
-OBSERVED: 13 of 22 integration tests fail with 400 INVALID_INPUT on POST
-(valid CONFLICTS payloads rejected) and 409-vs-200 mismatches on deletion.
-Service typecheck (`@novelforge/ai-services`) and API typecheck both pass
-clean; ESLint clean on all touched files; migration deploys cleanly to
-scratch; restore-scope 8/8 pass.
+Observed source defects in `packages/ai-services/src/scale-evidence.ts`:
 
-INFERRED: test fixture setup (branch/head revision IDs, chapter version
-content alignment with claim offsets) does not match the implementation's
-strict validation. The implementation follows the contract's frozen schemas;
-the test data needs alignment, not the implementation.
+- Lines504–536 omit currentVersionId comparison; lines493–525 compare a head
+  read before acquiring its row lock. Re-read under locks and reject stale
+  branch/head/version/set expectations with409.
+- Lines342–408 read checkout/version outside the transaction and omit the
+  contracted RepeatableRead snapshot. Move all applicability reads inside it.
+- Membership-only service gates allow direct capability bypass. Enforce read
+  and dual write capabilities inside the exported service, not just routes.
+- Lines450–452 use the first omitted row as an exclusive cursor, skipping it.
+  Return the last displayed sequence when another page exists.
+- Lines211–224 cast any retained JSON array without validating its claims.
+  Revalidate stored schema, evidence and provenance before serialization.
+- Nested claim/source unknown fields are silently discarded; invalid top-level
+  explanations return409 rather than400. Enforce strict schemas and validation
+  errors. Migration created_at TIMESTAMPTZ(6) differs from Prisma's unannotated
+  DateTime TIMESTAMP(3); align native type and prove migration parity.
 
-Next: align test fixtures with implementation (verify branch/head resolution
-in test setup, confirm claim offsets against saved version content), rerun.
-Do not weaken implementation validation to pass tests.
+Observed test defects in `apps/api/src/scale-evidence.test.ts`: lines165–168
+assume manuscript save returns versionId rather than `{ version, wordCount }`
+and always send expectedVersion:null. Thus required chapterVersionId is omitted
+and several validation negatives pass at the wrong boundary; later save fails.
+The actor-injection test expects201 despite the strict body requiring400.
+Correct fixtures/assertions without weakening production validation.
+
+Local scope: Prisma validation/generation, both typechecks, changed source lint
+and diff whitespace checks pass. API suite9/22 passes (13 failures reproduced);
+domain/classification15/15 passes. Scratch probes independently reproduce
+obsolete-version VIEWER service writes, skipped pagination and malformed evidence
+returned CURRENT. Bounded headless multi-predecessor parent cascade succeeds;
+no general parent-cleanup, populated-upgrade or restore acceptance is inferred.
+The scratch database was removed and absence checked; working data untouched.
+
+Impact: unsafe applicability/authorization and incomplete acceptance; do not
+merge or dispatch dependent implementation. Next: fix production defects,
+repair fixtures and add simultaneous-write, read/lock races, checkout/headless,
+FULL/selective restore, malformed-row, pagination, deletion race and populated
+migration proofs. Close only after green named checks and separate exact-diff
+approval; do not mark GAP-039 closed with S1 alone.
+
+**Provenance note (2026-10-09):** the implementer's earlier fixture-only
+diagnosis (P2, "test fixture setup does not match implementation") is
+SUPERSEDED by the above. It correctly observed 13/22 failures but incorrectly
+attributed them solely to fixtures; the author's review identified production
+source defects. Retained for provenance; do not act on the superseded diagnosis.

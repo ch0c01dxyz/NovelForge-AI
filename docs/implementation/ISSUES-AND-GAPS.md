@@ -2640,3 +2640,52 @@ repair fixtures and add simultaneous-write, read/lock races, checkout/headless,
 FULL/selective restore, malformed-row, pagination, deletion race and populated
 migration proofs. Close only after green named checks and separate exact-diff
 approval; do not mark GAP-039 closed with S1 alone.
+
+### Re-review of `5a465a1` — 2026-10-09
+
+Status remains OPEN / P1. Separate reviewers review_mutations_034 and
+review_recovery_034 request changes. Several repairs are real: capability
+checks, strict write validation, explanation400 errors, RepeatableRead reads,
+pagination, timestamp mapping and initial test fixtures. They do not establish
+full contract acceptance; the submitted repair-complete claim is unsupported.
+
+Remaining source defects at this exact revision:
+
+- P1: `scale-evidence.ts:603–637` still reads the branch head before FOR UPDATE
+  and compares/persists that cached value after waiting. Chapter614–627 likewise
+  reads before its lock, contrary to the comment. Fetch authoritative values
+  after locks. Owned-scratch probe confirmed a stale null expectation succeeds
+  after a held branch lock is released with a new committed head.
+- P2: retained validation226–288 only checks shape. It does not verify quote,
+  end bounds or tenant/source/predecessor consistency and accepts whitespace-only
+  strings. A scratch row with valid field shapes but a forged quote and end500
+  against short prose was returned CURRENT when pinned to the actual head.
+  Validate retained evidence against its scoped immutable source before return.
+- P2: current-version comparison627 precedes scoped ownership lookup644–652.
+  Missing/foreign versions receive409 instead of the contracted404. Validate
+  ownership first, then reject stale owned versions using the locked pointer.
+
+Remaining proof/documentation gaps:
+
+- The read race test810–854 leaves checkout/version/head unchanged; it cannot
+  detect the original snapshot defect or remaining locked-head bug. Add bounded
+  deterministic interleavings that change those inputs while requests wait.
+- Restore test1161–1203 creates all sets before the checkpoint. Create the
+  checkpoint before later CURRENT sets, then assert retention and CURRENT to
+  STALE across real restore. Selective restore should exercise actual changed
+  covered state, not only an empty unrelated table.
+- Deletion test1311 already has a citation; it does not prove successful uncited
+  deletion racing the first assessment. Parent test1376 uses only one set,
+  omitting the required predecessor-linked history case.
+- Empty/populated migration, legacy data/checksum preservation and parity proof
+  remain mandatory; the external P3 annotation cannot make them optional.
+- Correct task/CURRENT/GAP-118 repair claims and stale9/22 handoff information;
+  record final commands, exact diff and separate review after actual repairs.
+
+Fresh local checks: selected47/47 tests pass (API32/classification8/pure7),
+Prisma validation/generation, both typechecks, changed-source lint and diff
+whitespace pass. These positives do not cover the demonstrated defects.
+The first lock probe lacked an established barrier; a corrected rerun cleared
+the PostgreSQL statistics snapshot and confirmed the defect. Owned scratch
+database absence was verified after cleanup. No product merge, working DB
+migration, populated-upgrade acceptance or dependent050B/050C dispatch approved.

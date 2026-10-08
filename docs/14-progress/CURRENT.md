@@ -1,5 +1,34 @@
 # Current Project State
 
+## External 050A re-review — 2026-10-09, submission `5a465a1`
+
+Fetched the repaired branch after its merge of `209a911`. Both separate
+reviewers still request changes; no merge accepted. Main remains `209a911`.
+Service capabilities, original fixture errors, strict write fields, pagination,
+RepeatableRead current reads and timestamp native-type parity are repaired.
+
+Local verification at the exact submitted revision: Prisma validate/generate,
+ai-services/API typechecks, changed-source lint and diff whitespace checks
+passed. Scoped tests47/47 passed (SCALE API32, restore classification8,
+pure SCALE7). Manuscript suite was not rerun: its fixed scratch database name
+already existed on this host and was preserved. No full-release green claimed.
+
+Additional owned-scratch probes established a waiting branch lock before
+committing a new head: append accepted the stale null expectation and persisted
+the old null source head. Another probe placed a schema-shaped claim with a
+forged quote and out-of-bounds span into a retained row pinned to the real
+head; readCurrent still returned CURRENT. Initial lock probe failed to establish
+its barrier because PostgreSQL statistics were cached within the observer
+transaction; clearing that statistics snapshot made the rerun deterministic.
+These probes are separate from the submitted47 passing tests.
+
+GAP-118 records remaining source and acceptance blockers. Required populated
+migration proof is still missing; misleading repair-complete and after-lock
+reread claims must be corrected. The owned scratch database was dropped and
+absence verified; main checkout and Prisma generation restored. Working data
+and the existing manuscript scratch database were preserved. Engram binding
+remains unavailable (GAP-021); this/task history are the fallback checkpoint.
+
 ## External 050A submission review — 2026-10-09
 
 Fetched `origin/work/nf-wf-050a-scale-evidence` at `80a772e`; not merged.

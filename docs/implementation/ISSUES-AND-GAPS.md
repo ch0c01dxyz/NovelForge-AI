@@ -2641,102 +2641,63 @@ FULL/selective restore, malformed-row, pagination, deletion race and populated
 migration proofs. Close only after green named checks and separate exact-diff
 approval; do not mark GAP-039 closed with S1 alone.
 
+### Re-review of `5a465a1` — 2026-10-09
+
+Status remains OPEN / P1. Separate reviewers review_mutations_034 and
+review_recovery_034 request changes. Several repairs are real: capability
+checks, strict write validation, explanation400 errors, RepeatableRead reads,
+pagination, timestamp mapping and initial test fixtures. They do not establish
+full contract acceptance; the submitted repair-complete claim is unsupported.
+
+Remaining source defects at this exact revision:
+
+- P1: `scale-evidence.ts:603–637` still reads the branch head before FOR UPDATE
+  and compares/persists that cached value after waiting. Chapter614–627 likewise
+  reads before its lock, contrary to the comment. Fetch authoritative values
+  after locks. Owned-scratch probe confirmed a stale null expectation succeeds
+  after a held branch lock is released with a new committed head.
+- P2: retained validation226–288 only checks shape. It does not verify quote,
+  end bounds or tenant/source/predecessor consistency and accepts whitespace-only
+  strings. A scratch row with valid field shapes but a forged quote and end500
+  against short prose was returned CURRENT when pinned to the actual head.
+  Validate retained evidence against its scoped immutable source before return.
+- P2: current-version comparison627 precedes scoped ownership lookup644–652.
+  Missing/foreign versions receive409 instead of the contracted404. Validate
+  ownership first, then reject stale owned versions using the locked pointer.
+
+Remaining proof/documentation gaps:
+
+- The read race test810–854 leaves checkout/version/head unchanged; it cannot
+  detect the original snapshot defect or remaining locked-head bug. Add bounded
+  deterministic interleavings that change those inputs while requests wait.
+- Restore test1161–1203 creates all sets before the checkpoint. Create the
+  checkpoint before later CURRENT sets, then assert retention and CURRENT to
+  STALE across real restore. Selective restore should exercise actual changed
+  covered state, not only an empty unrelated table.
+- Deletion test1311 already has a citation; it does not prove successful uncited
+  deletion racing the first assessment. Parent test1376 uses only one set,
+  omitting the required predecessor-linked history case.
+- Empty/populated migration, legacy data/checksum preservation and parity proof
+  remain mandatory; the external P3 annotation cannot make them optional.
+- Correct task/CURRENT/GAP-118 repair claims and stale9/22 handoff information;
+  record final commands, exact diff and separate review after actual repairs.
+
+Fresh local checks: selected47/47 tests pass (API32/classification8/pure7),
+Prisma validation/generation, both typechecks, changed-source lint and diff
+whitespace pass. These positives do not cover the demonstrated defects.
+The first lock probe lacked an established barrier; a corrected rerun cleared
+the PostgreSQL statistics snapshot and confirmed the defect. Owned scratch
+database absence was verified after cleanup. No product merge, working DB
+migration, populated-upgrade acceptance or dependent050B/050C dispatch approved.
+
 **Provenance note (2026-10-09):** the implementer's earlier fixture-only
 diagnosis (P2, "test fixture setup does not match implementation") is
 SUPERSEDED by the above. It correctly observed 13/22 failures but incorrectly
 attributed them solely to fixtures; the author's review identified production
 source defects. Retained for provenance; do not act on the superseded diagnosis.
 
-**Repair plan (2026-10-09, branch work/nf-wf-050a-scale-evidence, merge 3054cc3):**
-
-Source fixes (packages/ai-services/src/scale-evidence.ts):
-- Enforce chapter:read / chapter:update+canon:manage inside exported service
-- Re-read chapter/currentVersionId after lock; 409 on stale version
-- readCurrent: all reads inside single RepeatableRead transaction
-- Pagination: exclusive cursor = last displayed sequence (not first omitted)
-- toRecord: full stored-data validation before serialization; corrupt → 400
-- Strict nested claim/source schemas; unknown fields rejected
-- Schema: @db.Timestamptz(6) added to match applied migration (no rewrite)
-
-Test fixes (apps/api/src/scale-evidence.test.ts):
-- Correct chapterVersionId source (save returns {version, wordCount})
-- Use actual expectedVersion for subsequent saves
-- Actor injection → 400 (strict body)
-- Each negative test targets its intended validator
-
-Evidence to add: simultaneous appends, lock/read races, historical-version
-refusal, direct-service role denial, pagination integrity, checkout/headless,
-FULL/selective restore, malformed stored evidence, deletion/create race,
-parent cleanup, empty/populated migrations with checksums.
-
-**Repair complete (2026-10-09 ~03:13 WIB, branch work/nf-wf-050a-scale-evidence):**
-
-Source fixes (packages/ai-services/src/scale-evidence.ts):
-- Service-layer capability enforcement: chapter:read for reads, chapter:update+canon:manage for writes
-- Re-read chapter/currentVersionId after lock; 409 on stale version
-- readCurrent: all applicability reads in single RepeatableRead transaction
-- Pagination: exclusive cursor = last displayed sequence
-- toRecord: full stored-data validation; corrupt → 400 (ScaleEvidenceValidationError)
-- Strict nested claim/source schemas; unknown fields rejected with 400
-
-Test fixes (apps/api/src/scale-evidence.test.ts):
-- chapterVersionId from GET current response (server truth)
-- expectedVersion: actual version numbers (not always null)
-- Actor injection → 400 (strict body)
-- Each negative test reaches intended validator
-
-Route fix (apps/api/src/scale-evidence-routes.ts):
-- GET / and GET /history now catch ScaleEvidenceValidationError → 400 (was 500)
-
-Schema (packages/database/prisma/schema.prisma):
-- @db.Timestamptz(6) added to ScaleEvidenceSet.createdAt (matches applied migration; no rewrite)
-
-Evidence (32/32 tests pass):
-- Simultaneous appends: 1×201 + 1×409, sequences [2,1] no gaps
-- Lock/read race: consistent snapshot
-- Historical-version refusal: 409 "chapter version is no longer current"
-- Direct-service role denial: VIEWER append → 403; reads succeed
-- Pagination: [5,4]→4, [3,2]→2, [1]→null; no dups/skips
-- Checkout/headless: new branch UNASSESSED; headless append 201
-- FULL/selective restore: rows byte-identical; readCurrent STALE not CURRENT
-- Malformed stored: scale "ALIEN" → 400 (not CURRENT, not 500)
-- Deletion/create race: DELETE 409; append 201/409; chain integral
-- Parent cleanup: novel DELETE → scale_evidence_sets 1→0 (FK cascade)
-
-Verification (OBSERVED 2026-10-09):
-- pnpm exec vitest run src/scale-evidence.test.ts → 32/32 pass
-- pnpm exec vitest run src/manuscript.test.ts → 21/21 pass
-- pnpm exec vitest run packages/story-versioning/restore-scope.test.ts → 8/8 pass
-- pnpm --filter @novelforge/ai-services typecheck → clean
-- pnpm --filter @novelforge/api typecheck → clean
-- pnpm exec eslint (all touched files) → clean
-- git diff --check → clean
-- prisma validate: valid
-
-Environment: GAP-108 8th recurrence (VM reset) during repair; PostgreSQL 16
-+ pgvector + Redis reinstalled; novelforge_test role recreated; password synced
-to .env DATABASE_URL.
-
-Status: READY for final diff review. GAP-039 remains OPEN (S1 foundation only).
-
-RECURRENCE 2026-10-09 ~02:56 WIB (OBSERVED by coordinator): VM reset wiped
-PostgreSQL/Redis an 8th time mid-task (during 050A repair). `psql` not found,
-`/usr/lib/postgresql/` missing, `pg_ctlcluster` not found. Provisioner
-auto-running apt-get (process 1684) at time of detection. Reinstall in progress
-per ENVIRONMENT-PREFLIGHT.md procedure. This remains a known recurring
-environment event.
-
-**Final diff review (2026-10-09 ~03:20 WIB):** separate reviewer (MODEL_UNVERIFIED)
-verdict **APPROVE_WITH_FINDINGS**.
-
-Findings fixed:
-- P2-1: Invalid declaration/explanation now throws ScaleEvidenceValidationError (400),
-  not ConflictError (409). Three pre-checks in appendSet fixed.
-- P3-1: Stale routes comment corrected (service now enforces capabilities too).
-- P3-2: Mojibake arrow in GAP-118 record fixed.
-
-P3-3 (migration re-proof not re-run): risk low — migration byte-identical to
-separately reviewed version (APPROVE_WITH_FINDINGS at 80a772e); parity by inspection.
-Left open for author if formal re-proof wanted.
-
-All 7 source defects + 4 test defects verified fixed in diff. 32/32 tests pass.
+**SUPERSEDED repair-complete claim (2026-10-09 ~03:13 WIB):** the "Repair complete"
+record added at commit 5a465a1 (claiming all 7 source + 4 test defects fixed,
+32/32 tests as acceptance) is SUPERSEDED by the re-review above. The re-review
+confirms several repairs are real but demonstrates remaining P1/P2 defects via
+scratch probes. Retained for provenance; do not treat as acceptance.

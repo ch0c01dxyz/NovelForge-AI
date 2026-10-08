@@ -23,7 +23,8 @@ import {
   type WorkflowExecutor,
 } from "./index.ts";
 
-const TEST_DB = "novelforge_test_workflow_executor";
+const TEST_DB = process.env.NF049_TEST_DB ?? "novelforge_test_workflow_executor";
+if (TEST_DB !== "novelforge_test_workflow_executor" && !/^nf049_[a-z0-9_]+$/.test(TEST_DB)) throw new Error("Unowned analytics test database");
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const DB_PACKAGE_ROOT = path.join(HERE, "..", "database");
 const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js");
@@ -182,6 +183,37 @@ const TWO_TRANSFORMS = {
   ],
   edges: [{ from: "a", to: "b" }],
 };
+
+describe("generation usage attribution", () => {
+  it.each([undefined, "LORE"])("forwards chapter identity and explicit component override %s", async usageComponent => {
+    const graph = { steps: [{ key: "write", kind: "AGENT", ref: "writer", ...(usageComponent ? { usageComponent } : {}) }], edges: [] };
+    const seed = await seedWorkflow(graph);
+    await db.workflow.update({ where: { id: seed.workflowId }, data: { key: "chapter-generation-review" } });
+    await db.workflowVersion.update({ where: { id: seed.versionId }, data: { agentKeys: ["writer"] } });
+    const novel = await db.novel.create({ data: { workspaceId: seed.workspaceId, createdById: seed.userId, title: "Usage novel", slug: "usage" } });
+    const chapter = await db.chapter.create({ data: { novelId: novel.id, createdById: seed.userId, number: 1, title: "Chapter" } });
+    const runId = await seedRun(seed, graph);
+    await db.workflowRun.update({ where: { id: runId }, data: { novelId: novel.id, input: { chapterNumber: 1 } } });
+    const calls: Array<Record<string, unknown>> = [];
+    const agent = await db.agent.create({ data: { workspaceId: seed.workspaceId, key: "writer", name: "Writer", createdById: seed.userId } });
+    const agentVersion = await db.agentVersion.create({ data: { agentId: agent.id, number: 1, instructions: "Write", modelProfile: "CREATIVE_WRITER", skillKeys: [], createdById: seed.userId } });
+    const driver = createWorkflowExecutor({ db, audit: { record: async () => {} },
+      resolvers: {
+        resolveAgent: async () => ({ id: agent.id, key: "writer", versionId: agentVersion.id, versionNumber: 1,
+          instructions: "Write", modelProfile: "CREATIVE_WRITER", skillKeys: [], outputSchema: null, temperature: null, maxTokens: null }),
+        resolveSkill: async () => { throw new Error("No skills expected"); },
+      },
+      generate: { generate: async input => {
+        calls.push(input);
+        const generation = await db.generation.create({ data: { workspaceId: input.workspaceId, novelId: input.novelId, task: input.task, component: input.component, artifactId: input.artifactId, modelProfile: input.profile, status: "SUCCEEDED" } });
+        return { generationId: generation.id, content: "text", model: "served" };
+      } },
+    });
+    expect((await driver.executeRun(runId)).status).toBe("SUCCEEDED");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ novelId: novel.id, artifactId: chapter.id, component: usageComponent ?? "CHAPTER", task: "workflow:chapter-generation-review:write" });
+  });
+});
 
 describe("guarded claims", () => {
   it("claimRunForExecution has exactly one winner", async () => {

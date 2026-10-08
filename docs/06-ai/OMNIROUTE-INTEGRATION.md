@@ -52,6 +52,27 @@ must still preserve its own audit and outcome semantics.
 
 ## Streaming
 
+Request OpenAI-compatible stream usage with `stream_options.include_usage`.
+Persist reported model and input/output counters, including usage-only frames,
+in the transport attempt receipt. Cumulative snapshots replace earlier
+snapshots within an attempt; they are not additive. Preserve observed usage on
+failure/abandonment. Metadata is not generated prose. Missing, negative,
+fractional or out-of-range counters are unknown; do not estimate them.
+Gateway response model identity is distinct from the requested routing model.
+
+## Usage analytics and external quota ownership
+
+ADR-0015 supersedes quota observation/enforcement proposals. NovelForge has
+no quota limit, remaining-balance calculation or analytics-based generation
+block. The external gateway owns those controls; NovelForge still classifies
+its rate-limit/auth/transport errors and keeps bounded request/retry safeguards.
+Aggregate observed attempts once; historical final-generation counters are a
+legacy fallback only when no attempt reports usage. Gateway-internal attempts
+that it does not report remain unknown. Never backfill historical model
+identities from current routing configuration.
+
+## Stream outcomes
+
 Persist generation as IN_PROGRESS. A disconnected/failed stream is
 INCOMPLETE, not SUCCESS. Never append the same partial generation twice
 to manuscript content.

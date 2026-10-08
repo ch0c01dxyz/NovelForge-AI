@@ -68,6 +68,29 @@ const REQ: GenerateRequest = {
   messages: [{ role: "user", content: "hi" }],
 };
 
+describe("reported usage analytics", () => {
+  it("preserves streamed usage-only frames and the response model without text", async () => {
+    const { fetch, calls } = fakeFetch(() => sseResponse([
+      'data: {"model":"served","choices":[{"delta":{"content":"hello"}}]}\n\n',
+      'data: {"model":"served","choices":[],"usage":{"prompt_tokens":12,"completion_tokens":3}}\n\n',
+      'data: [DONE]\n\n',
+    ]));
+    const frames = [];
+    for await (const frame of new OmniRouteGateway(CONFIG, fetch).generateStream(REQ)) frames.push(frame);
+    expect(frames.map(f => f.delta).join("")).toBe("hello");
+    expect(frames.at(-1)).toMatchObject({ delta: "", model: "served", usage: { inputTokens: 12, outputTokens: 3 } });
+    expect(JSON.parse(String(calls[0]?.init?.body)).stream_options).toEqual({ include_usage: true });
+  });
+
+  it("does not fabricate response model or accept invalid reported counts", async () => {
+    const { fetch } = fakeFetch(() => jsonResponse({ choices: [], usage: { prompt_tokens: -1, completion_tokens: 2.5 } }));
+    const result = await new OmniRouteGateway(CONFIG, fetch).generate(REQ);
+    expect(result.inputTokens).toBeNull();
+    expect(result.outputTokens).toBeNull();
+    expect(result.reportedModel).toBeNull();
+  });
+});
+
 describe("OmniRouteGateway request shape", () => {
   it("sends a Bearer Authorization header and never a URL credential", async () => {
     const { fetch, calls } = fakeFetch(() =>

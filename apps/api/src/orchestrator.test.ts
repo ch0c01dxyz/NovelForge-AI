@@ -42,7 +42,8 @@ import { createPlatformServices } from "@novelforge/ai-services";
 import type { WorkflowQueue } from "./services/workflow-queue.ts";
 import { createTestDriver, type TestDriver } from "./workflow-test-driver.ts";
 
-const TEST_DB = "novelforge_test_orchestrator";
+const TEST_DB = process.env.NF049_TEST_DB ?? "novelforge_test_orchestrator";
+if (TEST_DB !== "novelforge_test_orchestrator" && !/^nf049_[a-z0-9_]+$/.test(TEST_DB)) throw new Error("Unowned analytics test database");
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const DB_PACKAGE_ROOT = path.join(HERE, "..", "..", "..", "packages", "database");
 const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js");

@@ -101,7 +101,14 @@ Never scatter OmniRoute HTTP calls throughout business modules.
 Required gateway configuration: - id, name, base URL; - encrypted
 credential reference; - enabled/health status; - priority/weight; -
 request timeout; - retry policy; - capability/model catalog; -
-latency/error/quota observations.
+latency/error observations and recorded generation-usage analytics.
+
+The external LLM Gateway owns quota limits and enforcement (ADR-0015).
+NovelForge records reported input/output tokens and model attribution per
+generation/attempt, with novel/component totals and explicit unknowns.
+Do not calculate remaining quota, impose local token/spend budgets, or block
+generation based on analytics totals. Never fabricate missing usage or count
+generation and attempt totals twice.
 
 Prefer Bearer authentication. Never log API keys or place them in URLs.
 

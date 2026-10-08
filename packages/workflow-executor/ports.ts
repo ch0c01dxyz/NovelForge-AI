@@ -7,7 +7,7 @@
  * with their own dep sets and no relative import ever crosses the app
  * boundary (NF-WF-004 scope decision A).
  */
-import type { ModelProfile } from "@novelforge/ai-core";
+import type { ModelProfile, GenerationComponent } from "@novelforge/ai-core";
 
 /**
  * The narrow port to the AI path. `AiServices.generate` satisfies it.
@@ -19,6 +19,8 @@ export interface StepGenerator {
     workspaceId: string;
     novelId?: string;
     task: string;
+    component?: GenerationComponent;
+    artifactId?: string;
     profile: ModelProfile;
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;

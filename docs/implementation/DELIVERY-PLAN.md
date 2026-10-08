@@ -4,6 +4,16 @@ Status: accepted execution sequence; runtime gates remain open.
 Decision: [ADR-0013](../adr/ADR-0013-workflow-delivery-and-recovery-foundation.md).
 Last revised: 2026-10-07. New implementation prose and handoffs use English.
 
+2026-10-08 author decision: GAP-063 is usage analytics, not quota management.
+The external gateway owns quota enforcement. ADR-0015 / NF-WF-049 supersede
+the quota alternatives below; context-window, request-output and retry
+safeguards remain. SCALE GAP-039, human GAP-051 and live release gates remain
+independent. NF-WF-049 owns the aggregate/attempt evidence and migration gate.
+NF-WF-049 is implemented/reviewed; GAP-063's revised local gate is CLOSED.
+All older combined GAP-039/063 current/next-step instructions below are
+historical and now apply only to still-open GAP-039. Do not redispatch quota
+selection or analytics implementation. Working DB deployment remains pending.
+
 ## Goal and boundaries
 
 Deliver a platform on which an author can plan, write, review, approve,

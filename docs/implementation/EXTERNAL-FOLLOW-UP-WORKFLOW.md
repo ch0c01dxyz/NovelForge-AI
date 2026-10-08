@@ -1,5 +1,15 @@
 # NF-WF-047: External Follow-up Implementation Plan
 
+Current author override (2026-10-08): ADR-0015 selects generation usage
+analytics without NovelForge quota limits. NF-WF-049 implements this local
+decision. The historical quota proposals in047F below are superseded, not
+pending selection or a request to implement caps. SCALE GAP-039 still needs
+its separate local decision; do not redispatch completed047 children.
+NF-WF-049 is implemented/reviewed and GAP-063's revised local implementation
+gate is CLOSED. Older combined GAP-039/063 product/resume instructions below
+now concern only still-open GAP-039. Working DB deployment remains pending;
+local acceptance does not authorize live deployment.
+
 > **For agentic workers:** use `superpowers:subagent-driven-development` or
 > `superpowers:executing-plans` when installed. Otherwise execute the same
 > task-by-task gates through the project's Multi-LLM Implementation Playbook;

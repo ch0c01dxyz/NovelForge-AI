@@ -101,11 +101,36 @@ usage but must never append manuscript or commit canon twice.
 
 Transport retries preserve logical request/context and remain bounded.
 Deterministic contract, permission, or canon failures require correction,
-not blind retry. Bound repair attempts and cost; preserve unsuccessful output
+not blind retry. Bound repair attempts and operation size; preserve unsuccessful output
 for explanation. Cancel requests stop future work and mark partial artifacts
 incomplete; cancellation never erases already committed history.
 
 ## Outcome and observability
+
+Generation usage follows ADR-0015 / NF-WF-049. Attach an explicit component
+(`CHAPTER`, `COVER`, `LORE`, `OUTLINE`, `EMBEDDING`, `OTHER`), optional target
+artifact UUID and authorized novel identity. Components are attribution, not
+canon or permission. Generic `/generate` and `/generate/stream` bodies accept
+`component` and `artifactId`; direct generation routes accept the same metadata.
+Workflow AGENT/SKILL steps may declare `usageComponent`; unsupported labels
+and labels on non-model steps are rejected. The installed
+`chapter-generation-review` workflow defaults to CHAPTER and resolves its
+stored target chapter; custom unclassified workflows remain OTHER.
+
+The authorized GET `/api/workspaces/:workspaceId/generations/usage` accepts
+novelId, component, from/to (inclusive/exclusive UTC boundaries), limit1–100,
+and offset. It returns full matching totals plus paginated component/task/
+artifact/reported-model breakdown, not a sum of recent UI receipts. Token sums
+are decimal strings to preserve integer precision. Unknown and legacy coverage
+are explicit. Retries may contribute observed consumption without duplicating
+content. Requested model and response-reported model are separate attempt
+fields; legacy modelId is unverified attribution.
+
+AI Studio → Receipts → Usage analytics exposes novel/component filters and
+recorded totals in en/id; request detail shows per-attempt provenance. Novel
+totals include only receipts explicitly associated with that novel. Workspace
+or historical unassigned work is not silently assigned. No quota or price
+calculation is performed. COVER attribution does not add an image transport.
 
 Expose separate generation/run, review, proposal/decision, manuscript apply,
 canonical commit and projection-freshness outcomes. Record latency, attempts,

@@ -214,7 +214,12 @@ defineExpose({ refresh });
               <td class="px-3 py-2 font-mono text-[11.5px] text-nf-text-dim" :title="a.gatewayId ?? ''">
                 {{ a.gatewayId ? a.gatewayId.slice(0, 8) : "—" }}
               </td>
-              <td class="px-3 py-2 font-mono text-[11.5px] text-nf-text">{{ a.modelId ?? "—" }}</td>
+              <td class="px-3 py-2 text-nf-text">
+                <div>{{ t("usage.requestedModel") }}: {{ a.requestedModelId ?? t("usage.unknown") }}</div>
+                <div>{{ t("usage.reportedModel") }}: {{ a.reportedModelId ?? t("usage.unknown") }}</div>
+                <div v-if="!a.requestedModelId && !a.reportedModelId && a.modelId" class="text-[11.5px] text-nf-text-dim">{{ a.modelId }} — {{ t("usage.legacyModel") }}</div>
+                <div class="text-[11.5px] text-nf-text-dim">{{ t("usage.inputTokens") }}: {{ formatTokens(a.inputTokens ?? null) }} / {{ t("usage.outputTokens") }}: {{ formatTokens(a.outputTokens ?? null) }}</div>
+              </td>
               <td class="px-3 py-2">
                 <span class="rounded-full px-2 py-0.5 text-[11px] font-medium" :class="statusClass(a.status)">
                   {{ a.status }}

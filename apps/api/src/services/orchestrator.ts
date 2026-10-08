@@ -21,6 +21,7 @@ import { requireCapability } from "@novelforge/auth/authorization";
 import { ConflictError, NotFoundError } from "@novelforge/ai-services";
 import { resolveAgent, resolveSkill } from "./definition-resolution.ts";
 import type { AiServices } from "@novelforge/ai-services";
+import type { GenerationComponent } from "@novelforge/ai-core";
 import {
   fetchAndCompileContext,
   renderContextText,
@@ -73,6 +74,8 @@ export interface OrchestratorServices {
     workspaceId: string;
     novelId?: string;
     agentKey: string;
+    component?: GenerationComponent;
+    artifactId?: string;
     /** The author's instruction. Also the default retrieval query. */
     instruction: string;
     /** Override the retrieval query (e.g. a distilled search phrase). */
@@ -93,6 +96,8 @@ export interface OrchestratorServices {
     workspaceId: string;
     novelId?: string;
     agentKey: string;
+    component?: GenerationComponent;
+    artifactId?: string;
     instruction: string;
     contextQuery?: string;
     signal?: AbortSignal;
@@ -284,6 +289,8 @@ export function createOrchestratorServices(deps: {
         workspaceId: input.workspaceId,
         ...(input.novelId ? { novelId: input.novelId } : {}),
         task: `agent:${agent.key}`,
+        component: input.component,
+        artifactId: input.artifactId,
         profile: agent.modelProfile,
         messages,
         ...(agent.temperature != null ? { temperature: agent.temperature } : {}),
@@ -351,6 +358,8 @@ export function createOrchestratorServices(deps: {
         workspaceId: input.workspaceId,
         ...(input.novelId ? { novelId: input.novelId } : {}),
         task: `agent:${agent.key}`,
+        component: input.component,
+        artifactId: input.artifactId,
         profile: agent.modelProfile,
         messages,
         ...(agent.temperature != null ? { temperature: agent.temperature } : {}),

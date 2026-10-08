@@ -343,6 +343,62 @@ function makeManager(gateways: GatewayRecord[], behaviour: FakeOptions["behaviou
   return { manager, registry };
 }
 
+describe("attempt usage provenance", () => {
+  it("keeps unreported embedding counters and response model unknown", async () => {
+    const registry = fakeRegistry([gw()]);
+    const manager = new GatewayManager(registry, { createGateway: rec => ({
+      ...fakeGateway(rec, { behaviour: {} }),
+      async embed() { return { vectors: [[1]], model: "requested-fallback", inputTokens: null }; },
+    }) });
+    await manager.embed({ profile: "EMBEDDING", input: ["text"], generationId: "gen" });
+    expect(registry.attempts[0]).toMatchObject({ reportedModelId: null, inputTokens: null, outputTokens: null });
+  });
+
+  it("records metadata-only failure and retries without treating usage as emitted text", async () => {
+    const registry = fakeRegistry([gw(), gw({ id: "g2", name: "two" })]);
+    let calls = 0;
+    const manager = new GatewayManager(registry, { createGateway: rec => ({
+      ...fakeGateway(rec, { behaviour: {} }),
+      async *generateStream() {
+        calls++;
+        yield { delta: "", model: "served", usage: { inputTokens: calls, outputTokens: 0 } };
+        if (calls === 1) throw new GatewayError("TRANSIENT", "failed");
+        yield { delta: "done" };
+      },
+    }) });
+    let text = "";
+    for await (const frame of manager.generateStream({ profile: "CREATIVE_WRITER", messages: [], generationId: "gen", sleep: async () => {} })) text += frame.delta;
+    expect(text).toBe("done");
+    expect(registry.attempts).toHaveLength(2);
+    expect(registry.attempts[0]).toMatchObject({ inputTokens: 1, outputTokens: 0, status: "FAILED" });
+    expect(registry.attempts[1]).toMatchObject({ inputTokens: 2, outputTokens: 0, status: "SUCCEEDED" });
+  });
+  it("snapshots requested and reported models separately from counters", async () => {
+    const registry = fakeRegistry([gw()]);
+    const manager = new GatewayManager(registry, { createGateway: rec => ({
+      ...fakeGateway(rec, { behaviour: {} }),
+      async generate() { return { content: "ok", model: "served", reportedModel: "served", inputTokens: 7, outputTokens: 2, finishReason: "stop" }; },
+    }) });
+    await manager.generate({ profile: "CREATIVE_WRITER", messages: [], generationId: "gen" });
+    expect(registry.attempts[0]).toMatchObject({ requestedModelId: "one-model", reportedModelId: "served", inputTokens: 7, outputTokens: 2 });
+  });
+
+  it.each([false, true])("retains one cumulative stream snapshot on complete/abandon=%s", async abandon => {
+    const registry = fakeRegistry([gw()]);
+    const manager = new GatewayManager(registry, { createGateway: rec => ({
+      ...fakeGateway(rec, { behaviour: {} }),
+      async *generateStream() {
+        yield { delta: "", model: "served", usage: { inputTokens: 4, outputTokens: 1 } };
+        yield { delta: "text", model: "served", usage: { inputTokens: 4, outputTokens: 3 } };
+      },
+    }) });
+    const stream = manager.generateStream({ profile: "CREATIVE_WRITER", messages: [], generationId: "gen" });
+    for await (const frame of stream) { if (abandon && frame.delta) break; }
+    expect(registry.attempts).toHaveLength(1);
+    expect(registry.attempts[0]).toMatchObject({ requestedModelId: "one-model", reportedModelId: "served", inputTokens: 4, outputTokens: 3, status: abandon ? "FAILED" : "SUCCEEDED" });
+  });
+});
+
 describe("gateway manager", () => {
   it("returns the first successful attempt", async () => {
     const { manager, registry } = makeManager([gw()], { g1: { ok: true } });
@@ -758,7 +814,8 @@ describe("streaming does not misattribute consumer errors", () => {
     ).rejects.toBe(boom);
     // The gateway is healthy and no failure was recorded against it.
     expect(registry.health).toEqual([]);
-    expect(registry.attempts.filter((a) => a.status !== "SUCCEEDED")).toHaveLength(0);
+    expect(registry.attempts).toHaveLength(1);
+    expect(registry.attempts[0]).toMatchObject({ status: "FAILED", errorCategory: "DETERMINISTIC", errorMessage: "stream abandoned by consumer" });
   });
 
   it("still records a real transport failure mid-stream", async () => {

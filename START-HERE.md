@@ -1,5 +1,16 @@
 # NovelForge V2 --- START HERE
 
+Current product decision (2026-10-08): NovelForge records generation usage
+analytics, while the external LLM Gateway owns quotas. Follow
+[ADR-0015](docs/adr/ADR-0015-generation-usage-analytics.md) and
+[NF-WF-049](tasks/NF-WF-049-generation-usage-analytics.md). Historical
+GAP-063 quota proposals below are superseded; SCALE GAP-039 remains separate.
+NF-WF-049 is implemented/reviewed with bounded local acceptance; GAP-063's
+revised local implementation gate is CLOSED. Older combined GAP-039/063
+next-step instructions below now dispatch only GAP-039, never another quota
+decision or repeat analytics implementation. Working migration remains a
+normal environment/release preflight step, not live deployment approval.
+
 Status: Workflow integration plan accepted; platform delivery gates open\
 Primary LLM gateway: OmniRoute\
 Target: production-grade long-form webnovel authoring platform for

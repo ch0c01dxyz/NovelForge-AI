@@ -18,6 +18,8 @@ export interface GenerationRow {
   novelId: string | null;
   userId: string | null;
   task: string;
+  component?: string;
+  artifactId?: string | null;
   modelProfile: string;
   status: "PENDING" | "IN_PROGRESS" | "SUCCEEDED" | "INCOMPLETE" | "FAILED";
   inputTokens: number | null;
@@ -33,6 +35,10 @@ export interface GenerationAttemptRow {
   attemptNumber: number;
   gatewayId: string | null;
   modelId: string | null;
+  requestedModelId?: string | null;
+  reportedModelId?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
   status: string;
   errorCategory: string;
   latencyMs: number | null;
@@ -40,6 +46,14 @@ export interface GenerationAttemptRow {
 
 export interface GenerationDetail extends GenerationRow {
   attempts: GenerationAttemptRow[];
+}
+
+export interface UsageAnalyticsView {
+  summary: { requests: number; attempts: number; inputTokens: string; outputTokens: string; totalTokens: string;
+    unknownUsageRequests: number; unknownUsageAttempts: number; legacyRequests: number };
+  rows: Array<{ component: string; task: string; artifactId: string | null; model: string | null; requests: number;
+    inputTokens: string; outputTokens: string; totalTokens: string; unknownUsageRecords: number; legacyRecords: number }>;
+  hasMore: boolean;
 }
 
 export interface AuditRow {
@@ -118,6 +132,12 @@ export const RECEIPT_AUDIT_ACTIONS = [
 export function useReceipts() {
   const { api } = useApi();
 
+  function usageAnalytics(workspaceId: string, query: { novelId?: string; component?: string; from?: string; to?: string; limit?: number; offset?: number } = {}) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "") params.set(key, String(value));
+    return api<UsageAnalyticsView>(`/workspaces/${workspaceId}/generations/usage?${params}`);
+  }
+
   function listGenerations(
     workspaceId: string,
     query: { novelId?: string; limit?: number } = {},
@@ -167,6 +187,7 @@ export function useReceipts() {
   }
 
   return {
+    usageAnalytics,
     listGenerations,
     getGeneration,
     listNovels,

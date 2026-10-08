@@ -79,6 +79,8 @@ export interface WorkflowStep {
   ref?: string;
   /** Human/model instruction for this step. */
   instruction?: string;
+  /** Explicit classification for model-call analytics, never inferred from prompt text. */
+  usageComponent?: "CHAPTER" | "COVER" | "LORE" | "OUTLINE" | "EMBEDDING" | "OTHER";
   /**
    * Values bound into the step, as `$input.<name>` or `$steps.<key>.text`
    * / `$steps.<key>.json`. Only earlier steps may be referenced.
@@ -224,6 +226,13 @@ export function validateGraph(
     }
 
     const step: WorkflowStep = { key, kind: kind as StepKind };
+    const usageComponent = raw["usageComponent"];
+    if (usageComponent !== undefined) {
+      if ((kind !== "AGENT" && kind !== "SKILL") || typeof usageComponent !== "string" ||
+          !["CHAPTER", "COVER", "LORE", "OUTLINE", "EMBEDDING", "OTHER"].includes(usageComponent)) {
+        failures.push({ path: at(path, "usageComponent"), code: "STEP_BAD_USAGE_COMPONENT", message: "usageComponent must be a declared generation component on AGENT/SKILL" });
+      } else step.usageComponent = usageComponent as WorkflowStep["usageComponent"];
+    }
 
     const ref = raw["ref"];
     if (ref !== undefined) {

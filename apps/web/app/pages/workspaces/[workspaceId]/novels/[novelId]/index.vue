@@ -591,6 +591,7 @@ function runSelectionOperation(op: SelectionAiOperationKey, freePrompt?: string)
   void selAi.run({
     workspaceId: workspaceId.value,
     novelId: novelId.value,
+    chapterId: activeChapter.value?.id,
     editor: ed,
     operation: op,
     freePrompt,

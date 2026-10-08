@@ -36,6 +36,8 @@ export interface GenerateResult {
   content: string;
   /** Model the gateway actually served (may differ from requested). */
   model: string;
+  /** Null when the response does not identify its model; no request fallback. */
+  reportedModel?: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
   finishReason: string | null;
@@ -50,6 +52,7 @@ export interface EmbedRequest {
 export interface EmbedResult {
   vectors: number[][];
   model: string;
+  reportedModel?: string | null;
   inputTokens: number | null;
 }
 
@@ -63,6 +66,17 @@ export interface GatewayModel {
 /** A chunk of a streamed generation. */
 export interface StreamChunk {
   delta: string;
+  model?: string;
+  /** Cumulative usage snapshot for this attempt, not a per-frame increment. */
+  usage?: { inputTokens: number | null; outputTokens: number | null };
+}
+
+export const GENERATION_COMPONENTS = ["CHAPTER", "COVER", "LORE", "OUTLINE", "EMBEDDING", "OTHER"] as const;
+export type GenerationComponent = typeof GENERATION_COMPONENTS[number];
+
+/** Match the existing PostgreSQL Int receipt fields; malformed counts stay unknown. */
+export function reportedTokens(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 2_147_483_647 ? value : null;
 }
 
 /** Result of a liveness probe: whether it answered, and why it did not. */

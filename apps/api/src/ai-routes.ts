@@ -13,6 +13,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { GENERATION_COMPONENTS } from "@novelforge/ai-core";
 import type { AuthService } from "@novelforge/auth";
 import type { PlatformRole } from "@novelforge/auth/authorization";
 import { SESSION_COOKIE } from "./auth-routes.ts";
@@ -88,6 +89,8 @@ const setProfileBody = z.object({
 
 const generateBody = z.object({
   task: z.string().trim().min(1).max(200),
+  component: z.enum(GENERATION_COMPONENTS).optional(),
+  artifactId: uuid.optional(),
   profile: z.enum(PROFILE_VALUES),
   novelId: uuid.optional(),
   messages: z
@@ -107,6 +110,13 @@ const listGenerationsQuery = z.object({
   novelId: uuid.optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
+
+const usageQuery = z.object({
+  novelId: uuid.optional(), component: z.enum(GENERATION_COMPONENTS).optional(),
+  from: z.iso.datetime().optional(), to: z.iso.datetime().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().min(0).max(1_000_000).optional(),
+}).refine(value => !value.from || !value.to || Date.parse(value.from) < Date.parse(value.to), "Invalid time range");
 
 // Fastify's default bodyLimit is 1 MB, but generateBody accepts 200
 // messages of up to 200k chars — a payload the schema allows would 413
@@ -411,6 +421,17 @@ export function registerAiRoutes(
       return reply;
     },
   );
+
+  app.get("/api/workspaces/:workspaceId/generations/usage", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = workspaceParams.safeParse(request.params);
+    const query = usageQuery.safeParse(request.query ?? {});
+    if (!params.success || !query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.usageAnalytics({ actorUserId: actor.userId, workspaceId: params.data.workspaceId,
+      ...query.data, from: query.data.from ? new Date(query.data.from) : undefined,
+      to: query.data.to ? new Date(query.data.to) : undefined });
+  });
 
   app.get("/api/workspaces/:workspaceId/generations", async (request, reply) => {
     const actor = await requireActor(request, reply);

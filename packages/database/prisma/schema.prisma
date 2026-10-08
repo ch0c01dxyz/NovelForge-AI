@@ -584,6 +584,10 @@ model Generation {
   novelId         String?          @map("novel_id") @db.Uuid
   userId          String?          @map("user_id") @db.Uuid
   task            String
+  /// Explicit analytics classification; historical/custom calls remain OTHER.
+  component       String           @default("OTHER")
+  /// Optional caller-declared artifact reference, not a canon ownership assertion.
+  artifactId      String?          @map("artifact_id") @db.Uuid
   modelProfile    ModelProfile     @map("model_profile")
   status          GenerationStatus @default(PENDING)
   /// Prompt template version, when the request used a versioned prompt.
@@ -616,8 +620,12 @@ model GenerationAttempt {
   attemptNumber Int           @map("attempt_number")
   gatewayId     String?       @map("gateway_id") @db.Uuid
   gateway       AIGateway?    @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
-  /// Resolved provider model string for this attempt.
+  /// Legacy mixed requested/reported model metadata. Use the explicit fields below.
   modelId       String?       @map("model_id")
+  requestedModelId String?    @map("requested_model_id")
+  reportedModelId  String?    @map("reported_model_id")
+  inputTokens   Int?          @map("input_tokens")
+  outputTokens  Int?          @map("output_tokens")
   status        AttemptStatus
   errorCategory ErrorCategory @default(NONE) @map("error_category")
   errorMessage  String?       @map("error_message")

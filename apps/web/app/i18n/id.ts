@@ -3,6 +3,18 @@
  * Missing keys fall back to English per key (see useLocale).
  */
 export const id = {
+  usage: {
+    title: "Analitik penggunaan", description: "Penggunaan yang dilaporkan gateway dan dicatat NovelForge. Pengaturan kuota tetap di LLM Gateway Anda.",
+    novel: "Novel", allNovels: "Semua novel", component: "Komponen", allComponents: "Semua komponen", refresh: "Muat ulang",
+    recordedTokens: "Token tercatat", inputTokens: "Token input", outputTokens: "Token output", requestsAttempts: "Permintaan / percobaan",
+    coverage: "Pelaporan mungkin tidak lengkap: usage belum tersedia untuk {requests} permintaan dan {attempts} percobaan; {legacy} permintaan menggunakan catatan akhir historis. Total hanya mencakup penghitung yang tercatat.",
+    empty: "Belum ada generasi tercatat untuk pilihan ini.", breakdown: "Penggunaan menurut komponen, tugas, artefak dan model", task: "Tugas",
+    artifact: "Referensi artefak", reportedModel: "Model yang dilaporkan", requestedModel: "Model yang diminta", unknown: "Tidak diketahui",
+    unattributed: "Belum dikaitkan", partial: "Pelaporan sebagian", legacy: "Catatan historis", previous: "Sebelumnya", next: "Berikutnya",
+    loadError: "Analitik penggunaan tidak dapat dimuat.", novelError: "Daftar novel tidak dapat dimuat. Muat ulang untuk mencoba lagi.",
+    legacyModel: "Metadata model historis; identitas model yang diminta/dilaporkan belum terverifikasi.",
+    components: { CHAPTER: "Bab", COVER: "Sampul", LORE: "Lore", OUTLINE: "Outline", EMBEDDING: "Embedding", OTHER: "Lainnya / belum diklasifikasi" },
+  },
   common: {
     loading: "Memuat…",
     cancel: "Batal",

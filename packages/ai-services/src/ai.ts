@@ -22,6 +22,7 @@ import {
   type GatewayRegistry,
   type ModelProfile,
   type RoutingStrategy,
+  type GenerationComponent,
 } from "@novelforge/ai-core";
 import {
   requireCapability,
@@ -31,6 +32,7 @@ import {
 } from "@novelforge/auth/authorization";
 import { BadGatewayError, ConflictError, NotFoundError } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
+import { queryUsageAnalytics, type UsageFilters, type UsageAnalytics } from "./usage-analytics.ts";
 
 /**
  * Platform audit actions the 018B admin surface may read (contract
@@ -101,6 +103,8 @@ export interface GenerationView {
   novelId: string | null;
   userId: string | null;
   task: string;
+  component: string;
+  artifactId: string | null;
   modelProfile: string;
   status: string;
   inputTokens: number | null;
@@ -114,6 +118,10 @@ export interface GenerationView {
     attemptNumber: number;
     gatewayId: string | null;
     modelId: string | null;
+    requestedModelId: string | null;
+    reportedModelId: string | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
     status: string;
     errorCategory: string;
     latencyMs: number | null;
@@ -217,6 +225,8 @@ export interface AiServices {
     workspaceId: string;
     novelId?: string;
     task: string;
+    component?: GenerationComponent;
+    artifactId?: string;
     profile: ModelProfile;
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;
@@ -235,6 +245,7 @@ export interface AiServices {
   embed(input: {
     actorUserId: string;
     workspaceId: string;
+    novelId?: string;
     texts: string[];
   }): Promise<{ vectors: number[][]; model: string; generationId: string | null }>;
   /**
@@ -248,6 +259,8 @@ export interface AiServices {
     workspaceId: string;
     novelId?: string;
     task: string;
+    component?: GenerationComponent;
+    artifactId?: string;
     profile: ModelProfile;
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;
@@ -258,6 +271,7 @@ export interface AiServices {
     stream: AsyncGenerator<string>;
     status: () => Promise<"SUCCEEDED" | "INCOMPLETE" | "FAILED">;
   }>;
+  usageAnalytics(input: UsageFilters & { actorUserId: string; workspaceId: string }): Promise<UsageAnalytics>;
   listGenerations(input: {
     actorUserId: string;
     workspaceId: string;
@@ -824,6 +838,8 @@ export function createAiServices(deps: {
           novelId: input.novelId ?? null,
           userId: input.actorUserId,
           task: input.task,
+          component: input.component ?? "OTHER",
+          artifactId: input.artifactId ?? null,
           modelProfile: input.profile,
           status: "IN_PROGRESS",
         },
@@ -910,6 +926,7 @@ export function createAiServices(deps: {
 
     async embed(input) {
       await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
+      if (input.novelId && !await db.novel.findFirst({ where: { id: input.novelId, workspaceId: input.workspaceId }, select: { id: true } })) throw new NotFoundError("novel");
       // An empty batch is a caller bug, not a request: no model call, so
       // no Generation row and no audit noise. `manager.embed` agrees.
       // No model call and no Generation row, so there is nothing to link.
@@ -920,6 +937,8 @@ export function createAiServices(deps: {
           workspaceId: input.workspaceId,
           userId: input.actorUserId,
           task: "embed",
+          component: "EMBEDDING",
+          novelId: input.novelId ?? null,
           modelProfile: "EMBEDDING",
           status: "IN_PROGRESS",
         },
@@ -1009,6 +1028,8 @@ export function createAiServices(deps: {
           novelId: input.novelId ?? null,
           userId: input.actorUserId,
           task: input.task,
+          component: input.component ?? "OTHER",
+          artifactId: input.artifactId ?? null,
           modelProfile: input.profile,
           status: "IN_PROGRESS",
         },
@@ -1032,8 +1053,10 @@ export function createAiServices(deps: {
             generationId: generation.id,
             ...(input.signal ? { signal: input.signal } : {}),
           })) {
-            emitted = true;
-            yield chunk.delta;
+            if (chunk.delta.length > 0) {
+              emitted = true;
+              yield chunk.delta;
+            }
           }
           final = "SUCCEEDED";
         } catch (err) {
@@ -1120,6 +1143,12 @@ export function createAiServices(deps: {
       };
     },
 
+    async usageAnalytics(input) {
+      await gateWorkspace(input.workspaceId, input.actorUserId, "generation:read");
+      if (input.novelId && !await db.novel.findFirst({ where: { id: input.novelId, workspaceId: input.workspaceId }, select: { id: true } })) throw new NotFoundError("novel");
+      return queryUsageAnalytics(db, input.workspaceId, input);
+    },
+
     async listGenerations(input) {
       await gateWorkspace(input.workspaceId, input.actorUserId, "generation:read");
       const rows = await db.generation.findMany({
@@ -1135,6 +1164,8 @@ export function createAiServices(deps: {
         novelId: r.novelId,
         userId: r.userId,
         task: r.task,
+        component: r.component,
+        artifactId: r.artifactId,
         modelProfile: r.modelProfile,
         status: r.status,
         inputTokens: r.inputTokens,
@@ -1158,6 +1189,10 @@ export function createAiServices(deps: {
               attemptNumber: true,
               gatewayId: true,
               modelId: true,
+              requestedModelId: true,
+              reportedModelId: true,
+              inputTokens: true,
+              outputTokens: true,
               status: true,
               errorCategory: true,
               latencyMs: true,
@@ -1171,6 +1206,8 @@ export function createAiServices(deps: {
         novelId: row.novelId,
         userId: row.userId,
         task: row.task,
+        component: row.component,
+        artifactId: row.artifactId,
         modelProfile: row.modelProfile,
         status: row.status,
         inputTokens: row.inputTokens,

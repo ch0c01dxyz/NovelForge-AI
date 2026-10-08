@@ -12,6 +12,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { GENERATION_COMPONENTS } from "@novelforge/ai-core";
 import type { AuthService } from "@novelforge/auth";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import type { OrchestratorServices } from "./services/orchestrator.ts";
@@ -21,6 +22,8 @@ const workspaceParams = z.object({ workspaceId: uuid });
 
 const generateBody = z.object({
   agentKey: z.string().trim().min(1).max(200),
+  component: z.enum(GENERATION_COMPONENTS).optional(),
+  artifactId: uuid.optional(),
   instruction: z.string().min(1).max(200_000),
   novelId: uuid.optional(),
   contextQuery: z.string().max(2000).optional(),

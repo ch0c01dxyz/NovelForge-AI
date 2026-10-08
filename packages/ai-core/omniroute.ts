@@ -27,6 +27,7 @@ import type {
   HealthResult,
   StreamChunk,
 } from "./types.ts";
+import { reportedTokens } from "./types.ts";
 
 export interface OmniRouteConfig {
   id: string;
@@ -54,6 +55,7 @@ interface OpenAIChatResponse {
 
 interface OpenAIStreamChunk {
   model?: string;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
   choices?: Array<{ delta?: { content?: string | null }; finish_reason?: string | null }>;
 }
 
@@ -268,8 +270,9 @@ export class OmniRouteGateway implements AIGateway {
       return {
         content: body.choices?.[0]?.message?.content ?? "",
         model: body.model ?? req.model,
-        inputTokens: body.usage?.prompt_tokens ?? null,
-        outputTokens: body.usage?.completion_tokens ?? null,
+        reportedModel: typeof body.model === "string" && body.model.length > 0 ? body.model : null,
+        inputTokens: reportedTokens(body.usage?.prompt_tokens),
+        outputTokens: reportedTokens(body.usage?.completion_tokens),
         finishReason: body.choices?.[0]?.finish_reason ?? null,
       };
     } catch (err) {
@@ -294,7 +297,7 @@ export class OmniRouteGateway implements AIGateway {
         method: "POST",
         headers: this.headers(),
         signal: t.signal,
-        body: JSON.stringify(this.chatBody(req, true)),
+        body: JSON.stringify({ ...this.chatBody(req, true), stream_options: { include_usage: true } }),
       });
       if (!res.ok) await this.fail(res, "generateStream");
       if (!res.body) {
@@ -306,7 +309,7 @@ export class OmniRouteGateway implements AIGateway {
       let buffer = "";
 
       /** Parse one complete `data:` line; returns true when the stream ended. */
-      const handleLine = (line: string): { done: boolean; delta: string | null } => {
+      const handleLine = (line: string): { done: boolean; delta: string | null; metadata?: Omit<StreamChunk, "delta"> } => {
         const trimmed = line.trim();
         if (!trimmed.startsWith("data:")) return { done: false, delta: null };
         const payload = trimmed.slice(5).trim();
@@ -319,9 +322,17 @@ export class OmniRouteGateway implements AIGateway {
           return { done: false, delta: null };
         }
         const delta = chunk.choices?.[0]?.delta?.content;
+        const metadata: Omit<StreamChunk, "delta"> = {
+          ...(typeof chunk.model === "string" && chunk.model.length > 0 ? { model: chunk.model } : {}),
+          ...(chunk.usage && typeof chunk.usage === "object" ? { usage: {
+            inputTokens: reportedTokens(chunk.usage.prompt_tokens),
+            outputTokens: reportedTokens(chunk.usage.completion_tokens),
+          } } : {}),
+        };
         return {
           done: false,
           delta: typeof delta === "string" && delta.length > 0 ? delta : null,
+          metadata,
         };
       };
 
@@ -334,9 +345,9 @@ export class OmniRouteGateway implements AIGateway {
             // newline, and that last frame is real content.
             buffer += decoder.decode();
             const tail = handleLine(buffer);
-            if (tail.delta !== null) {
-              received = true;
-              yield { delta: tail.delta };
+            if (tail.delta !== null || Object.keys(tail.metadata ?? {}).length > 0) {
+              received ||= tail.delta !== null;
+              yield { delta: tail.delta ?? "", ...tail.metadata };
             }
             break;
           }
@@ -345,14 +356,14 @@ export class OmniRouteGateway implements AIGateway {
           buffer = lines.pop() ?? "";
           let ended = false;
           for (const line of lines) {
-            const { done: streamDone, delta } = handleLine(line);
+            const { done: streamDone, delta, metadata } = handleLine(line);
             if (streamDone) {
               ended = true;
               break;
             }
-            if (delta !== null) {
-              received = true;
-              yield { delta };
+            if (delta !== null || Object.keys(metadata ?? {}).length > 0) {
+              received ||= delta !== null;
+              yield { delta: delta ?? "", ...metadata };
             }
           }
           if (ended) break;
@@ -399,7 +410,8 @@ export class OmniRouteGateway implements AIGateway {
       return {
         vectors: (body.data ?? []).map((d) => d.embedding ?? []),
         model: body.model ?? req.model,
-        inputTokens: body.usage?.prompt_tokens ?? null,
+        reportedModel: typeof body.model === "string" && body.model.length > 0 ? body.model : null,
+        inputTokens: reportedTokens(body.usage?.prompt_tokens),
       };
     } catch (err) {
       if (err instanceof GatewayError) throw err;

@@ -14,6 +14,7 @@ import {
   type ErrorCategory,
 } from "./errors.ts";
 import { OmniRouteGateway, type FetchLike } from "./omniroute.ts";
+import { reportedTokens } from "./types.ts";
 import {
   backoffDelayMs,
   DEFAULT_GATEWAY_RETRIES,
@@ -58,6 +59,10 @@ export interface AttemptRecord {
   attemptNumber: number;
   gatewayId: string | null;
   modelId: string | null;
+  requestedModelId?: string | null;
+  reportedModelId?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
   status: "SUCCEEDED" | "FAILED" | "TIMEOUT" | "RATE_LIMITED";
   errorCategory: ErrorCategory | "NONE";
   errorMessage: string | null;
@@ -289,7 +294,7 @@ export class GatewayManager {
    * `op` is used only in the synthesised error message, so a failure is
    * attributable to the operation that caused it.
    */
-  private async routeAttempts<T extends { model: string }>(
+  private async routeAttempts<T extends { model: string; reportedModel?: string | null; inputTokens?: number | null; outputTokens?: number | null }>(
     opts: RouteAttemptOptions,
     op: string,
     call: (adapter: AIGateway, target: Candidate) => Promise<T>,
@@ -318,6 +323,10 @@ export class GatewayManager {
           attemptNumber: i + 1,
           gatewayId: target.gatewayId,
           modelId: result.model || target.modelId,
+          requestedModelId: target.modelId,
+          reportedModelId: result.reportedModel ?? null,
+          inputTokens: reportedTokens(result.inputTokens),
+          outputTokens: op === "embed" ? null : reportedTokens(result.outputTokens),
           status: "SUCCEEDED",
           errorCategory: "NONE",
           errorMessage: null,
@@ -340,6 +349,10 @@ export class GatewayManager {
           attemptNumber: i + 1,
           gatewayId: target.gatewayId,
           modelId: target.modelId,
+          requestedModelId: target.modelId,
+          reportedModelId: null,
+          inputTokens: null,
+          outputTokens: null,
           status: attemptStatus(gerr.category, gerr.partial),
           errorCategory: gerr.category,
           errorMessage: gerr.message,
@@ -391,6 +404,9 @@ export class GatewayManager {
       const adapter = this.build(rec);
       const started = Date.now();
       let emitted = false;
+      let reportedModelId: string | null = null;
+      let inputTokens: number | null = null;
+      let outputTokens: number | null = null;
       const stream = adapter.generateStream({
         model: target.modelId,
         messages: opts.messages,
@@ -423,26 +439,30 @@ export class GatewayManager {
             finished = true;
             break;
           }
-          emitted = true;
+          if (typeof next.value.model === "string" && next.value.model.length > 0) reportedModelId = next.value.model;
+          if (next.value.usage) {
+            inputTokens = reportedTokens(next.value.usage.inputTokens) ?? inputTokens;
+            outputTokens = reportedTokens(next.value.usage.outputTokens) ?? outputTokens;
+          }
+          emitted ||= next.value.delta.length > 0;
           yield next.value;
         }
       } finally {
         // Release the upstream body on every exit path, including a
         // consumer abandoning the generator early.
         await stream.return(undefined).catch(() => undefined);
+        await this.registry.recordAttempt(opts.generationId, {
+          attemptNumber: i + 1, gatewayId: target.gatewayId, modelId: reportedModelId ?? target.modelId,
+          requestedModelId: target.modelId, reportedModelId, inputTokens, outputTokens,
+          status: finished ? "SUCCEEDED" : failure ? attemptStatus(failure.category, emitted) : "FAILED",
+          errorCategory: finished ? "NONE" : failure?.category ?? "DETERMINISTIC",
+          errorMessage: finished ? null : failure?.message ?? "stream abandoned by consumer",
+          latencyMs: Date.now() - started,
+        });
       }
 
       const latencyMs = Date.now() - started;
       if (finished) {
-        await this.registry.recordAttempt(opts.generationId, {
-          attemptNumber: i + 1,
-          gatewayId: target.gatewayId,
-          modelId: target.modelId,
-          status: "SUCCEEDED",
-          errorCategory: "NONE",
-          errorMessage: null,
-          latencyMs,
-        });
         await this.registry.updateGatewayHealth(target.gatewayId, {
           ok: true,
           category: null,
@@ -453,15 +473,6 @@ export class GatewayManager {
 
       const gerr = failure!;
       last = gerr;
-      await this.registry.recordAttempt(opts.generationId, {
-        attemptNumber: i + 1,
-        gatewayId: target.gatewayId,
-        modelId: target.modelId,
-        status: attemptStatus(gerr.category, emitted),
-        errorCategory: gerr.category,
-        errorMessage: gerr.message,
-        latencyMs,
-      });
       if (isGatewayFault(gerr.category)) {
         await this.registry.updateGatewayHealth(target.gatewayId, {
           ok: false,

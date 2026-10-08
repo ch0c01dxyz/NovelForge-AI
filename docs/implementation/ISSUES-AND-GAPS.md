@@ -1608,7 +1608,12 @@ STATUS: open — recorded before any completion claim (standing rule). Closure c
 
 ## GAP-063 — NF-WF-018: `AIGateway` has no quota fields; constitution §6 requires "quota observations" (2026-10-06)
 
-Status: OPEN (documented absence, follow-up task).
+Status: CLOSED for revised local implementation — 2026-10-08, ADR-0015 /
+NF-WF-049. Author superseded quota observations with usage analytics;
+external gateway owns quota enforcement. Separate source/UI review APPROVE,
+245 scoped checks and empty/populated migration proof passed. See the task
+acceptance receipt and CURRENT; no working deployment/live provider is claimed.
+The following OBSERVED/NEXT paragraphs retain the historical decision boundary.
 
 OBSERVED: constitution §6 ("AI gateway rules") requires the gateway configuration to include "latency/error/quota observations". The `AIGateway` model (schema.prisma:396-423) records latency (`latencyMs`), errors (`lastErrorAt`, `lastErrorCategory`, `consecutiveFailures`) and health (`health`, `lastHealthCheckAt`) — but has NO quota fields (no quota limit, quota usage, or reset window on the gateway row or the catalog models). A SUPER_ADMIN managing a gateway in the 018 admin surface cannot see quota consumption or remaining quota.
 
@@ -2473,3 +2478,85 @@ Closure: exact configuration/target ownership and job lifecycle receipts,
 proof of isolation from shared queues, cleanup of owned resources only, and
 independent review. Keep failed/non-isolated attempts as historical evidence.
 Safe independent work: D's missing-dump disposition and local product decisions.
+
+## GAP-063 author decision and implementation boundary — 2026-10-08
+
+Separate documentation review found historical combined GAP-039/063 resume
+pointers could still dispatch quota decisions despite the new override.
+START-HERE, DELIVERY-PLAN and EXTERNAL-FOLLOW-UP now explicitly supersede
+those instructions: GAP-063 local gate CLOSED, only GAP-039 still dispatchable.
+Author live/environment deployment gates remain separate.
+
+Closure update: the author decision and implementation below are now verified
+by NF-WF-049's acceptance receipt. All recorded instrumentation, UI/aggregate,
+fixture and tooling findings below were corrected and scoped checks passed.
+An exploratory diff command disabled autocrlf normalization and consequently
+reported CRLF as whitespace; normal repository diff checks pass. Repository
+line-ending settings were preserved. These failed probes are historical evidence,
+not remaining dispatch blockers. No full release/live completion is asserted.
+
+NF049 changed-file lint wrapper passed a PowerShell path array to pnpm as
+one joined glob and exited2 without linting files. Invoke the installed ESLint
+CLI through node with native argument splatting; no lint success from that run.
+
+NF049 final API typecheck caught widened string types in the shared test
+fixture's modelProfile/status; preserve literal types with as const. Runtime
+37/37 already passed, but type acceptance requires a clean recheck.
+
+NF049 workflow fixture used invented agent/version/generation IDs, triggering
+real receipt foreign keys. Seed real owned rows, preserving production FKs.
+The partial-stream probe also assumed attempt status INCOMPLETE; existing
+TRANSIENT attempt mapping is TIMEOUT while Generation is INCOMPLETE. Correct
+that assertion without changing established failure classification.
+
+NF049 workflow attribution fixture initially omitted Novel/Chapter.createdById,
+so Prisma rejected setup before any generator call. Supply the existing
+seed user and rerun; no production schema or ownership policy change.
+
+NF049 four attribution tests initially expected10/20 but the inspected fake
+actually reports7/11. Correct only the fixture expectation; persistence
+returned the reported counts correctly. Re-run the complete scoped AI suite.
+
+NF049 metadata-only retry test initially failed because its fake registry
+exposed one candidate, not a retry candidate. Correct the fixture to two
+gateway candidates to exercise existing fallback; do not change routing policy.
+
+Separate backend review found invented zero embedding output usage and
+unvalidated negative historical counters in the new aggregate. Preserve
+unreported embedding output as null; sanitize the historical read projection
+without editing audit rows. Verify zero versus unknown and retry/legacy totals.
+
+NF049 caller inspection found selection-AI had novel attribution but no
+component/artifact, and retrieval embeddings dropped their known novel.
+The frozen caller amendment forwards existing ownership; historical unknown
+attribution is preserved. Separate UI review also found raw Error messages
+bypassed localized loadError, and novel-list retry was absent from refresh.
+Fix these paths and verify before acceptance; owner NF-WF-049.
+
+The author selected usage analytics only (ADR-0015); provider quota limits,
+remaining quota, quota synchronization and local budget enforcement are out
+of scope and remain owned by the external LLM Gateway. GAP-063 is now an
+analytics implementation gap, not an undecided quota policy. NF-WF-049 owns
+implementation; decision alone does not close it. SCALE GAP-039 is unchanged.
+
+Observed at830961f: Generation stores non-streaming final token counters;
+GenerationAttempt stores model/status but no token counters, and streaming
+ignores usage frames. AI Studio lists recent receipts without novel-wide
+aggregates. Cover/image transport is not established by this investigation;
+do not invent its implementation or historical token data. Next: reviewed
+additive receipt metadata, streaming instrumentation and authorized analytics
+with explicit unknown/legacy coverage, followed by separate verification.
+
+NF049 streaming verification finding: the previous consumer-error test required
+no failed attempt row. The analytics contract now requires an explicit abandoned
+attempt receipt while preserving the original consumer error and leaving gateway
+health untouched. Update that assertion to require DETERMINISTIC abandonment,
+not a gateway fault; retain the no-breaker-change check. New metadata tests also
+reproduced missing usage-only frames, invalid counts and missing abandoned usage
+before instrumentation. This is a reviewed behavior change, not a hidden retry.
+
+NF049 aggregate SQL first runtime attempt returned500. A direct scratch-only
+query isolated PostgreSQL42725: the pagination hasMore expression added two
+untyped parameters. Add explicit bigint casts there; retain parameterization,
+then rerun the endpoint proof. Tenant/filter negative tests already passed;
+no aggregate acceptance is claimed from the failing run.

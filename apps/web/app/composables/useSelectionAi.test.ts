@@ -65,7 +65,7 @@ describe("useSelectionAi", () => {
     ed.commands.setTextSelection({ from: 5, to: 10 });
 
     const ai = useSelectionAi();
-    await ai.run({ workspaceId: "w1", novelId: "n1", editor: ed, operation: "expand" });
+    await ai.run({ workspaceId: "w1", novelId: "n1", chapterId: "c1", editor: ed, operation: "expand" });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -74,6 +74,8 @@ describe("useSelectionAi", () => {
     expect(body.task).toBe("selection.expand");
     expect(body.profile).toBe("CREATIVE_WRITER");
     expect(body.novelId).toBe("n1");
+    expect(body.component).toBe("CHAPTER");
+    expect(body.artifactId).toBe("c1");
     expect(body.maxTokens).toBe(2000);
     expect(body.messages[0].role).toBe("system");
     expect(body.messages[1].content).toContain("quick");

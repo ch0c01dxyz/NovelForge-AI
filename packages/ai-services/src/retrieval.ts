@@ -133,6 +133,7 @@ export interface Embedder {
   embed(input: {
     actorUserId: string;
     workspaceId: string;
+    novelId?: string;
     texts: string[];
   }): Promise<{ vectors: number[][]; model: string; generationId: string | null }>;
 }
@@ -354,12 +355,13 @@ export function createRetrievalServices(deps: {
     workspaceId: string,
     chunkIds: string[],
     texts: string[],
+    novelId?: string,
   ): Promise<number> {
     let embedded = 0;
     for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
       const batchTexts = texts.slice(i, i + EMBED_BATCH_SIZE);
       const batchIds = chunkIds.slice(i, i + EMBED_BATCH_SIZE);
-      const result = await ai.embed({ actorUserId, workspaceId, texts: batchTexts });
+      const result = await ai.embed({ actorUserId, workspaceId, texts: batchTexts, ...(novelId ? { novelId } : {}) });
 
       if (result.vectors.length !== batchTexts.length) {
         // Provider faults surface as 502 (the upstream failed), not 409 —
@@ -806,6 +808,7 @@ export function createRetrievalServices(deps: {
             workspaceId,
             chunkRows.map((c) => c.id),
             chunkRows.map((c) => c.text),
+            version.reference.novelId ?? undefined,
           );
         } catch (error) {
           // Retry ONLY the FK violation the race produces. A provider or
@@ -829,6 +832,7 @@ export function createRetrievalServices(deps: {
             workspaceId,
             chunkRows.map((c) => c.id),
             chunkRows.map((c) => c.text),
+            version.reference.novelId ?? undefined,
           );
         }
       }
@@ -943,6 +947,7 @@ export function createRetrievalServices(deps: {
           actorUserId: input.actorUserId,
           workspaceId: input.workspaceId,
           texts: [query],
+          ...(input.novelId ? { novelId: input.novelId } : {}),
         });
       } catch (err) {
         dbg?.error?.("embedding unavailable for the vector leg", { err });

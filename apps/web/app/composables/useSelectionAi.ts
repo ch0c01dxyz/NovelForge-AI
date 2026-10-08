@@ -37,6 +37,7 @@ export interface SelectionAiRequest {
 interface RunOptions {
   workspaceId: string;
   novelId: string;
+  chapterId?: string;
   editor: Editor;
   operation: SelectionAiOperationKey;
   freePrompt?: string;
@@ -109,6 +110,8 @@ export function useSelectionAi() {
             task: op.task,
             profile: "CREATIVE_WRITER",
             novelId: opts.novelId,
+            component: "CHAPTER",
+            artifactId: opts.chapterId,
             messages: [
               { role: "system", content: op.systemPrompt },
               { role: "user", content: userContent },

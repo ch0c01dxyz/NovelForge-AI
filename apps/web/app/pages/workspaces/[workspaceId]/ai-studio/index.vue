@@ -32,6 +32,7 @@ import RunList from "../../../../components/ai-studio/RunList.vue";
 import RunGraph from "../../../../components/ai-studio/RunGraph.vue";
 import ApprovalsInbox from "../../../../components/ai-studio/ApprovalsInbox.vue";
 import GenerationLedger from "../../../../components/ai-studio/GenerationLedger.vue";
+import UsageAnalytics from "../../../../components/ai-studio/UsageAnalytics.vue";
 import FailureLog from "../../../../components/ai-studio/FailureLog.vue";
 import EvaluationReceipts from "../../../../components/ai-studio/EvaluationReceipts.vue";
 import AuditTrail from "../../../../components/ai-studio/AuditTrail.vue";
@@ -56,7 +57,7 @@ const runDetailLoading = ref(false);
 const runDetailError = ref<string | null>(null);
 
 // NF-WF-018C: receipts sub-tabs, each capability-gated individually.
-type ReceiptsTabKey = "ledger" | "failures" | "evaluations" | "audit";
+type ReceiptsTabKey = "ledger" | "usage" | "failures" | "evaluations" | "audit";
 const receiptsTab = ref<ReceiptsTabKey>("ledger");
 
 const tabs = computed<{ key: TabKey; labelKey: string; visible: boolean }[]>(() => [
@@ -70,6 +71,7 @@ const tabs = computed<{ key: TabKey; labelKey: string; visible: boolean }[]>(() 
 // NF-WF-018C: the receipts sub-tabs are each capability-gated
 // individually; the server enforces on every route.
 const receiptsTabs = computed<{ key: ReceiptsTabKey; labelKey: string; visible: boolean }[]>(() => [
+  { key: "usage" as const, labelKey: "usage.title", visible: canReadReceipts(role.value) },
   { key: "ledger" as const, labelKey: "receipts.tabs.ledger", visible: canReadReceipts(role.value) },
   { key: "failures" as const, labelKey: "receipts.tabs.failures", visible: canReadReceipts(role.value) },
   { key: "evaluations" as const, labelKey: "receipts.tabs.evaluations", visible: canReadEvaluations(role.value) },
@@ -266,6 +268,7 @@ onMounted(async () => {
           </button>
         </div>
         <GenerationLedger v-if="receiptsTab === 'ledger'" :workspace-id="workspaceId" />
+        <UsageAnalytics v-else-if="receiptsTab === 'usage'" :workspace-id="workspaceId" />
         <FailureLog v-else-if="receiptsTab === 'failures'" :workspace-id="workspaceId" />
         <EvaluationReceipts v-else-if="receiptsTab === 'evaluations'" :workspace-id="workspaceId" />
         <AuditTrail v-else-if="receiptsTab === 'audit'" :workspace-id="workspaceId" />

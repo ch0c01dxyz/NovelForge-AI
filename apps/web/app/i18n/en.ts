@@ -3,6 +3,18 @@
  * Source of truth for every UI string; `id` falls back here per key.
  */
 export const en = {
+  usage: {
+    title: "Usage analytics", description: "Gateway-reported usage recorded by NovelForge. Quota management stays in your LLM Gateway.",
+    novel: "Novel", allNovels: "All novels", component: "Component", allComponents: "All components", refresh: "Refresh",
+    recordedTokens: "Recorded tokens", inputTokens: "Input tokens", outputTokens: "Output tokens", requestsAttempts: "Requests / attempts",
+    coverage: "Reporting may be incomplete: {requests} requests and {attempts} attempts have missing usage; {legacy} requests use historical final receipts. Totals include only recorded counters.",
+    empty: "No recorded generations for this selection.", breakdown: "Usage by component, task, artifact and model", task: "Task",
+    artifact: "Artifact reference", reportedModel: "Reported model", requestedModel: "Requested model", unknown: "Unknown",
+    unattributed: "Not attributed", partial: "Partial reporting", legacy: "Historical receipt", previous: "Previous", next: "Next",
+    loadError: "Usage analytics could not be loaded.", novelError: "The novel list could not be loaded. Refresh to retry.",
+    legacyModel: "Historical model metadata; requested/reported identity is unverified.",
+    components: { CHAPTER: "Chapter", COVER: "Cover", LORE: "Lore", OUTLINE: "Outline", EMBEDDING: "Embedding", OTHER: "Other / unclassified" },
+  },
   common: {
     loading: "Loading…",
     cancel: "Cancel",

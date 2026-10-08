@@ -285,6 +285,10 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
     });
     if (!version) throw new ExecutorNotFoundError("workflow version");
     const workflowKey = version.workflow.key;
+    const chapterArtifact = workflowKey === "chapter-generation-review" && novelId &&
+      Number.isInteger(runInput["chapterNumber"]) && Number(runInput["chapterNumber"]) > 0
+      ? await db.chapter.findFirst({ where: { novelId, number: Number(runInput["chapterNumber"]) }, select: { id: true } })
+      : null;
 
     // Re-validate on load: the row could have been edited by a migration
     // or a direct DB write since it was stored.
@@ -744,6 +748,9 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
           workspaceId,
           ...(novelId ? { novelId } : {}),
           task: `workflow:${workflowKey}:${stepKey}`,
+          // The installed chapter template is an explicit caller identity, not a prompt heuristic.
+          component: step.usageComponent ?? (workflowKey === "chapter-generation-review" ? "CHAPTER" : "OTHER"),
+          ...(chapterArtifact ? { artifactId: chapterArtifact.id } : {}),
           profile,
           messages: [
             { role: "system", content: instructions },

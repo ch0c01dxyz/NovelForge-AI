@@ -8,6 +8,31 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
 ## Current dispatch — 2026-10-07 (novel-scoped workflow history repaired)
 
+### Usage analytics accepted locally — 2026-10-08
+
+Author decision ADR-0015: quotas are owned by the external LLM Gateway.
+NF-WF-049 implements token/model analytics without quota limits and closes
+GAP-063's revised local implementation gate. [Task receipt](../../tasks/NF-WF-049-generation-usage-analytics.md)
+owns exact commands, review hashes, migration and failed-attempt corrections.
+Separate backend/UI reviews APPROVE; migration evidence independently verified.
+245 scoped tests passed (core82, validation62, API37+15, executor22, web27),
+API/worker/web/executor types and changed-TS lint passed. Aggregates cover all
+matching requests rather than a recent UI window; observed attempts are counted
+once, requested/reported model identities remain distinct and missing/legacy
+coverage is explicit. Chapter workflow and selection callers are attributed;
+novel-associated retrieval embeddings are included. AI Studio Receipts → Usage
+analytics supports novel/component filters, en/id and per-attempt detail.
+
+The additive migration passed empty/populated41-upgrade checks with old data
+and40 checksums retained. No working DB migration, live gateway call, image
+transport, new dependency, full release test or human accessibility approval
+is claimed. Deploy the reviewed migration via environment/release preflight.
+Next: separate SCALE GAP-039 author decision, human GAP-051 and live release
+gates. Historical undecided GAP-063 paragraphs below are superseded.
+Engram runtime attribution remains unavailable; this/task receipt is the fallback.
+Cleanup verified all four owned NF049 scratch databases absent; test processes
+had disconnected. No Redis worker/queue was started for this task.
+
 ### Accepted local gap verification — 2026-10-08
 
 NF-WF-048 closes GAP-018's bounded recovered-upgrade/partial-FK-loss gate

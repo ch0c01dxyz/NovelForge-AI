@@ -275,6 +275,14 @@ describe("extractJson", () => {
 const AGENT_STEP = { key: "plan", kind: "AGENT", ref: "scene-planner" };
 
 describe("validateGraph", () => {
+  it("retains explicit usage labels and refuses unsupported/non-generation labels", () => {
+    const graph = { steps: [{ key: "write", kind: "AGENT", ref: "writer", instruction: "Write", usageComponent: "LORE" }], edges: [] };
+    const valid = validateGraph(graph);
+    expect(valid.ok).toBe(true);
+    if (valid.ok) expect(valid.value.graph.steps[0]?.usageComponent).toBe("LORE");
+    expect(validateGraph({ ...graph, steps: [{ ...graph.steps[0], usageComponent: "quota" }] }).ok).toBe(false);
+    expect(validateGraph({ ...graph, steps: [{ key: "fetch", kind: "RETRIEVAL", instruction: "Fetch", usageComponent: "LORE" }] }).ok).toBe(false);
+  });
   it("accepts a linear graph and orders it", () => {
     const r = validateGraph({
       steps: [

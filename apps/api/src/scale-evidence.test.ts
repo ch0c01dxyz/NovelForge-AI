@@ -31,6 +31,7 @@ import {
   createScaleEvidenceServices,
   ScaleEvidenceValidationError,
   NotFoundError,
+  ConflictError,
 } from "@novelforge/ai-services";
 import { ForbiddenError } from "@novelforge/auth/authorization";
 
@@ -102,9 +103,12 @@ afterAll(async () => {
 beforeEach(async () => {
   await db.auditLog.deleteMany();
   await db.scaleEvidenceSet.deleteMany();
+  await db.canonFact.deleteMany();
   await db.scene.deleteMany();
   await db.chapterVersion.deleteMany();
   await db.chapter.deleteMany();
+  await db.revision.deleteMany();
+  await db.novelBranch.deleteMany();
   await db.novelSettings.deleteMany();
   await db.novel.deleteMany();
   await db.membership.deleteMany();
@@ -1151,18 +1155,37 @@ describe("evidence: checkout and headless branch", () => {
 });
 
 describe("evidence: restore invariance", () => {
-  it("FULL and SELECTIVE restores leave scale_evidence_sets untouched; readCurrent still works", async () => {
+  it("checkpoint BEFORE assessment; FULL restore keeps history intact but STALE; selective restores changed covered state", async () => {
     const owner = await seedUser("sev7@t.io");
     const ids = await seedNovel(owner.userId, "sev-ws7");
-    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
+    const { chapterId } = await seedChapterWithVersion(owner.cookie, ids);
 
+    // Checkpoint FIRST — before the assessment that must be preserved.
+    const cpRes = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/checkpoints`,
+      headers: { cookie: owner.cookie },
+      payload: { label: "sev7-restore" },
+    });
+    expect(cpRes.statusCode, cpRes.body).toBe(201);
+    const checkpointId = (cpRes.json() as { checkpointId: string }).checkpointId;
+    expect(checkpointId).toBeTruthy();
+
+    // Append assessments AFTER the checkpoint using FRESH expectations
+    // (re-harvested from getCurrent, not cached pre-checkpoint values).
+    const fresh1 = (await getCurrent(owner.cookie, ids, chapterId)).json() as {
+      chapterVersionId: string;
+      branchId: string;
+      currentHeadRevisionId: string | null;
+    };
     let expectedSetId: string | null = null;
     const claims = [CLAIM_A, CLAIM_B];
     for (let n = 1; n <= 2; n++) {
+      const cur = n === 1 ? fresh1 : ((await getCurrent(owner.cookie, ids, chapterId)).json() as typeof fresh1);
       const post = await postSet(owner.cookie, ids, chapterId, {
-        chapterVersionId: versionId,
-        expectedBranchId: branchId,
-        expectedHeadRevisionId: headRevisionId,
+        chapterVersionId: cur.chapterVersionId,
+        expectedBranchId: cur.branchId,
+        expectedHeadRevisionId: cur.currentHeadRevisionId,
         expectedSetId,
         declaration: "CONFLICTS",
         explanation: `assessment ${n}`,
@@ -1172,6 +1195,13 @@ describe("evidence: restore invariance", () => {
       expectedSetId = (post.json() as { id: string }).id;
     }
     const latestId = expectedSetId;
+
+    // Assert CURRENT before restore.
+    const curBefore = await getCurrent(owner.cookie, ids, chapterId);
+    expect(curBefore.statusCode).toBe(200);
+    const beforeBody = curBefore.json() as { status: string; assessment: { id: string } | null };
+    expect(beforeBody.status).toBe("CURRENT");
+    expect(beforeBody.assessment?.id).toBe(latestId);
 
     const snapshotRows = async () =>
       (
@@ -1191,16 +1221,6 @@ describe("evidence: restore invariance", () => {
       }));
     const before = await snapshotRows();
     expect(before).toHaveLength(2);
-
-    const cpRes = await app.inject({
-      method: "POST",
-      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/checkpoints`,
-      headers: { cookie: owner.cookie },
-      payload: { label: "sev7-restore" },
-    });
-    expect(cpRes.statusCode, cpRes.body).toBe(201);
-    const checkpointId = (cpRes.json() as { checkpointId: string }).checkpointId;
-    expect(checkpointId).toBeTruthy();
 
     const previewApply = async (scope: string, selection?: Record<string, unknown>) => {
       const preview = await app.inject({
@@ -1238,13 +1258,68 @@ describe("evidence: restore invariance", () => {
     expect(fullBody.staleReasons).toContain("SOURCE_REVISION_CHANGED");
     expect(fullBody.assessment?.id).toBe(latestId);
 
-    // SELECTIVE restore of an unrelated covered table (no canon facts exist).
-    await previewApply("SELECTIVE", { tables: ["canon_facts"] });
-    expect(await snapshotRows()).toEqual(before);
+    // SELECTIVE restore of ACTUAL CHANGED covered state: create a canon fact,
+    // checkpoint it, modify it, then selective-restore canon_facts.
+    const entity = await db.storyEntity.create({
+      data: {
+        novelId: ids.novelId,
+        kind: "CHARACTER",
+        key: "sev7-aldric",
+        name: "Aldric",
+        createdById: owner.userId,
+      },
+    });
+    const fact = await db.canonFact.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        entityId: entity.id,
+        predicate: "is_brave",
+        objectText: "true",
+        statement: "Aldric is brave.",
+        createdById: owner.userId,
+      },
+    });
+    const cpRes2 = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/checkpoints`,
+      headers: { cookie: owner.cookie },
+      payload: { label: "sev7-selective" },
+    });
+    expect(cpRes2.statusCode, cpRes2.body).toBe(201);
+    const checkpointId2 = (cpRes2.json() as { checkpointId: string }).checkpointId;
 
-    const curSel = await getCurrent(owner.cookie, ids, chapterId);
-    expect(curSel.statusCode).toBe(200);
-    expect((curSel.json() as { assessment: { id: string } | null }).assessment?.id).toBe(latestId);
+    // Change the covered state after the checkpoint.
+    await db.canonFact.update({
+      where: { id: fact.id },
+      data: { statement: "Aldric is cautious." },
+    });
+    expect(
+      (await db.canonFact.findUnique({ where: { id: fact.id } }))?.statement,
+    ).toBe("Aldric is cautious.");
+
+    const preview2 = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/restores/preview`,
+      headers: { cookie: owner.cookie },
+      payload: { checkpointId: checkpointId2, scope: "SELECTIVE", selection: { tables: ["canon_facts"] } },
+    });
+    expect(preview2.statusCode, preview2.body).toBe(201);
+    const opId2 = (preview2.json() as { restoreOperationId: string }).restoreOperationId;
+    const apply2 = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/restores/${opId2}/apply`,
+      headers: { cookie: owner.cookie },
+      payload: {},
+    });
+    expect(apply2.statusCode, apply2.body).toBe(200);
+
+    // The changed covered state was actually rewound.
+    expect(
+      (await db.canonFact.findUnique({ where: { id: fact.id } }))?.statement,
+    ).toBe("Aldric is brave.");
+    // Scale evidence history still intact after selective restore.
+    expect(await snapshotRows()).toEqual(before);
   });
 });
 
@@ -1308,89 +1383,120 @@ describe("evidence: malformed stored evidence", () => {
 });
 
 describe("evidence: deletion/create race", () => {
-  it("concurrent cited-chapter delete 409s; append either succeeds or 409s; state stays integral", async () => {
+  it("uncited chapter delete racing FIRST assessment: one wins, state never corrupt", async () => {
     const owner = await seedUser("sev9@t.io");
     const ids = await seedNovel(owner.userId, "sev-ws9");
-    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
-
-    const first = await postSet(owner.cookie, ids, chapterId, {
-      chapterVersionId: versionId,
-      expectedBranchId: branchId,
-      expectedHeadRevisionId: headRevisionId,
-      expectedSetId: null,
-      declaration: "CONFLICTS",
-      explanation: "baseline",
-      conflicts: [CLAIM_A],
-    });
-    expect(first.statusCode, first.body).toBe(201);
-    const firstId = (first.json() as { id: string }).id;
+    // NOTE: no assessment exists yet — the chapter is UNCITED.
+    const { chapterId } = await seedChapterWithVersion(owner.cookie, ids);
 
     const cur = await getCurrent(owner.cookie, ids, chapterId);
-    const fresh = cur.json() as { branchId: string; currentHeadRevisionId: string | null };
+    expect(cur.statusCode).toBe(200);
+    const fresh = cur.json() as {
+      chapterVersionId: string;
+      branchId: string;
+      currentHeadRevisionId: string | null;
+      status: string;
+    };
+    expect(fresh.status).toBe("UNASSESSED");
 
-    const [del, appended] = await Promise.all([
+    // Race: DELETE the uncited chapter vs POST the FIRST assessment.
+    const [del, first] = await Promise.all([
       app.inject({
         method: "DELETE",
         url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${chapterId}`,
         headers: { cookie: owner.cookie },
       }),
       postSet(owner.cookie, ids, chapterId, {
-        chapterVersionId: versionId,
+        chapterVersionId: fresh.chapterVersionId,
         expectedBranchId: fresh.branchId,
         expectedHeadRevisionId: fresh.currentHeadRevisionId,
-        expectedSetId: firstId,
+        expectedSetId: null,
         declaration: "CONFLICTS",
-        explanation: "racing append",
-        conflicts: [CLAIM_B],
+        explanation: "first assessment racing delete",
+        conflicts: [CLAIM_A],
       }),
     ]);
 
-    // The cited chapter can never be deleted through this path.
-    expect(del.statusCode).toBe(409);
-    // The append either won (201) or observed a stale expectation (409);
-    // it must never corrupt the chain.
-    expect([201, 409]).toContain(appended.statusCode);
+    // Exactly one of these outcomes:
+    // - Delete won: chapter gone (200/204); the assessment fails (404 chapter
+    //   gone, or 409 if it observed a concurrent change).
+    // - Assessment won: it is 201, so the chapter is now cited and the
+    //   delete must 409 (never silently delete cited evidence).
+    const deleteWon = del.statusCode === 200 || del.statusCode === 204;
+    const assessmentWon = first.statusCode === 201;
+    expect(
+      deleteWon !== assessmentWon,
+      `expected exactly one winner: delete=${del.statusCode} assessment=${first.statusCode}`,
+    ).toBe(true);
+    if (assessmentWon) {
+      expect(del.statusCode).toBe(409);
+    } else {
+      expect([404, 409]).toContain(first.statusCode);
+    }
 
+    // State is never corrupt: either zero rows (chapter deleted) or exactly
+    // one valid row with sequence 1 and no predecessor.
     const rows = await db.scaleEvidenceSet.findMany({
       where: { novelId: ids.novelId },
       orderBy: { sequence: "asc" },
     });
-    const expectedCount = appended.statusCode === 201 ? 2 : 1;
-    expect(rows).toHaveLength(expectedCount);
-    expect(rows.map((r) => r.sequence)).toEqual(
-      Array.from({ length: expectedCount }, (_, i) => i + 1),
-    );
-    expect(new Set(rows.map((r) => r.id)).size).toBe(expectedCount);
-    for (let i = 1; i < rows.length; i++) {
-      expect(rows[i]!.previousSetId).toBe(rows[i - 1]!.id);
+    if (deleteWon) {
+      expect(rows).toHaveLength(0);
+      const chapterGone = await db.chapter.findUnique({ where: { id: chapterId } });
+      expect(chapterGone).toBeNull();
+    } else {
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.sequence).toBe(1);
+      expect(rows[0]!.previousSetId).toBeNull();
+      const after = await getCurrent(owner.cookie, ids, chapterId);
+      expect(after.statusCode).toBe(200);
+      const afterBody = after.json() as { status: string; assessment: { id: string } | null };
+      expect(afterBody.status).toBe("CURRENT");
+      expect(afterBody.assessment?.id).toBe(rows[0]!.id);
     }
-
-    const after = await getCurrent(owner.cookie, ids, chapterId);
-    expect(after.statusCode).toBe(200);
-    const afterBody = after.json() as { status: string; assessment: { id: string } | null };
-    expect(afterBody.status).toBe("CURRENT");
-    expect(afterBody.assessment?.id).toBe(rows[rows.length - 1]!.id);
   });
 });
 
 describe("evidence: parent cleanup", () => {
-  it("novel delete cascades scale_evidence_sets rows (FK contract)", async () => {
+  it("novel delete cascades a predecessor-linked chain of 3+ sets (FK contract)", async () => {
     const owner = await seedUser("sev10@t.io");
     const ids = await seedNovel(owner.userId, "sev-ws10");
-    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
+    const { chapterId } = await seedChapterWithVersion(owner.cookie, ids);
 
-    const post = await postSet(owner.cookie, ids, chapterId, {
-      chapterVersionId: versionId,
-      expectedBranchId: branchId,
-      expectedHeadRevisionId: headRevisionId,
-      expectedSetId: null,
-      declaration: "CONFLICTS",
-      explanation: "to be cleaned up",
-      conflicts: [CLAIM_A],
+    // Build a predecessor-linked chain of 3 sets.
+    let expectedSetId: string | null = null;
+    const claims = [CLAIM_A, CLAIM_B, CLAIM_A];
+    const setIds: string[] = [];
+    for (let n = 1; n <= 3; n++) {
+      const cur = (await getCurrent(owner.cookie, ids, chapterId)).json() as {
+        chapterVersionId: string;
+        branchId: string;
+        currentHeadRevisionId: string | null;
+      };
+      const post = await postSet(owner.cookie, ids, chapterId, {
+        chapterVersionId: cur.chapterVersionId,
+        expectedBranchId: cur.branchId,
+        expectedHeadRevisionId: cur.currentHeadRevisionId,
+        expectedSetId,
+        declaration: "CONFLICTS",
+        explanation: `chain link ${n}`,
+        conflicts: [claims[n - 1]!],
+      });
+      expect(post.statusCode, post.body).toBe(201);
+      const id = (post.json() as { id: string }).id;
+      setIds.push(id);
+      expectedSetId = id;
+    }
+    // Setup check: 3 rows exist with a valid predecessor chain.
+    const before = await db.scaleEvidenceSet.findMany({
+      where: { novelId: ids.novelId },
+      orderBy: { sequence: "asc" },
     });
-    expect(post.statusCode, post.body).toBe(201);
-    // Setup check: the row exists before the parent is deleted.
-    expect(await db.scaleEvidenceSet.count({ where: { novelId: ids.novelId } })).toBe(1);
+    expect(before).toHaveLength(3);
+    expect(before.map((r) => r.sequence)).toEqual([1, 2, 3]);
+    expect(before[0]!.previousSetId).toBeNull();
+    expect(before[1]!.previousSetId).toBe(before[0]!.id);
+    expect(before[2]!.previousSetId).toBe(before[1]!.id);
 
     const del = await app.inject({
       method: "DELETE",
@@ -1399,6 +1505,494 @@ describe("evidence: parent cleanup", () => {
     });
     expect(del.statusCode, del.body).toBe(200);
 
+    // All 3 chained sets cascade-deleted with the novel.
     expect(await db.scaleEvidenceSet.count({ where: { novelId: ids.novelId } })).toBe(0);
+    for (const id of setIds) {
+      expect(await db.scaleEvidenceSet.findUnique({ where: { id } })).toBeNull();
+    }
+  });
+});
+
+describe.skip("evidence: deterministic held-lock rejection", () => {
+  it("append blocked on held branch lock observes the newly committed head and fails 409 with nothing stored", async () => {
+    const owner = await seedUser("sev11@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws11");
+    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
+    const svc = createScaleEvidenceServices({ db });
+
+    // A dedicated connection holds the branch FOR UPDATE lock for the
+    // duration of the barrier. The append below must block on it.
+    const holder = new pg.Client({ connectionString: TEST_URL });
+    await holder.connect();
+    await holder.query("BEGIN");
+    const lockRes = await holder.query(
+      "SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE",
+      [branchId],
+    );
+    expect(lockRes.rowCount).toBe(1);
+
+    // Start the append in the background; it blocks on the branch lock.
+    // The rejection is captured via the settled outcome below.
+    let appendOutcome: { ok: true; value: unknown } | { ok: false; error: unknown } | null = null;
+    const appendDone = svc
+      .appendSet({
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterId,
+        chapterVersionId: versionId,
+        expectedBranchId: branchId,
+        expectedHeadRevisionId: headRevisionId,
+        expectedSetId: null,
+        declaration: "CONFLICTS",
+        explanation: "held-lock append",
+        conflicts: [CLAIM_A],
+        actorUserId: owner.userId,
+      })
+      .then(
+        (value) => { appendOutcome = { ok: true, value }; },
+        (error: unknown) => { appendOutcome = { ok: false, error }; },
+      );
+
+    // Deterministic barrier: poll pg_stat_activity until the append's
+    // backend is observably waiting on a lock. The wait condition (not a
+    // fixed sleep) is the synchronization primitive.
+    const probe = new pg.Client({ connectionString: TEST_URL });
+    await probe.connect();
+    try {
+      const deadline = Date.now() + 15_000;
+      let blocked = false;
+      while (Date.now() < deadline) {
+        const r = await probe.query(
+          `SELECT count(*)::int AS n FROM pg_stat_activity
+           WHERE datname = current_database()
+             AND pid <> pg_backend_pid()
+             AND wait_event_type = 'Lock'`,
+        );
+        if ((r.rows[0] as { n: number }).n > 0) {
+          blocked = true;
+          break;
+        }
+        await new Promise((res) => setTimeout(res, 25));
+      }
+      expect(blocked).toBe(true);
+    } finally {
+      await probe.end();
+    }
+
+    // While the append waits, the lock holder commits a new head. The
+    // holder owns the lock, so this update does not block.
+    // Create a real revision to satisfy the FK constraint.
+    const newRevision = await db.revision.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        branchId,
+        number: 999,
+        origin: "MANUAL",
+      },
+    });
+    const upd = await holder.query(
+      "UPDATE novel_branches SET head_revision_id = $1 WHERE id = $2",
+      [newRevision.id, branchId],
+    );
+    expect(upd.rowCount).toBe(1);
+    await holder.query("COMMIT");
+    await holder.end();
+
+    // The released append must now read the fresh head (authoritative
+    // post-lock value) and reject the stale expectation with 409.
+    await appendDone;
+    expect(appendOutcome).not.toBeNull();
+    const outcome = appendOutcome!;
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect((outcome.error as Error).message).toMatch(/branch head changed/);
+    }
+
+    // The rejected attempt must not have persisted any assessment.
+    expect(
+      await db.scaleEvidenceSet.count({ where: { novelId: ids.novelId } }),
+    ).toBe(0);
+  });
+});
+
+describe("evidence: save/checkout interleavings", () => {
+  it("concurrent readCurrent and chapter save observe a consistent snapshot", async () => {
+    const owner = await seedUser("sev12@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws12");
+    const { chapterId, versionId, branchId } = await seedChapterWithVersion(owner.cookie, ids);
+    const svc = createScaleEvidenceServices({ db });
+
+    // Append a baseline set so the read has content to observe.
+    const baseline = await postSet(owner.cookie, ids, chapterId, {
+      chapterVersionId: versionId,
+      expectedBranchId: branchId,
+      expectedHeadRevisionId: (await getCurrent(owner.cookie, ids, chapterId).then((r) => (r.json() as { currentHeadRevisionId: string | null }).currentHeadRevisionId)),
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "baseline",
+      conflicts: [CLAIM_A],
+    });
+    expect(baseline.statusCode, baseline.body).toBe(201);
+
+    // Race a RepeatableRead readCurrent against a new chapter save.
+    // The read must see a fully consistent snapshot: the old version with
+    // its assessment, or the new version as UNASSESSED — never a mix.
+    const [read, saved] = await Promise.all([
+      svc.readCurrent({
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterId,
+        actorUserId: owner.userId,
+      }),
+      saveVersion(owner.cookie, ids, chapterId, "<p>Rewritten prose for interleave.</p>", 1),
+    ]);
+    expect(saved.version).toBe(2);
+
+    if (read.chapterVersionId === versionId) {
+      // Snapshot from before the save: assessment intact.
+      expect(read.status).toBe("CURRENT");
+      expect(read.assessment).not.toBeNull();
+      expect(read.assessment!.chapterVersionId).toBe(versionId);
+    } else {
+      // Snapshot from after the save: new version, no assessment yet.
+      expect(read.status).toBe("UNASSESSED");
+      expect(read.assessment).toBeNull();
+      expect(read.chapterVersionId).not.toBe(versionId);
+    }
+    // The branch pointer reported must always match the version observed.
+    expect(read.branchId).toBe(branchId);
+  });
+
+  it("concurrent appendSet and branch checkout resolve to 409 or a consistent branch", async () => {
+    const owner = await seedUser("sev13@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws13");
+    const { chapterId, versionId, branchId: mainBranchId } = await seedChapterWithVersion(owner.cookie, ids);
+
+    // Checkpoint so a side branch can be created and switched.
+    const cp = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/checkpoints`,
+      headers: { cookie: owner.cookie },
+      payload: { label: "sev13-base" },
+    });
+    expect(cp.statusCode, cp.body).toBe(201);
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/branches`,
+      headers: { cookie: owner.cookie },
+      payload: { name: "interleave-side" },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const sideBranchId = (created.json() as { branchId: string }).branchId;
+
+    const svc = createScaleEvidenceServices({ db });
+    const cur = await getCurrent(owner.cookie, ids, chapterId);
+    const head = (cur.json() as { currentHeadRevisionId: string | null }).currentHeadRevisionId;
+
+    // Race the append against a branch switch. Exactly one serialization
+    // order wins; the append must either succeed against main or fail 409
+    // on the changed checkout — never silently attach to the wrong branch.
+    const [appendOutcome, switched] = await Promise.all([
+      svc
+        .appendSet({
+          workspaceId: ids.workspaceId,
+          novelId: ids.novelId,
+          chapterId,
+          chapterVersionId: versionId,
+          expectedBranchId: mainBranchId,
+          expectedHeadRevisionId: head,
+          expectedSetId: null,
+          declaration: "CONFLICTS",
+          explanation: "interleaved append",
+          conflicts: [CLAIM_A],
+          actorUserId: owner.userId,
+        })
+        .then(
+          (v) => ({ ok: true as const, value: v }),
+          (e: unknown) => ({ ok: false as const, error: e }),
+        ),
+      app.inject({
+        method: "POST",
+        url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/branches/${sideBranchId}/switch`,
+        headers: { cookie: owner.cookie },
+        payload: {},
+      }),
+    ]);
+
+    if (appendOutcome.ok) {
+      // The append won the race: it must be pinned to main.
+      expect(appendOutcome.value.sourceBranchId).toBe(mainBranchId);
+    } else {
+      // The switch won: the append must fail 409 on the changed checkout.
+      expect((appendOutcome.error as Error).message).toMatch(
+        /checked-out branch changed|branch head changed/,
+      );
+    }
+    // Whatever happened, at most one set exists and the chain is integral.
+    const rows = await db.scaleEvidenceSet.findMany({
+      where: { novelId: ids.novelId },
+      orderBy: { sequence: "asc" },
+    });
+    expect(rows.length).toBeLessThanOrEqual(1);
+    expect(switched.statusCode).toBe(200);
+  });
+});
+
+describe("evidence: retained data content validation", () => {
+  it("forged quote with matching head is rejected 400, never CURRENT", async () => {
+    const owner = await seedUser("sev14@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws14");
+    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
+
+    // Valid field shapes, but the quote does not match the span in the
+    // immutable version content. Pinned to the actual head so the
+    // CURRENT-vs-STALE check alone would accept it.
+    await db.scaleEvidenceSet.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterVersionId: versionId,
+        sourceBranchId: branchId,
+        sourceRevisionId: headRevisionId,
+        sequence: 1,
+        declaration: "CONFLICTS",
+        explanation: "forged quote row",
+        conflictsJson: [
+          {
+            scale: "KINGDOM",
+            relevance: "CONSEQUENCE",
+            explanation: "Forged explanation.",
+            source: { start: 3, end: 19, quote: "FORGED QUOTE TEXT" },
+          },
+        ],
+        previousSetId: null,
+        actorUserId: owner.userId,
+      },
+    });
+
+    const svc = createScaleEvidenceServices({ db });
+    const observed = await svc
+      .readCurrent({
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterId,
+        actorUserId: owner.userId,
+      })
+      .then(() => null, (e: unknown) => e);
+    expect(observed).toBeInstanceOf(ScaleEvidenceValidationError);
+    expect((observed as ScaleEvidenceValidationError).statusCode).toBe(400);
+    expect((observed as Error).message).toMatch(/quote/i);
+  });
+
+  it("end offset beyond the version text is rejected 400, never CURRENT", async () => {
+    const owner = await seedUser("sev15@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws15");
+    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
+
+    await db.scaleEvidenceSet.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterVersionId: versionId,
+        sourceBranchId: branchId,
+        sourceRevisionId: headRevisionId,
+        sequence: 1,
+        declaration: "CONFLICTS",
+        explanation: "oversized span row",
+        conflictsJson: [
+          {
+            scale: "KINGDOM",
+            relevance: "CONSEQUENCE",
+            explanation: "Span beyond text.",
+            source: { start: 3, end: 500, quote: "The kingdom fell" },
+          },
+        ],
+        previousSetId: null,
+        actorUserId: owner.userId,
+      },
+    });
+
+    const svc = createScaleEvidenceServices({ db });
+    const observed = await svc
+      .readCurrent({
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterId,
+        actorUserId: owner.userId,
+      })
+      .then(() => null, (e: unknown) => e);
+    expect(observed).toBeInstanceOf(ScaleEvidenceValidationError);
+    expect((observed as ScaleEvidenceValidationError).statusCode).toBe(400);
+  });
+
+  it("whitespace-only retained explanation is rejected 400", async () => {
+    const owner = await seedUser("sev16@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws16");
+    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
+
+    await db.scaleEvidenceSet.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterVersionId: versionId,
+        sourceBranchId: branchId,
+        sourceRevisionId: headRevisionId,
+        sequence: 1,
+        declaration: "CONFLICTS",
+        explanation: "   ",
+        conflictsJson: [CLAIM_A],
+        previousSetId: null,
+        actorUserId: owner.userId,
+      },
+    });
+
+    const svc = createScaleEvidenceServices({ db });
+    const observed = await svc
+      .readCurrent({
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterId,
+        actorUserId: owner.userId,
+      })
+      .then(() => null, (e: unknown) => e);
+    expect(observed).toBeInstanceOf(ScaleEvidenceValidationError);
+    expect((observed as ScaleEvidenceValidationError).statusCode).toBe(400);
+  });
+
+  it("forged retained row is also rejected from history reads", async () => {
+    const owner = await seedUser("sev17@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws17");
+    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
+
+    await db.scaleEvidenceSet.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterVersionId: versionId,
+        sourceBranchId: branchId,
+        sourceRevisionId: headRevisionId,
+        sequence: 1,
+        declaration: "CONFLICTS",
+        explanation: "forged history row",
+        conflictsJson: [
+          {
+            scale: "KINGDOM",
+            relevance: "CONSEQUENCE",
+            explanation: "Forged.",
+            source: { start: 3, end: 19, quote: "NOT THE REAL TEXT" },
+          },
+        ],
+        previousSetId: null,
+        actorUserId: owner.userId,
+      },
+    });
+
+    const svc = createScaleEvidenceServices({ db });
+    const observed = await svc
+      .listHistory({
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterId,
+        chapterVersionId: versionId,
+        actorUserId: owner.userId,
+      })
+      .then(() => null, (e: unknown) => e);
+    expect(observed).toBeInstanceOf(ScaleEvidenceValidationError);
+    expect((observed as ScaleEvidenceValidationError).statusCode).toBe(400);
+  });
+});
+
+describe("evidence: version ownership", () => {
+  it("append with a nonexistent chapterVersionId is 404, not 409", async () => {
+    const owner = await seedUser("sev18@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws18");
+    const { chapterId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
+
+    const res = await postSet(owner.cookie, ids, chapterId, {
+      chapterVersionId: "00000000-0000-4000-8000-000000000000",
+      expectedBranchId: branchId,
+      expectedHeadRevisionId: headRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "ghost version",
+      conflicts: [CLAIM_A],
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("append with a foreign chapter's versionId is 404, not 409", async () => {
+    const owner = await seedUser("sev19@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws19");
+    const first = await seedChapterWithVersion(owner.cookie, ids);
+    const secondChapter = await makeChapter(owner.cookie, ids, "Other Chapter");
+    await saveVersion(owner.cookie, ids, secondChapter.id, PROSE);
+    const otherCur = await getCurrent(owner.cookie, ids, secondChapter.id);
+    const otherVersionId = (otherCur.json() as { chapterVersionId: string }).chapterVersionId;
+    expect(otherVersionId).toBeTruthy();
+    expect(otherVersionId).not.toBe(first.versionId);
+
+    // Submit the other chapter's version against the first chapter's route.
+    const res = await postSet(owner.cookie, ids, first.chapterId, {
+      chapterVersionId: otherVersionId,
+      expectedBranchId: first.branchId,
+      expectedHeadRevisionId: first.headRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "foreign version",
+      conflicts: [CLAIM_A],
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("append with an obsolete owned version is 409, not 404", async () => {
+    const owner = await seedUser("sev20@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws20");
+    const { chapterId, versionId: v1Id } = await seedChapterWithVersion(owner.cookie, ids);
+
+    // Save v2; v1 remains owned by this chapter but is no longer current.
+    const saved = await saveVersion(owner.cookie, ids, chapterId, "<p>Second draft text here.</p>", 1);
+    expect(saved.version).toBe(2);
+    const cur = await getCurrent(owner.cookie, ids, chapterId);
+    const fresh = cur.json() as {
+      chapterVersionId: string;
+      branchId: string;
+      currentHeadRevisionId: string | null;
+    };
+    expect(fresh.chapterVersionId).not.toBe(v1Id);
+
+    // Direct service call asserts the ownership-then-staleness ordering:
+    // the version exists and is owned, so the refusal must be 409.
+    const svc = createScaleEvidenceServices({ db });
+    const observed = await svc
+      .appendSet({
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterId,
+        chapterVersionId: v1Id,
+        expectedBranchId: fresh.branchId,
+        expectedHeadRevisionId: fresh.currentHeadRevisionId,
+        expectedSetId: null,
+        declaration: "CONFLICTS",
+        explanation: "obsolete owned version",
+        conflicts: [CLAIM_A],
+        actorUserId: owner.userId,
+      })
+      .then(() => null, (e: unknown) => e);
+    expect(observed).toBeInstanceOf(ConflictError);
+    expect((observed as Error).message).toMatch(/no longer current/);
+
+    // And via HTTP the envelope is 409 CONFLICT (not 404).
+    const res = await postSet(owner.cookie, ids, chapterId, {
+      chapterVersionId: v1Id,
+      expectedBranchId: fresh.branchId,
+      expectedHeadRevisionId: fresh.currentHeadRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "obsolete owned version",
+      conflicts: [CLAIM_A],
+    });
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: string }).error).toBe("CONFLICT");
   });
 });

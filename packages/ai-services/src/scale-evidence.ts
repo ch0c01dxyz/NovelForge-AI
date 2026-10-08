@@ -209,83 +209,81 @@ function validateConflicts(
   return claims;
 }
 
-function toRecord(row: {
-  id: string;
-  workspaceId: string;
-  novelId: string;
-  chapterVersionId: string;
-  sourceBranchId: string;
-  sourceRevisionId: string | null;
-  sequence: number;
-  declaration: string;
-  explanation: string;
-  conflictsJson: unknown;
-  previousSetId: string | null;
-  actorUserId: string;
-  createdAt: Date;
-}): ScaleEvidenceSetRecord {
-  // Full revalidation of stored data before serialization (contract:
-  // malformed retained rows fail explicitly; corrupt data must not become
-  // CURRENT). Validation failures are 400, not 409.
+/**
+ * Validate a retained row before serialization. Reuses the write-time
+ * `validateConflicts` (which enforces bounds, quote match, trimmed nonempty
+ * strings and strict schemas against the immutable version content) instead
+ * of a divergent shape-only validator. Also enforces tenant, source-branch
+ * and predecessor-chain consistency. Any failure throws
+ * ScaleEvidenceValidationError (400); corrupt data is never returned as
+ * CURRENT and never silently repaired.
+ *
+ * Fork semantics: the source revision's `branchId` is NOT required to equal
+ * `sourceBranchId` — a branch head may be a revision created on its parent
+ * branch. Only existence (FK) and novel/workspace tenant match are checked.
+ */
+function toRecord(
+  row: {
+    id: string;
+    workspaceId: string;
+    novelId: string;
+    chapterVersionId: string;
+    sourceBranchId: string;
+    sourceRevisionId: string | null;
+    sequence: number;
+    declaration: string;
+    explanation: string;
+    conflictsJson: unknown;
+    previousSetId: string | null;
+    actorUserId: string;
+    createdAt: Date;
+  },
+  opts: {
+    /** Immutable ChapterVersion.content the claims anchor to. */
+    content: string;
+    /** Request scope for tenant consistency. */
+    workspaceId: string;
+    novelId: string;
+    /** Server-resolved branch for source consistency. */
+    sourceBranchId: string;
+  },
+): ScaleEvidenceSetRecord {
+  const where = `stored set ${row.id}`;
+  // Tenant consistency: the row must belong to the request scope.
+  if (row.workspaceId !== opts.workspaceId || row.novelId !== opts.novelId)
+    throw new ScaleEvidenceValidationError(`${where} tenant mismatch`);
+  // Source-branch consistency: the row must have been created on the branch
+  // it is read for. (Callers filter by sourceBranchId; this is defense-in-depth.)
+  if (row.sourceBranchId !== opts.sourceBranchId)
+    throw new ScaleEvidenceValidationError(`${where} source branch mismatch`);
+  // Declaration validity.
   if (row.declaration !== "CONFLICTS" && row.declaration !== "NO_OPERATIVE_CONFLICT")
-    throw new ScaleEvidenceValidationError(`stored set ${row.id} has invalid declaration`);
+    throw new ScaleEvidenceValidationError(`${where} has invalid declaration`);
+  // Sequence: positive integer.
   if (!Number.isInteger(row.sequence) || row.sequence <= 0)
-    throw new ScaleEvidenceValidationError(`stored set ${row.id} has invalid sequence`);
-  const explanation = typeof row.explanation === "string" ? row.explanation : "";
+    throw new ScaleEvidenceValidationError(`${where} has invalid sequence`);
+  // Explanation: trimmed nonempty (rejects whitespace-only), max length.
+  const explanation = typeof row.explanation === "string" ? row.explanation.trim() : "";
   if (explanation.length === 0 || explanation.length > MAX_EXPLANATION_LENGTH)
-    throw new ScaleEvidenceValidationError(`stored set ${row.id} has invalid explanation`);
-  const conflictsJson = row.conflictsJson;
-  if (!Array.isArray(conflictsJson))
-    throw new ScaleEvidenceValidationError(`stored set ${row.id} has malformed conflicts`);
-  const conflicts: ScaleEvidenceClaim[] = [];
-  const seen = new Set<string>();
-  for (let i = 0; i < conflictsJson.length; i++) {
-    const raw = conflictsJson[i];
-    // Reuse the strict claim validator (content-independent checks need
-    // offsets/quotes validated structurally here; quote-vs-content was
-    // verified at write time and the version is immutable).
-    if (!isRecord(raw))
-      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}] must be an object`);
-    const allowedClaimKeys = new Set(["scale", "relevance", "explanation", "source"]);
-    for (const key of Object.keys(raw)) {
-      if (!allowedClaimKeys.has(key))
-        throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}] has unknown field: ${key}`);
-    }
-    if (!isValidScale(raw.scale))
-      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].scale is invalid`);
-    if (!isValidRelevance(raw.relevance))
-      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].relevance is invalid`);
-    if (typeof raw.explanation !== "string" || raw.explanation.length === 0 || raw.explanation.length > MAX_EXPLANATION_LENGTH)
-      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].explanation is invalid`);
-    if (!isRecord(raw.source))
-      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].source must be an object`);
-    const allowedSourceKeys = new Set(["start", "end", "quote"]);
-    for (const key of Object.keys(raw.source)) {
-      if (!allowedSourceKeys.has(key))
-        throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].source has unknown field: ${key}`);
-    }
-    const { start, end, quote } = raw.source;
-    if (typeof start !== "number" || typeof end !== "number" || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start)
-      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].source offsets are invalid`);
-    if (typeof quote !== "string" || quote.length === 0 || quote.length > MAX_QUOTE_LENGTH)
-      throw new ScaleEvidenceValidationError(`stored set ${row.id} conflicts[${i}].source.quote is invalid`);
-    const claim: ScaleEvidenceClaim = {
-      scale: raw.scale,
-      relevance: raw.relevance,
-      explanation: raw.explanation,
-      source: { start, end, quote },
-    };
-    const key = claimKey(claim);
-    if (seen.has(key))
-      throw new ScaleEvidenceValidationError(`stored set ${row.id} has duplicate conflict claim`);
-    seen.add(key);
-    conflicts.push(claim);
+    throw new ScaleEvidenceValidationError(`${where} has invalid explanation`);
+  // Predecessor chain: first set has null previousSetId; later sets must link.
+  // (FK guarantees the referenced set exists.)
+  if (row.sequence === 1) {
+    if (row.previousSetId !== null)
+      throw new ScaleEvidenceValidationError(`${where} first set must have null previousSetId`);
+  } else if (row.previousSetId === null) {
+    throw new ScaleEvidenceValidationError(`${where} non-first set must have previousSetId`);
   }
-  // Declaration/cardinality coherence (mirrors the DB CHECK).
-  if (row.declaration === "CONFLICTS" && (conflicts.length < 1 || conflicts.length > MAX_CLAIMS))
-    throw new ScaleEvidenceValidationError(`stored set ${row.id} declaration/cardinality mismatch`);
-  if (row.declaration === "NO_OPERATIVE_CONFLICT" && conflicts.length !== 0)
-    throw new ScaleEvidenceValidationError(`stored set ${row.id} declaration/cardinality mismatch`);
+  // Claims: reuse the write-time validator against the immutable content.
+  // This enforces integer bounds within content length, quote match at the
+  // span (same normalization as write time), trimmed nonempty strings,
+  // strict nested schemas and duplicate rejection. Forged quotes or
+  // out-of-bounds spans fail here and can never become CURRENT.
+  const conflicts = validateConflicts(
+    row.declaration,
+    row.conflictsJson,
+    opts.content,
+  );
   return {
     id: row.id,
     workspaceId: row.workspaceId,
@@ -479,7 +477,36 @@ export function createScaleEvidenceServices(deps: {
             };
           }
 
-          const assessment = toRecord(latest);
+          // Validate the retained set against its immutable source before
+          // serialization. Fetch the version content for quote/span checks.
+          const version = await tx.chapterVersion.findUniqueOrThrow({
+            where: { id: currentVersionId },
+            select: { content: true },
+          });
+          // Source-revision tenant check: the FK guarantees the revision
+          // exists; verify it belongs to this novel/workspace. Fork
+          // semantics: do NOT require revision.branchId === sourceBranchId —
+          // a branch head may be a revision created on its parent branch.
+          if (latest.sourceRevisionId !== null) {
+            const sourceRev = await tx.revision.findUnique({
+              where: { id: latest.sourceRevisionId },
+              select: { novelId: true, workspaceId: true },
+            });
+            if (
+              !sourceRev ||
+              sourceRev.novelId !== novelId ||
+              sourceRev.workspaceId !== workspaceId
+            )
+              throw new ScaleEvidenceValidationError(
+                `stored set ${latest.id} source revision tenant mismatch`,
+              );
+          }
+          const assessment = toRecord(latest, {
+            content: version.content,
+            workspaceId,
+            novelId,
+            sourceBranchId: branch.id,
+          });
           // CURRENT only when the latest set's source revision equals the
           // branch's actual head (null-safe). Any head change — even an
           // unrelated one — conservatively yields STALE.
@@ -522,9 +549,11 @@ export function createScaleEvidenceServices(deps: {
       ]);
       await requireChapter(workspaceId, novelId, chapterId);
       // The version must belong to the route chapter (tenant-safe 404).
+      // Content is fetched for retained-evidence validation (quote/span
+      // checks against the immutable source).
       const version = await db.chapterVersion.findFirst({
         where: { id: chapterVersionId, chapterId, chapter: { novelId, novel: { workspaceId } } },
-        select: { id: true },
+        select: { id: true, content: true },
       });
       if (!version) throw new NotFoundError("chapter version");
 
@@ -549,7 +578,33 @@ export function createScaleEvidenceServices(deps: {
         orderBy: { sequence: "desc" },
         take: take + 1,
       });
-      const items = rows.slice(0, take).map(toRecord);
+      // Source-revision tenant check per row: the FK guarantees the revision
+      // exists; verify it belongs to this novel/workspace. Fork semantics:
+      // do NOT require revision.branchId === sourceBranchId.
+      for (const row of rows) {
+        if (row.sourceRevisionId !== null) {
+          const sourceRev = await db.revision.findUnique({
+            where: { id: row.sourceRevisionId },
+            select: { novelId: true, workspaceId: true },
+          });
+          if (
+            !sourceRev ||
+            sourceRev.novelId !== novelId ||
+            sourceRev.workspaceId !== workspaceId
+          )
+            throw new ScaleEvidenceValidationError(
+              `stored set ${row.id} source revision tenant mismatch`,
+            );
+        }
+      }
+      const items = rows.slice(0, take).map((row) =>
+        toRecord(row, {
+          content: version.content,
+          workspaceId,
+          novelId,
+          sourceBranchId: branch.id,
+        }),
+      );
       // Exclusive cursor: the last DISPLAYED sequence. The next page uses
       // `sequence < nextBeforeSequence`, so using the first omitted row
       // would skip it. Only set when another page exists.
@@ -604,62 +659,78 @@ export function createScaleEvidenceServices(deps: {
           where: lockedNovel.currentBranchId
             ? { id: lockedNovel.currentBranchId, novelId }
             : { novelId, name: "main" },
-          select: { id: true, headRevisionId: true, novelId: true },
+          select: { id: true, novelId: true },
         });
         if (!branch) throw new ConflictError("no checked-out branch exists");
-        await tx.$queryRawUnsafe(
-          `SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`,
+        // The locking query itself returns the authoritative head: any
+        // concurrent head change waits on this lock, so the value read here
+        // is fresh. Never use a pre-lock cached headRevisionId.
+        const [lockedBranch] = await tx.$queryRawUnsafe<
+          { id: string; head_revision_id: string | null }[]
+        >(
+          `SELECT id, head_revision_id FROM novel_branches WHERE id = $1 FOR UPDATE`,
           branch.id,
         );
+        if (!lockedBranch) throw new ConflictError("no checked-out branch exists");
+        const lockedBranchId: string = lockedBranch.id;
+        const lockedHeadRevisionId: string | null = lockedBranch.head_revision_id;
         const chapter = await tx.chapter.findFirst({
           where: { id: chapterId, novelId, novel: { workspaceId } },
-          select: { id: true, currentVersionId: true },
+          select: { id: true },
         });
         if (!chapter) throw new NotFoundError("chapter");
-        await tx.$queryRawUnsafe(
-          `SELECT id FROM chapters WHERE id = $1 FOR UPDATE`,
+        // The locking query itself returns the authoritative currentVersionId:
+        // a concurrent save waits on this lock, so the value read here is
+        // fresh. Never compare against a pre-lock cached value.
+        const [lockedChapter] = await tx.$queryRawUnsafe<
+          { id: string; current_version_id: string | null }[]
+        >(
+          `SELECT id, current_version_id FROM chapters WHERE id = $1 FOR UPDATE`,
           chapter.id,
         );
+        if (!lockedChapter) throw new NotFoundError("chapter");
+        const lockedChapterId: string = lockedChapter.id;
+        const lockedCurrentVersionId: string | null = lockedChapter.current_version_id;
 
-        // Recheck all expectations under the locks. The chapter row was
-        // re-read above AFTER acquiring its lock, so currentVersionId is
-        // fresh: reject a stale submitted version with 409.
-        if (chapter.currentVersionId !== chapterVersionId)
-          throw new ConflictError("chapter version is no longer current", {
-            currentHeadRevisionId: branch.headRevisionId,
-          });
-        if (branch.id !== expectedBranchId)
-          throw new ConflictError("checked-out branch changed", {
-            currentHeadRevisionId: branch.headRevisionId,
-          });
-        // Null-safe head comparison: null means an actual headless branch.
-        const headMatches =
-          branch.headRevisionId === expectedHeadRevisionId;
-        if (!headMatches)
-          throw new ConflictError("branch head changed", {
-            currentHeadRevisionId: branch.headRevisionId,
-          });
-
+        // Ownership first: a missing/foreign version is 404, never 409.
         // The submitted version must belong to the scoped chapter/novel.
         const version = await tx.chapterVersion.findFirst({
           where: {
             id: chapterVersionId,
-            chapterId: chapter.id,
+            chapterId: lockedChapterId,
             chapter: { novelId, novel: { workspaceId } },
           },
           select: { id: true, content: true },
         });
         if (!version) throw new NotFoundError("chapter version");
 
+        // Recheck all expectations under the locks, using ONLY post-lock
+        // values. A stale submitted version (obsolete but owned) is 409.
+        if (lockedCurrentVersionId !== chapterVersionId)
+          throw new ConflictError("chapter version is no longer current", {
+            currentHeadRevisionId: lockedHeadRevisionId,
+          });
+        if (lockedBranchId !== expectedBranchId)
+          throw new ConflictError("checked-out branch changed", {
+            currentHeadRevisionId: lockedHeadRevisionId,
+          });
+        // Null-safe head comparison: null means an actual headless branch.
+        const headMatches =
+          lockedHeadRevisionId === expectedHeadRevisionId;
+        if (!headMatches)
+          throw new ConflictError("branch head changed", {
+            currentHeadRevisionId: lockedHeadRevisionId,
+          });
+
         // Validate claims against the immutable version content.
         const normalizedConflicts = validateConflicts(declaration, conflicts, version.content);
 
         // Latest set by sequence, compared null-safe against expectedSetId.
-        const latest = await latestSet(tx, branch.id, chapterVersionId);
+        const latest = await latestSet(tx, lockedBranchId, chapterVersionId);
         const latestId = latest ? latest.id : null;
         if (latestId !== expectedSetId)
           throw new ConflictError("a newer assessment set exists", {
-            currentHeadRevisionId: branch.headRevisionId,
+            currentHeadRevisionId: lockedHeadRevisionId,
           });
 
         const sequence = (latest ? latest.sequence : 0) + 1;
@@ -669,8 +740,8 @@ export function createScaleEvidenceServices(deps: {
             workspaceId,
             novelId,
             chapterVersionId,
-            sourceBranchId: branch.id,
-            sourceRevisionId: branch.headRevisionId,
+            sourceBranchId: lockedBranchId,
+            sourceRevisionId: lockedHeadRevisionId,
             sequence,
             declaration,
             explanation: trimmedExplanation,
@@ -679,7 +750,16 @@ export function createScaleEvidenceServices(deps: {
             actorUserId,
           },
         });
-        return toRecord(created);
+        // Validate the created row through the same retained-evidence path
+        // (defense-in-depth; claims were already validated pre-insert).
+        // sourceRevisionId comes from the locked branch head (valid or null
+        // for headless), so no separate revision tenant check is needed here.
+        return toRecord(created, {
+          content: version.content,
+          workspaceId,
+          novelId,
+          sourceBranchId: lockedBranchId,
+        });
       });
     },
   };

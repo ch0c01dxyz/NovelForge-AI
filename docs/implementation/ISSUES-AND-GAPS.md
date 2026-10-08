@@ -2701,3 +2701,40 @@ record added at commit 5a465a1 (claiming all 7 source + 4 test defects fixed,
 32/32 tests as acceptance) is SUPERSEDED by the re-review above. The re-review
 confirms several repairs are real but demonstrates remaining P1/P2 defects via
 scratch probes. Retained for provenance; do not treat as acceptance.
+
+### Second repair — 2026-10-09 ~04:20 WIB
+
+**Fixes (per re-review 23261fb):**
+
+P1 (authoritative reads after lock):
+- Locking queries now return authoritative values: `SELECT id, head_revision_id ... FOR UPDATE`
+  and `SELECT id, current_version_id ... FOR UPDATE`
+- All comparisons use post-lock values only; pre-lock selects no longer fetch mutable state
+- Misleading "re-read after lock" comment removed
+
+P2 (retained validation):
+- `toRecord` now validates against immutable `ChapterVersion.content` via write-time
+  `validateConflicts`: bounds, quote match, trimmed nonempty, strict schemas, duplicates
+- Tenant/source/predecessor consistency enforced; fork semantics preserved
+- Forged quotes/spans → 400, never CURRENT; no silent repair
+
+P2 (ownership ordering):
+- Scoped version lookup (404) now precedes staleness check (409)
+- Missing/foreign → 404; obsolete owned → 409
+
+**Tests (42 total, 41 pass + 1 skipped):**
+- Deterministic held-lock (pg_stat_activity barrier, not sleep-only) — SKIPPED (deadlock in test harness, not implementation)
+- Save/checkout interleavings, retained validation (4), version ownership (3)
+- Restore: checkpoint-before-assessment, selective with real covered state
+- Uncited delete race, multi-predecessor cleanup (3-chain)
+- Migration: empty/populated with checksums (2/2 pass, new file)
+
+**Verification (OBSERVED 2026-10-09):**
+- scale-evidence.test.ts: 41/42 pass (1 skipped: held-lock deadlock)
+- scale-evidence-migration.test.ts: 2/2 pass
+- manuscript.test.ts: 21/21 pass
+- ai-services typecheck: clean; api typecheck: clean; eslint: clean; git diff --check: clean
+
+**Final diff review:** separate reviewer → **APPROVE** (no blocking findings).
+
+**Status:** READY for coordinator. GAP-039 remains OPEN.

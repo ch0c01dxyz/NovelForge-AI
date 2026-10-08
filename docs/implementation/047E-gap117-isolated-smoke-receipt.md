@@ -58,8 +58,8 @@ evidence; this receipt does not rewrite it.
 | Dedicated `:6380` client connections (`CLIENT LIST`) | — | 13 (worker) | — |
 
 **What these counts establish (OBSERVED):** the shared Redis key counts were
-unchanged before and after the run. No keys were added to or removed from
-shared Redis during the observation window.
+identical at the before and after observation points (604 db0 / 5 db15 /
+604 bull:*). This is a point-in-time comparison only.
 
 **What these counts do NOT establish (INFERRED, not proven):** unchanged key
 counts alone do not prove the worker never connected to shared Redis, nor

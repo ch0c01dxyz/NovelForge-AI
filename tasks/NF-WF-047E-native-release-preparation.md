@@ -381,12 +381,15 @@ Redis and script artifacts live here — never the operator's home directory
   ```
 - Worker start (with isolated env; `DATABASE_URL` from external environment):
   ```bash
-  REDIS_URL=redis://localhost:6380 NODE_ENV=test \
-    # ... plus dummy S3/OMNIROUTE/encryption per apps/api/src/e2e/setup.ts
-    pnpm --filter @novelforge/worker start
+  # Dummy S3/OMNIROUTE/encryption values per apps/api/src/e2e/setup.ts
+  # (test-only; set each as needed before starting the worker)
+  export REDIS_URL=redis://localhost:6380
+  export NODE_ENV=test
+  pnpm --filter @novelforge/worker start
   ```
-  Run in background; capture logs. Record the startup log line showing
-  `REDIS_URL=redis://localhost:6380` as attributable configuration evidence.
+  Run in background; capture logs. Record the exported `REDIS_URL` value
+  (from the operator's shell history or a sanitized env dump) as
+  attributable configuration evidence — the worker does not log it.
 - Worker config: `REDIS_URL=redis://localhost:6380`, `NODE_ENV=test`,
   dummy S3/OMNIROUTE/encryption (per `apps/api/src/e2e/setup.ts`).
   No credentials in Redis URL.
@@ -406,13 +409,17 @@ const connection = { host: '127.0.0.1', port: 6380 };
 const queue = new Queue('worker-heartbeat', { connection });
 const queueEvents = new QueueEvents('worker-heartbeat', { connection });
 await queueEvents.waitUntilReady();
-const job = await queue.add('smoke-test', { smoke: true, run: jobId }, { jobId });
-const completed = await new Promise((resolve, reject) => {
+// Register the completion listener BEFORE enqueueing: the heartbeat
+// processor completes nearly instantly, and an event fired before the
+// listener attaches would be missed.
+const completedPromise = new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error('timeout waiting for completed')), 30000);
   queueEvents.on('completed', ({ jobId: doneId }) => {
     if (doneId === jobId) { clearTimeout(timer); resolve(new Date().toISOString()); }
   });
 });
+const job = await queue.add('smoke-test', { smoke: true, run: jobId }, { jobId });
+const completed = await completedPromise;
 const state = await job.getState();
 console.log(JSON.stringify({ jobId, bullmqJobId: job.id, completedAt: completed, finalState: state }));
 await queueEvents.close();
@@ -430,8 +437,9 @@ attribution key.
   and confirm absent on `:6379`.
 
 **Worker-target evidence (OBSERVED):**
-- Record the worker's startup log showing `REDIS_URL=redis://localhost:6380`
-  (sanitized — no credentials).
+- Record the exported `REDIS_URL=redis://localhost:6380` from the operator's
+  shell (sanitized — no credentials; the worker process itself does not log
+  it). This is the attributable configuration evidence.
 - `CLIENT LIST` on `:6380` during the run: record count and that client
   addresses are 127.0.0.1 (loopback).
 - `CLIENT LIST` on `:6379` before/after: record that no NEW client

@@ -1,5 +1,13 @@
 # NovelForge V2 --- START HERE
 
+Current dispatch update (2026-10-09): [NF-WF-050B](tasks/NF-WF-050B-scale-review-and-author-decisions.md)
+is READY after separate technical and recovery reviews. It owns deterministic
+SCALE review, author standing/exception decisions and the localized author flow.
+050A is already integrated; do not repeat it. Assign the runtime implementer,
+then execute 050B's serial reviewed slices. No 050B code is implemented yet;
+GAP-039/GAP-119 and subsequent optional 050C remain open.
+
+
 Current dispatch (2026-10-09): reviewed S1 foundation NF-WF-050A is integrated
 through `843a263` from external `d78afc3`. Next, draft and separately review
 the 050B final-review/author-decision/UI contract before implementation. Do not

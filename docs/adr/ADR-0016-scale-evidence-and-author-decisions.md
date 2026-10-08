@@ -92,6 +92,32 @@ history and require explicit chapter-deletion conflict handling.
 final-review receipts, author decisions and localized UI; 050C adds optional
 AI proposals. Contract acceptance is not evidence those features are implemented.
 
+### Reviewed 050B technical amendment — 2026-10-09
+
+The [050B contract](../../tasks/NF-WF-050B-scale-review-and-author-decisions.md)
+has separate technical APPROVE verdicts from review_mutations_034 and
+review_recovery_034. The following choices are reviewed implementation contracts,
+not fresh author decisions or implemented behavior. Keep overall receipt
+PASS/FAIL and add explicit SCALE completeness/applicability JSON. Configured
+HARD missing or malformed required data holds with a distinct incomplete code;
+SOFT remains advisory. Valid empty access and version-bound quiet chapters are
+complete inputs, not fabricated conflicts. All release consumers must use the
+same transactional pin checks, including the scheduled publication worker.
+
+Keep standing in the existing restorable NarrativePolicy. Retain S2 proposals
+and outcomes as append-only OPERATIONAL audit records. Proposed standing
+approval is HIGH impact with a mandatory pre-change checkpoint and atomic
+policy/revision/decision/rebuild intent. Chapter exceptions resolve only complete
+identified SCALE violations; they cannot fill missing data or override hard
+canon/other policies. No FK binds retained history to rewound mutable policy rows.
+
+Preserve 050A's strict source-head applicability: status, scheduling, standing
+changes or restore require an explicit fresh assessment/review before the next
+guarded action. No silent repinning or automatic reuse of historical exceptions.
+This conservatism must be visible in the author flow. 050C retains optional AI;
+050B provides deterministic guidance without gateway calls. Contract review is
+accepted; implementation still requires its own exact-diff and migration review.
+
 S3-only authority and autonomous approval are rejected by the author decision.
 S4 (keeping SCALE outside review verdicts) is not the chosen direction.
 S1 requires modeling/tagging work; S2 adds author decisions; S3 adds optional

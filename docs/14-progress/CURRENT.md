@@ -1,5 +1,46 @@
 # Current Project State
 
+## 050B external dispatch preparation — 2026-10-09
+
+The author authorized commit/push of the separately reviewed 050B contract and
+requested an external implementation prompt. The accepted task/ADR manifest
+below remains unchanged. Publish this documentation as the dispatch baseline;
+the receiving coordinator must verify the actual fetched commit and record its
+implementer/separate reviewer assignments before any code edits. Use a dedicated
+050B branch, native Ubuntu preflight and the task's serial reviewed slices.
+No 050B implementation, feature test or release acceptance is claimed. GAP-039
+and GAP-119 remain OPEN; 050A is not redispatched and 050C remains separate.
+Engram attribution is unavailable (GAP-021); this is the publication handoff
+fallback. The prior no-commit note describes the earlier contract-review turn.
+
+## 050B technical contract accepted — 2026-10-09
+
+[NF-WF-050B](../../tasks/NF-WF-050B-scale-review-and-author-decisions.md) is READY
+for runtime implementer assignment, not implemented. Both separate actors
+review_mutations_034 and review_recovery_034 APPROVE the contract and reviewed
+ADR-0016 amendment against baseline `a0010c2`. Their initial findings were
+resolved in the design: scoped parent cleanup/required rollback proof, checked-out
+branch policy revisions, explicit headless no-write refusal and independently
+paginated pending proposals. No feature tests, schema changes or migration runs
+occurred in this contract-review task.
+
+Frozen review manifest (working file bytes, SHA-256; this record is outside the
+artifacts it hashes):
+
+- `tasks/NF-WF-050B-scale-review-and-author-decisions.md`: `B6A44390D2485D90A62C23B971E0B1039DB177A4F412D970D2C4A78AA78ABE45`.
+- `docs/adr/ADR-0016-scale-evidence-and-author-decisions.md`: `1909A48A9B958C787F76FCBF678528E106165F079192B30D764922ECDC917C52`.
+
+The next slice is reviewed additive storage/context interfaces, followed by S2
+decisions + deterministic review/shared API-worker gates and then localized UI.
+Hard incomplete data holds separately from proved violations; exceptions cannot
+fill missing data or bypass canon. Preserve 050A strict head staleness, requiring
+explicit fresh assessment/review after head-changing actions. 050C still owns
+optional AI calls; GAP-039 and GAP-119 stay OPEN until implementation acceptance.
+
+Documentation verification: task/ADR local links resolve, Markdown fences and
+whitespace checks pass; code remains `a0010c2`. No commit/push in this turn.
+Engram attribution remains unavailable (GAP-021); this is the fallback checkpoint.
+
 ## 050A integration accepted — 2026-10-09
 
 The author authorized integration of reviewed external `d78afc3`. Merge

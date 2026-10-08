@@ -2869,3 +2869,41 @@ pure SCALE/restore15/15 pass. No working data migration or release acceptance.
 Closure is scoped to this submission; GAP-039 and 050B/050C remain OPEN/planned,
 respectively. Engram attribution remains unavailable (GAP-021); CURRENT records
 the fallback integration checkpoint.
+
+## GAP-119 — 050B review/gate and standing contract seams
+
+Status: OPEN / P1; observed by source inspection at `a0010c2`, 2026-10-09.
+Owner: NF-WF-050B; separate reviewers: review_mutations_034 and
+review_recovery_034. This is a planned contract repair, not a reproduced runtime
+failure or implemented fix. GAP-039 remains the parent capability gap.
+
+Evidence: narrative.ts:isValidScalePayload rejects empty access although
+ADR-0016 permits it. final-text-review.ts reads the default main head, then
+policies and receipt writes outside a consistent transaction, while 050A binds
+the checked-out branch. manuscript.ts:setStatus checks its verdict-only gate
+before its transaction. publication.ts passes outer db to that gate inside a
+locked transaction; publication-jobs.ts has a separate verdict-only mirror.
+Existing FinalTextReview has no evidence-set/policy/exception applicability pin.
+narrative.putPolicy uses a main-targeted revision wrapper; deletePolicy deletes
+before branch locking.
+
+Impact: stale or cross-branch SCALE evidence could appear accepted; missing
+HARD evidence has no distinct gate outcome; S2 can invert lock ordering. Story
+head advances also stale 050A evidence after status/scheduling/standing changes.
+Next: freeze the 050B contract with a shared transactional gate, branch alignment,
+explicit incomplete/violation outcomes, valid empty access and deliberate fresh
+assessment requirements. Separate review must resolve the design before coding.
+Closure: real API and worker race/negative proofs, S2 recovery/migration checks,
+localized author-flow acceptance and separate exact-diff review. Contract review
+alone does not close this issue. Engram attribution unavailable per GAP-021.
+
+### GAP-119 contract review — 2026-10-09
+
+Both assigned separate reviewers APPROVE the revised 050B technical contract
+and ADR-0016 amendment. Review findings corrected in the contract: bounded
+platform.deleteNovel cleanup with rollback, ALL policy mutations on checked-out
+branch, explicit headless409/no receipt, independent pending proposal pagination,
+and stored proposal pins that cannot be silently rebound. HIGH standing approval
+and exceptions limited to complete identified violations are reviewed designs.
+No production code, migration, feature test or working data was changed.
+Status remains OPEN; closure requires the implementation proofs listed above.

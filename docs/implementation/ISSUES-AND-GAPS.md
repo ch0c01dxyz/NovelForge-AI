@@ -2758,3 +2758,71 @@ lint and diff whitespace pass. Unsafe migration suite not run; remote2/2 is a
 reported claim only. No full release or new manuscript check claimed. Owned
 API scratch database was dropped and absence checked; main/client restored.
 Main remainsc957e99; no merge, GAP-039 closure or dependent dispatch accepted.
+
+### Fourth repair verification of `d78afc3` — 2026-10-09
+
+Isolation blocker resolution verified; integration/documentation acceptance
+pending. Both separate technical reviewers APPROVE private migration copies.
+Local concurrent API/migration suites pass64/64 without skips (API47/migration2/
+classification8/pure7). Baseline Prisma-ledger checksums and seeded data survive
+the41-to42 upgrade; no backfill and timestamp parity assertions pass. Prisma
+validation/generation, both typechecks, changed-source lint and diff whitespace
+pass. No full release or local manuscript rerun claimed.
+
+Standalone owned private fixture injection reached expected PostgreSQL42883
+in050A and did not change live repository migration paths/bytes (Git checked
+after success and failure). The initial fault probe did not reach injected SQL;
+its corrected retry did. All owned scratch databases were removed and absence
+verified, and main/client restored. Working data was not touched.
+
+The submission deleted its historical third-repair receipt while claiming
+provenance was retained. Restore the archived receipt below during integration;
+its claims are reported historical evidence, not new coordinator verification.
+Main remains7c73a1e and no source merge is accepted yet. GAP-039 stays OPEN.
+
+### Archived third-repair receipt — restored for provenance
+
+Source: `aab13e5:docs/implementation/ISSUES-AND-GAPS.md`. Superseded as overall
+acceptance by later reviews; retained verbatim below. OBSERVED/verified claims
+inside this historical receipt are the external implementer's reported results,
+not independent local reruns. Its5/5 RED to GREEN report was not rerun locally.
+
+### Third repair — 2026-10-09 ~04:50 WIB (per re-review c957e99)
+
+**Part 1 — Predecessor validation:**
+- `validatePredecessor` (bounded `findUnique`, not scan): verifies predecessor has
+  same workspace/novel/branch/version and sequence exactly n-1
+- Applied on readCurrent, listHistory, and before append extends history
+- First set: sequence 1 + previousSetId null; broken chains → 400 explicitly
+- Regressions: cross-novel/branch/version predecessor, wrong sequence, append
+  rejection without new row
+
+**Part 2 — Held-lock regression enabled:**
+- `describe.skip` removed; revision created BEFORE lock (fixes FK deadlock)
+- Barrier via `pg_stat_activity` wait_event_type='Lock' (not sleep-only)
+- 409 "branch head changed" + zero rows stored; finally cleanup guaranteed
+
+**Part 3 — Populated Prisma migration proof:**
+- Baseline deployed via Prisma (41 genuine ledger rows), not raw SQL
+- Ledger checksums recorded; 050A deployed via Prisma as 42nd row
+- Proven: baseline ledger/data unchanged, no backfill, schema parity
+- Empty-database proof retained
+
+**Part 4 — Scope amendment:**
+- `apps/api/src/scale-evidence-migration.test.ts` added via separately reviewed
+  amendment (APPROVE); appended to contract
+
+**Verification (OBSERVED 2026-10-09):**
+- scale-evidence.test.ts: 47/47 pass (0 skipped)
+- scale-evidence-migration.test.ts: 2/2 pass
+- manuscript.test.ts: 21/21 pass
+- ai-services + api typecheck: clean; eslint: clean; git diff --check: clean
+
+**Status:** READY for final diff review. GAP-039 remains OPEN.
+
+**P3-1 resolution (fail-on-old proof):** predecessor implementer verified empirically:
+- On unfixed e49254f (presence-only check): 5/5 new tests FAIL — 4x `expected 200 to be 400`
+  (corrupt rows returned CURRENT, matching the scratch probe) and 1x `expected 201 to be 409`
+  (corrupt chain extended with new row).
+- After fix: 5/5 PASS.
+Recorded from implementer report 2026-10-09; backends MODEL_UNVERIFIED per GAP-013.

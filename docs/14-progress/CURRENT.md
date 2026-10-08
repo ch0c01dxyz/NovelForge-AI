@@ -1,5 +1,31 @@
 # Current Project State
 
+## External 050A fourth repair verification — 2026-10-09, `d78afc3`
+
+Separate technical reviewers APPROVE the isolation fix and unchanged service
+repairs. Local parallel migration/API verification passes64/64, no skips
+(API47, migration2, classification8, pure SCALE7). Prisma validate/generate,
+ai-services/API typechecks, changed-source lint and diff whitespace pass.
+Empty/populated upgrades use private copies;41 baseline Prisma ledger checksums
+and seeded data remain unchanged when050A becomes migration42, with no backfill.
+
+A separate private-copy fault injection reached PostgreSQL42883 in050A.
+Live repository migrations remained unchanged after successful suites and
+the injected failure; all owned scratch databases were removed and absence
+verified. The initial standalone fault probe failed before reaching its injected
+SQL and is not counted as proof; a corrected retry reached the expected failure.
+Windows symlink setup was exercised successfully. Manuscript suite was not
+rerun locally; its external21/21 remains reported evidence only. No working DB
+migration, full-release verification or production deployment is claimed.
+
+One documentation correction was prepared locally: restore the historical
+third-repair receipt and5/5 RED to GREEN report deleted in the submitted diff.
+It is archived under GAP-118 with superseded/not-local-evidence attribution.
+Preserve that archive during integration. The technical submission is ready
+for integration with this correction; main remains7c73a1e and no merge has
+occurred. GAP-039/050B/050C remain separate. Main Prisma generation restored;
+Engram attribution unavailable (GAP-021), so these records are the fallback.
+
 ## External 050A third repair review — 2026-10-09, `aab13e5`
 
 No merge accepted; main remains `c957e99`. Both separate reviewers confirm

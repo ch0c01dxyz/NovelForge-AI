@@ -2729,3 +2729,32 @@ The scratch probe used valid scoped author data and an intentionally corrupted
 cross-novel predecessor FK; no working data was modified. Both owned scratch
 databases were removed and absence checked. Main remains23261fb; no merge,
 GAP-039 closure or dependent050B/050C implementation dispatch is accepted.
+
+### Third repair re-review of `aab13e5` — 2026-10-09
+
+Status remains OPEN / P2 for one remaining acceptance blocker. Separate
+reviewers confirm the service predecessor checks and enabled held-lock test
+are repaired; the populated migration assertions now inspect genuine Prisma
+ledger rows/checksums, and the new test file has a scope amendment.
+
+Remaining blocker: `scale-evidence-migration.test.ts:207–224` stages050A by
+renaming the live tracked directory out of the shared repository migrations
+tree. Other API suites independently run migrate deploy against that same tree
+and can miss050A while it is staged. Runner interruption can also leave it
+displaced; finally is not a process-termination guarantee. This is a source
+isolation defect, not a demonstrated production database failure.
+
+Owner/next action:050A implementer must deploy from private temporary
+schema/config/migration copies for both baseline and upgrade, leaving live
+source untouched. Limit cleanup to verified owned temporary paths. Keep the
+required real Prisma ledger/data/no-backfill/schema checks; no raw-SQL ledger
+substitute or skipped mandatory regression. Verify migration and API suites
+can run concurrently and repository migration paths/bytes remain unchanged
+after success and failure. Obtain separate final-diff review before acceptance.
+
+Fresh local evidence:62/62 selected tests pass with no skips (API47,
+classification8, pure7); Prisma validate/generate, both typechecks, changed-source
+lint and diff whitespace pass. Unsafe migration suite not run; remote2/2 is a
+reported claim only. No full release or new manuscript check claimed. Owned
+API scratch database was dropped and absence checked; main/client restored.
+Main remainsc957e99; no merge, GAP-039 closure or dependent dispatch accepted.

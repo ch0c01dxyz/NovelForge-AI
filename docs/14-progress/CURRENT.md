@@ -1,5 +1,29 @@
 # Current Project State
 
+## External 050A third repair review — 2026-10-09, `aab13e5`
+
+No merge accepted; main remains `c957e99`. Both separate reviewers confirm
+the predecessor checks, active held-lock regression, genuine Prisma-ledger
+assertions and migration-test scope amendment address the earlier findings.
+They request one remaining correction: migration-test source isolation.
+
+Fresh local checks at the exact submitted revision:62/62 selected tests pass,
+none skipped (SCALE API47, restore classification8, pure SCALE7). Prisma
+validate/generate, ai-services/API typechecks, changed-source lint and submitted
+diff whitespace checks pass. Manuscript suite was not rerun. The migration
+suite was deliberately not executed locally: its populated proof temporarily
+moves the tracked050A directory out of the shared repository migration tree.
+Other suites could deploy incomplete history; interruption can leave source
+files displaced. Its reported remote2/2 passes are not local migration evidence.
+
+Next: use private temporary schema/config/migration copies for baseline and
+upgrade deploys, keep repository migrations untouched, and prove concurrent
+execution with the API suite plus ledger/data preservation. GAP-118 stays
+OPEN / P2; GAP-039 and dependent050B/050C acceptance remain open.
+The owned API scratch database was removed and absence checked; main checkout
+and Prisma client generation restored. Working data preserved. Engram binding
+remains unavailable (GAP-021); this record is the fallback checkpoint.
+
 ## External 050A second repair review — 2026-10-09, `e49254f`
 
 Both separate reviewers request changes; no merge accepted. Main remains

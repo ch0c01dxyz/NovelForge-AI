@@ -1513,75 +1513,18 @@ describe("evidence: parent cleanup", () => {
   });
 });
 
-describe.skip("evidence: deterministic held-lock rejection", () => {
+describe("evidence: deterministic held-lock rejection", () => {
   it("append blocked on held branch lock observes the newly committed head and fails 409 with nothing stored", async () => {
     const owner = await seedUser("sev11@t.io");
     const ids = await seedNovel(owner.userId, "sev-ws11");
     const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(owner.cookie, ids);
     const svc = createScaleEvidenceServices({ db });
 
-    // A dedicated connection holds the branch FOR UPDATE lock for the
-    // duration of the barrier. The append below must block on it.
-    const holder = new pg.Client({ connectionString: TEST_URL });
-    await holder.connect();
-    await holder.query("BEGIN");
-    const lockRes = await holder.query(
-      "SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE",
-      [branchId],
-    );
-    expect(lockRes.rowCount).toBe(1);
-
-    // Start the append in the background; it blocks on the branch lock.
-    // The rejection is captured via the settled outcome below.
-    let appendOutcome: { ok: true; value: unknown } | { ok: false; error: unknown } | null = null;
-    const appendDone = svc
-      .appendSet({
-        workspaceId: ids.workspaceId,
-        novelId: ids.novelId,
-        chapterId,
-        chapterVersionId: versionId,
-        expectedBranchId: branchId,
-        expectedHeadRevisionId: headRevisionId,
-        expectedSetId: null,
-        declaration: "CONFLICTS",
-        explanation: "held-lock append",
-        conflicts: [CLAIM_A],
-        actorUserId: owner.userId,
-      })
-      .then(
-        (value) => { appendOutcome = { ok: true, value }; },
-        (error: unknown) => { appendOutcome = { ok: false, error }; },
-      );
-
-    // Deterministic barrier: poll pg_stat_activity until the append's
-    // backend is observably waiting on a lock. The wait condition (not a
-    // fixed sleep) is the synchronization primitive.
-    const probe = new pg.Client({ connectionString: TEST_URL });
-    await probe.connect();
-    try {
-      const deadline = Date.now() + 15_000;
-      let blocked = false;
-      while (Date.now() < deadline) {
-        const r = await probe.query(
-          `SELECT count(*)::int AS n FROM pg_stat_activity
-           WHERE datname = current_database()
-             AND pid <> pg_backend_pid()
-             AND wait_event_type = 'Lock'`,
-        );
-        if ((r.rows[0] as { n: number }).n > 0) {
-          blocked = true;
-          break;
-        }
-        await new Promise((res) => setTimeout(res, 25));
-      }
-      expect(blocked).toBe(true);
-    } finally {
-      await probe.end();
-    }
-
-    // While the append waits, the lock holder commits a new head. The
-    // holder owns the lock, so this update does not block.
-    // Create a real revision to satisfy the FK constraint.
+    // Create the new head revision BEFORE any lock is taken. Creating it
+    // afterwards via a separate connection would block on the branch row
+    // lock held by this test (FK check on novel_branches), deadlocking the
+    // harness: the main thread would wait on the insert while the holder
+    // waits for the test to commit it.
     const newRevision = await db.revision.create({
       data: {
         workspaceId: ids.workspaceId,
@@ -1591,28 +1534,113 @@ describe.skip("evidence: deterministic held-lock rejection", () => {
         origin: "MANUAL",
       },
     });
-    const upd = await holder.query(
-      "UPDATE novel_branches SET head_revision_id = $1 WHERE id = $2",
-      [newRevision.id, branchId],
-    );
-    expect(upd.rowCount).toBe(1);
-    await holder.query("COMMIT");
-    await holder.end();
 
-    // The released append must now read the fresh head (authoritative
-    // post-lock value) and reject the stale expectation with 409.
-    await appendDone;
-    expect(appendOutcome).not.toBeNull();
-    const outcome = appendOutcome!;
-    expect(outcome.ok).toBe(false);
-    if (!outcome.ok) {
-      expect((outcome.error as Error).message).toMatch(/branch head changed/);
+    // A dedicated connection holds the branch FOR UPDATE lock for the
+    // duration of the barrier. The append below must block on it.
+    const holder = new pg.Client({ connectionString: TEST_URL });
+    await holder.connect();
+    let holderSettled = false;
+    try {
+      await holder.query("BEGIN");
+      const lockRes = await holder.query(
+        "SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE",
+        [branchId],
+      );
+      expect(lockRes.rowCount).toBe(1);
+
+      // Start the append in the background; it blocks on the branch lock.
+      // The rejection is captured via the settled outcome below.
+      let appendOutcome: { ok: true; value: unknown } | { ok: false; error: unknown } | null = null;
+      const appendDone = svc
+        .appendSet({
+          workspaceId: ids.workspaceId,
+          novelId: ids.novelId,
+          chapterId,
+          chapterVersionId: versionId,
+          expectedBranchId: branchId,
+          expectedHeadRevisionId: headRevisionId,
+          expectedSetId: null,
+          declaration: "CONFLICTS",
+          explanation: "held-lock append",
+          conflicts: [CLAIM_A],
+          actorUserId: owner.userId,
+        })
+        .then(
+          (value) => { appendOutcome = { ok: true, value }; },
+          (error: unknown) => { appendOutcome = { ok: false, error }; },
+        );
+
+      // Deterministic barrier: poll pg_stat_activity until the append's
+      // backend is observably waiting on a lock. The wait condition (not a
+      // fixed sleep) is the synchronization primitive.
+      const probe = new pg.Client({ connectionString: TEST_URL });
+      await probe.connect();
+      try {
+        const deadline = Date.now() + 15_000;
+        let blocked = false;
+        while (Date.now() < deadline) {
+          const r = await probe.query(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
+             WHERE datname = current_database()
+               AND pid <> pg_backend_pid()
+               AND wait_event_type = 'Lock'`,
+          );
+          if ((r.rows[0] as { n: number }).n > 0) {
+            blocked = true;
+            break;
+          }
+          await new Promise((res) => setTimeout(res, 25));
+        }
+        expect(blocked).toBe(true);
+      } finally {
+        await probe.end();
+      }
+
+      // While the append waits, the lock holder commits a new head. The
+      // holder owns the lock, so this update does not block.
+      const upd = await holder.query(
+        "UPDATE novel_branches SET head_revision_id = $1 WHERE id = $2",
+        [newRevision.id, branchId],
+      );
+      expect(upd.rowCount).toBe(1);
+      await holder.query("COMMIT");
+      holderSettled = true;
+
+      // The released append must now read the fresh head (authoritative
+      // post-lock value) and reject the stale expectation with 409.
+      // Await with a timeout so a hung append cannot hang the runner.
+      await Promise.race([
+        appendDone,
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error("append did not settle after lock release")),
+            10_000,
+          ),
+        ),
+      ]);
+      expect(appendOutcome).not.toBeNull();
+      const outcome = appendOutcome!;
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) {
+        expect((outcome.error as Error).message).toMatch(/branch head changed/);
+      }
+
+      // The rejected attempt must not have persisted any assessment.
+      expect(
+        await db.scaleEvidenceSet.count({ where: { novelId: ids.novelId } }),
+      ).toBe(0);
+    } finally {
+      // Always release the lock and the connection, even when an assertion
+      // above fails; otherwise the blocked append (or a later test) hangs.
+      if (!holderSettled) {
+        try {
+          await holder.query("ROLLBACK");
+        } catch {
+          // Connection already closed or nothing to roll back.
+        }
+      }
+      await holder.end();
     }
-
-    // The rejected attempt must not have persisted any assessment.
-    expect(
-      await db.scaleEvidenceSet.count({ where: { novelId: ids.novelId } }),
-    ).toBe(0);
   });
 });
 
@@ -1994,5 +2022,309 @@ describe("evidence: version ownership", () => {
     });
     expect(res.statusCode).toBe(409);
     expect((res.json() as { error: string }).error).toBe("CONFLICT");
+  });
+});
+
+describe("evidence: predecessor chain validation", () => {
+  /**
+   * Forge a retained row directly via Prisma, bypassing service validation.
+   * The conflicts payload must be valid for the row's own version content;
+   * only the predecessor linkage is forged.
+   */
+  async function forgeLinkedSet(args: {
+    workspaceId: string;
+    novelId: string;
+    chapterVersionId: string;
+    sourceBranchId: string;
+    sourceRevisionId: string | null;
+    sequence: number;
+    previousSetId: string | null;
+    conflictsJson: unknown;
+    actorUserId: string;
+    explanation?: string;
+  }) {
+    return db.scaleEvidenceSet.create({
+      data: {
+        workspaceId: args.workspaceId,
+        novelId: args.novelId,
+        chapterVersionId: args.chapterVersionId,
+        sourceBranchId: args.sourceBranchId,
+        sourceRevisionId: args.sourceRevisionId,
+        sequence: args.sequence,
+        declaration: "CONFLICTS",
+        explanation: args.explanation ?? "forged predecessor-link test row",
+        conflictsJson: args.conflictsJson as never,
+        previousSetId: args.previousSetId,
+        actorUserId: args.actorUserId,
+      },
+    });
+  }
+
+  /** Post a valid sequence-1 set and return its id + stored conflictsJson. */
+  async function postFirstSet(
+    cookie: string,
+    ids: { workspaceId: string; novelId: string },
+    chapterId: string,
+    versionId: string,
+    branchId: string,
+    headRevisionId: string | null,
+  ) {
+    const post = await postSet(cookie, ids, chapterId, {
+      chapterVersionId: versionId,
+      expectedBranchId: branchId,
+      expectedHeadRevisionId: headRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "valid first assessment",
+      conflicts: [CLAIM_A],
+    });
+    expect(post.statusCode, post.body).toBe(201);
+    const id = (post.json() as { id: string }).id;
+    const stored = await db.scaleEvidenceSet.findUniqueOrThrow({ where: { id } });
+    return { id, conflictsJson: stored.conflictsJson };
+  }
+
+  it("predecessor from a different novel is rejected 400 on read", async () => {
+    const owner = await seedUser("sev30@t.io");
+    const idsA = await seedNovel(owner.userId, "sev-ws30a");
+    const a = await seedChapterWithVersion(owner.cookie, idsA);
+    const firstA = await postFirstSet(
+      owner.cookie, idsA, a.chapterId, a.versionId, a.branchId, a.headRevisionId,
+    );
+
+    // A valid set on a second novel — abused as a foreign predecessor.
+    const idsB = await seedNovel(owner.userId, "sev-ws30b");
+    const b = await seedChapterWithVersion(owner.cookie, idsB);
+    const firstB = await postFirstSet(
+      owner.cookie, idsB, b.chapterId, b.versionId, b.branchId, b.headRevisionId,
+    );
+
+    // Forge: novel-A row, sequence 2, linked to novel-B's set.
+    await forgeLinkedSet({
+      workspaceId: idsA.workspaceId,
+      novelId: idsA.novelId,
+      chapterVersionId: a.versionId,
+      sourceBranchId: a.branchId,
+      sourceRevisionId: a.headRevisionId,
+      sequence: 2,
+      previousSetId: firstB.id,
+      conflictsJson: firstA.conflictsJson,
+      actorUserId: owner.userId,
+    });
+
+    const cur = await getCurrent(owner.cookie, idsA, a.chapterId);
+    expect(cur.statusCode).toBe(400);
+    expect((cur.json() as { error: string }).error).toBe("INVALID_INPUT");
+  });
+
+  it("predecessor from a different branch is rejected 400 on read", async () => {
+    const owner = await seedUser("sev31@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws31");
+    const main = await seedChapterWithVersion(owner.cookie, ids);
+    const firstMain = await postFirstSet(
+      owner.cookie, ids, main.chapterId, main.versionId, main.branchId, main.headRevisionId,
+    );
+
+    // A real side branch with its own valid set.
+    const sideBranch = await db.novelBranch.create({
+      data: { workspaceId: ids.workspaceId, novelId: ids.novelId, name: "pred-side-31" },
+    });
+    const sideSet = await db.scaleEvidenceSet.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterVersionId: main.versionId,
+        sourceBranchId: sideBranch.id,
+        sourceRevisionId: null,
+        sequence: 1,
+        declaration: "CONFLICTS",
+        explanation: "side branch assessment",
+        conflictsJson: firstMain.conflictsJson as never,
+        previousSetId: null,
+        actorUserId: owner.userId,
+      },
+    });
+
+    // Forge: main-branch row, sequence 2, linked to the side branch's set.
+    await forgeLinkedSet({
+      workspaceId: ids.workspaceId,
+      novelId: ids.novelId,
+      chapterVersionId: main.versionId,
+      sourceBranchId: main.branchId,
+      sourceRevisionId: main.headRevisionId,
+      sequence: 2,
+      previousSetId: sideSet.id,
+      conflictsJson: firstMain.conflictsJson,
+      actorUserId: owner.userId,
+    });
+
+    const cur = await getCurrent(owner.cookie, ids, main.chapterId);
+    expect(cur.statusCode).toBe(400);
+    expect((cur.json() as { error: string }).error).toBe("INVALID_INPUT");
+  });
+
+  it("predecessor from a different chapter version is rejected 400 on history read", async () => {
+    const owner = await seedUser("sev32@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws32");
+    const seeded = await seedChapterWithVersion(owner.cookie, ids);
+    const { chapterId, branchId, headRevisionId } = seeded;
+    const v1Id = seeded.versionId;
+    const firstV1 = await postFirstSet(
+      owner.cookie, ids, chapterId, v1Id, branchId, headRevisionId,
+    );
+
+    // Save a second version and post its own valid first set.
+    const PROSE_V2 = "<p>The river rose when the rains came and the bridges washed away.</p>";
+    await saveVersion(owner.cookie, ids, chapterId, PROSE_V2, 1);
+    const curV2 = await getCurrent(owner.cookie, ids, chapterId);
+    expect(curV2.statusCode).toBe(200);
+    const v2Body = curV2.json() as { chapterVersionId: string; currentHeadRevisionId: string | null };
+    const v2Id = v2Body.chapterVersionId;
+    expect(v2Id).not.toBe(v1Id);
+    const postV2 = await postSet(owner.cookie, ids, chapterId, {
+      chapterVersionId: v2Id,
+      expectedBranchId: branchId,
+      expectedHeadRevisionId: v2Body.currentHeadRevisionId,
+      expectedSetId: null,
+      declaration: "NO_OPERATIVE_CONFLICT",
+      explanation: "no operative conflict on v2",
+      conflicts: [],
+    });
+    expect(postV2.statusCode, postV2.body).toBe(201);
+    const v2SetId = (postV2.json() as { id: string }).id;
+
+    // Forge: v1 row, sequence 2, linked to v2's set (version mismatch).
+    await forgeLinkedSet({
+      workspaceId: ids.workspaceId,
+      novelId: ids.novelId,
+      chapterVersionId: v1Id,
+      sourceBranchId: branchId,
+      sourceRevisionId: headRevisionId,
+      sequence: 2,
+      previousSetId: v2SetId,
+      conflictsJson: firstV1.conflictsJson,
+      actorUserId: owner.userId,
+    });
+
+    const hist = await app.inject({
+      method: "GET",
+      url: `${BASE_URL_PATH(ids, chapterId)}/history?chapterVersionId=${v1Id}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(hist.statusCode).toBe(400);
+    expect((hist.json() as { error: string }).error).toBe("INVALID_INPUT");
+  });
+
+  it("predecessor with wrong sequence (not n-1) is rejected 400 on read", async () => {
+    const owner = await seedUser("sev33@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws33");
+    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(
+      owner.cookie, ids,
+    );
+    const first = await postFirstSet(
+      owner.cookie, ids, chapterId, versionId, branchId, headRevisionId,
+    );
+    // Valid second set via the API (sequence 2, previousSetId = first).
+    const second = await postSet(owner.cookie, ids, chapterId, {
+      chapterVersionId: versionId,
+      expectedBranchId: branchId,
+      expectedHeadRevisionId: headRevisionId,
+      expectedSetId: first.id,
+      declaration: "CONFLICTS",
+      explanation: "valid second assessment",
+      conflicts: [CLAIM_A],
+    });
+    expect(second.statusCode, second.body).toBe(201);
+    const secondId = (second.json() as { id: string }).id;
+
+    // Forge: sequence 5 linked to the sequence-2 set (2 !== 5-1).
+    await forgeLinkedSet({
+      workspaceId: ids.workspaceId,
+      novelId: ids.novelId,
+      chapterVersionId: versionId,
+      sourceBranchId: branchId,
+      sourceRevisionId: headRevisionId,
+      sequence: 5,
+      previousSetId: secondId,
+      conflictsJson: first.conflictsJson,
+      actorUserId: owner.userId,
+    });
+
+    const cur = await getCurrent(owner.cookie, ids, chapterId);
+    expect(cur.statusCode).toBe(400);
+    expect((cur.json() as { error: string }).error).toBe("INVALID_INPUT");
+  });
+
+  it("append when the latest set has a corrupt predecessor is 409 with no new row", async () => {
+    const owner = await seedUser("sev34@t.io");
+    const ids = await seedNovel(owner.userId, "sev-ws34");
+    const { chapterId, versionId, branchId, headRevisionId } = await seedChapterWithVersion(
+      owner.cookie, ids,
+    );
+    const first = await postFirstSet(
+      owner.cookie, ids, chapterId, versionId, branchId, headRevisionId,
+    );
+
+    // A foreign set (different branch) abused as the predecessor.
+    const sideBranch = await db.novelBranch.create({
+      data: { workspaceId: ids.workspaceId, novelId: ids.novelId, name: "pred-side-34" },
+    });
+    const sideSet = await db.scaleEvidenceSet.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterVersionId: versionId,
+        sourceBranchId: sideBranch.id,
+        sourceRevisionId: null,
+        sequence: 1,
+        declaration: "CONFLICTS",
+        explanation: "side branch assessment",
+        conflictsJson: first.conflictsJson as never,
+        previousSetId: null,
+        actorUserId: owner.userId,
+      },
+    });
+
+    // Forge the latest row on main: sequence 2, corrupt (cross-branch) predecessor.
+    const forged = await forgeLinkedSet({
+      workspaceId: ids.workspaceId,
+      novelId: ids.novelId,
+      chapterVersionId: versionId,
+      sourceBranchId: branchId,
+      sourceRevisionId: headRevisionId,
+      sequence: 2,
+      previousSetId: sideSet.id,
+      conflictsJson: first.conflictsJson,
+      actorUserId: owner.userId,
+      explanation: "forged corrupt-predecessor latest",
+    });
+
+    const countBefore = await db.scaleEvidenceSet.count({
+      where: { sourceBranchId: branchId, chapterVersionId: versionId },
+    });
+    expect(countBefore).toBe(2);
+
+    // Append against the corrupt tip with otherwise-valid expectations.
+    const res = await postSet(owner.cookie, ids, chapterId, {
+      chapterVersionId: versionId,
+      expectedBranchId: branchId,
+      expectedHeadRevisionId: headRevisionId,
+      expectedSetId: forged.id,
+      declaration: "CONFLICTS",
+      explanation: "attempt to extend a corrupt chain",
+      conflicts: [CLAIM_A],
+    });
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: string }).error).toBe("CONFLICT");
+
+    // No new row was created: the corrupt chain was not extended.
+    const countAfter = await db.scaleEvidenceSet.count({
+      where: { sourceBranchId: branchId, chapterVersionId: versionId },
+    });
+    expect(countAfter).toBe(2);
+    const seq3 = await db.scaleEvidenceSet.findFirst({
+      where: { sourceBranchId: branchId, chapterVersionId: versionId, sequence: 3 },
+    });
+    expect(seq3).toBeNull();
   });
 });

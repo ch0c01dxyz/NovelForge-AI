@@ -210,11 +210,77 @@ function validateConflicts(
 }
 
 /**
- * Validate a retained row before serialization. Reuses the write-time
- * `validateConflicts` (which enforces bounds, quote match, trimmed nonempty
- * strings and strict schemas against the immutable version content) instead
- * of a divergent shape-only validator. Also enforces tenant, source-branch
- * and predecessor-chain consistency. Any failure throws
+ * A retained scale_evidence_sets row as read from the database.
+ */
+type StoredSetRow = {
+  id: string;
+  workspaceId: string;
+  novelId: string;
+  chapterVersionId: string;
+  sourceBranchId: string;
+  sourceRevisionId: string | null;
+  sequence: number;
+  declaration: string;
+  explanation: string;
+  conflictsJson: unknown;
+  previousSetId: string | null;
+  actorUserId: string;
+  createdAt: Date;
+};
+
+/**
+ * Bounded predecessor-chain validation for a retained set. Sequence 1
+ * requires previousSetId null. For sequence n > 1 the referenced
+ * predecessor row must exist (a single bounded findUnique — never a
+ * history scan) and match on workspace, novel, branch and version, with
+ * sequence exactly n-1. Broken chains are rejected explicitly with
+ * ScaleEvidenceValidationError (400); never silently repaired.
+ */
+async function validatePredecessor(
+  dbClient: Pick<NovelForgeDb, "scaleEvidenceSet">,
+  row: StoredSetRow,
+): Promise<void> {
+  const where = `stored set ${row.id}`;
+  if (row.sequence === 1) {
+    if (row.previousSetId !== null)
+      throw new ScaleEvidenceValidationError(`${where} first set must have null previousSetId`);
+    return;
+  }
+  if (row.previousSetId === null)
+    throw new ScaleEvidenceValidationError(`${where} non-first set must have previousSetId`);
+  const pred = await dbClient.scaleEvidenceSet.findUnique({
+    where: { id: row.previousSetId },
+    select: {
+      workspaceId: true,
+      novelId: true,
+      sourceBranchId: true,
+      chapterVersionId: true,
+      sequence: true,
+    },
+  });
+  if (!pred)
+    throw new ScaleEvidenceValidationError(`${where} predecessor ${row.previousSetId} not found`);
+  if (
+    pred.workspaceId !== row.workspaceId ||
+    pred.novelId !== row.novelId ||
+    pred.sourceBranchId !== row.sourceBranchId ||
+    pred.chapterVersionId !== row.chapterVersionId
+  )
+    throw new ScaleEvidenceValidationError(`${where} predecessor scope mismatch`);
+  if (pred.sequence !== row.sequence - 1)
+    throw new ScaleEvidenceValidationError(
+      `${where} predecessor sequence ${pred.sequence} is not ${row.sequence - 1}`,
+    );
+}
+
+/**
+ * Validate a retained row's shape and content before serialization. Reuses
+ * the write-time `validateConflicts` (which enforces bounds, quote match,
+ * trimmed nonempty strings and strict schemas against the immutable version
+ * content) instead of a divergent shape-only validator. Also enforces tenant
+ * and source-branch consistency. Predecessor-chain integrity is verified
+ * separately by validatePredecessor (bounded single-row lookup) — callers
+ * must use toValidatedRecord, never toRecord directly. Any failure throws
  * ScaleEvidenceValidationError (400); corrupt data is never returned as
  * CURRENT and never silently repaired.
  *
@@ -223,21 +289,7 @@ function validateConflicts(
  * branch. Only existence (FK) and novel/workspace tenant match are checked.
  */
 function toRecord(
-  row: {
-    id: string;
-    workspaceId: string;
-    novelId: string;
-    chapterVersionId: string;
-    sourceBranchId: string;
-    sourceRevisionId: string | null;
-    sequence: number;
-    declaration: string;
-    explanation: string;
-    conflictsJson: unknown;
-    previousSetId: string | null;
-    actorUserId: string;
-    createdAt: Date;
-  },
+  row: StoredSetRow,
   opts: {
     /** Immutable ChapterVersion.content the claims anchor to. */
     content: string;
@@ -266,14 +318,8 @@ function toRecord(
   const explanation = typeof row.explanation === "string" ? row.explanation.trim() : "";
   if (explanation.length === 0 || explanation.length > MAX_EXPLANATION_LENGTH)
     throw new ScaleEvidenceValidationError(`${where} has invalid explanation`);
-  // Predecessor chain: first set has null previousSetId; later sets must link.
-  // (FK guarantees the referenced set exists.)
-  if (row.sequence === 1) {
-    if (row.previousSetId !== null)
-      throw new ScaleEvidenceValidationError(`${where} first set must have null previousSetId`);
-  } else if (row.previousSetId === null) {
-    throw new ScaleEvidenceValidationError(`${where} non-first set must have previousSetId`);
-  }
+  // Predecessor-chain integrity is verified by validatePredecessor (bounded
+  // single-row lookup) at every call site before toRecord runs.
   // Claims: reuse the write-time validator against the immutable content.
   // This enforces integer bounds within content length, quote match at the
   // span (same normalization as write time), trimmed nonempty strings,
@@ -299,6 +345,26 @@ function toRecord(
     actorUserId: row.actorUserId,
     createdAt: row.createdAt,
   };
+}
+
+/**
+ * Serialize a retained row after full validation: bounded predecessor-chain
+ * check first, then shape/content validation via toRecord. Every read path
+ * (readCurrent, listHistory) and the append path must use this wrapper —
+ * never toRecord directly — so a broken chain can never be serialized.
+ */
+async function toValidatedRecord(
+  dbClient: Pick<NovelForgeDb, "scaleEvidenceSet">,
+  row: StoredSetRow,
+  opts: {
+    content: string;
+    workspaceId: string;
+    novelId: string;
+    sourceBranchId: string;
+  },
+): Promise<ScaleEvidenceSetRecord> {
+  await validatePredecessor(dbClient, row);
+  return toRecord(row, opts);
 }
 
 // ---------------------------------------------------------------------------
@@ -501,7 +567,7 @@ export function createScaleEvidenceServices(deps: {
                 `stored set ${latest.id} source revision tenant mismatch`,
               );
           }
-          const assessment = toRecord(latest, {
+          const assessment = await toValidatedRecord(tx, latest, {
             content: version.content,
             workspaceId,
             novelId,
@@ -597,14 +663,17 @@ export function createScaleEvidenceServices(deps: {
             );
         }
       }
-      const items = rows.slice(0, take).map((row) =>
-        toRecord(row, {
-          content: version.content,
-          workspaceId,
-          novelId,
-          sourceBranchId: branch.id,
-        }),
-      );
+      const items: ScaleEvidenceSetRecord[] = [];
+      for (const row of rows.slice(0, take)) {
+        items.push(
+          await toValidatedRecord(db, row, {
+            content: version.content,
+            workspaceId,
+            novelId,
+            sourceBranchId: branch.id,
+          }),
+        );
+      }
       // Exclusive cursor: the last DISPLAYED sequence. The next page uses
       // `sequence < nextBeforeSequence`, so using the first omitted row
       // would skip it. Only set when another page exists.
@@ -733,6 +802,25 @@ export function createScaleEvidenceServices(deps: {
             currentHeadRevisionId: lockedHeadRevisionId,
           });
 
+        // The append extends retained history: the latest set it links to
+        // must itself be the tip of an intact chain. A corrupt chain violates
+        // the append precondition (the client's expectedSetId asserts a valid
+        // tip), so this is a 409 conflict — and critically, no new row is
+        // created below.
+        if (latest) {
+          try {
+            await validatePredecessor(tx, latest);
+          } catch (err) {
+            if (err instanceof ScaleEvidenceValidationError) {
+              throw new ConflictError(
+                "predecessor chain is corrupt; cannot extend retained history",
+                { currentHeadRevisionId: lockedHeadRevisionId },
+              );
+            }
+            throw err;
+          }
+        }
+
         const sequence = (latest ? latest.sequence : 0) + 1;
         const created = await tx.scaleEvidenceSet.create({
           data: {
@@ -751,10 +839,11 @@ export function createScaleEvidenceServices(deps: {
           },
         });
         // Validate the created row through the same retained-evidence path
-        // (defense-in-depth; claims were already validated pre-insert).
+        // (defense-in-depth; claims were already validated pre-insert, and
+        // the predecessor was validated above).
         // sourceRevisionId comes from the locked branch head (valid or null
         // for headless), so no separate revision tenant check is needed here.
-        return toRecord(created, {
+        return await toValidatedRecord(tx, created, {
           content: version.content,
           workspaceId,
           novelId,

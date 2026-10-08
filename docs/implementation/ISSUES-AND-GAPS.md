@@ -2733,3 +2733,43 @@ GAP-039 closure or dependent050B/050C implementation dispatch is accepted.
 **Provenance note (2026-10-09):** prior repair-complete claims (5a465a1,
 e49254f) are SUPERSEDED by the re-reviews above. Retained for provenance;
 do not treat as acceptance.
+
+### Third repair — 2026-10-09 ~04:50 WIB (per re-review c957e99)
+
+**Part 1 — Predecessor validation:**
+- `validatePredecessor` (bounded `findUnique`, not scan): verifies predecessor has
+  same workspace/novel/branch/version and sequence exactly n-1
+- Applied on readCurrent, listHistory, and before append extends history
+- First set: sequence 1 + previousSetId null; broken chains → 400 explicitly
+- Regressions: cross-novel/branch/version predecessor, wrong sequence, append
+  rejection without new row
+
+**Part 2 — Held-lock regression enabled:**
+- `describe.skip` removed; revision created BEFORE lock (fixes FK deadlock)
+- Barrier via `pg_stat_activity` wait_event_type='Lock' (not sleep-only)
+- 409 "branch head changed" + zero rows stored; finally cleanup guaranteed
+
+**Part 3 — Populated Prisma migration proof:**
+- Baseline deployed via Prisma (41 genuine ledger rows), not raw SQL
+- Ledger checksums recorded; 050A deployed via Prisma as 42nd row
+- Proven: baseline ledger/data unchanged, no backfill, schema parity
+- Empty-database proof retained
+
+**Part 4 — Scope amendment:**
+- `apps/api/src/scale-evidence-migration.test.ts` added via separately reviewed
+  amendment (APPROVE); appended to contract
+
+**Verification (OBSERVED 2026-10-09):**
+- scale-evidence.test.ts: 47/47 pass (0 skipped)
+- scale-evidence-migration.test.ts: 2/2 pass
+- manuscript.test.ts: 21/21 pass
+- ai-services + api typecheck: clean; eslint: clean; git diff --check: clean
+
+**Status:** READY for final diff review. GAP-039 remains OPEN.
+
+**P3-1 resolution (fail-on-old proof):** predecessor implementer verified empirically:
+- On unfixed e49254f (presence-only check): 5/5 new tests FAIL — 4x `expected 200 to be 400`
+  (corrupt rows returned CURRENT, matching the scratch probe) and 1x `expected 201 to be 409`
+  (corrupt chain extended with new row).
+- After fix: 5/5 PASS.
+Recorded from implementer report 2026-10-09; backends MODEL_UNVERIFIED per GAP-013.

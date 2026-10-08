@@ -1,5 +1,13 @@
 # NovelForge V2 --- START HERE
 
+SCALE author direction recorded (2026-10-08):
+[ADR-0016](docs/adr/ADR-0016-scale-evidence-and-author-decisions.md) selects S1
+foundation, S2 follow-up and optional author-reviewed S3. Follow the planned
+[NF-WF-050 stages](tasks/NF-WF-050-scale-evidence-workflow.md); freeze/review
+050A before code dispatch. GAP-039 remains OPEN, not awaiting the S1/S2/S3
+choice. Author decided incomplete HARD assessment holds approval and requires
+missing-data explanations/examples; optional AI guidance follows S3 enablement.
+
 Current product decision (2026-10-08): NovelForge records generation usage
 analytics, while the external LLM Gateway owns quotas. Follow
 [ADR-0015](docs/adr/ADR-0015-generation-usage-analytics.md) and

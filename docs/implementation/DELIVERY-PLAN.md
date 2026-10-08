@@ -1,5 +1,13 @@
 # NovelForge Workflow Delivery Plan
 
+SCALE update (2026-10-08): ADR-0016 records the author-selected S1 foundation,
+S2 follow-up and optional author-reviewed S3. NF-WF-050 owns planned stages:
+structured evidence → deterministic review/author decisions → optional AI
+proposals. GAP-039 remains OPEN until verified implementation, not a repeat
+S1/S2/S3 selection. Child contracts require separate review before dispatch.
+Author HARD amendment: incomplete SCALE assessment holds approval, with
+missing-data explanations/examples and optional settings-enabled AI guidance.
+
 Status: accepted execution sequence; runtime gates remain open.
 Decision: [ADR-0013](../adr/ADR-0013-workflow-delivery-and-recovery-foundation.md).
 Last revised: 2026-10-07. New implementation prose and handoffs use English.

@@ -1034,6 +1034,26 @@ stockpiled") clears the finding.
 
 ## GAP-039 — NF-WF-010: SCALE policies never FAIL a final-text review (no deterministic proposal source, 2026-10-05)
 
+2026-10-08 decision update: author selects S1 foundation, S2 follow-up and
+optional settings-enabled S3. Author alone decides approve/reject/alternative
+for AI proposals. ADR-0016 / NF-WF-050 own the planned work; status remains OPEN
+until independently reviewed implementation and real workflow evidence.
+The earlier option-selection request is superseded. A scoped clarification
+was requested for incomplete HARD SCALE assessments. The author answered:
+hold approval until assessment is complete, and provide AI advice describing
+missing scale data with reasons, explanations and examples. The plan preserves
+optional S3: checklist always available; AI enhancement only when enabled.
+No blanket sample-rule approval or implemented HARD gate is assumed.
+No new runtime result is claimed. Engram binding remains unavailable under
+GAP-021; the task/CURRENT are fallback, never an invented-session MCP save.
+
+Parent plan review APPROVE with one P3 wording clarification: the prohibition
+targets guessed serving-model identity and unsupported accepted SCALE evidence,
+not optional S3 extraction from chapter text. The plan wording was corrected;
+AI extraction remains an unapproved proposal until an author decision.
+Separate reviewer also approved the final HARD/guidance amendment. This is
+documentation acceptance only; GAP-039 remains an implementation gap.
+
 Status: OPEN (documented limitation, follow-up task).
 
 OBSERVED: the contract adds the missing SCALE policy schema (GAP-012)

@@ -1,5 +1,15 @@
 # Narrative Rhythm & Drama Specification
 
+2026-10-08 author direction (ADR-0016 / NF-WF-050): SCALE review will use
+structured operative-conflict labels (S1), explicit author standing changes/
+chapter exceptions (S2), and optionally AI-proposed labels (S3) enabled in
+per-novel settings. Author approves, rejects or supplies an alternative;
+enablement never authorizes AI approval. The stages are planned, not delivered.
+GAP-039 remains OPEN; existing SOFT/HARD policy configuration is retained.
+Incomplete required HARD SCALE evidence holds approval. Provide missing-field
+explanations and illustrative examples; optional S3 supplies AI suggestions,
+while deterministic guidance remains available with S3 disabled.
+
 ## Principle
 
 Rhythm preferences are soft constraints. Never implement "drama every N

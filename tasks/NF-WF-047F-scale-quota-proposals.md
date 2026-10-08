@@ -1,5 +1,11 @@
 # Task NF-WF-047F: SCALE and Quota Proposals (decision brief, proposal-only)
 
+Author decision update (2026-10-08): ADR-0016 selects S1 as foundation, S2 as
+follow-up, and optional settings-enabled S3 with author approve/reject/alternative.
+NF-WF-050 owns planned implementation; GAP-039 remains OPEN. This supersedes
+the recommendation against S3 below, not historical observations. ADR-0015 /
+NF-WF-049 supersede the quota alternatives; GAP-063's local gate is CLOSED.
+
 Project language: English for all authored/revised artifacts and generated
 project content; UI uses English (`en`)/Bahasa Indonesia (`id`) locale keys
 and resources with English fallback.

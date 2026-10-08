@@ -8,6 +8,21 @@ requirements. The AI Orchestrator is a milestone within Phase 3/4.
 
 ## Current dispatch — 2026-10-07 (novel-scoped workflow history repaired)
 
+### SCALE direction recorded — 2026-10-08
+
+Author selected S1 structured evidence as foundation, S2 author changes/
+exceptions as follow-up and optional settings-enabled S3. S3 may propose;
+author may approve, reject or submit an alternative. ADR-0016 and NF-WF-050
+record this direction and staged implementation plan. GAP-039 stays OPEN:
+no new SCALE source/schema/UI or runtime tests are claimed at this boundary.
+Author clarified incomplete HARD assessment holds approval and AI should advise
+on missing data with reasons, explanations and examples. Planned UI always has
+an actionable checklist; AI enhancement follows S3 enablement. Pending advice
+never satisfies the gate. Existing SOFT/HARD configuration remains. Initial
+parent and final HARD/guidance amendment review APPROVE; no child is READY.
+Next: prepare/review 050A's exact contract, then S1 foundation implementation.
+Engram runtime binding is unavailable (GAP-021); task/CURRENT are fallback.
+
 ### Usage analytics accepted locally — 2026-10-08
 
 Author decision ADR-0015: quotas are owned by the external LLM Gateway.

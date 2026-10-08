@@ -267,3 +267,80 @@ Unknowns (to be resolved or recorded by the implementer):
   seeded queue entry (record the mechanism used).
 - Any deviation between the workflow's command inventory and current
   package scripts (record actuals).
+
+## Scope amendment (2026-10-08, GAP-117 isolated worker smoke)
+
+**Trigger:** GAP-117 (recorded by the author in `87fea3c`): the 047E worker
+smoke (receipt §6b) started five workers against shared Redis
+(`localhost:6379`) and drained leftover `novel.chapter_published` fan-out
+jobs. The earlier PASS is retained as historical evidence but is NOT
+isolated-smoke acceptance. This amendment bounds the isolated rerun.
+
+**Goal:** repeat the worker smoke against owned isolated resources and
+observe a uniquely attributed test job completing, with proof that no
+shared queue was consumed.
+
+**Frozen resources (exact):**
+- Dedicated Redis: `redis-server --port 6380 --daemonize yes` (owned by
+  this task; loopback only; stopped after).
+- Disposable PostgreSQL: `novelforge_test_047g117_smoke` (owned; dropped
+  after; created via `createdb` as `novelforge_test`).
+- Worker config: `REDIS_URL=redis://localhost:6380`,
+  `DATABASE_URL=postgresql://novelforge_test:novelforge_test@localhost:5432/novelforge_test_047g117_smoke`,
+  `NODE_ENV=test`, test S3/OMNIROUTE/encryption values (dummy, per
+  `apps/api/src/e2e/setup.ts` pattern). No other env changes.
+
+**Frozen procedure:**
+1. Record shared Redis (`:6379`) baseline: `INFO keyspace`, queue key
+   count for the worker queues. Do NOT flush.
+2. Start dedicated Redis `:6380` (verify the port is free first);
+   verify `PONG`.
+3. Create disposable DB; run `pnpm --filter @novelforge/database db:deploy`
+   with the disposable `DATABASE_URL` exported (empty-schema baseline is
+   sufficient for the smoke — this is NOT a populated-upgrade claim).
+4. Start the worker (`pnpm --filter @novelforge/worker start`) with the
+   isolated config.
+5. Enqueue a uniquely attributed test job to the `worker-heartbeat` queue:
+   use a BullMQ `Queue` client against `:6380` and add with
+   `{ jobId: "gap117-isolated-smoke-<uuid>" }` (uuid generated per run).
+   Observe it reaching `completed` via QueueEvents for that job ID (or
+   `job.getState()`). The heartbeat processor completes any job on this
+   queue, making it the correct isolated target.
+6. Verify isolation: all worker connections target `:6380` (check via
+   `CLIENT LIST` on `:6380` showing worker connections). On `:6379`,
+   compare `INFO keyspace` and `bull:*` key counts (via `SCAN`, not `KEYS`)
+   before/after — any delta fails the isolation claim.
+7. Cleanup: stop the worker (SIGTERM, drain); stop dedicated Redis;
+   drop the disposable DB. Clean up OWNED resources only.
+
+**Evidence (sanitized):** record the dedicated Redis port, disposable DB
+name, job ID, completion observation, and the shared-vs-dedicated
+comparison. Never print credentials, connection strings with passwords,
+or job payload secrets.
+
+**Historical preservation:** the earlier non-isolated receipt
+(`docs/implementation/047E-native-release-receipt.md` §6b) is retained
+unchanged as historical evidence. This amendment produces a NEW receipt
+section; it does not rewrite the old PASS.
+
+**Skipped worker test identity (from 047E review P3-1):**
+`apps/worker/src/worker.test.ts:257` —
+`describe.skipIf(!itUrl)("integration — real redis", ...)`. Skipped because
+the integration-test Redis URL is not set on this host. This is a
+pre-existing conditional skip, not a regression.
+
+**Remaining evidence limits:** this rerun proves worker-queue isolation
+for the smoke configuration only. It does not prove production worker
+behavior, live-provider connectivity, or mission-scale throughput.
+
+**Allowed paths:** this contract file; new receipt
+`docs/implementation/047E-gap117-isolated-smoke-receipt.md` (keeps the
+historical receipt byte-identical).
+**Forbidden:** all other files, production code, shared Redis (`:6379`)
+modification, existing queue consumption, migration edits.
+
+**Verification:** isolated smoke receipt with the above evidence;
+independent diff review before commit.
+
+**Engram:** unavailable on this host (GAP-021); task-file fallback records
+in this contract. No session ID invented.

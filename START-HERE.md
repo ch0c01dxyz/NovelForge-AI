@@ -1,5 +1,12 @@
 # NovelForge V2 --- START HERE
 
+Current dispatch (2026-10-09): reviewed S1 foundation NF-WF-050A is integrated
+through `843a263` from external `d78afc3`. Next, draft and separately review
+the 050B final-review/author-decision/UI contract before implementation. Do not
+redispatch 050A. GAP-039 remains OPEN; 050C and release gates remain separate.
+The earlier READY/implementation-not-started statements below are historical.
+
+
 S1 next task: [NF-WF-050A](tasks/NF-WF-050A-scale-evidence-foundation.md) owns
 the exact version-bound SCALE evidence contract and its separate review status.
 050A is READY after separate technical review; this update delivers a contract,

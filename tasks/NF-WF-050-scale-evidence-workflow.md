@@ -1,5 +1,14 @@
 # NF-WF-050: SCALE Evidence Workflow Implementation Plan
 
+Integration update (2026-10-09): 050A's reviewed S1 foundation is integrated
+through `843a263` from `d78afc3`; only the child API/storage boundary is
+accepted. Parent status: PARTIALLY_IMPLEMENTED / FOLLOW_UP_CONTRACT_REQUIRED.
+Next: draft and separately review 050B before implementation. 050C remains
+subsequent optional assistance; GAP-039 stays OPEN. Planning-only status and
+unchecked historical stage lists below describe the original plan, not current
+050A dispatch readiness. CURRENT and the 050A acceptance receipt own evidence.
+
+
 2026-10-08 technical-contract update: [050A](NF-WF-050A-scale-evidence-foundation.md)
 defines the S1 storage/authoring boundary. Its technical review status and
 dispatch readiness are owned by that child; no source/schema implementation

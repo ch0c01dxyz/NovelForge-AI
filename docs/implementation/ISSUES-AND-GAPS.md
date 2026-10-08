@@ -2854,3 +2854,18 @@ as acceptance.
 - No mandatory tests skipped
 
 **Status:** READY for final diff review. GAP-039 remains OPEN.
+
+### GAP-118 closure — 2026-10-09, author-authorized integration
+
+Current status: CLOSED for NF-WF-050A submitted implementation defects and
+migration-test source isolation. The original OPEN header and rejected receipts
+above are preserved historical observations, superseded by this closure.
+External `d78afc3` was separately technically approved by both assigned
+reviewers and integrated in `843a263`, preserving the separately reviewed
+historical receipt correction. Local pre-merge64/64, private ledger/data upgrade
+proof and live-tree-preserving failure injection are detailed above. Post-merge
+product source/config matches that submission; Prisma generate/validate and
+pure SCALE/restore15/15 pass. No working data migration or release acceptance.
+Closure is scoped to this submission; GAP-039 and 050B/050C remain OPEN/planned,
+respectively. Engram attribution remains unavailable (GAP-021); CURRENT records
+the fallback integration checkpoint.

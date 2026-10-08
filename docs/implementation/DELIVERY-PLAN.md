@@ -1,5 +1,12 @@
 # NovelForge Workflow Delivery Plan
 
+Current execution (2026-10-09): NF-WF-050A S1 API/storage foundation is
+IMPLEMENTED / REVIEWED and integrated through `843a263`. Next freeze and
+separately review the bounded 050B contract before coding; 050C follows its
+accepted dependencies. GAP-039 and author-workflow/release acceptance stay open.
+Earlier 050A dispatch instructions below are superseded for execution.
+
+
 S1 technical dispatch: [NF-WF-050A](../../tasks/NF-WF-050A-scale-evidence-foundation.md)
 owns the frozen API/storage/authority/recovery contract and READY review gate.
 Implement that bounded foundation before freezing 050B/050C. No SCALE runtime

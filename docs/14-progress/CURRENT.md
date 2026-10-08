@@ -1,5 +1,24 @@
 # Current Project State
 
+## 050A integration accepted — 2026-10-09
+
+The author authorized integration of reviewed external `d78afc3`. Merge
+`843a263` includes that submission and the separately approved historical
+receipt correction. Product source, schema, migrations and package configuration
+are byte-identical to the reviewed submission; only evidence documentation differs.
+The prior local 64/64 receipt remains scoped pre-merge evidence, not a new run.
+Post-merge Prisma generation/validation, ai-services/API typechecks and 15/15
+pure SCALE/restore tests pass.
+No working database migration or production deployment occurred.
+
+050A is IMPLEMENTED / REVIEWED for the S1 API/storage foundation only. GAP-118
+is CLOSED for the reviewed submission defects and migration-test isolation;
+GAP-039 remains OPEN. Next: draft and separately review the bounded 050B
+technical contract before implementation; 050C remains subsequent optional S3.
+Older no-merge/READY instructions below are historical. Engram attribution is
+still unavailable (GAP-021); this is the durable fallback checkpoint.
+
+
 ## External 050A fourth repair verification — 2026-10-09, `d78afc3`
 
 Separate technical reviewers APPROVE the isolation fix and unchanged service

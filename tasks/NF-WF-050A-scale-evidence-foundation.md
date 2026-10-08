@@ -1,6 +1,8 @@
 # NF-WF-050A: Version-bound SCALE evidence foundation (S1)
 
-Status: IMPLEMENTED (2026-10-09; implementation complete, review pending).
+Status: IMPLEMENTED / REVIEWED (S1 API/storage foundation; integrated 2026-10-09).
+
+Historical initial submission receipt (superseded by integration acceptance below):
 Implementation: schema + migration (reviewed APPROVE_WITH_FINDINGS, P2s fixed,
 deployed to scratch), service (createScaleEvidenceServices), routes
 (/api/workspaces/.../scale-evidence), manuscript delete 409, restore-scope
@@ -313,3 +315,27 @@ Adds `apps/api/src/scale-evidence-migration.test.ts` to the allowed implementati
 **Justification:** the re-review (commit `23261fb`) made populated migration proof mandatory ("Empty/populated migration, legacy data/checksum preservation and parity proof remain mandatory; the external P3 annotation cannot make them optional"). The existing `scale-evidence.test.ts` could not host this proof without violating the one-writer-per-file rule during parallel repair work. The new file contains only migration acceptance tests: empty-database deploy schema verification and populated-baseline checksum preservation with no-backfill proof, on a dedicated disposable database.
 
 **Explicitly:** test-only addition. No implementation changes, no new product behavior, no new routes/services/schema, no changes to historical migrations. The file does not modify the migration under test.
+
+## Integration acceptance — 2026-10-09
+
+Author-authorized merge `843a263` integrates external `d78afc3`. External
+branch implementer delivered the code; coordinator `/root` verified and
+integrated it. Separate actors `/root/review_recovery_034` and
+`/root/review_mutations_034` APPROVE the submitted technical diff; the latter
+also approved restoration of the historical receipt. Original baseline and
+contract-review records above remain historical provenance.
+
+Before merge: local API47 + migration2 + classification8 + pure SCALE7 = 64/64
+passed with no skips; Prisma validation/generation, both typechecks and changed
+source lint passed. Private empty/populated upgrades preserve genuine historical
+ledger/data and produce no backfill. Independent injected migration failure
+reached PostgreSQL42883 without changing repository migrations. Owned scratch
+databases were removed. The original manuscript21/21 remains external reported
+evidence only. After merge, source/config matches the reviewed submission and
+Prisma generation/validation plus pure SCALE/restore15/15 pass.
+
+GAP-118 submission defects are resolved for this bounded acceptance. GAP-039,
+050B/050C, author UI/review gates, full release verification, working migration
+and production deployment are not accepted by this receipt. Next freeze and
+review 050B. Engram session attribution remains unavailable; CURRENT is the
+fallback checkpoint.

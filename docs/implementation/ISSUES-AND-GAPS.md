@@ -2690,51 +2690,46 @@ the PostgreSQL statistics snapshot and confirmed the defect. Owned scratch
 database absence was verified after cleanup. No product merge, working DB
 migration, populated-upgrade acceptance or dependent050B/050C dispatch approved.
 
-**Provenance note (2026-10-09):** the implementer's earlier fixture-only
-diagnosis (P2, "test fixture setup does not match implementation") is
-SUPERSEDED by the above. It correctly observed 13/22 failures but incorrectly
-attributed them solely to fixtures; the author's review identified production
-source defects. Retained for provenance; do not act on the superseded diagnosis.
+### Second repair re-review of `e49254f` — 2026-10-09
 
-**SUPERSEDED repair-complete claim (2026-10-09 ~03:13 WIB):** the "Repair complete"
-record added at commit 5a465a1 (claiming all 7 source + 4 test defects fixed,
-32/32 tests as acceptance) is SUPERSEDED by the re-review above. The re-review
-confirms several repairs are real but demonstrates remaining P1/P2 defects via
-scratch probes. Retained for provenance; do not treat as acceptance.
+Status remains OPEN / P2 after repair of the demonstrated P1 cached-head bug.
+Separate reviewers request changes. Locking queries now return authoritative
+mutable fields; retained quotes/spans reuse the write validator; scoped version
+ownership is checked before staleness. Revised checkpoint-before-assessment
+restore, changed-state selective restore, first-assessment deletion race and
+three-set parent cleanup are meaningful improvements by source inspection.
 
-### Second repair — 2026-10-09 ~04:20 WIB
+Remaining blockers:
 
-**Fixes (per re-review 23261fb):**
+- Predecessor validation in `scale-evidence.ts` only checks previousSetId
+  presence. Verify the referenced row has the same workspace/novel/branch/version
+  and sequence exactly n-1 before returning retained data or extending its
+  history. A local scratch sequence2 row linked to another novel's set returned
+  CURRENT; append then created sequence3. Add current/history/write corrupt-chain
+  negatives without unbounded full-history scans or silent history repair.
+- `scale-evidence.test.ts:1516` skips the mandatory deterministic held-lock
+  regression. Its revision creation via a separate DB connection waits on the
+  branch FK lock held by the test itself. Create the revision before the lock
+  or through the holder connection; guarantee finally cleanup, unskip and prove
+  rejection/no inserted assessment when a new head commits while append waits.
+- `scale-evidence-migration.test.ts` applies baseline historical SQL directly,
+  without a Prisma migration ledger. Table-data hashes are useful but are not
+  migration ledger checksum proof. Deploy an isolated historical baseline with
+  Prisma, seed it, record ledger/data checksums, then Prisma-deploy050A and prove
+  baseline ledger/data unchanged, no backfill and schema parity.
+- That new migration-test path is absent from the frozen allowed-path list.
+  Record a separately reviewed scope amendment and update the stale task receipt;
+  do not treat the external approval as a waiver of required checks.
 
-P1 (authoritative reads after lock):
-- Locking queries now return authoritative values: `SELECT id, head_revision_id ... FOR UPDATE`
-  and `SELECT id, current_version_id ... FOR UPDATE`
-- All comparisons use post-lock values only; pre-lock selects no longer fetch mutable state
-- Misleading "re-read after lock" comment removed
+Fresh local evidence:58 passed/1 skipped of59 selected tests; API41/42,
+migration2/2, classification8/8 and pure SCALE7/7. Prisma validation/generation,
+both typechecks, changed-source lint and diff whitespace pass. These positives
+do not cover the skipped regression or demonstrated corrupt predecessor defect.
+The scratch probe used valid scoped author data and an intentionally corrupted
+cross-novel predecessor FK; no working data was modified. Both owned scratch
+databases were removed and absence checked. Main remains23261fb; no merge,
+GAP-039 closure or dependent050B/050C implementation dispatch is accepted.
 
-P2 (retained validation):
-- `toRecord` now validates against immutable `ChapterVersion.content` via write-time
-  `validateConflicts`: bounds, quote match, trimmed nonempty, strict schemas, duplicates
-- Tenant/source/predecessor consistency enforced; fork semantics preserved
-- Forged quotes/spans → 400, never CURRENT; no silent repair
-
-P2 (ownership ordering):
-- Scoped version lookup (404) now precedes staleness check (409)
-- Missing/foreign → 404; obsolete owned → 409
-
-**Tests (42 total, 41 pass + 1 skipped):**
-- Deterministic held-lock (pg_stat_activity barrier, not sleep-only) — SKIPPED (deadlock in test harness, not implementation)
-- Save/checkout interleavings, retained validation (4), version ownership (3)
-- Restore: checkpoint-before-assessment, selective with real covered state
-- Uncited delete race, multi-predecessor cleanup (3-chain)
-- Migration: empty/populated with checksums (2/2 pass, new file)
-
-**Verification (OBSERVED 2026-10-09):**
-- scale-evidence.test.ts: 41/42 pass (1 skipped: held-lock deadlock)
-- scale-evidence-migration.test.ts: 2/2 pass
-- manuscript.test.ts: 21/21 pass
-- ai-services typecheck: clean; api typecheck: clean; eslint: clean; git diff --check: clean
-
-**Final diff review:** separate reviewer → **APPROVE** (no blocking findings).
-
-**Status:** READY for coordinator. GAP-039 remains OPEN.
+**Provenance note (2026-10-09):** prior repair-complete claims (5a465a1,
+e49254f) are SUPERSEDED by the re-reviews above. Retained for provenance;
+do not treat as acceptance.

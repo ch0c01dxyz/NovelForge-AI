@@ -729,6 +729,23 @@ export function createManuscriptServices(
           tables: ["chapters", "chapter_versions"],
           items: [{ entityType: "Chapter", entityId: chapterId, operation: "DELETE" }],
         });
+        // NF-WF-050A S1: scale_evidence_sets.chapter_version_id is ON DELETE
+        // RESTRICT, so a chapter whose versions carry SCALE evidence
+        // assessments cannot be deleted. Assessments are immutable historical
+        // records — they are retained, never deleted to permit the chapter's
+        // deletion. Check proactively inside this transaction (after the
+        // mutation lock) so the refusal is a legible 409 instead of an
+        // uncaught FK 500.
+        const scaleRef = await tx.scaleEvidenceSet.findFirst({
+          where: { chapterVersion: { chapterId } },
+          select: { id: true },
+        });
+        if (scaleRef) {
+          throw new ConflictError(
+            "this chapter has SCALE evidence assessments — assessments are retained " +
+              "and cannot be deleted with the chapter",
+          );
+        }
         await tx.chapter.delete({ where: { id: chapterId } }).catch((e: unknown) => {
         // canon_fact_sources.chapter_version_id is ON DELETE RESTRICT, so a
         // chapter carrying canon evidence cannot be deleted. That refusal is
@@ -740,6 +757,20 @@ export function createManuscriptServices(
         // is what makes it recoverable).
         const code = (e as { code?: string })?.code;
         if (code === "P2003" || code === "P2039") {
+          // NF-WF-050A S1: the proactive scale-evidence check above should
+          // have refused first, but the RESTRICT FK is the ultimate guard
+          // (e.g. a race with assessment creation between the check and the
+          // delete). Distinguish by constraint reference when available.
+          const errText =
+            String((e as { message?: string })?.message ?? "") +
+            JSON.stringify((e as { meta?: unknown })?.meta ?? "");
+          if (/scale_evidence_sets/i.test(errText)) {
+            dbg?.error?.("chapter delete blocked by a SCALE evidence assessment", { err: e });
+            throw new ConflictError(
+              "this chapter has SCALE evidence assessments — assessments are retained " +
+                "and cannot be deleted with the chapter",
+            );
+          }
           dbg?.error?.("chapter delete blocked by a canon citation", { err: e });
           throw new ConflictError(
             "this chapter is cited as evidence by a canon fact — unlink the evidence " +

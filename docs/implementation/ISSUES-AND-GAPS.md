@@ -2826,3 +2826,31 @@ not independent local reruns. Its5/5 RED to GREEN report was not rerun locally.
   (corrupt chain extended with new row).
 - After fix: 5/5 PASS.
 Recorded from implementer report 2026-10-09; backends MODEL_UNVERIFIED per GAP-013.
+
+### External fourth-repair report — retained as reported evidence
+
+The following claims are attributed to the external implementer; local verification is recorded separately above.
+
+**Provenance note (2026-10-09):** prior repair claims (5a465a1, e49254f, aab13e5)
+are SUPERSEDED by the re-reviews above. Retained for provenance; do not treat
+as acceptance.
+
+### Fourth repair — 2026-10-09 ~05:50 WIB (per re-review 7c73a1e)
+
+**Blocker:** migration test moved live tracked migration directory via rename.
+
+**Fix:**
+- Private temp Prisma homes: full migrations dir copied (never moved)
+- Baseline: 050A deleted from temp copy only; upgrade: full temp copy
+- Temp prisma.config.ts with explicit DATABASE_URL (no .env/secrets copied)
+- Guarded cleanup: verifies path in os.tmpdir() with 050a-mig- prefix
+- Live-tree fingerprint (md5 paths+bytes) asserted unchanged before/after
+
+**Verification (OBSERVED 2026-10-09):**
+- Migration tests: 2/2 pass
+- Parallel (migration + API): 49/49 pass, no missing-table errors
+- Simulated failure: live migration.sql md5 unchanged, git status clean
+- Manuscript: 21/21 pass; typecheck/lint/diff-check clean
+- No mandatory tests skipped
+
+**Status:** READY for final diff review. GAP-039 remains OPEN.

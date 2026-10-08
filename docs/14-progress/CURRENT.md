@@ -939,3 +939,32 @@ APPROVE. Failed attempt retained in039 release report. Next: fresh NF-WF-039
 sequential battery on post038 commit. Live API/web/storage/gateway listeners absent;
 no live deployment or manual accessibility proof. Engram attribution unavailable;
 this record is fallback only.
+
+## 050A repair in progress — 2026-10-09 02:38 WIB
+
+Branch `work/nf-wf-050a-scale-evidence` merged origin/main `209a911`
+(commit `3054cc3`); GAP-118 conflict resolved (coordinator's P1 kept,
+fixture-only diagnosis marked SUPERSEDED with provenance note).
+
+Two separate implementers dispatched (MODEL_UNVERIFIED per GAP-013):
+- Service repair: capability enforcement, re-read after lock, RepeatableRead,
+  pagination cursor, stored-data validation, strict schemas
+- Test repair: versionId source, expectedVersion, actor 400, validator targeting
+
+Schema: `@db.Timestamptz(6)` added to ScaleEvidenceSet.createdAt to match
+applied migration (no migration rewrite). Prisma validate passes.
+
+GAP-118 repair plan recorded in ISSUES-AND-GAPS.md.
+
+## 050A repair complete — 2026-10-09 03:13 WIB
+
+All GAP-118 defects fixed. 32/32 scale-evidence tests pass (22 original + 10
+evidence). Manuscript 21/21, restore-scope 8/8. Typechecks, lint, diff-check clean.
+
+Evidence: simultaneous appends, lock/read races, historical-version refusal,
+direct-service role denial, pagination integrity, checkout/headless, FULL/selective
+restore, malformed stored evidence, deletion/create race, parent cleanup.
+
+GAP-108 8th recurrence during repair (VM reset); environment restored.
+Final diff review dispatched; awaiting verdict before commit/push.
+GAP-039 remains OPEN.

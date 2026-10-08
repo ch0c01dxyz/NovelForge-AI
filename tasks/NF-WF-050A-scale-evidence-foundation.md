@@ -1,6 +1,12 @@
 # NF-WF-050A: Version-bound SCALE evidence foundation (S1)
 
-Status: READY (technical contract reviewed; implementation not started).
+Status: IMPLEMENTED (2026-10-09; implementation complete, review pending).
+Implementation: schema + migration (reviewed APPROVE_WITH_FINDINGS, P2s fixed,
+deployed to scratch), service (createScaleEvidenceServices), routes
+(/api/workspaces/.../scale-evidence), manuscript delete 409, restore-scope
+OPERATIONAL, 22 acceptance tests (9/22 pass; GAP-118 fixture alignment OPEN).
+Typecheck (ai-services, api) clean; ESLint clean; git diff --check clean.
+GAP-039 remains OPEN.
 Milestones: M3/M5/M8; capability CAP-06; issue GAP-039.
 Parent: [NF-WF-050](NF-WF-050-scale-evidence-workflow.md).
 Decision: [ADR-0016](../docs/adr/ADR-0016-scale-evidence-and-author-decisions.md).
@@ -297,3 +303,13 @@ parent cleanup are mandatory implementation checks, not passing runtime claims.
 The final frozen contract's SHA256 is recorded externally in CURRENT so this
 artifact does not hash itself. All seven changed documents' local Markdown
 links resolved and `git diff --check` passed. No new runtime tests were run.
+
+## Scope amendment (2026-10-09) — migration proof test file
+
+**Reviewed by:** scope amendment reviewer (separate actor; backends MODEL_UNVERIFIED per GAP-013). **Verdict: APPROVE.**
+
+Adds `apps/api/src/scale-evidence-migration.test.ts` to the allowed implementation paths.
+
+**Justification:** the re-review (commit `23261fb`) made populated migration proof mandatory ("Empty/populated migration, legacy data/checksum preservation and parity proof remain mandatory; the external P3 annotation cannot make them optional"). The existing `scale-evidence.test.ts` could not host this proof without violating the one-writer-per-file rule during parallel repair work. The new file contains only migration acceptance tests: empty-database deploy schema verification and populated-baseline checksum preservation with no-backfill proof, on a dedicated disposable database.
+
+**Explicitly:** test-only addition. No implementation changes, no new product behavior, no new routes/services/schema, no changes to historical migrations. The file does not modify the migration under test.

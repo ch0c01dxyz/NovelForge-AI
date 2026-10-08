@@ -68,6 +68,7 @@ model User {
   createdEntities     StoryEntity[]    @relation("StoryEntityCreator")
   createdCanonFacts   CanonFact[]      @relation("CanonFactCreator")
   createdFactSources  CanonFactSource[] @relation("CanonFactSourceCreator")
+  authoredScaleEvidence ScaleEvidenceSet[] @relation("ScaleEvidenceActor")
   proposedCanon       CanonProposal[]  @relation("CanonProposalAuthor")
   decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
   /// NF-WF-021B: simulation proposals decided by this user.
@@ -148,6 +149,7 @@ model Workspace {
   updatedAt    DateTime     @updatedAt @map("updated_at")
   memberships  Membership[]
   novels       Novel[]
+  scaleEvidenceSets ScaleEvidenceSet[]
   auditEntries AuditLog[]
   agents       Agent[]
   skills       Skill[]
@@ -231,6 +233,7 @@ model Novel {
   updatedAt   DateTime       @updatedAt @map("updated_at")
   settings    NovelSettings?
   chapters    Chapter[]
+  scaleEvidenceSets ScaleEvidenceSet[]
   workflows   Workflow[]
   references  Reference[]
   retrievals  RetrievalAudit[]
@@ -426,6 +429,7 @@ model ChapterVersion {
   // Opposite side of Chapter.currentVersion pointer.
   currentForChapter Chapter? @relation("CurrentChapterVersion")
   factSources       CanonFactSource[]
+  scaleEvidenceSets ScaleEvidenceSet[]
   /// NF-WF-010: the (replaced-on-rereview) final-text review receipt for
   /// this immutable version. Null until reviewed.
   finalTextReview   FinalTextReview?
@@ -2624,6 +2628,7 @@ model NovelBranch {
   /// NF-WF-020B: novels currently checked out on this branch (reverse of
   /// Novel.currentBranch).
   checkedOutByNovels Novel[] @relation("NovelCurrentBranch")
+  scaleEvidenceSets ScaleEvidenceSet[]
   /// NF-WF-021A: simulation runs on this branch (SetNull; a run records
   /// whether its branch is simulation-dedicated).
   simulationRuns SimulationRun[]
@@ -2662,6 +2667,7 @@ model Revision {
   createdById      String?        @map("created_by_id") @db.Uuid
   createdBy        User?          @relation("RevisionCreator", fields: [createdById], references: [id])
   createdAt        DateTime       @default(now()) @map("created_at")
+  scaleEvidenceSets ScaleEvidenceSet[]
 
   changeSet         ChangeSet?
   snapshot          Snapshot?
@@ -3633,4 +3639,49 @@ model EndgameLegacy {
 
   @@index([novelId, kind])
   @@map("endgame_legacies")
+}
+
+/// NF-WF-050A: author-authored assessment of operative conflicts in one saved
+/// chapter version. Append-only; replacing a set appends a whole set.
+/// This is an assessment annotation, not canon or a final-review verdict.
+enum ScaleEvidenceDeclaration {
+  CONFLICTS
+  NO_OPERATIVE_CONFLICT
+}
+
+model ScaleEvidenceSet {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId          String   @map("novel_id") @db.Uuid
+  novel            Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// The immutable chapter version this assessment anchors to.
+  chapterVersionId String   @map("chapter_version_id") @db.Uuid
+  chapterVersion   ChapterVersion @relation(fields: [chapterVersionId], references: [id], onDelete: Restrict)
+  /// Server checked-out branch at append time.
+  sourceBranchId   String   @map("source_branch_id") @db.Uuid
+  sourceBranch     NovelBranch @relation(fields: [sourceBranchId], references: [id], onDelete: Restrict)
+  /// Branch head revision at append time; null = actual headless branch.
+  sourceRevisionId String?  @map("source_revision_id") @db.Uuid
+  sourceRevision   Revision? @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  /// Positive integer, monotonic within (sourceBranchId, chapterVersionId).
+  sequence         Int
+  declaration      ScaleEvidenceDeclaration
+  /// Nonempty trimmed text, max 4,000 chars, including coverage rationale.
+  explanation      String   @db.Text
+  /// JSON array validated against the frozen claim schema; not arbitrary.
+  conflictsJson    Json     @map("conflicts_json")
+  /// Exact previous set for this branch/version; null for first set.
+  previousSetId    String?  @map("previous_set_id") @db.Uuid
+  previousSet      ScaleEvidenceSet? @relation("ScaleEvidencePredecessor", fields: [previousSetId], references: [id], onDelete: Restrict)
+  nextSets         ScaleEvidenceSet[] @relation("ScaleEvidencePredecessor")
+  /// Authenticated user, server-resolved, never client-supplied.
+  actorUserId      String   @map("actor_user_id") @db.Uuid
+  actor            User     @relation("ScaleEvidenceActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([sourceBranchId, chapterVersionId, sequence], map: "scale_evidence_sets_branch_version_sequence_key")
+  @@index([workspaceId, novelId, sourceBranchId, chapterVersionId, sequence(sort: Desc)], map: "scale_evidence_sets_history_idx")
+  @@map("scale_evidence_sets")
 }

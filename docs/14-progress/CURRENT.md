@@ -1,5 +1,33 @@
 # Current Project State
 
+## External 050B eleventh repair re-review — 2026-10-09, 800cf37
+
+Separate technical and recovery actors APPROVE the fixture source at exact
+800cf3707d488f88cbc2447d1d992f3aeb6d89bf against 9f51c4a. Production code,
+schema and worker behavior are unchanged. Valid empty access and strict fresh
+review after status/head changes are preserved; negative refusal checks remain.
+
+Fresh Windows verification: state-consumers 32/32, API typecheck, scoped ESLint,
+submitted diff whitespace and Prisma generation pass. To preserve the existing
+novelforge_test_stateconsumers database, a temporary copy differed only in its
+database name (novelforge_test_050b_review_800cf37, verified absent before use).
+The owned database and copy were removed afterward; the existing database remains.
+This is namespace-adjusted fixture execution, not execution of the unchanged
+fixed-name harness against the author's database.
+
+GAP-119 below corrects two documentary defects in the submitted annotations:
+putScalePolicy changed materially, and GAP-108 recurrence13 must not absorb
+recurrence12's narrative. The external aggregate report remains documentary
+evidence without literal execution commands. Earlier backend146/146, migration2/2
+and UI71/71 receipts are historical checks, not fresh reruns for this revision.
+
+The two previously failing fixture paths are now locally verified; no production
+source blocker was found. The bounded repair can be integrated with these
+documentary corrections. Full050B completion, live author/browser acceptance,
+BullMQ delivery and release gates remain separate; GAP-039/GAP-119 remain OPEN.
+Main/client restored at bc9a140. No implementation merge, commit or push performed.
+Engram attribution unavailable (GAP-021); this record is the fallback handoff.
+
 ## External 050B tenth repair re-review — 2026-10-09, 9f51c4a
 
 UI fixture/comment changes APPROVE on exact

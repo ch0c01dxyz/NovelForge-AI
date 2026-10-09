@@ -1,11 +1,13 @@
 # NovelForge Workflow Delivery Plan
 
-Next dependency-ready contract (2026-10-09): [050B](../../tasks/NF-WF-050B-scale-review-and-author-decisions.md)
-has separate technical/recovery APPROVE verdicts. Execute its bounded storage,
-transactional review/decision/gate and localized UI slices in order after runtime
-assignment. Contract readiness is not implementation evidence. GAP-039/GAP-119
-remain open; 050C follows retained dependencies. Earlier 050B drafting instructions
-below are superseded for dispatch.
+Current integration (2026-10-09): the author authorized merging reviewed
+[050B](../../tasks/NF-WF-050B-scale-review-and-author-decisions.md) through
+`800cf37` with corrected documentary provenance. Implementation is accepted
+for integration; complete frozen acceptance is still pending. Next execute
+safe merged-revision regressions and the live localized author/publication
+journey, then draft and separately review 050C's optional S3 contract.
+GAP-039/GAP-119 stay open. Do not repeat integrated 050A/050B implementation
+or closed NF048/049 work. Earlier dispatch paragraphs are historical.
 
 
 Current execution (2026-10-09): NF-WF-050A S1 API/storage foundation is

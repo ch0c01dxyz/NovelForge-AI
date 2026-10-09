@@ -1,11 +1,14 @@
 # NF-WF-050: SCALE Evidence Workflow Implementation Plan
 
-050B contract update (2026-10-09): [050B](NF-WF-050B-scale-review-and-author-decisions.md)
-is READY after separate technical and recovery reviews. No 050B code is claimed.
-Its exact scope includes real evidence consumption, explicit HARD incompleteness,
-shared API/worker release gates, author decisions and en/id UI. Assign the runtime
-implementer and execute serial reviewed slices; retain 050C and GAP-039 acceptance.
-This supersedes the earlier follow-up-contract-required dispatch instruction.
+050B integration update (2026-10-09): the author authorized merging reviewed
+[050B](NF-WF-050B-scale-review-and-author-decisions.md) through `800cf37`.
+S1 consumption/S2 source is implemented and separately reviewed; complete
+merged-revision acceptance remains pending. Verify the frozen regression and
+live author/publication boundaries before closing the child. Next draft and
+separately review 050C for off-by-default optional S3 assistance. No 050C
+contract or implementation is delivered here. GAP-039 stays open until all
+retained stages and integrated acceptance pass. Earlier unchecked stage lists
+and implementation-not-started statements preserve historical planning only.
 
 
 Integration update (2026-10-09): 050A's reviewed S1 foundation is integrated

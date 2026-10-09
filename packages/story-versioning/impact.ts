@@ -63,6 +63,9 @@ export const OPERATIONS = [
   // take), so it is named here rather than left to the unlisted-operation
   // default, which would classify it LOW and capture nothing.
   "checkpoint.create",
+  // NF-WF-050B: S2 standing approval mutates the SCALE narrative policy.
+  // HIGH so advanceForMutation captures the mandatory PRE_MUTATION checkpoint.
+  "scale.standing.approve",
 ] as const;
 
 export type Operation = (typeof OPERATIONS)[number];
@@ -81,6 +84,8 @@ const HIGH_OPERATIONS: ReadonlySet<string> = new Set<string>([
   "branch.merge",
   "ai.bulkRewrite",
   "checkpoint.create",
+  // NF-WF-050B: S2 standing approval — HIGH, requires PRE_MUTATION checkpoint.
+  "scale.standing.approve",
 ]);
 
 /**

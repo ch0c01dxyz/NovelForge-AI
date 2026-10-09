@@ -23,6 +23,7 @@ import { registerAuthRoutes } from "./auth-routes.ts";
 import { registerPlatformRoutes } from "./platform-routes.ts";
 import { registerManuscriptRoutes } from "./manuscript-routes.ts";
 import { registerScaleEvidenceRoutes } from "./scale-evidence-routes.ts";
+import { registerScaleDecisionRoutes } from "./scale-decision-routes.ts";
 import { registerAiRoutes } from "./ai-routes.ts";
 import { registerDefinitionRoutes } from "./definition-routes.ts";
 import { registerRetrievalRoutes } from "./retrieval-routes.ts";
@@ -254,6 +255,13 @@ export async function buildApp(
     // NF-WF-050A: SCALE evidence foundation (S1). Registered once; the
     // routes create their own service instance from the shared db.
     registerScaleEvidenceRoutes(app, { auth, db: options.db });
+    // NF-WF-050B: SCALE decisions (S2). Registered once; the routes create
+    // their own service instance from the shared db and audit.
+    registerScaleDecisionRoutes(app, {
+      auth,
+      db: options.db,
+      audit: createAuditService(options.db),
+    });
     // NF-WF-012: the one shared `publication` queue. Schedule/reschedule
     // enqueue a delayed fire-job (jobId = publication id); cancel removes
     // it; the worker executes and reconciles. Tests may inject a fake;

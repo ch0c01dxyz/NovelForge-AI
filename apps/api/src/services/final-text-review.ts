@@ -56,7 +56,18 @@ import type { NovelForgeDb } from "@novelforge/database";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 import { NotFoundError } from "@novelforge/ai-services";
 import { MemoryError } from "@novelforge/ai-services";
+import { PolicyError } from "@novelforge/ai-services";
 import type { AuditService } from "@novelforge/ai-services";
+import {
+  assessScaleDeterministic,
+  readScaleContext,
+  resolveApplicableExceptionStrict,
+} from "@novelforge/ai-services";
+import type {
+  ScaleReviewProtocol,
+  ScaleReviewContext,
+} from "@novelforge/ai-services";
+import { parseScaleReviewProtocol } from "@novelforge/ai-services";
 import {
   assessDramaWindow,
   assessScaleAppropriateness,
@@ -70,7 +81,7 @@ import {
   isValidScalePayload,
   scaleStandingOf,
 } from "@novelforge/ai-services";
-import { readHeadRevisionId } from "./revisions.ts";
+// readHeadRevisionId not used; head comes from locked branch.
 import {
   assertFindingEvidence,
   type EvidenceFinding,
@@ -100,6 +111,12 @@ export interface ReviewVerdict {
   }>;
   sourceRevisionId: string;
   receiptId: string;
+  /**
+   * Protocol 1 SCALE review (050B). Always set for new reviews (eighth
+   * repair: NOT_CONFIGURED with current pins when no SCALE rows exist).
+   * Null only when reading genuine historical (pre-050B) receipts.
+   */
+  scaleReview: ScaleReviewProtocol | null;
 }
 
 interface PolicyRow {
@@ -149,7 +166,12 @@ export function createFinalTextReviewServices(deps: {
   /** Latest receipt for a chapter version id (the setStatus gate reads this). */
   latestReceipt(input: {
     chapterVersionId: string;
-  }): Promise<{ verdict: "PASS" | "FAIL"; hardViolations: unknown } | null>;
+  }): Promise<{
+    verdict: "PASS" | "FAIL";
+    hardViolations: unknown;
+    scaleReview: ScaleReviewProtocol | null;
+    revisionId: string;
+  } | null>;
 } {
   const { db, audit } = deps;
 
@@ -238,10 +260,15 @@ export function createFinalTextReviewServices(deps: {
     async latestReceipt({ chapterVersionId }) {
       const row = await db.finalTextReview.findUnique({
         where: { chapterVersionId },
-        select: { verdict: true, hardViolations: true },
+        select: { verdict: true, hardViolations: true, scaleReview: true, revisionId: true },
       });
       if (!row) return null;
-      return { verdict: row.verdict as "PASS" | "FAIL", hardViolations: row.hardViolations };
+      return {
+        verdict: row.verdict as "PASS" | "FAIL",
+        hardViolations: row.hardViolations,
+        scaleReview: parseScaleReviewProtocol(row.scaleReview),
+        revisionId: row.revisionId,
+      };
     },
 
     async reviewFinalText({
@@ -263,238 +290,375 @@ export function createFinalTextReviewServices(deps: {
         );
       }
 
-      const version = await db.chapterVersion.findFirst({
-        where: { id: chapterVersionId, chapter: { novelId } },
-        select: {
-          id: true,
-          chapterId: true,
-          number: true,
-          chapter: { select: { id: true, number: true, title: true } },
-        },
-      });
-      if (!version) throw new NotFoundError("chapter version");
-      // chapterId/chapterVersionId consistency (pinned at review, P3).
-      if (chapterId !== undefined && version.chapterId !== chapterId) {
-        throw new MemoryError(
-          400,
-          "INVALID_INPUT",
-          "chapterVersionId does not belong to chapterId",
+      // 050B: one transaction locks novel NO KEY UPDATE -> checked-out
+      // branch UPDATE -> chapter UPDATE. No LLM/human wait inside; no
+      // story-head advance for review itself.
+      return await db.$transaction(async (tx) => {
+        // Lock novel, re-read checked-out branch.
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`,
+          novelId,
         );
-      }
-      const chapterNumber = version.chapter.number;
+        const novel = await tx.novel.findFirst({
+          where: { id: novelId, workspaceId },
+          select: { id: true, currentBranchId: true },
+        });
+        if (!novel || !novel.currentBranchId) {
+          throw new NotFoundError("novel");
+        }
+        const branchId = novel.currentBranchId;
 
-      const headRevisionId = await readHeadRevisionId(db, novelId);
-      // A novel with no revisions yet has no source revision to pin the
-      // receipt to. Rather than inventing one, surface the real
-      // precondition loudly: review needs at least one revision. (Every
-      // covered mutation writes a revision, so a novel with chapters
-      // always has one.)
-      if (!headRevisionId) throw new NotFoundError("revision");
-      const sourceRevisionId = headRevisionId;
+        // Lock the checked-out branch.
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`,
+          branchId,
+        );
+        const branch = await tx.novelBranch.findUnique({
+          where: { id: branchId },
+          select: { id: true, novelId: true, headRevisionId: true },
+        });
+        if (!branch || branch.novelId !== novelId) {
+          throw new NotFoundError("branch");
+        }
 
-      const policyRows = await db.narrativePolicy.findMany({
-        where: { novelId },
-        select: { id: true, kind: true, hardness: true, payload: true },
-      });
-      const policies: PolicyRow[] = policyRows.map((r) => ({
-        id: r.id,
-        kind: r.kind as NarrativePolicyKind,
-        hardness: r.hardness as PolicyHardness,
-        payload: r.payload,
-      }));
-
-      const beats = await dramaBeats(novelId);
-      const beatsBefore = beats
-        .filter((b) => b.chapter < chapterNumber)
-        .sort((a, b) => b.chapter - a.chapter);
-      const lastBeatChapter = beatsBefore.length > 0 ? beatsBefore[0]!.chapter : 0;
-      const chaptersSinceDrama = chapterNumber - lastBeatChapter;
-
-      const hardViolations: EvidenceFinding[] = [];
-      const advisory: ReviewAdvisory[] = [];
-      const evaluatedPolicies: ReviewVerdict["evaluatedPolicies"] = [];
-
-      const recordAdvisory = (
-        rule: string,
-        observation: string,
-        evidence: FindingEvidence[],
-        suggestion: string,
-      ) => {
-        advisory.push({ rule, observation, evidence, suggestion });
-      };
-
-      for (const policy of policies) {
-        const readProblem = validatePolicyPayloadOnRead(policy.kind, policy.payload);
-        if (readProblem) {
-          // Malformed on read = fail-open: treated as unconfigured, with
-          // an explicit UNRESOLVED finding (Invariant 5). Never an HTTP
-          // error, never a silent pass.
-          const finding = malformedFinding(policy, readProblem, sourceRevisionId);
-          recordAdvisory(
-            "MALFORMED_POLICY",
-            `${policy.kind} policy is stored malformed and reads as unconfigured: ${readProblem}`,
-            finding.evidence,
-            `Re-save the ${policy.kind} policy through the policy write surface; the stored payload does not validate against the ${policy.kind} schema.`,
+        // Headless participating branch: refuse 409 with no receipt writes.
+        // Never borrow main's head or manufacture a revision.
+        if (!branch.headRevisionId) {
+          throw new PolicyError(
+            "REVIEW_STALE",
+            "checked-out branch has no head revision; review requires a baseline revision",
           );
+        }
+        const sourceRevisionId = branch.headRevisionId;
+
+        // Resolve and lock the chapter.
+        const versionPre = await tx.chapterVersion.findFirst({
+          where: { id: chapterVersionId },
+          select: { id: true, chapterId: true, chapter: { select: { novelId: true } } },
+        });
+        if (!versionPre || versionPre.chapter.novelId !== novelId) {
+          throw new NotFoundError("chapter version");
+        }
+        const resolvedChapterId = chapterId ?? versionPre.chapterId;
+        if (versionPre.chapterId !== resolvedChapterId) {
+          throw new MemoryError(
+            400,
+            "INVALID_INPUT",
+            "chapterVersionId does not belong to chapterId",
+          );
+        }
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM chapters WHERE id = $1 FOR UPDATE`,
+          resolvedChapterId,
+        );
+        const chapter = await tx.chapter.findUnique({
+          where: { id: resolvedChapterId },
+          select: { id: true, number: true, title: true, currentVersionId: true },
+        });
+        if (!chapter) throw new NotFoundError("chapter");
+
+        // Require an owned current version: foreign version 404 (handled
+        // above via novel scoping); owned but obsolete 409 REVIEW_STALE.
+        if (chapter.currentVersionId !== chapterVersionId) {
+          throw new PolicyError(
+            "REVIEW_STALE",
+            "chapter version is not the current version of the checked-out branch",
+          );
+        }
+
+        const chapterNumber = chapter.number;
+
+        // 050B: read SCALE context (latest set, policy, fingerprint) inside
+        // the same transaction. readScaleContext re-validates retained
+        // evidence via 050A validators.
+        //
+        // NF-WF-050B eighth repair (GAP-119): context resolution failure
+        // REFUSES the review (throws) rather than fabricating proof.
+        // readScaleContext only throws on genuine failures (missing
+        // version/chapter/novel/branch); absent SCALE rows are returned as
+        // null policy/set, never thrown. Never invent pins.
+        const scaleContext: ScaleReviewContext = await readScaleContext(tx as never, {
+          workspaceId,
+          novelId,
+          chapterId: resolvedChapterId,
+          chapterVersionId,
+        });
+
+        // Strict applicable-exception resolution (NF-WF-050B seventh
+        // repair, GAP-119): ONE shared resolver used by the producer, gate
+        // and context. Validates exact payload keys, nonempty/unique/bounded
+        // indices, ownership, provenance, and that coverage refers to actual
+        // violating claims. Malformed historical approvals fail closed
+        // (return null) without deleting audit history.
+        let exceptionCoveredIndices: number[] = [];
+        let applicableExceptionOutcomeId: string | null = null;
+        {
+          const strict = await resolveApplicableExceptionStrict(
+            tx as Pick<typeof tx, "scaleDecisionOutcome">,
+            { novelId, workspaceId, context: scaleContext },
+          );
+          if (strict) {
+            applicableExceptionOutcomeId = strict.outcomeId;
+            exceptionCoveredIndices = strict.coveredIndices;
+          }
+        }
+
+        // Compute protocol 1 scaleReview ALWAYS (eighth repair, GAP-119).
+        // When SCALE rows exist, run the full deterministic assessment.
+        // When no SCALE rows exist, the assessor emits NOT_CONFIGURED with
+        // explicit policy absence and current pins — never null. Null is
+        // reserved for genuine historical (pre-050B) receipts.
+        // Build claim inputs from the validated latest set (050A claims
+        // have { scale, relevance, explanation, source: { start, end, quote } }).
+        // Empty when no SCALE rows: the assessor returns NOT_CONFIGURED.
+        const claims = (scaleContext.latestSet?.conflicts ?? []).map((c, idx) => ({
+          index: idx,
+          scale: c.scale,
+          span: { start: c.source.start, end: c.source.end },
+          quote: c.source.quote,
+        }));
+        // Patch the exception outcome pin (resolved by caller per
+        // assessScaleDeterministic contract).
+        // Honor explicit NO_OPERATIVE_CONFLICT declaration from the
+        // validated evidence set (050A). A quiet chapter with valid
+        // policy and explicit declaration → NO_OPERATIVE_CONFLICT state.
+        const noOperativeConflict =
+          scaleContext.latestSet?.declaration === "NO_OPERATIVE_CONFLICT";
+        const assessed = assessScaleDeterministic({
+          context: scaleContext,
+          claims,
+          exceptionCoveredIndices,
+          noOperativeConflict,
+        });
+        const scaleReview: ScaleReviewProtocol = {
+          ...assessed,
+          pins: {
+            ...assessed.pins,
+            exceptionOutcomeId: applicableExceptionOutcomeId,
+          },
+        };
+
+        const policyRows = await tx.narrativePolicy.findMany({
+          where: { novelId },
+          select: { id: true, kind: true, hardness: true, payload: true },
+        });
+        const policies: PolicyRow[] = policyRows.map((r) => ({
+          id: r.id,
+          kind: r.kind as NarrativePolicyKind,
+          hardness: r.hardness as PolicyHardness,
+          payload: r.payload,
+        }));
+
+        const beats = await dramaBeats(novelId);
+        const beatsBefore = beats
+          .filter((b) => b.chapter < chapterNumber)
+          .sort((a, b) => b.chapter - a.chapter);
+        const lastBeatChapter = beatsBefore.length > 0 ? beatsBefore[0]!.chapter : 0;
+        const chaptersSinceDrama = chapterNumber - lastBeatChapter;
+
+        const hardViolations: EvidenceFinding[] = [];
+        const advisory: ReviewAdvisory[] = [];
+        const evaluatedPolicies: ReviewVerdict["evaluatedPolicies"] = [];
+
+        const recordAdvisory = (
+          rule: string,
+          observation: string,
+          evidence: FindingEvidence[],
+          suggestion: string,
+        ) => {
+          advisory.push({ rule, observation, evidence, suggestion });
+        };
+
+        for (const policy of policies) {
+          const readProblem = validatePolicyPayloadOnRead(policy.kind, policy.payload);
+          if (readProblem) {
+            const finding = malformedFinding(policy, readProblem, sourceRevisionId);
+            recordAdvisory(
+              "MALFORMED_POLICY",
+              `${policy.kind} policy is stored malformed and reads as unconfigured: ${readProblem}`,
+              finding.evidence,
+              `Re-save the ${policy.kind} policy through the policy write surface; the stored payload does not validate against the ${policy.kind} schema.`,
+            );
+            evaluatedPolicies.push({
+              kind: policy.kind,
+              hardness: policy.hardness,
+              configured: false,
+            });
+            continue;
+          }
           evaluatedPolicies.push({
             kind: policy.kind,
             hardness: policy.hardness,
-            configured: false,
+            configured: true,
           });
-          continue;
+
+          if (policy.kind === "DRAMA_GAP") {
+            const window = assessDramaWindow({
+              policy: policy.payload as never,
+              chaptersSinceDrama,
+            });
+            if ("problem" in window) continue;
+            const beyond = window.state === "BEYOND_EXTENDED_CALM";
+            const strict = (policy.payload as { strictInterval?: boolean }).strictInterval === true;
+            if (beyond && strict) {
+              const observation = `drama gap exceeded: ${window.guidance}`;
+              const evidence: FindingEvidence[] = [
+                {
+                  kind: "policy",
+                  id: policy.id,
+                  detail: `DRAMA_GAP policy (strict): ${window.guidance}`,
+                },
+                {
+                  kind: "chapterVersion",
+                  id: chapterVersionId,
+                  chapter: chapterNumber,
+                  detail: `${chaptersSinceDrama} chapters since the last structured story event (chapter ${lastBeatChapter === 0 ? "— none yet" : lastBeatChapter})`,
+                },
+              ];
+              if (policy.hardness === "HARD") {
+                hardViolations.push(
+                  hardViolation(
+                    "DRAMA_GAP_VIOLATION",
+                    observation,
+                    evidence,
+                    "add a drama beat (a structured story event) within the authored gap, or relax the policy's strict interval",
+                    sourceRevisionId,
+                  ),
+                );
+              } else {
+                recordAdvisory(
+                  "DRAMA_GAP_OBSERVATION",
+                  observation,
+                  evidence,
+                  "The story has been calm longer than the authored extended calm describes. This is an observation about rhythm, not a schedule — the policy's numbers are descriptive.",
+                );
+              }
+            }
+          } else if (policy.kind === "COOLDOWN") {
+            const decision = checkCooldown(
+              { id: chapterVersionId, type: "CUSTOM", chapter: chapterNumber },
+              beats.filter((b) => b.chapter !== chapterNumber),
+              policy.payload as { windowChapters: number },
+            );
+            if (!decision.allowed && decision.conflictsWith) {
+              const c = decision.conflictsWith;
+              const observation = `cooldown conflict: ${decision.reason}`;
+              const evidence: FindingEvidence[] = [
+                {
+                  kind: "policy",
+                  id: policy.id,
+                  detail: `COOLDOWN policy: ${decision.reason}`,
+                },
+                {
+                  kind: "chapterVersion",
+                  id: c.beatId,
+                  chapter: c.chapter,
+                  detail: `conflicting beat ${c.beatId} at chapter ${c.chapter}, ${c.distance} chapters away`,
+                },
+              ];
+              if (policy.hardness === "HARD") {
+                hardViolations.push(
+                  hardViolation(
+                    "COOLDOWN_VIOLATION",
+                    observation,
+                    evidence,
+                    `move the beat outside the ${(policy.payload as { windowChapters: number }).windowChapters}-chapter cooldown window, or narrow the window`,
+                    sourceRevisionId,
+                  ),
+                );
+              } else {
+                recordAdvisory(
+                  "COOLDOWN_OBSERVATION",
+                  observation,
+                  evidence,
+                  "Two same-flavour beats land close together. The cooldown is advisory here — repetition is a note about rhythm, not a refusal.",
+                );
+              }
+            }
+          } else {
+            const standing = scaleStandingOf(policy.payload);
+            if (standing) {
+              const assessment = assessScaleAppropriateness(
+                {
+                  id: chapterVersionId,
+                  scale: standing.scale,
+                  summary: chapter.title,
+                },
+                standing,
+              );
+              void assessment;
+            }
+          }
         }
-        evaluatedPolicies.push({
-          kind: policy.kind,
-          hardness: policy.hardness,
-          configured: true,
+
+        // 050B: Derive verdict from SCALE blocking. INCOMPLETE with
+        // blocking (HARD) → FAIL; VIOLATION with blocking → FAIL.
+        // WITHIN_REACH/EXCEPTED/NO_OPERATIVE_CONFLICT do NOT force FAIL
+        // (other policies can still fail). INCOMPLETE never fabricates
+        // proved violations (hardViolations only contains proved hard
+        // violations from non-SCALE policies).
+        const scaleBlocks =
+          scaleReview.blocking === true;
+        const verdict: "PASS" | "FAIL" =
+          hardViolations.length > 0 || scaleBlocks ? "FAIL" : "PASS";
+
+        // One receipt per immutable version; re-review REPLACES the row.
+        // After a head change, the existing receipt pins the OLD head and
+        // the new review pins the CURRENT head (re-read inside this tx
+        // under lock). This is a legitimate fresh re-review and must be
+        // allowed — the upsert below replaces the stale receipt.
+        // The chapter is locked FOR UPDATE in this tx, so the head cannot
+        // move between our read and the upsert; no stale-evaluator race.
+
+        const receipt = await tx.finalTextReview.upsert({
+          where: { chapterVersionId },
+          update: {
+            revisionId: sourceRevisionId,
+            verdict,
+            hardViolations: hardViolations as unknown as object,
+            advisory: advisory as unknown as object,
+            evaluatedPolicies: evaluatedPolicies as unknown as object,
+            scaleReview: scaleReview as unknown as object,
+          },
+          create: {
+            workspaceId,
+            novelId,
+            chapterVersionId,
+            revisionId: sourceRevisionId,
+            verdict,
+            hardViolations: hardViolations as unknown as object,
+            advisory: advisory as unknown as object,
+            evaluatedPolicies: evaluatedPolicies as unknown as object,
+            scaleReview: scaleReview as unknown as object,
+          },
+          select: { id: true },
         });
 
-        if (policy.kind === "DRAMA_GAP") {
-          const window = assessDramaWindow({
-            policy: policy.payload as never,
-            chaptersSinceDrama,
-          });
-          if ("problem" in window) continue; // validated above; defensive
-          const beyond = window.state === "BEYOND_EXTENDED_CALM";
-          const strict = (policy.payload as { strictInterval?: boolean }).strictInterval === true;
-          if (beyond && strict) {
-            const observation = `drama gap exceeded: ${window.guidance}`;
-            const evidence: FindingEvidence[] = [
-              {
-                kind: "policy",
-                id: policy.id,
-                detail: `DRAMA_GAP policy (strict): ${window.guidance}`,
-              },
-              {
-                kind: "chapterVersion",
-                id: chapterVersionId,
-                chapter: chapterNumber,
-                detail: `${chaptersSinceDrama} chapters since the last structured story event (chapter ${lastBeatChapter === 0 ? "— none yet" : lastBeatChapter})`,
-              },
-            ];
-            if (policy.hardness === "HARD") {
-              hardViolations.push(
-                hardViolation(
-                  "DRAMA_GAP_VIOLATION",
-                  observation,
-                  evidence,
-                  "add a drama beat (a structured story event) within the authored gap, or relax the policy's strict interval",
-                  sourceRevisionId,
-                ),
-              );
-            } else {
-              recordAdvisory(
-                "DRAMA_GAP_OBSERVATION",
-                observation,
-                evidence,
-                "The story has been calm longer than the authored extended calm describes. This is an observation about rhythm, not a schedule — the policy's numbers are descriptive.",
-              );
-            }
-          }
-        } else if (policy.kind === "COOLDOWN") {
-          const decision = checkCooldown(
-            { id: chapterVersionId, type: "CUSTOM", chapter: chapterNumber },
-            beats.filter((b) => b.chapter !== chapterNumber),
-            policy.payload as { windowChapters: number },
-          );
-          if (!decision.allowed && decision.conflictsWith) {
-            const c = decision.conflictsWith;
-            const observation = `cooldown conflict: ${decision.reason}`;
-            const evidence: FindingEvidence[] = [
-              {
-                kind: "policy",
-                id: policy.id,
-                detail: `COOLDOWN policy: ${decision.reason}`,
-              },
-              {
-                kind: "chapterVersion",
-                id: c.beatId,
-                chapter: c.chapter,
-                detail: `conflicting beat ${c.beatId} at chapter ${c.chapter}, ${c.distance} chapters away`,
-              },
-            ];
-            if (policy.hardness === "HARD") {
-              hardViolations.push(
-                hardViolation(
-                  "COOLDOWN_VIOLATION",
-                  observation,
-                  evidence,
-                  `move the beat outside the ${(policy.payload as { windowChapters: number }).windowChapters}-chapter cooldown window, or narrow the window`,
-                  sourceRevisionId,
-                ),
-              );
-            } else {
-              recordAdvisory(
-                "COOLDOWN_OBSERVATION",
-                observation,
-                evidence,
-                "Two same-flavour beats land close together. The cooldown is advisory here — repetition is a note about rhythm, not a refusal.",
-              );
-            }
-          }
-        } else {
-          // SCALE: the validated standing is recorded; the chapter
-          // version at the standing's own scale is always inside reach,
-          // so SCALE never fails a review in 010 (see file comment).
-          const standing = scaleStandingOf(policy.payload);
-          if (standing) {
-            const assessment = assessScaleAppropriateness(
-              {
-                id: chapterVersionId,
-                scale: standing.scale,
-                summary: version.chapter.title,
-              },
-              standing,
-            );
-            void assessment;
-          }
-        }
-      }
-
-      const verdict: "PASS" | "FAIL" = hardViolations.length > 0 ? "FAIL" : "PASS";
-
-      // One receipt per immutable version; re-review REPLACES the row.
-      const receipt = await db.finalTextReview.upsert({
-        where: { chapterVersionId },
-        update: {
-          revisionId: sourceRevisionId,
-          verdict,
-          hardViolations: hardViolations as unknown as object,
-          advisory: advisory as unknown as object,
-          evaluatedPolicies: evaluatedPolicies as unknown as object,
-        },
-        create: {
+        await audit.record({
+          actorUserId,
           workspaceId,
-          novelId,
+          action: "review.final-text-evaluated",
+          entityType: "FinalTextReview",
+          entityId: receipt.id,
+          payload: {
+            chapterVersionId,
+            verdict,
+            scaleReviewState: scaleReview.state,
+          },
+        });
+
+        return {
           chapterVersionId,
-          revisionId: sourceRevisionId,
+          novelId,
           verdict,
-          hardViolations: hardViolations as unknown as object,
-          advisory: advisory as unknown as object,
-          evaluatedPolicies: evaluatedPolicies as unknown as object,
-        },
-        select: { id: true },
+          hardViolations,
+          advisory,
+          evaluatedPolicies,
+          sourceRevisionId,
+          receiptId: receipt.id,
+          scaleReview,
+        };
       });
-
-      await audit.record({
-        actorUserId,
-        workspaceId,
-        action: "review.final-text-evaluated",
-        entityType: "FinalTextReview",
-        entityId: receipt.id,
-        payload: { chapterVersionId, verdict },
-      });
-
-      return {
-        chapterVersionId,
-        novelId,
-        verdict,
-        hardViolations,
-        advisory,
-        evaluatedPolicies,
-        sourceRevisionId,
-        receiptId: receipt.id,
-      };
     },
   };
 }

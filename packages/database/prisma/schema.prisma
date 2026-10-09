@@ -69,6 +69,10 @@ model User {
   createdCanonFacts   CanonFact[]      @relation("CanonFactCreator")
   createdFactSources  CanonFactSource[] @relation("CanonFactSourceCreator")
   authoredScaleEvidence ScaleEvidenceSet[] @relation("ScaleEvidenceActor")
+  /// NF-WF-050B: decision proposals authored by this user.
+  authoredScaleDecisionProposals ScaleDecisionProposal[] @relation("ScaleDecisionProposer")
+  /// NF-WF-050B: decision outcomes recorded by this user (author).
+  recordedScaleDecisionOutcomes  ScaleDecisionOutcome[]  @relation("ScaleDecisionActor")
   proposedCanon       CanonProposal[]  @relation("CanonProposalAuthor")
   decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
   /// NF-WF-021B: simulation proposals decided by this user.
@@ -150,6 +154,10 @@ model Workspace {
   memberships  Membership[]
   novels       Novel[]
   scaleEvidenceSets ScaleEvidenceSet[]
+  /// NF-WF-050B: author decision proposals in this workspace.
+  scaleDecisionProposals ScaleDecisionProposal[]
+  /// NF-WF-050B: author decision outcomes in this workspace.
+  scaleDecisionOutcomes  ScaleDecisionOutcome[]
   auditEntries AuditLog[]
   agents       Agent[]
   skills       Skill[]
@@ -234,6 +242,10 @@ model Novel {
   settings    NovelSettings?
   chapters    Chapter[]
   scaleEvidenceSets ScaleEvidenceSet[]
+  /// NF-WF-050B: author decision proposals in this novel.
+  scaleDecisionProposals ScaleDecisionProposal[]
+  /// NF-WF-050B: author decision outcomes in this novel.
+  scaleDecisionOutcomes  ScaleDecisionOutcome[]
   workflows   Workflow[]
   references  Reference[]
   retrievals  RetrievalAudit[]
@@ -430,6 +442,10 @@ model ChapterVersion {
   currentForChapter Chapter? @relation("CurrentChapterVersion")
   factSources       CanonFactSource[]
   scaleEvidenceSets ScaleEvidenceSet[]
+  /// NF-WF-050B: decision proposals anchored to this chapter version.
+  scaleDecisionProposals ScaleDecisionProposal[]
+  /// NF-WF-050B: decision outcomes pinned to this chapter version.
+  scaleDecisionOutcomes  ScaleDecisionOutcome[]
   /// NF-WF-010: the (replaced-on-rereview) final-text review receipt for
   /// this immutable version. Null until reviewed.
   finalTextReview   FinalTextReview?
@@ -2629,6 +2645,10 @@ model NovelBranch {
   /// Novel.currentBranch).
   checkedOutByNovels Novel[] @relation("NovelCurrentBranch")
   scaleEvidenceSets ScaleEvidenceSet[]
+  /// NF-WF-050B: decision proposals sourced from this branch.
+  scaleDecisionProposals ScaleDecisionProposal[]
+  /// NF-WF-050B: decision outcomes sourced from this branch.
+  scaleDecisionOutcomes  ScaleDecisionOutcome[]
   /// NF-WF-021A: simulation runs on this branch (SetNull; a run records
   /// whether its branch is simulation-dedicated).
   simulationRuns SimulationRun[]
@@ -2668,6 +2688,10 @@ model Revision {
   createdBy        User?          @relation("RevisionCreator", fields: [createdById], references: [id])
   createdAt        DateTime       @default(now()) @map("created_at")
   scaleEvidenceSets ScaleEvidenceSet[]
+  /// NF-WF-050B: decision proposals sourced from this revision.
+  scaleDecisionProposals ScaleDecisionProposal[]
+  /// NF-WF-050B: decision outcomes with a result revision.
+  resultScaleDecisionOutcomes ScaleDecisionOutcome[] @relation("ScaleDecisionResultRevision")
 
   changeSet         ChangeSet?
   snapshot          Snapshot?
@@ -2905,6 +2929,10 @@ model FinalTextReview {
   /// { kind, hardness, configured } per NarrativePolicyKind.
   evaluatedPolicies Json            @map("evaluated_policies")
   createdAt        DateTime         @default(now()) @map("created_at")
+  /// Nullable deterministic SCALE review receipt (NF-WF-050B). Null denotes a
+  /// legacy receipt that never ran the deterministic review; null is never
+  /// used as new proof. Stored as JSON; validated on reads.
+  scaleReview      Json?            @map("scale_review")
 
   @@index([novelId])
   @@map("final_text_reviews")
@@ -3676,6 +3704,8 @@ model ScaleEvidenceSet {
   previousSetId    String?  @map("previous_set_id") @db.Uuid
   previousSet      ScaleEvidenceSet? @relation("ScaleEvidencePredecessor", fields: [previousSetId], references: [id], onDelete: Restrict)
   nextSets         ScaleEvidenceSet[] @relation("ScaleEvidencePredecessor")
+  /// NF-WF-050B: decision proposals citing this evidence set.
+  citedByScaleDecisionProposals ScaleDecisionProposal[]
   /// Authenticated user, server-resolved, never client-supplied.
   actorUserId      String   @map("actor_user_id") @db.Uuid
   actor            User     @relation("ScaleEvidenceActor", fields: [actorUserId], references: [id], onDelete: Restrict)
@@ -3684,4 +3714,112 @@ model ScaleEvidenceSet {
   @@unique([sourceBranchId, chapterVersionId, sequence], map: "scale_evidence_sets_branch_version_sequence_key")
   @@index([workspaceId, novelId, sourceBranchId, chapterVersionId, sequence(sort: Desc)], map: "scale_evidence_sets_history_idx")
   @@map("scale_evidence_sets")
+}
+
+// ==================== SCALE review decisions (NF-WF-050B) ====================
+// Author decision proposals and outcomes (S2): append-only OPERATIONAL tables,
+// outside COVERED_TABLES. Proposals are validated author mutations against a
+// deterministic review; outcomes record the author decision. Null legacy
+// scaleReview receipts never become proof.
+
+/// Kind of author decision proposal (NF-WF-050B).
+enum ScaleDecisionKind {
+  STANDING_CHANGE
+  CHAPTER_EXCEPTION
+}
+
+/// Author action on a decision proposal (NF-WF-050B).
+enum ScaleDecisionAction {
+  APPROVE
+  REJECT
+  ALTERNATIVE
+}
+
+/// Author decision proposal against a deterministic SCALE review (NF-WF-050B).
+model ScaleDecisionProposal {
+  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId          String            @map("workspace_id") @db.Uuid
+  workspace            Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId              String            @map("novel_id") @db.Uuid
+  novel                Novel             @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  /// The immutable chapter version this proposal anchors to. Restrict —
+  /// versions are immutable; proposals must not be deleted with them.
+  chapterVersionId     String            @map("chapter_version_id") @db.Uuid
+  chapterVersion       ChapterVersion    @relation(fields: [chapterVersionId], references: [id], onDelete: Restrict)
+  /// Server checked-out branch at proposal time.
+  sourceBranchId       String            @map("source_branch_id") @db.Uuid
+  sourceBranch         NovelBranch       @relation(fields: [sourceBranchId], references: [id], onDelete: Restrict)
+  /// Branch head revision at proposal time; null = actual headless branch.
+  sourceRevisionId     String?           @map("source_revision_id") @db.Uuid
+  sourceRevision       Revision?         @relation(fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  /// Cited evidence set; null when the proposal pins an absent/unassessed set.
+  evidenceSetId        String?           @map("evidence_set_id") @db.Uuid
+  evidenceSet          ScaleEvidenceSet? @relation(fields: [evidenceSetId], references: [id], onDelete: Restrict)
+  /// Frozen policy snapshot (exact policy object) reviewed by the author.
+  policySnapshot       Json              @map("policy_snapshot")
+  /// SHA-256 hex fingerprint of the canonical policy snapshot.
+  policyFingerprint    String            @map("policy_fingerprint") @db.Text
+  /// Positive integer, monotonic within (sourceBranchId, chapterVersionId).
+  sequence             Int
+  kind                 ScaleDecisionKind
+  /// Strictly validated JSON payload (kind-specific).
+  payload              Json
+  /// Authenticated user, server-resolved, never client-supplied.
+  proposerUserId       String            @map("proposer_user_id") @db.Uuid
+  proposer             User              @relation("ScaleDecisionProposer", fields: [proposerUserId], references: [id], onDelete: Restrict)
+  /// Nonempty trimmed text, max 4,000 chars.
+  reason               String            @db.Text
+  /// Predecessor proposal for ALTERNATIVE chains; null for first proposal.
+  predecessorProposalId String?          @map("predecessor_proposal_id") @db.Uuid
+  predecessorProposal  ScaleDecisionProposal? @relation("ScaleDecisionProposalPredecessor", fields: [predecessorProposalId], references: [id], onDelete: Restrict)
+  successorProposals   ScaleDecisionProposal[] @relation("ScaleDecisionProposalPredecessor")
+  /// Outcome for this proposal; null while undecided.
+  outcome              ScaleDecisionOutcome? @relation("ScaleDecisionProposalOutcome")
+  /// Outcomes where this proposal was offered as the ALTERNATIVE.
+  alternativeOutcomes  ScaleDecisionOutcome[] @relation("ScaleDecisionAlternative")
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([sourceBranchId, chapterVersionId, sequence], map: "scale_decision_proposals_branch_version_sequence_key")
+  @@index([novelId, sourceBranchId, chapterVersionId], map: "scale_decision_proposals_novel_branch_version_idx")
+  @@map("scale_decision_proposals")
+}
+
+/// Author decision outcome for one proposal (NF-WF-050B). One row per
+/// proposal at most; the latest outcome sequence per (branch, version) is
+/// the decision-head token. No mutable status row.
+model ScaleDecisionOutcome {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// The decided proposal. Restrict — outcomes are audit history and must
+  /// not be deleted with their proposal.
+  proposalId          String              @unique @map("proposal_id") @db.Uuid
+  proposal            ScaleDecisionProposal @relation("ScaleDecisionProposalOutcome", fields: [proposalId], references: [id], onDelete: Restrict)
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId         String              @map("workspace_id") @db.Uuid
+  workspace           Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId             String              @map("novel_id") @db.Uuid
+  novel               Novel               @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  chapterVersionId    String              @map("chapter_version_id") @db.Uuid
+  chapterVersion      ChapterVersion      @relation(fields: [chapterVersionId], references: [id], onDelete: Restrict)
+  sourceBranchId      String              @map("source_branch_id") @db.Uuid
+  sourceBranch        NovelBranch         @relation(fields: [sourceBranchId], references: [id], onDelete: Restrict)
+  /// Positive integer, monotonic within (sourceBranchId, chapterVersionId).
+  sequence            Int
+  action              ScaleDecisionAction
+  /// Authenticated author, server-resolved, never client-supplied.
+  actorUserId         String              @map("actor_user_id") @db.Uuid
+  actor               User                @relation("ScaleDecisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  /// Nonempty trimmed text, max 4,000 chars.
+  reason              String              @db.Text
+  /// Newly created pending proposal when action = ALTERNATIVE.
+  alternativeProposalId String?           @map("alternative_proposal_id") @db.Uuid
+  alternativeProposal ScaleDecisionProposal? @relation("ScaleDecisionAlternative", fields: [alternativeProposalId], references: [id], onDelete: Restrict)
+  /// Result revision of an approved STANDING_CHANGE; null otherwise.
+  resultRevisionId    String?             @map("result_revision_id") @db.Uuid
+  resultRevision      Revision?           @relation("ScaleDecisionResultRevision", fields: [resultRevisionId], references: [id], onDelete: Restrict)
+  createdAt           DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([sourceBranchId, chapterVersionId, sequence], map: "scale_decision_outcomes_branch_version_sequence_key")
+  @@index([novelId, sourceBranchId, chapterVersionId], map: "scale_decision_outcomes_novel_branch_version_idx")
+  @@map("scale_decision_outcomes")
 }

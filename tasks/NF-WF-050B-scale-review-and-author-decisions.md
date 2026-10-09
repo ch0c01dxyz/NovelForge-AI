@@ -1,6 +1,14 @@
 # NF-WF-050B: SCALE review, author decisions and usable author workflow
 
-Status: READY (technical contract reviewed; implementation not started).
+Status: IMPLEMENTED / SOURCE_REVIEWED / ACCEPTANCE_PENDING.
+Integration update (2026-10-09): the author authorized merging external
+`800cf3707d488f88cbc2447d1d992f3aeb6d89bf`. Separate technical/recovery
+actors approve the submitted source; CURRENT and GAP-119 own exact local
+checks and corrected external-report provenance. The original contract below
+remains frozen; implementation acceptance does not close its complete
+regression/live-author/publication gate or parent GAP-039. Do not redispatch
+this child as implementation-not-started. The original baseline and proposed
+interfaces below document the design boundary rather than present absence.
 Milestones: M3/M5/M8; CAP-06; parent GAP-039; technical seams GAP-119.
 Parent: [NF-WF-050](NF-WF-050-scale-evidence-workflow.md).
 Spec: [ADR-0016](../docs/adr/ADR-0016-scale-evidence-and-author-decisions.md).

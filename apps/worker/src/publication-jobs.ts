@@ -42,6 +42,7 @@ import {
   isCoveredTable,
   projectionsForTables,
 } from "@novelforge/story-versioning";
+import { checkFinalTextReviewGate } from "@novelforge/ai-services";
 import type { WorkerLogger } from "./worker.ts";
 import {
   NOTIFICATION_FANOUT_JOB_NAME,
@@ -167,23 +168,12 @@ async function advanceHeadLow(
 }
 
 /**
- * The Invariant 3 gate, worker-side mirror of `assertPublishReviewGate`
- * (apps/api/src/services/manuscript.ts). Returns the refusal code rather
- * than throwing a typed error — the worker branches on it (refused →
- * UNPUBLISHED, job succeeds).
+ * 050B: The Invariant 3 gate now uses the shared `checkFinalTextReviewGate`
+ * (the same helper the API uses). The old worker-side mirror is removed.
+ * Returns the refusal code rather than throwing — the worker branches on it
+ * (refused → UNPUBLISHED, job succeeds). SCALE_ASSESSMENT_INCOMPLETE is
+ * recorded distinctly from HARD_POLICY_VIOLATION.
  */
-async function checkReviewGate(
-  tx: FireTx,
-  currentVersionId: string,
-): Promise<{ ok: true } | { ok: false; code: "REVIEW_STALE" | "HARD_POLICY_VIOLATION" }> {
-  const receipt = await tx.finalTextReview.findUnique({
-    where: { chapterVersionId: currentVersionId },
-    select: { verdict: true },
-  });
-  if (!receipt) return { ok: false, code: "REVIEW_STALE" };
-  if (receipt.verdict === "FAIL") return { ok: false, code: "HARD_POLICY_VIOLATION" };
-  return { ok: true };
-}
 
 /**
  * Fire one scheduled publication: the SCHEDULED→PUBLISHED transition as
@@ -231,7 +221,7 @@ export async function fireScheduledPublication(
 
     const workspaceId = row.novel.workspaceId;
     const refuse = async (
-      code: "REVIEW_STALE" | "HARD_POLICY_VIOLATION" | "NOVEL_ARCHIVED",
+      code: "REVIEW_STALE" | "HARD_POLICY_VIOLATION" | "SCALE_ASSESSMENT_INCOMPLETE" | "NOVEL_ARCHIVED",
     ): Promise<FireOutcome> => {
       const advanced = await advanceHeadLow(tx, {
         workspaceId,
@@ -272,7 +262,14 @@ export async function fireScheduledPublication(
     // No version at fire time reads as "no receipt for the current
     // version" (constitution §11).
     if (!chapter.currentVersionId) return refuse("REVIEW_STALE");
-    const gate = await checkReviewGate(tx, chapter.currentVersionId);
+    // 050B: use the shared gate (same helper as the API). The lock order
+    // (novel NO KEY UPDATE -> branch UPDATE -> chapter UPDATE) is held above.
+    const gate = await checkFinalTextReviewGate(tx as never, {
+      workspaceId,
+      novelId: row.novelId,
+      chapterId: row.chapterId,
+      chapterVersionId: chapter.currentVersionId,
+    });
     if (!gate.ok) return refuse(gate.code);
 
     const advanced = await advanceHeadLow(tx, {

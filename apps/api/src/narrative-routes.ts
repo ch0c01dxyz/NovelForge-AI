@@ -67,6 +67,16 @@ const putPolicyBody = z.object({
   hardness: z.enum(POLICY_HARDNESSES),
   hardReason: z.string().trim().max(2_000).nullable().optional(),
   payload: z.record(z.string(), z.unknown()),
+  // NF-WF-050B SCALE safeguards (required for SCALE kind)
+  chapterId: z.string().uuid().optional(),
+  chapterVersionId: z.string().uuid().optional(),
+  expectedBranchId: z.string().uuid().optional(),
+  expectedHeadRevisionId: z.string().uuid().nullable().optional(),
+  expectedSetId: z.string().uuid().nullable().optional(),
+  expectedDecisionId: z.string().uuid().nullable().optional(),
+  expectedPolicyFingerprint: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  reason: z.string().trim().min(1).max(4000).optional(),
+  authorDecision: z.enum(["APPROVE"]).optional(),
 });
 
 const assessWindowBody = z.object({
@@ -222,6 +232,15 @@ export function registerNarrativeRoutes(
         hardness: body.data.hardness,
         hardReason: body.data.hardReason ?? null,
         payload: body.data.payload,
+        chapterId: body.data.chapterId,
+        chapterVersionId: body.data.chapterVersionId,
+        expectedBranchId: body.data.expectedBranchId,
+        expectedHeadRevisionId: body.data.expectedHeadRevisionId,
+        expectedSetId: body.data.expectedSetId,
+        expectedDecisionId: body.data.expectedDecisionId,
+        expectedPolicyFingerprint: body.data.expectedPolicyFingerprint,
+        reason: body.data.reason,
+        authorDecision: body.data.authorDecision,
       });
     },
   );

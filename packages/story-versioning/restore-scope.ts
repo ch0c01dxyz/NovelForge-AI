@@ -89,7 +89,7 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   chapter_versions: "PINNED", // Append-only; restoring a pointer would rewrite authorship history.
   publications: "PINNED", // Release lifecycle — restore must not unpublish (Invariant 8).
 
-  // OPERATIONAL (30) — execution history and audit trail.
+  // OPERATIONAL (32) — execution history and audit trail.
   workflow_runs: "OPERATIONAL",
   workflow_step_runs: "OPERATIONAL",
   workflow_versions: "OPERATIONAL",
@@ -113,6 +113,8 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   derived_rebuild_intents: "OPERATIONAL",
   revisions: "OPERATIONAL", // The restore machinery itself — rewinding it is self-referential.
   scale_evidence_sets: "OPERATIONAL", // SCALE evidence history — auditable, never rewound (050A).
+  scale_decision_proposals: "OPERATIONAL", // S2 author decision proposals — auditable history, never rewound (050B).
+  scale_decision_outcomes: "OPERATIONAL", // S2 author decision outcomes — auditable history, never rewound (050B).
   snapshots: "OPERATIONAL",
   checkpoints: "OPERATIONAL",
   reading_progress: "OPERATIONAL", // Per-user state, never story state.

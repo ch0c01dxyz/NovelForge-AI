@@ -2,11 +2,13 @@
 /**
  * Narrative workspace panel (NF-WF-016, Invariant 1.8).
  *
- * Tab shell: DNA | Policies | Antagonists | Readouts. The Readouts tab
+ * Tab shell: DNA | Policies | Antagonists | SCALE | Readouts. The Readouts tab
  * hosts the read-only assessment tools — drama-window, cooldown, and
  * patterns — as small forms whose results are displayed but never
- * persisted. There is NO assessment form for SCALE (GAP-039): the SCALE
- * policy payload is shown display-only inside the Policies tab.
+ * persisted. The SCALE tab (NF-WF-050B) hosts the deterministic SCALE review
+ * status, author standing/exception decisions and the shared publication
+ * gate checklist — all server-enforced; the UI shows the policy payload
+ * display-only and performs no AI calls (050C owns those).
  */
 import { ref } from "vue";
 import { useLocale } from "../../composables/useLocale";
@@ -14,17 +16,24 @@ import { useApi, ApiError } from "../../composables/useApi";
 import DnaEditor from "./DnaEditor.vue";
 import PolicyList from "./PolicyList.vue";
 import Antagonists from "./Antagonists.vue";
+import ScaleReviewPanel from "./ScaleReviewPanel.vue";
 
 const props = defineProps<{
   workspaceId: string;
   novelId: string;
+  /** Selected chapter ID from the workspace, or null. */
+  chapterId?: string | null;
+  /** Saved version UUID, or null when the server should derive it. */
+  chapterVersionId?: string | null;
+  /** True when the selected chapter has a saved version (not dirty). */
+  hasSavedVersion?: boolean;
 }>();
 
 const { t } = useLocale();
 const { api } = useApi();
 
-type Tab = "dna" | "policies" | "antagonists" | "readouts";
-const tabs: Tab[] = ["dna", "policies", "antagonists", "readouts"];
+type Tab = "dna" | "policies" | "antagonists" | "scale" | "readouts";
+const tabs: Tab[] = ["dna", "policies", "antagonists", "scale", "readouts"];
 const active = ref<Tab>("dna");
 const tabRefs = ref<Array<HTMLButtonElement | null>>([]);
 
@@ -51,6 +60,7 @@ function onTabKeydown(e: KeyboardEvent) {
 }
 
 function tabLabel(tabId: Tab): string {
+  if (tabId === "scale") return t("workspace.scaleReview.title");
   return t(
     `workspace.narrative.panel.tab${tabId === "dna" ? "Dna" : tabId === "policies" ? "Policies" : tabId === "antagonists" ? "Antagonists" : "Readouts"}`,
   );
@@ -225,6 +235,16 @@ async function runPatterns() {
 
     <div v-else-if="active === 'antagonists'" role="tabpanel">
       <Antagonists :workspace-id="workspaceId" :novel-id="novelId" />
+    </div>
+
+    <div v-else-if="active === 'scale'" role="tabpanel">
+      <ScaleReviewPanel
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+        :chapter-id="props.chapterId ?? null"
+        :chapter-version-id="props.chapterVersionId ?? null"
+        :has-saved-version="props.hasSavedVersion"
+      />
     </div>
 
     <div v-else role="tabpanel" class="flex flex-col gap-4">

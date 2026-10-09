@@ -1,5 +1,56 @@
 # Current Project State
 
+## Author-authorized 050B integration — 2026-10-09
+
+The author authorized merging work/nf-wf-050b-scale-review through exact
+800cf3707d488f88cbc2447d1d992f3aeb6d89bf into main parentd928653.
+Both separate actors approve the resolved integration tree. Production/schema/
+worker files match the reviewed branch; two documentation conflicts retain the
+raw external acceptance receipt and accurate corrections. GAP-108 recurrence12
+and13 now have distinct headings with their own historical evidence.
+
+Fresh merged-tree proof:state-consumers32/32 and nine UI suites71/71 pass;
+ai-services/API/worker/web typechecks and Prisma generation pass. The API fixture
+was copied with only a unique scratch database name because its original fixed
+target already exists. The owned database/copy were removed and final absence
+verified; the existing database was not reset. No working migration or live
+application deployment was performed. Prisma validation and corrected scoped
+lint pass. Lint's first invocation failed on a nonexistent old API gate path;
+GAP-119 records that command error and the successful shared-package retry.
+
+Next work, in dependency order:
+
+1. Complete 050B's frozen merged-revision API/domain/worker/migration regressions
+   on owned disposable targets. Record exact commands, counts and revision;
+   historical external totals are not a replacement for this acceptance.
+2. Verify the live SCALE author journey in en/id and fallback: evidence,
+   incomplete HARD checklist, SOFT advice, approve/reject/alternative, stale
+   recovery, immediate publication and isolated scheduled queue delivery.
+   Close child acceptance only with the required evidence and separate review.
+3. Draft and separately review 050C's optional S3 contract, then implement:
+   off-by-default per-novel enablement, bounded pinned extraction/missing-data
+   suggestions, structured evidence validation, author decisions and NF049
+   usage/model attribution. No automatic canon/standing approval. 050C is not
+   yet a dispatch-ready contract; GAP-039 stays open through integrated acceptance.
+4. Perform the author-owned GAP-051 human screen-reader audit. Automated axe
+   results cannot complete that gate.
+5. Complete live gateway/storage/service credentials and working additive
+   migration preflight, then fresh release regression/load/recovery evidence.
+   Historical NF039/NF048 checks do not prove the new merged release. Record
+   approved performance/resource/recovery targets; no local LLM quota enforcement.
+6. Obtain the author's explicit production deployment approval after release
+   gates pass. Integration is not deployment authorization.
+
+Separate maintenance remains:GAP-029 resolver duplication/synchronization,
+GAP-014 chronology attribution, GAP-013 serving-model evidence where required,
+and per-host GAP-027/GAP-108 readiness/recovery. GAP-023/NF002E stays blocked on
+a real consumer design; do not build a speculative event outbox. GAP-021's
+missing runtime binding still prevents attributed Engram saves; this is the
+fallback checkpoint. Do not redispatch integrated NF048/049 or050A/050B code.
+GAP-018/GAP-117/GAP-063 retain their bounded CLOSED receipts; GAP-039/GAP-119
+remain OPEN pending the retained acceptance scope. Older dispatch notes below
+are historical and superseded by this integration update.
+
 ## External 050B eleventh repair re-review — 2026-10-09, 800cf37
 
 Separate technical and recovery actors APPROVE the fixture source at exact
@@ -1426,3 +1477,116 @@ restore, malformed stored evidence, deletion/create race, parent cleanup.
 GAP-108 8th recurrence during repair (VM reset); environment restored.
 Final diff review dispatched; awaiting verdict before commit/push.
 GAP-039 remains OPEN.
+
+## 050B implementation started — 2026-10-09
+
+Branch `work/nf-wf-050b-scale-review` created from `fed3cea` (frozen 050B contract).
+Frozen hashes verified:
+- Task: B6A44390D2485D90A62C23B971E0B1039DB177A4F412D970D2C4A78AA78ABE45
+- ADR-0016: 1909A48A9B958C787F76FCBF678528E106165F079192B30D764922ECDC917C52
+
+**Assignments (2026-10-09):**
+- Implementer: coordinator (this session; backends MODEL_UNVERIFIED per GAP-013)
+- Separate slice reviewers: to be dispatched per slice (MODEL_UNVERIFIED per GAP-013)
+- Contract reviewers (prior): review_mutations_034, review_recovery_034 (APPROVE)
+
+**Execution order (serial reviewed slices):**
+1. Additive storage, migration proofs, frozen context interfaces
+2. Author decisions, deterministic SCALE review, shared API/worker gate
+3. English/Indonesian UI and real author-flow acceptance
+
+GAP-039 remains OPEN; 050C separate. Engram unavailable (GAP-021); this file is fallback.
+
+## 050B repair scope amendments — 2026-10-09
+
+Bounded amendments to the frozen contract's allowed paths:
+
+1. **`packages/ai-services/src/scale-review-types.ts`** (NEW): Contains the frozen protocol 1 types (`ScaleReviewPins`, `ScaleReviewClaim`, `ScaleReviewProtocol`) required by the contract's "freeze exported context/pin/gate shapes". Within the allowed `packages/ai-services/src/` package. No contract violation.
+
+2. **`apps/api/src/scale-evidence-migration.test.ts`** (MODIFIED): Baseline now excludes post-050A migrations (e.g., 050B) to prevent FK failures. The 050A test is 050A-focused; 050B has its own migration test. Bounded test-only change.
+
+3. **`packages/ai-services/src/policy-errors.ts`** (MODIFIED): Added `SCALE_ASSESSMENT_INCOMPLETE` to `PolicyErrorCode` union. Required for the contract's distinct frozen error code (not mapping incomplete to HARD_POLICY_VIOLATION).
+
+4. **`packages/database/prisma/migrations/20261008_nf_wf_050b_scale_decisions/migration.sql`** (DOCUMENTED): Uses TIMESTAMPTZ(3) not TIMESTAMP(3). The schema explicitly declares `@db.Timestamptz(3)`, which selects TIMESTAMPTZ(3) — this is NOT Prisma's default mapping (plain DateTime maps to TIMESTAMP). Precision (3) matches the contract; timezone-awareness is additive and does not change contract semantics. Same pattern as 050A's explicit `@db.Timestamptz(6)`.
+
+**Review status (honest record):** These 4 amendments have NOT received a standalone independent scope-amendment review with a separate recorded receipt. They were included in the repaired diff reviewed by the independent repair reviewer (verdict: APPROVE_WITH_FINDINGS, 2026-10-09), whose report noted them as "bounded, documented, do not weaken the contract" — but that was part of the overall diff review, not a dedicated scope-amendment approval. A separate recorded scope review is still owed per the contract's amendment procedure.
+
+All amendments are bounded, documented, and do not weaken the contract.
+
+## Migration preservation proof (relabeled 2026-10-09) — was "Old-snapshot restore proof"
+
+**Historical note:** This section was originally titled "Old-snapshot restore
+proof" (2026-10-09). That title was misleading: the evidence below proves
+pre-upgrade receipt preservation through the additive 050B migration, NOT a
+STORY checkpoint restore via NovelForge's restore path. The title is corrected
+here; the original evidence and provenance are preserved unchanged below.
+
+`apps/api/src/scale-review-migration.test.ts` proves migration preservation (OBSERVED 2/2 pass):
+
+- **What was tested:** A genuine `FinalTextReview` row (verdict, hardViolations, advisory, evaluatedPolicies — no `scale_review` column existing) is inserted into the BASELINE database BEFORE the 050B migration runs. This baseline represents a pre-upgrade database.
+- **After upgrade:** The receipt is re-read and verified field-by-field identical (verdict, hardViolations, advisory, evaluatedPolicies all preserved). The new `scale_review` column reads NULL for the legacy row — NULL denotes legacy receipt, never fabricated proof of SCALE completeness.
+- **What this proves:** Pre-upgrade data is preserved through the additive migration; legacy receipts are not rewritten or fabricated; the nullable column correctly defaults to NULL.
+- **What this does NOT prove:** An actual `pg_restore` of a production snapshot binary, or restore of a snapshot taken from a different Prisma version. The restore-scope classification (both tables OPERATIONAL, never rewound) is unit-tested in `restore-scope.test.ts` (8/8 pass), not via a live restore operation.
+
+## STORY checkpoint restore proof — 2026-10-09 (Slice 2, superseded 2026-10-09 Slice 2 fourth repair)
+
+**Historical annotation (2026-10-09):** The evidence below was simulation and
+classification, NOT an actual application STORY restore. The test inserted a
+NULL receipt, asserted coverage constants, and manually advanced the head — it
+never constructed old snapshot JSON or invoked NovelForge's restore path
+(`previewRestore`/`applyRestore`). The claim "exercises the STORY restore
+semantics" is retained here for provenance but annotated as UNSUPPORTED as a
+restore proof. See the replacement below.
+
+`apps/api/src/scale-decisions.test.ts` → "STORY restore with old snapshot JSON
+lacking scale_review" (OBSERVED pass) exercises the STORY restore semantics:
+
+- **Legacy receipt handling:** A `FinalTextReview` with `scaleReview: null`
+  (simulating a pre-050B snapshot JSON lacking `scale_review`) is returned by
+  `listFinalTextReviews` without crashing, with `scaleReview: null` — null
+  denotes legacy, never fabricated proof.
+- **Retained OPERATIONAL S2 history:** `scale_decision_proposals` and
+  `scale_decision_outcomes` are NOT in `COVERED_TABLE_NAMES` (verified in-test);
+  STORY restore never rewinds them. S2 proposal+outcome created before the
+  simulated restore remain intact.
+- **Stale applicability:** After the head advances (as a restore would), the
+  receipt's `revisionId` pin no longer matches the current head → the receipt
+  is stale (does not reflect current state).
+
+## ACTUAL STORY restore proof — 2026-10-09 (Slice 2, fourth repair)
+
+`apps/api/src/scale-decisions.test.ts` →
+"ACTUAL STORY restore with old snapshot JSON lacking scale_review: invokes
+previewRestore/applyRestore" (OBSERVED 2026-10-09, 32/32 file pass) invokes
+NovelForge's REAL restore path:
+
+- **Old snapshot JSON constructed:** the PRE_MUTATION checkpoint's snapshot
+  payload (captured by the HIGH VILLAGE→TOWN standing change) is read;
+  `scale_review` is stripped from every `final_text_reviews` row — the
+  pre-050B format. Sanity assertions prove the stripped payload lacks the key
+  and still pins the VILLAGE standing.
+- **Real restore invoked:** `previewRestore` + `applyRestore` (FULL scope) via
+  `createRevisionServices` — the actual application code path (delete covered
+  rows, re-insert from the old payload, rewind the branch head, record the
+  RESTORE revision). Not a simulation: `applyRestore` returns APPLIED with a
+  new revision ID.
+- **Standing rewind proven:** policy standing reverts TOWN → VILLAGE (the old
+  snapshot's value), verified by reading the live policy after restore.
+- **Legacy receipt handling proven:** restored `final_text_reviews` rows have
+  `scaleReview: NULL` (old JSON had no key); readable without crashing; the
+  pre-restore legacy receipt's verdict survives.
+- **Retained S2 history proven:** the proposal + outcome (OPERATIONAL tables,
+  outside restore scope) survive the FULL restore intact.
+- **Stale applicability proven:** the restore advances the head to a new
+  revision; all restored receipts pin older revisions → stale.
+
+`apps/api/src/scale-decisions.test.ts` →
+"PRE_MUTATION checkpoint snapshot captures the pre-change standing" (OBSERVED
+2026-10-09) inspects the successful HIGH mutation's checkpoint:
+
+- **Source revision:** `checkpoint.revisionId` equals the pre-decision head
+  revision ID — the snapshot is pinned to the pre-change revision.
+- **Snapshot content:** the `narrative_policies` SCALE row in the snapshot
+  payload carries `standing.scale: "VILLAGE"` (the pre-change value) while the
+  live policy reads `"TOWN"` — proving the snapshot captured the pre-change
+  standing, not a copy of post-decision state.

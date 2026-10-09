@@ -126,6 +126,12 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // Scale decision/evidence rows reference chapter versions — delete them
+  // before chapterVersion (the valid SCALE writes in the policy-validation
+  // suite create proposals/outcomes via the approve path).
+  await db.scaleDecisionOutcome.deleteMany();
+  await db.scaleDecisionProposal.deleteMany();
+  await db.scaleEvidenceSet.deleteMany();
   await db.finalTextReview.deleteMany();
   await db.memoryProjection.deleteMany();
   await db.canonFactSource.deleteMany();
@@ -276,6 +282,45 @@ async function mkChapter(
 async function headRevisionId(novelId: string): Promise<string> {
   const branch = await db.novelBranch.findFirstOrThrow({ where: { novelId } });
   return branch.headRevisionId!;
+}
+
+/**
+ * Fetch the current scale-review context pins for a valid SCALE policy
+ * write. The pins are server-derived (never client-invented) so a valid
+ * write isolates the payload boundary rather than the pin boundary.
+ */
+async function scaleWritePins(
+  cookie: string,
+  ids: { workspaceId: string; novelId: string },
+  chapterId: string,
+  chapterVersionId: string,
+) {
+  const res = await app.inject({
+    method: "GET",
+    url: `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/chapters/${chapterId}/scale-review-context?chapterVersionId=${chapterVersionId}`,
+    headers: { cookie },
+  });
+  expect(res.statusCode).toBe(200);
+  const body = res.json() as {
+    context: {
+      branch: { id: string };
+      headRevisionId: string;
+      policyFingerprint: string;
+      latestSet: { id: string } | null;
+      decisionHeadId: string | null;
+    };
+  };
+  return {
+    chapterId,
+    chapterVersionId,
+    expectedBranchId: body.context.branch.id,
+    expectedHeadRevisionId: body.context.headRevisionId,
+    expectedSetId: body.context.latestSet?.id ?? null,
+    expectedDecisionId: body.context.decisionHeadId ?? null,
+    expectedPolicyFingerprint: body.context.policyFingerprint,
+    reason: "test SCALE policy write with author approval",
+    authorDecision: "APPROVE" as const,
+  };
 }
 
 /** A FRESH-chapter-scope memory block stub for the assembly's memory port. */
@@ -556,7 +601,9 @@ describe("policy validation (GAP-012)", () => {
     const cases: Array<[string, unknown]> = [
       ["DRAMA_GAP", { density: "NOPE", typicalGap: { min: 1, max: 3 }, extendedGap: { min: 4, max: 6 }, strictInterval: false }],
       ["COOLDOWN", { windowChapters: -2 }],
-      ["SCALE", { standing: { scale: "EMPIRE", access: [], reputation: 50 } }],
+      // access:[] is VALID under frozen task119/ADR-0016 — the genuinely
+      // invalid boundary here is a non-array access value.
+      ["SCALE", { standing: { scale: "EMPIRE", access: "CITY", reputation: 50 } }],
       ["SCALE", { standing: { scale: "GALAXY", access: ["CITY"], reputation: 50 } }],
       ["SCALE", { standing: { scale: "CITY", access: ["CITY"], reputation: 101 } }],
       ["SCALE", { nope: true }],
@@ -574,14 +621,43 @@ describe("policy validation (GAP-012)", () => {
       const body = res.json() as HealthBody;
       if (kind === "SCALE") expect(body.error).toBe("MALFORMED_POLICY");
     }
-    // A valid SCALE write still lands.
+    // No malformed write stored anything.
+    expect(await db.narrativePolicy.count({ where: { novelId: ids.novelId } })).toBe(0);
+
+    // A valid empty-access SCALE write lands: access:[] is valid per
+    // task119/ADR-0016 (the author binds nothing beyond the scale itself).
+    // Full author-decision, reason and context/CAS pins are supplied so the
+    // payload boundary — not the pin boundary — is under test.
+    const ch = await mkChapter({ userId: owner.userId, ...ids }, "Ch 1");
+    const pins1 = await scaleWritePins(owner.cookie, ids, ch.chapterId, ch.versionId);
+    const emptyAccess = await app.inject({
+      method: "PUT",
+      url: base,
+      headers: { cookie: owner.cookie },
+      payload: {
+        kind: "SCALE",
+        hardness: "SOFT",
+        payload: { standing: { scale: "EMPIRE", access: [], reputation: 50 } },
+        ...pins1,
+      },
+    });
+    expect(emptyAccess.statusCode, JSON.stringify(emptyAccess.json())).toBe(200);
+
+    // A valid authorized write with a changed standing also lands (fresh
+    // pins: the first write advanced the head and the policy fingerprint).
+    const pins2 = await scaleWritePins(owner.cookie, ids, ch.chapterId, ch.versionId);
     const ok = await app.inject({
       method: "PUT",
       url: base,
       headers: { cookie: owner.cookie },
-      payload: { kind: "SCALE", hardness: "SOFT", payload: { standing: { scale: "CITY", access: ["TOWN", "CITY"], reputation: 60 } } },
+      payload: {
+        kind: "SCALE",
+        hardness: "SOFT",
+        payload: { standing: { scale: "CITY", access: ["TOWN", "CITY"], reputation: 60 } },
+        ...pins2,
+      },
     });
-    expect(ok.statusCode).toBe(200);
+    expect(ok.statusCode, JSON.stringify(ok.json())).toBe(200);
   });
 });
 
@@ -733,25 +809,36 @@ describe("reviewFinalText + setStatus gate", () => {
     const owner = await seedUser("rev10@t.io");
     const ids = await seedNovel(owner.userId, "rev10");
     const ch = await mkChapter({ userId: owner.userId, ...ids }, "Ch 1");
-    // PASS review → out of DRAFT → publish.
+    // PASS review → out of DRAFT. The IN_REVIEW status change is a covered
+    // mutation: it advances the head (frozen task176–179), so the
+    // pre-status-change review is stale for publishing — a fresh review is
+    // required after the head-changing status action.
     const ok = await reviewChapter(owner.cookie, ids, ch.chapterId, ch.versionId);
     expect(ok.body.verdict).toBe("PASS");
     const toReview = await setStatus(owner.cookie, ids, ch.chapterId, "IN_REVIEW");
     expect(toReview.status).toBe(200);
+    // Fresh review after the head-changing status action → publish succeeds.
+    const fresh = await reviewChapter(owner.cookie, ids, ch.chapterId, ch.versionId);
+    expect(fresh.body.verdict).toBe("PASS");
     const pub = await setStatus(owner.cookie, ids, ch.chapterId, "PUBLISHED");
     expect(pub.status).toBe(200);
+    // The unpublish path keeps its pre-010 behavior (PUBLISHED→IN_REVIEW is
+    // ungated) but still advances the head, so the retained review is stale
+    // again — a fresh current-head review is required before the FAIL can
+    // be injected. The receipt pins the current head; no old proof is
+    // repinned and status changes are not exempted from freshness.
+    const unpub = await setStatus(owner.cookie, ids, ch.chapterId, "IN_REVIEW");
+    expect(unpub.status).toBe(200);
+    const fresh2 = await reviewChapter(owner.cookie, ids, ch.chapterId, ch.versionId);
+    expect(fresh2.body.verdict).toBe("PASS");
     // Simulate a later failed re-review of the SAME version (the gate
     // reads the latest receipt directly).
     await db.finalTextReview.update({
       where: { chapterVersionId: ch.versionId },
       data: { verdict: "FAIL", hardViolations: [{ rule: "COOLDOWN_VIOLATION" }] },
     });
-    // The chapter is not in DRAFT: the unpublish path keeps its pre-010
-    // behavior (PUBLISHED→IN_REVIEW is ungated), but NF-WF-012 (GAP-045)
-    // extends the gate to IN_REVIEW→PUBLISHED — the re-publish must now
-    // refuse on the FAIL receipt.
-    const unpub = await setStatus(owner.cookie, ids, ch.chapterId, "IN_REVIEW");
-    expect(unpub.status).toBe(200);
+    // NF-WF-012 (GAP-045) extends the gate to IN_REVIEW→PUBLISHED — the
+    // re-publish must now refuse on the FAIL receipt.
     const repub = await setStatus(owner.cookie, ids, ch.chapterId, "PUBLISHED");
     expect(repub.status).toBe(409);
     expect(repub.body.error).toBe("HARD_POLICY_VIOLATION");

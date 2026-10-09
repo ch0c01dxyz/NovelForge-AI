@@ -327,6 +327,7 @@ export interface AiServices {
       hardViolations: unknown;
       advisory: unknown;
       evaluatedPolicies: unknown;
+      scaleReview: unknown; // Null = legacy receipt (pre-050B)
       revisionId: string;
       createdAt: Date;
     }>
@@ -804,6 +805,8 @@ export function createAiServices(deps: {
           },
         },
       });
+      // GAP-119: include scaleReview so new receipts don't appear legacy.
+      // Null scaleReview = legacy receipt (never new proof).
       return rows.map((r) => ({
         id: r.id,
         chapterId: r.chapterVersion.chapter.id,
@@ -814,6 +817,7 @@ export function createAiServices(deps: {
         hardViolations: r.hardViolations,
         advisory: r.advisory,
         evaluatedPolicies: r.evaluatedPolicies,
+        scaleReview: r.scaleReview,
         revisionId: r.revisionId,
         createdAt: r.createdAt,
       }));

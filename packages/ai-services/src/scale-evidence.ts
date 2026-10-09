@@ -34,6 +34,10 @@ import {
 } from "@novelforge/auth/authorization";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import { verifyEvidenceQuote } from "./manuscript.ts";
+import {
+  fingerprintScalePolicy,
+  type ScalePolicySnapshot,
+} from "./scale-review-types.ts";
 
 /**
  * Validation failures for SCALE evidence claims/schemas.
@@ -367,6 +371,22 @@ async function toValidatedRecord(
   return toRecord(row, opts);
 }
 
+/**
+ * Latest set for a branch/version by sequence (descending). Module scope so
+ * both the 050A service and the 050B transaction-compatible context reader
+ * share one implementation.
+ */
+async function latestSet(
+  tx: Pick<NovelForgeDb, "scaleEvidenceSet">,
+  sourceBranchId: string,
+  chapterVersionId: string,
+) {
+  return tx.scaleEvidenceSet.findFirst({
+    where: { sourceBranchId, chapterVersionId },
+    orderBy: { sequence: "desc" },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
@@ -467,20 +487,6 @@ export function createScaleEvidenceServices(deps: {
     });
     if (!branch) throw new ConflictError("no checked-out branch exists");
     return branch;
-  }
-
-  /**
-   * Latest set for a branch/version by sequence (descending).
-   */
-  async function latestSet(
-    tx: Pick<NovelForgeDb, "scaleEvidenceSet">,
-    sourceBranchId: string,
-    chapterVersionId: string,
-  ) {
-    return tx.scaleEvidenceSet.findFirst({
-      where: { sourceBranchId, chapterVersionId },
-      orderBy: { sequence: "desc" },
-    });
   }
 
   return {
@@ -851,5 +857,165 @@ export function createScaleEvidenceServices(deps: {
         });
       });
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 050B Slice 1: transaction-compatible SCALE context reader
+// ---------------------------------------------------------------------------
+
+/**
+ * Frozen SCALE review context returned by `readScaleContext`. Part of the
+ * Slice 1 frozen interfaces consumed by the deterministic reviewer (Slice 2)
+ * and the shared API/worker gate (Slice 2).
+ */
+export interface ScaleReviewContext {
+  /** Immutable chapter version the review pins to. */
+  chapterVersion: { id: string; content: string };
+  /**
+   * LIVE current version pointer (`Chapter.currentVersionId`), read under the
+   * caller's chapter lock. Distinct from `chapterVersion.id` (the supplied,
+   * possibly obsolete, pinned version). Decision comparison uses this to
+   * detect obsolete-version proposals instead of comparing a proposal to
+   * itself. Null when the chapter has no saved version yet.
+   */
+  currentVersionId: string | null;
+  /** Server-resolved checked-out branch (never client-supplied). */
+  branch: { id: string; headRevisionId: string | null };
+  /**
+   * Branch head revision id. Null denotes an actual headless branch; the
+   * context reader still returns it (nullable) for guidance/050A authoring —
+   * review itself refuses a headless participating branch with 409.
+   */
+  headRevisionId: string | null;
+  /**
+   * Latest assessment set for the branch/version, fully validated against
+   * the immutable version content via the 050A retained-evidence validators
+   * (quote/span/predecessor); null when no set exists.
+   */
+  latestSet: ScaleEvidenceSetRecord | null;
+  /** Approved SCALE policy snapshot; null = explicitly absent. */
+  policy: ScalePolicySnapshot | null;
+  /** SHA-256 hex of the canonical policy representation (explicit absence). */
+  policyFingerprint: string;
+}
+
+/**
+ * Transaction client surface required by `readScaleContext`. The caller
+ * passes the transaction it already holds (e.g. `reviewFinalText` after
+ * acquiring novel NO KEY UPDATE -> branch UPDATE -> chapter UPDATE); the
+ * reader performs no locking of its own.
+ */
+export type ScaleReviewContextTx = Pick<
+  NovelForgeDb,
+  | "chapter"
+  | "novel"
+  | "novelBranch"
+  | "chapterVersion"
+  | "scaleEvidenceSet"
+  | "narrativePolicy"
+>;
+
+/**
+ * Read the frozen SCALE review context inside the caller's transaction
+ * (NF-WF-050B Slice 1).
+ *
+ * Reads, in order: the tenant-scoped immutable chapter version, the
+ * server-resolved checked-out branch, the latest validated assessment set
+ * for that branch/version, and the approved SCALE policy snapshot. The
+ * latest set is validated with the 050A retained-evidence validators
+ * (`toValidatedRecord`: quote/span bounds, trimmed nonempty strings,
+ * strict schemas, predecessor chain); corrupt retained rows throw
+ * `ScaleEvidenceValidationError` and can never surface as review context.
+ *
+ * Transaction-client-only helper: the caller must already hold the review
+ * lock order and must enforce authorization itself (this helper applies
+ * tenant scoping to every read but performs no capability checks). No
+ * LLM/human wait and no story-head advance happen here.
+ */
+export async function readScaleContext(
+  tx: ScaleReviewContextTx,
+  input: {
+    workspaceId: string;
+    novelId: string;
+    chapterId: string;
+    chapterVersionId: string;
+  },
+): Promise<ScaleReviewContext> {
+  const { workspaceId, novelId, chapterId, chapterVersionId } = input;
+
+  // Tenant-scoped immutable version. A missing version, or one belonging
+  // to another chapter/novel/workspace, is 404 (never 409).
+  const chapterVersion = await tx.chapterVersion.findFirst({
+    where: {
+      id: chapterVersionId,
+      chapterId,
+      chapter: { novelId, novel: { workspaceId } },
+    },
+    select: { id: true, content: true },
+  });
+  if (!chapterVersion) throw new NotFoundError("chapter version");
+
+  // LIVE current version pointer, read here (the caller holds the chapter
+  // UPDATE lock, so this is the locked current value). Distinct from the
+  // supplied pinned version above, which may be obsolete.
+  const chapterRow = await tx.chapter.findFirst({
+    where: { id: chapterId, novelId, novel: { workspaceId } },
+    select: { currentVersionId: true },
+  });
+  if (!chapterRow) throw new NotFoundError("chapter");
+  const currentVersionId: string | null = chapterRow.currentVersionId;
+
+  // Server-resolved checked-out branch (never client-supplied).
+  const novel = await tx.novel.findFirst({
+    where: { id: novelId, workspaceId },
+    select: { currentBranchId: true },
+  });
+  if (!novel) throw new NotFoundError("novel");
+  const branch = await tx.novelBranch.findFirst({
+    where: novel.currentBranchId
+      ? { id: novel.currentBranchId, novelId }
+      : { novelId, name: "main" },
+    select: { id: true, headRevisionId: true },
+  });
+  if (!branch) throw new ConflictError("no checked-out branch exists");
+
+  // Latest assessment set for this branch/version, validated against the
+  // immutable version content with the 050A retained-evidence validators.
+  const latest = await latestSet(tx, branch.id, chapterVersionId);
+  const latestSetRecord = latest
+    ? await toValidatedRecord(tx, latest, {
+        content: chapterVersion.content,
+        workspaceId,
+        novelId,
+        sourceBranchId: branch.id,
+      })
+    : null;
+
+  // Approved SCALE policy snapshot. `updatedAt` is never read: the
+  // fingerprint must not depend on it, and `id` is never the sole version
+  // signal. Null = explicitly absent (NOT_CONFIGURED), never legacy proof.
+  const policyRow = await tx.narrativePolicy.findUnique({
+    where: { novelId_kind: { novelId, kind: "SCALE" } },
+    select: { id: true, kind: true, hardness: true, hardReason: true, payload: true },
+  });
+  const policy: ScalePolicySnapshot | null = policyRow
+    ? {
+        id: policyRow.id,
+        kind: policyRow.kind,
+        hardness: policyRow.hardness,
+        hardReason: policyRow.hardReason,
+        payload: policyRow.payload,
+      }
+    : null;
+
+  return {
+    chapterVersion: { id: chapterVersion.id, content: chapterVersion.content },
+    currentVersionId,
+    branch: { id: branch.id, headRevisionId: branch.headRevisionId },
+    headRevisionId: branch.headRevisionId,
+    latestSet: latestSetRecord,
+    policy,
+    policyFingerprint: fingerprintScalePolicy(policy),
   };
 }

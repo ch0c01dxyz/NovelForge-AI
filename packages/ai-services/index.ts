@@ -114,3 +114,45 @@ export {
   type ScaleEvidenceStatus,
   type ScaleEvidenceStaleReason,
 } from "./src/scale-evidence.ts";
+
+// NF-WF-050B Slice 1: frozen SCALE review context interfaces, context reader
+// and policy fingerprint
+export {
+  fingerprintScalePolicy,
+  type ScaleReviewPins,
+  type ScaleReviewClaim,
+  type ScaleReviewProtocol,
+  type ScalePolicySnapshot,
+} from "./src/scale-review-types.ts";
+export {
+  readScaleContext,
+  type ScaleReviewContext,
+  type ScaleReviewContextTx,
+} from "./src/scale-evidence.ts";
+
+// NF-WF-050B Slice 2: S2 decision service, deterministic assessment, shared gate
+export {
+  assessScaleDeterministic,
+  createScaleDecisionServices,
+  type ScaleDecisionServices,
+  type ScaleDecisionDeps,
+  type AssessmentClaimInput,
+  type CreateProposalInput,
+  type DecideProposalInput,
+  type ScaleDecisionTx,
+} from "./src/scale-decisions.ts";
+export {
+  checkFinalTextReviewGate,
+  parseScaleReviewProtocol,
+  isProtocolLiveConsistent,
+  isProtocolLiveStateConsistent,
+  computeExpectedScaleProtocol,
+  diffRetainedProof,
+  checkRetainedProofCompleteness,
+  resolveApplicableExceptionStrict,
+  type StrictExceptionResolution,
+  type GateCode,
+  type GateResult,
+  type ReviewGateTx,
+  type ProofCompletenessResult,
+} from "./src/final-text-review-gate.ts";

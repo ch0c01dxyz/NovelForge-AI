@@ -3196,6 +3196,66 @@ or push. GAP-119/GAP-039 remain OPEN. Next: repair all findings with boundary
 regressions, then separately review the exact new revision. Engram attribution
 unavailable (GAP-021); CURRENT is the fallback handoff.
 
+### GAP-119 tenth repair re-review — 2026-10-09, 9f51c4a
+
+**Source verdict:** UI fixture/comment repair APPROVE on exact
+9f51c4a221362aa36e037ddc103c89b6a63cc711; baseline/main276c48c.
+**Acceptance:** OPEN; external required state-consumer failures and inaccurate
+report interpretations must be corrected. **Owner:** NF-WF-050B implementer.
+review_mutations_034 and review_recovery_034 independently inspected the diff;
+backend/recovery/schema are unchanged from approvedf0cd711.
+
+Fresh local proof:9 required/expanded UI suites71/71 pass with --maxWorkers1;
+web typecheck, Prisma generate and submitted diff whitespace pass. Existing
+drama payload/result assertions are retained; five tabs and Readouts selection
+are now correct. Canvas warnings occur in jsdom. No database tests were run or
+database names reset in this turn; backend byte equality was verified against
+f0cd711. Previous146/146 backend and migration2/2 are historical local receipts,
+not re-executed checks for this revision. External Ubuntu results are submitted
+documentary evidence only, not this host's readiness or test results.
+
+Required corrections to the external tenth acceptance report and fixtures:
+
+1. **Do not enforce nonempty access.** Frozen task119 and ADR-0016 explicitly
+   permit access:[]. The state-consumers malformed loop at559 includes a valid
+   EMPIRE/empty-access standing, and its later valid write at582 lacks the new
+   author-decision, reason and required context/CAS fields. Replace the wrongly
+   classified malformed case with genuinely invalid data (unknown scale or
+   non-array access). Prepare complete valid request metadata as appropriate so
+   each negative isolates MALFORMED_POLICY; preserve409 and no-write assertions.
+   Keep a positive valid empty-access control and a valid authorized write.
+2. **Fresh review after status mutations is already contracted.** Frozen
+   task176–179 deliberately invalidates receipts after status/head changes.
+   In the IN_REVIEW-to-PUBLISHED fixture at731–767, review again after entering
+   IN_REVIEW before publishing. For the FAIL negative, unpublish first, obtain
+   a fresh current-head review, then inject FAIL/hardViolations and attempt
+   republish. Preserve HARD_POLICY_VIOLATION assertion; otherwise the fixture
+   tests stale proof rather than a fresh failed review. Do not exempt status
+   head changes, repin old proof, alter production semantics or introduce a
+   new author permission/product-decision gate.
+3. **Correct inaccurate acceptance interpretations with provenance.** The
+   report proposes nonempty access and an unresolved author semantics choice;
+   both conflict with the frozen contract. Annotate these as superseded
+   interpretations. Its claim that narrative.ts did not change during repairs
+   2–10 is false:761ce1d/e6b6305/8ccb504 changed it. Preserve genuine raw failure
+   output but distinguish outdated fixture expectations from observed bugs.
+4. **Reconcile counts and cleanup claims.** The report lists exception-strict7
+   while the exact submitted source has8 active tests. Supply actual commands,
+   revisions and raw selected counts before claiming aggregate58/58 or other
+   totals. 'Pre-existing scale DBs were left untouched (tests recreate their
+   own)' is contradictory; state exact recreated databases, established ownership
+   and cleanup boundaries without inventing unobserved preservation. Different
+   hosts' database absence is separate evidence, not a correction of the prior
+   Windows host's observation. Do not put passwords in receipts.
+
+Both fixture source paths are already allowed. Use existing authorization to
+repair and rerun state-consumers plus required regressions; obtain separate review
+of the exact test/documentation diff. No source production bug is established by
+these two fixture failures; full acceptance nevertheless remains failed until
+corrected tests pass. Main/client restored. No implementation merge, commit or
+push. GAP-039/GAP-119 remain OPEN; live browser, BullMQ delivery and release gates
+are separate. Engram attribution unavailable (GAP-021); CURRENT is fallback handoff.
+
 ### GAP-119 ninth repair re-review — 2026-10-09, f0cd711
 
 **Source verdict:** APPROVE by review_mutations_034 and review_recovery_034 on

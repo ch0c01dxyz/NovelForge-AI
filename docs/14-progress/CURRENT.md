@@ -1,5 +1,36 @@
 # Current Project State
 
+## External 050B tenth repair re-review — 2026-10-09, 9f51c4a
+
+UI fixture/comment changes APPROVE on exact
+9f51c4a221362aa36e037ddc103c89b6a63cc711. Both separate reviewers confirm no
+backend/recovery/schema changes from approvedf0cd711. Fresh local nine-suite UI
+run71/71 passes with --maxWorkers1; web typecheck, Prisma generation and submitted
+diff whitespace pass. Source no longer has the two NarrativePanel fixture
+failures. Main remains276c48c; no merge or full050B completion.
+
+Overall acceptance still requests changes: the external Ubuntu report records
+two failing state-consumers tests. Reviewers trace both to fixtures inconsistent
+with frozen050B: empty access is valid; status head changes require fresh review.
+Repair the malformed payload/required-author-context fixtures and review flow,
+preserving negative error assertions. Do not enforce nonempty access, exempt
+status changes from freshness or request another author product decision.
+GAP-119 records exact corrections and closure checks.
+
+The external report also needs corrected counts (exception-strict has8 active
+tests, not7), reconciled totals/raw commands, clarified pre-existing scratch
+ownership/recreation and correction of the false claim that narrative.ts never
+changed during repairs2–10. Ubuntu results are external claims, not fresh local
+DB evidence. No databases were reset in this turn; existing data preserved.
+Backend tests were not rerun because backend is byte-unchanged fromf0cd711;
+the previous146/146 and migration2/2 remain historical receipts.
+
+Main checkout/client restored; no additional implementation edits. UI remains
+mock/jsdom with canvas warnings, not a live browser acceptance. Queue delivery,
+full frozen regression closure and release gates remain separate. GAP-039/
+GAP-119 stay OPEN. Engram attribution unavailable (GAP-021); this is the fallback
+handoff. No commit/push or implementation merge performed in this review.
+
 ## External 050B ninth repair re-review — 2026-10-09, f0cd711
 
 Both independent reviewers APPROVE exact source

@@ -1,5 +1,38 @@
 # Current Project State
 
+## External 050B seventh repair re-review — 2026-10-09, 88883c4
+
+CHANGES REQUESTED by both separate reviewers on exact
+88883c4f589768cd45bd51bc33a70d600b833d7f. Main remains260e9a8; no merge.
+Strict exception payload/coverage validation is shared by producer/gate/context.
+Immediate-publication route and configured-SCALE worker positives/refusals now
+have real caller tests. Recovery guarantees and earlier protocol/UI fixes remain
+intact; the old worker hash is annotated and exact-artifact re-review matches.
+
+Remaining: new no-SCALE reviews still write null (legacy) instead of pinned
+NOT_CONFIGURED, allowing subsequent head changes to evade the new-proof gate.
+Strict exception provenance omits proposal/outcome workspaceId. Three added test
+paths lack scope amendments. GAP-119 records the source evidence and closure
+tests; these source traces are not observed normal API exploits.
+
+Fresh local selected run:137/139 backend/domain/worker tests pass; both migration
+tests time out at30s. Isolated migration rerun with120s timeout:1/2 pass; populated
+upgrade test fails in Windows temp cleanup with EPERM. No wholly green migration
+receipt is claimed. UI38/38, ai-services/API/worker/web typechecks, Prisma
+generate/validate, four changed-production-path ESLint checks and submitted diff
+whitespace pass. UI remains mock/jsdom with canvas warnings. Worker tests call
+the real fire function without Redis/BullMQ. Raw policy-update race evidence is
+not a production S2 mutation serialization proof.
+
+Twelve owned scratch database names were absent before testing, disconnected
+and dropped; final absence and unchanged tracked migrations verified. Main/client
+restored. Locked temporary directory050b-mig-89U7iM remains under this host's temp
+folder; no unsafe recursive cleanup or working-data reset attempted. GAP-039/
+GAP-119 stay OPEN. Next: pinned new no-SCALE receipts, workspace provenance,
+scope amendments and clean migration verification, followed by exact-diff review.
+Engram attribution unavailable (GAP-021); this is the fallback handoff, not a save.
+No commit/push or implementation merge performed in this review.
+
 ## External 050B sixth repair re-review — 2026-10-09, 64168cd
 
 CHANGES REQUESTED on64168cdba61cbe5c72f57739c0bf458d6c492028.

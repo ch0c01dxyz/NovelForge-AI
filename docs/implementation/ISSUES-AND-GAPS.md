@@ -3112,6 +3112,74 @@ or push. GAP-119/GAP-039 remain OPEN. Next: repair all findings with boundary
 regressions, then separately review the exact new revision. Engram attribution
 unavailable (GAP-021); CURRENT is the fallback handoff.
 
+### GAP-119 seventh repair re-review — 2026-10-09, 88883c4
+
+**Status:** OPEN; CHANGES REQUESTED by review_mutations_034 and
+review_recovery_034 on88883c4f589768cd45bd51bc33a70d600b833d7f.
+**Owner:** NF-WF-050B implementer; baseline/main260e9a8.
+
+Verified repairs: producer/gate/context use one strict exception resolver;
+duplicate/empty/out-of-range/unknown-key/nonviolating coverage is refused while
+history is retained. Actual immediate-publication route and configured-SCALE
+worker fire success/refusal/pin-change tests added. Recovery locks/audits/CAS,
+checkpoint proofs and previous full-protocol/UI fixes remain intact. The old
+worker hash is preserved/annotated and exact-artifact re-review matches submitted
+bytes. These supersede the prior payload-cast and missing caller findings within
+their tested scope; worker tests still do not exercise Redis/BullMQ delivery.
+
+Remaining closure requirements:
+
+1. **New no-SCALE reviews are incorrectly marked legacy (P1).**
+   final-text-review.ts406–410 creates protocol only when policy/evidence exists,
+   leaving new no-SCALE receipts null. final-text-review-gate.ts690–696 then
+   takes verdict-only legacy compatibility without head comparison. A later
+   non-SCALE HARD policy mutation can advance head while old same-version PASS
+   is still accepted. Source tracing, not an executed exploit in this review.
+   Always emit NOT_CONFIGURED with explicit absence and current pins for new
+   reviews after successful context resolution; null is reserved for historical
+   receipts. Add real new-review/head-change refusal and genuine historical-null
+   compatibility tests. Do not fabricate proof if context resolution fails.
+2. **Strict exception workspace provenance remains unchecked (P2).**
+   Resolver select/checks in gate.ts359–390 compare novel/version/branch but
+   omit both proposal.workspaceId and outcome.workspaceId. Independent database
+   FKs allow inconsistent historical tenant fields. Validate both against the
+   authorized context workspace; add corrupted-retained-row negatives preserving
+   history, plus an owned valid approval control. This concerns malformed stored
+   records, not observed normal service-produced approvals or an API exploit.
+3. **New test paths need scope regularization.** Records stop at amendment17;
+   scale-exception-strict.test.ts, scale-gate-publish.test.ts and
+   scale-gate-fire-scale.test.ts are outside the frozen explicit allowlist and
+   lack bounded amendments. Record exact paths/input hashes and obtain distinct
+   review. Preserve historical receipts and do not invent author approval.
+4. **Migration verification is not green on this Windows host.** The full
+   selected run times out both migration cases at30s. An isolated rerun with
+   --testTimeout120000 passes the empty case but fails the populated upgrade
+   case in removeTempDir at scale-review-migration.test.ts124/500 with EPERM
+   on host temp directory050b-mig-89U7iM. The reported error is cleanup, not a
+   migration assertion; cause of the file lock is unverified. Record this as
+   host/test-harness evidence, not a proven schema regression. Investigate bounded
+   cleanup retry after Prisma children close, preserving the verified temp-root
+   and owned-prefix guards; do not traverse junction targets or reset user data.
+   Obtain a clean completed migration run before claiming acceptance.
+
+Fresh checks:16 selected backend/domain/migration/worker suites select139 tests;
+137 pass and2 migration tests time out. Isolated migration rerun selects2:
+1 passes,1 fails Windows temp cleanup. No skips, no all-green suite claim.
+UI38/38 across6 component/axe suites pass. ai-services/API/worker/web typechecks,
+Prisma generate/validate, ESLint on gate/index/routes/final-review production
+paths and submitted whitespace pass. Canvas warnings occur in jsdom. No live
+browser, queue delivery or production deployment executed. The new raw database
+policy-update/publication race proves pin detection, not authorized S2 lock
+serialization; retain the full frozen acceptance boundary before closure.
+
+Twelve owned scratch names were absent before tests, then disconnected/dropped;
+final absence and unchanged tracked migrations verified. Main/client restored.
+Owned temp directory050b-mig-89U7iM remains; no unsafe recursive cleanup attempted.
+No implementation merge, commit or push. GAP-039/GAP-119 remain OPEN. Next:
+fix items1–2, regularize exact test scope, resolve migration harness verification
+and separately review the next revision. Engram unavailable for attributed writes
+(GAP-021); CURRENT is the fallback handoff.
+
 ### GAP-119 sixth repair re-review — 2026-10-09, 64168cd
 
 **Status:** OPEN; CHANGES REQUESTED on exact

@@ -217,3 +217,233 @@ describe("assessScaleDeterministic", () => {
     expect(result.state).toBe("WITHIN_REACH");
   });
 });
+
+/**
+ * NF-WF-050B fourth repair — retained protocol validation tests (red proof).
+ *
+ * GAP-119: parseScaleReviewProtocol must validate the FULL frozen schema
+ * (reject unknown fields, validate scale/reach enums and span bounds) and
+ * state semantics. A matching-pin WITHIN_REACH receipt containing an
+ * uncovered ok:false claim is contradictory — the deterministic assessor can
+ * never produce it — and must fail closed (null), never pass the gate.
+ */
+import { parseScaleReviewProtocol } from "@novelforge/ai-services";
+
+function makeValidProtocol(overrides: Record<string, unknown> = {}) {
+  return {
+    protocol: 1,
+    state: "WITHIN_REACH",
+    blocking: false,
+    pins: {
+      chapterVersionId: "v1",
+      branchId: "b1",
+      sourceRevisionId: "r1",
+      evidenceSetId: "set-1",
+      policyFingerprint: "a".repeat(64),
+      exceptionOutcomeId: null,
+    },
+    claims: [
+      {
+        index: 0,
+        scale: "VILLAGE",
+        reach: "VILLAGE",
+        gap: "0",
+        ok: true,
+        span: { start: 6, end: 16 },
+        quote: "test prose",
+        coveredByException: false,
+      },
+    ],
+    missingData: [],
+    ...overrides,
+  };
+}
+
+describe("parseScaleReviewProtocol (fourth repair)", () => {
+  it("accepts a valid WITHIN_REACH protocol", () => {
+    expect(parseScaleReviewProtocol(makeValidProtocol())).not.toBeNull();
+  });
+
+  it("rejects an unknown top-level field", () => {
+    expect(
+      parseScaleReviewProtocol(makeValidProtocol({ extraField: "x" })),
+    ).toBeNull();
+  });
+
+  it("rejects an unknown pins field", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    p.pins = { ...(p.pins as object), unknownPin: "x" };
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects an unknown claim field", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as unknown[]).map((c) => ({ ...(c as object), bogus: 1 }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects an invalid scale value", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      scale: "DUCHY",
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects an invalid reach value", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      reach: "COSMIC",
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects a span with end <= start", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      span: { start: 10, end: 10 },
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects a span with negative start", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      span: { start: -1, end: 10 },
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects a non-integer span bound", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      span: { start: 6.5, end: 16 },
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects an empty quote", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      quote: "   ",
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects a non-numeric gap", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      gap: "far",
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects WITHIN_REACH containing an uncovered ok:false claim", () => {
+    // The deterministic assessor can never produce this: an uncovered
+    // failing claim forces VIOLATION. Contradictory proof must fail closed.
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      ok: false,
+      coveredByException: false,
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects WITHIN_REACH containing a covered claim (should be EXCEPTED)", () => {
+    const p = makeValidProtocol() as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      coveredByException: true,
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects EXCEPTED with no covered claim", () => {
+    const p = makeValidProtocol({ state: "EXCEPTED" }) as Record<string, unknown>;
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("accepts a valid EXCEPTED protocol", () => {
+    const p = makeValidProtocol({ state: "EXCEPTED" }) as Record<string, unknown>;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      coveredByException: true,
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).not.toBeNull();
+  });
+
+  it("rejects VIOLATION with no uncovered ok:false claim", () => {
+    const p = makeValidProtocol({ state: "VIOLATION", blocking: true });
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("accepts a valid VIOLATION protocol", () => {
+    const p = makeValidProtocol({ state: "VIOLATION", blocking: true }) as Record<
+      string,
+      unknown
+    >;
+    const claims = (p.claims as Record<string, unknown>[]).map((c) => ({
+      ...c,
+      ok: false,
+      coveredByException: false,
+      scale: "KINGDOM",
+      reach: "VILLAGE",
+      gap: "3",
+    }));
+    p.claims = claims;
+    expect(parseScaleReviewProtocol(p)).not.toBeNull();
+  });
+
+  it("rejects INCOMPLETE with non-empty claims", () => {
+    const p = makeValidProtocol({ state: "INCOMPLETE", blocking: true });
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("accepts a valid INCOMPLETE protocol", () => {
+    const p = makeValidProtocol({
+      state: "INCOMPLETE",
+      blocking: true,
+      claims: [],
+      missingData: [
+        {
+          code: "MISSING_EVIDENCE_SET",
+          field: "evidenceSet",
+          reason: "no set",
+          explanation: "explanation",
+          example: "example",
+          nextAction: "append a set",
+        },
+      ],
+    });
+    expect(parseScaleReviewProtocol(p)).not.toBeNull();
+  });
+
+  it("rejects NOT_CONFIGURED with blocking:true", () => {
+    const p = makeValidProtocol({ state: "NOT_CONFIGURED", blocking: true, claims: [] });
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+
+  it("rejects NO_OPERATIVE_CONFLICT with non-empty claims", () => {
+    const p = makeValidProtocol({ state: "NO_OPERATIVE_CONFLICT" });
+    expect(parseScaleReviewProtocol(p)).toBeNull();
+  });
+});

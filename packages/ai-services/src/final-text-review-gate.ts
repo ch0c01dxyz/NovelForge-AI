@@ -20,6 +20,7 @@
  * no new SCALE proof is inferred.
  */
 import type { NovelForgeDb } from "@novelforge/database";
+import { NARRATIVE_SCALES } from "@novelforge/narrative-rhythm";
 import {
   readScaleContext,
   type ScaleReviewContextTx,
@@ -45,6 +46,65 @@ export type ReviewGateTx = ScaleReviewContextTx &
  * GAP-119: validates ALL fields, types and enums — not just top-level shape.
  * A shallow cast could let a malformed retained protocol pass the gate.
  */
+/**
+ * Validate a stored scaleReview payload against the FULL frozen protocol 1
+ * schema. Returns the parsed protocol, or null if invalid/legacy.
+ *
+ * GAP-119 (fourth repair): validates ALL fields, types, enums and state
+ * semantics — not just top-level shape. Unknown fields are rejected at every
+ * level; scale/reach must be members of the frozen 8-scale vocabulary; span
+ * bounds must be integers with 0 <= start < end; quotes must be non-empty.
+ * A shallow cast could let a malformed or self-contradictory retained
+ * protocol pass the gate.
+ *
+ * State semantics (mirroring what assessScaleDeterministic can produce):
+ * - WITHIN_REACH: every claim ok:true, none coveredByException, blocking false
+ * - EXCEPTED: every claim ok:true, at least one coveredByException, blocking false
+ * - VIOLATION: at least one uncovered ok:false claim
+ * - INCOMPLETE: no claims, non-empty missingData
+ * - NOT_CONFIGURED / NO_OPERATIVE_CONFLICT: no claims, no missingData, blocking false
+ * Anything else is contradictory proof and fails closed (null).
+ */
+function hasExactKeys(obj: Record<string, unknown>, keys: readonly string[]): boolean {
+  const objKeys = Object.keys(obj);
+  return objKeys.length === keys.length && keys.every((k) => k in obj);
+}
+
+const PIN_KEYS = [
+  "chapterVersionId",
+  "branchId",
+  "sourceRevisionId",
+  "evidenceSetId",
+  "policyFingerprint",
+  "exceptionOutcomeId",
+] as const;
+
+const CLAIM_KEYS = [
+  "index",
+  "scale",
+  "reach",
+  "gap",
+  "ok",
+  "span",
+  "quote",
+  "coveredByException",
+] as const;
+
+const SPAN_KEYS = ["start", "end"] as const;
+
+const MISSING_DATA_KEYS = [
+  "code",
+  "field",
+  "reason",
+  "explanation",
+  "example",
+  "nextAction",
+] as const;
+
+const PROTOCOL_KEYS = ["protocol", "state", "blocking", "pins", "claims", "missingData"] as const;
+
+const VALID_SCALES: ReadonlySet<string> = new Set(NARRATIVE_SCALES as readonly string[]);
+
 function isUuidOrNull(v: unknown): v is string | null {
   return v === null || (typeof v === "string" && v.length > 0);
 }
@@ -52,6 +112,7 @@ function isUuidOrNull(v: unknown): v is string | null {
 function isValidPins(pins: unknown): pins is ScaleReviewPins {
   if (typeof pins !== "object" || pins === null || Array.isArray(pins)) return false;
   const p = pins as Record<string, unknown>;
+  if (!hasExactKeys(p, PIN_KEYS)) return false;
   if (typeof p.chapterVersionId !== "string" || p.chapterVersionId.length === 0) return false;
   if (typeof p.branchId !== "string" || p.branchId.length === 0) return false;
   if (!isUuidOrNull(p.sourceRevisionId)) return false;
@@ -61,18 +122,27 @@ function isValidPins(pins: unknown): pins is ScaleReviewPins {
   return true;
 }
 
+function isValidSpan(span: unknown): boolean {
+  if (typeof span !== "object" || span === null || Array.isArray(span)) return false;
+  const s = span as Record<string, unknown>;
+  if (!hasExactKeys(s, SPAN_KEYS)) return false;
+  if (typeof s.start !== "number" || !Number.isInteger(s.start) || s.start < 0) return false;
+  if (typeof s.end !== "number" || !Number.isInteger(s.end)) return false;
+  if ((s.end as number) <= (s.start as number)) return false;
+  return true;
+}
+
 function isValidClaim(c: unknown): boolean {
   if (typeof c !== "object" || c === null || Array.isArray(c)) return false;
   const claim = c as Record<string, unknown>;
+  if (!hasExactKeys(claim, CLAIM_KEYS)) return false;
   if (typeof claim.index !== "number" || !Number.isInteger(claim.index) || claim.index < 0) return false;
-  if (typeof claim.scale !== "string") return false;
-  if (typeof claim.reach !== "string") return false;
-  if (typeof claim.gap !== "string") return false;
+  if (typeof claim.scale !== "string" || !VALID_SCALES.has(claim.scale)) return false;
+  if (typeof claim.reach !== "string" || !VALID_SCALES.has(claim.reach)) return false;
+  if (typeof claim.gap !== "string" || !/^\d+$/.test(claim.gap)) return false;
   if (typeof claim.ok !== "boolean") return false;
-  const span = claim.span as Record<string, unknown> | null;
-  if (typeof span !== "object" || span === null) return false;
-  if (typeof span.start !== "number" || typeof span.end !== "number") return false;
-  if (typeof claim.quote !== "string") return false;
+  if (!isValidSpan(claim.span)) return false;
+  if (typeof claim.quote !== "string" || claim.quote.trim().length === 0) return false;
   if (typeof claim.coveredByException !== "boolean") return false;
   return true;
 }
@@ -80,16 +150,53 @@ function isValidClaim(c: unknown): boolean {
 function isValidMissingData(m: unknown): boolean {
   if (typeof m !== "object" || m === null || Array.isArray(m)) return false;
   const item = m as Record<string, unknown>;
-  for (const field of ["code", "field", "reason", "explanation", "example", "nextAction"]) {
+  if (!hasExactKeys(item, MISSING_DATA_KEYS)) return false;
+  for (const field of MISSING_DATA_KEYS) {
     if (typeof item[field] !== "string") return false;
   }
   return true;
+}
+
+/**
+ * Validate claim/state consistency. The deterministic assessor can only
+ * produce specific claim shapes per state; anything else is contradictory
+ * retained proof and must never pass.
+ */
+function isStateSemanticallyValid(
+  state: string,
+  blocking: boolean,
+  claims: Array<{ ok: boolean; coveredByException: boolean }>,
+  missingDataLength: number,
+): boolean {
+  const uncoveredFailures = claims.filter((c) => !c.ok && !c.coveredByException);
+  const covered = claims.filter((c) => c.coveredByException);
+  const anyNotOk = claims.some((c) => !c.ok);
+  switch (state) {
+    case "WITHIN_REACH":
+      // All claims within reach, none covered: every claim ok, none excepted.
+      return !anyNotOk && covered.length === 0 && blocking === false;
+    case "EXCEPTED":
+      // All violations covered: every claim ok, at least one excepted.
+      return !anyNotOk && covered.length > 0 && blocking === false;
+    case "VIOLATION":
+      // At least one proved uncovered violation remains.
+      return uncoveredFailures.length > 0;
+    case "INCOMPLETE":
+      // No claims assessed; the checklist explains what is missing.
+      return claims.length === 0 && missingDataLength > 0;
+    case "NOT_CONFIGURED":
+    case "NO_OPERATIVE_CONFLICT":
+      return claims.length === 0 && missingDataLength === 0 && blocking === false;
+    default:
+      return false;
+  }
 }
 
 export function parseScaleReviewProtocol(raw: unknown): ScaleReviewProtocol | null {
   if (raw === null || raw === undefined) return null;
   if (typeof raw !== "object" || Array.isArray(raw)) return null;
   const p = raw as Record<string, unknown>;
+  if (!hasExactKeys(p, PROTOCOL_KEYS)) return null;
   if (p.protocol !== 1) return null;
   const validStates = new Set([
     "NOT_CONFIGURED",
@@ -104,6 +211,16 @@ export function parseScaleReviewProtocol(raw: unknown): ScaleReviewProtocol | nu
   if (!isValidPins(p.pins)) return null;
   if (!Array.isArray(p.claims) || !p.claims.every(isValidClaim)) return null;
   if (!Array.isArray(p.missingData) || !p.missingData.every(isValidMissingData)) return null;
+  if (
+    !isStateSemanticallyValid(
+      p.state as string,
+      p.blocking as boolean,
+      p.claims as Array<{ ok: boolean; coveredByException: boolean }>,
+      (p.missingData as unknown[]).length,
+    )
+  ) {
+    return null;
+  }
   return p as unknown as ScaleReviewProtocol;
 }
 

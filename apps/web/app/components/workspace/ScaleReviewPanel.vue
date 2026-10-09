@@ -17,6 +17,7 @@
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
+import ScalePayloadForm from "./ScalePayloadForm.vue";
 
 const props = defineProps<{
   workspaceId: string;
@@ -219,8 +220,11 @@ async function loadContext(selSeq: number, opSeq: number): Promise<void> {
     const res = await api<ScaleReviewContextResponse>(
       `${base()}/scale-review-context${versionParam}`,
     );
-    // Recheck scope after await: stale selection or unmounted → drop.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    // Recheck scope after await: stale selection, superseded operation, or
+    // unmounted → drop. An older operation's response must never overwrite
+    // data fetched by a newer operation (same selection). This data
+    // acceptance is independent from operation-owned busy cleanup.
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     context.value = res.context;
     receipt.value = res.receipt;
     // Store the server-derived version ID for subsequent calls.
@@ -233,7 +237,7 @@ async function loadContext(selSeq: number, opSeq: number): Promise<void> {
     loadState.value = "loaded";
     await loadProposals(selSeq, opSeq);
   } catch (e) {
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     loadState.value = "error";
     loadError.value = statusErrorKey(e);
     loadErrorStatus.value = e instanceof ApiError ? e.status : null;
@@ -248,11 +252,12 @@ async function retryLoad(): Promise<void> {
   const selSeq = selectionSeq;
   const opSeq = ++operationSeq;
   await loadContext(selSeq, opSeq);
-  if (selSeq !== selectionSeq || isUnmounted) return;
+  // Abort the chain when superseded: a newer operation owns the refresh now.
+  if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
   await loadEvidence(selSeq, opSeq);
 }
 
-async function loadProposals(selSeq: number, _opSeq: number): Promise<void> {
+async function loadProposals(selSeq: number, opSeq: number): Promise<void> {
   const versionId = effectiveVersionId.value;
   if (!versionId) return;
   proposalsLoading.value = true;
@@ -261,10 +266,12 @@ async function loadProposals(selSeq: number, _opSeq: number): Promise<void> {
     const res = await api<{ items: ProposalRow[]; nextBeforeSequence: number | null }>(
       `${base()}/scale-decisions?chapterVersionId=${encodeURIComponent(versionId)}&limit=20`,
     );
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    // Reject superseded responses: an older operation must not overwrite
+    // the proposal list fetched by a newer operation (same selection).
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     proposals.value = res.items;
   } catch (e) {
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     proposalsError.value = statusErrorKey(e);
   } finally {
     if (selSeq === selectionSeq && !isUnmounted) proposalsLoading.value = false;
@@ -373,10 +380,11 @@ async function rerunReview(): Promise<void> {
   const versionId = effectiveVersionId.value;
   if (!hasSavedVersion.value || reviewRunning.value || !versionId) return;
   // Separate selection and operation identity. This rerun owns an
-  // operation identity, but busy cleanup is guarded by selection only:
-  // a concurrent different-type operation must never suppress it.
+  // operation identity for response acceptance; busy cleanup is guarded by
+  // selection only (a concurrent different-type operation must never
+  // suppress it).
   const selSeq = selectionSeq;
-  ++operationSeq;
+  const opSeq = ++operationSeq;
   reviewRunning.value = true;
   reviewError.value = null;
   try {
@@ -388,8 +396,8 @@ async function rerunReview(): Promise<void> {
         body: JSON.stringify({ chapterVersionId: versionId }),
       },
     );
-    // Recheck scope after await: stale selection → drop.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    // Recheck scope after await: stale selection or superseded operation → drop.
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     review.value = res.scaleReview;
     // Just computed against the current context: recompute applicability
     // from the returned protocol pins when context is available.
@@ -400,7 +408,7 @@ async function rerunReview(): Promise<void> {
         )
       : false;
   } catch (e) {
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     reviewError.value = statusErrorKey(e);
   } finally {
     // Clear if the selection is still current. Operation identity is NOT
@@ -416,14 +424,16 @@ async function rerunReview(): Promise<void> {
 // --- S2 proposal form ---
 const proposalKind = ref<"STANDING_CHANGE" | "CHAPTER_EXCEPTION">("CHAPTER_EXCEPTION");
 const proposalReason = ref("");
-const proposalPayload = ref("{}");
+// Typed payload form (replaces the raw JSON textarea): builds the exact
+// payload the server validates via buildPayload().
+const proposalPayloadForm = ref<InstanceType<typeof ScalePayloadForm> | null>(null);
 const proposalRunning = ref(false);
 const proposalError = ref<string | null>(null);
 const proposalDone = ref(false);
 
 function resetProposalForm(): void {
   proposalReason.value = "";
-  proposalPayload.value = "{}";
+  proposalPayloadForm.value?.reset();
   proposalError.value = null;
   proposalDone.value = false;
 }
@@ -436,13 +446,13 @@ async function submitProposal(): Promise<void> {
     proposalError.value = t("workspace.scaleReview.proposal.reasonInvalid");
     return;
   }
-  let payload: unknown;
-  try {
-    payload = JSON.parse(proposalPayload.value);
-  } catch {
-    proposalError.value = t("workspace.scaleReview.proposal.payloadInvalid");
+  // Build the typed payload from the structured form controls (no raw JSON).
+  const built = proposalPayloadForm.value?.buildPayload();
+  if (!built || built.error) {
+    proposalError.value = built?.error ?? t("workspace.scaleReview.errors.invalid");
     return;
   }
+  const payload = built.payload;
   // Separate selection and operation identity.
   const selSeq = selectionSeq;
   const opSeq = ++operationSeq;
@@ -464,16 +474,16 @@ async function submitProposal(): Promise<void> {
       }),
     });
     // Recheck scope after await before subsequent refreshes.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     proposalDone.value = true;
     await loadProposals(selSeq, opSeq);
     // Recheck scope again before the next refresh in the chain.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     // Refresh context: decision head may have changed. Internal call —
     // reuses this operation's identity (no new bump).
     await loadContext(selSeq, opSeq);
   } catch (e) {
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     proposalError.value = statusErrorKey(e);
   } finally {
     // Clear if the selection is still current. Operation identity is NOT
@@ -488,7 +498,8 @@ async function submitProposal(): Promise<void> {
 // --- S2 decision form ---
 const decisionAction = ref<"APPROVE" | "REJECT" | "ALTERNATIVE">("APPROVE");
 const decisionReason = ref("");
-const decisionAlternativePayload = ref("{}");
+// Typed alternative-payload form (replaces the raw JSON textarea).
+const altPayloadForm = ref<InstanceType<typeof ScalePayloadForm> | null>(null);
 const decisionTarget = ref<ProposalRow | null>(null);
 const decisionRunning = ref(false);
 const decisionError = ref<string | null>(null);
@@ -497,7 +508,7 @@ function openDecision(p: ProposalRow): void {
   decisionTarget.value = p;
   decisionAction.value = "APPROVE";
   decisionReason.value = "";
-  decisionAlternativePayload.value = "{}";
+  // The alternative form remounts via :key on decisionTarget; reset after tick.
   decisionError.value = null;
 }
 
@@ -510,15 +521,16 @@ async function submitDecision(): Promise<void> {
     decisionError.value = t("workspace.scaleReview.decision.reasonInvalid");
     return;
   }
-  // ALTERNATIVE requires a new strictly validated payload of the same kind.
+  // ALTERNATIVE requires a new strictly validated payload of the same kind,
+  // built from the typed alternative controls (no raw JSON).
   let alternativePayload: unknown = undefined;
   if (decisionAction.value === "ALTERNATIVE") {
-    try {
-      alternativePayload = JSON.parse(decisionAlternativePayload.value);
-    } catch {
-      decisionError.value = t("workspace.scaleReview.proposal.payloadInvalid");
+    const built = altPayloadForm.value?.buildPayload();
+    if (!built || built.error) {
+      decisionError.value = built?.error ?? t("workspace.scaleReview.errors.invalid");
       return;
     }
+    alternativePayload = built.payload;
   }
   // Separate selection and operation identity.
   const selSeq = selectionSeq;
@@ -546,12 +558,12 @@ async function submitDecision(): Promise<void> {
       body: JSON.stringify(body),
     });
     // Recheck scope after await before subsequent refreshes.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     decisionTarget.value = null;
     // Internal refresh — reuses this operation's identity (no new bump).
     await loadContext(selSeq, opSeq);
   } catch (e) {
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     decisionError.value = statusErrorKey(e);
   } finally {
     // Clear if the selection is still current. Operation identity is NOT
@@ -602,7 +614,7 @@ const evidenceDone = ref(false);
 
 const NARRATIVE_SCALES = ["PERSONAL", "FAMILY", "VILLAGE", "TOWN", "CITY", "PROVINCE", "KINGDOM", "EMPIRE"];
 
-async function loadEvidence(selSeq: number, _opSeq: number): Promise<void> {
+async function loadEvidence(selSeq: number, opSeq: number): Promise<void> {
   const versionId = effectiveVersionId.value;
   if (!versionId) return;
   evidenceLoading.value = true;
@@ -616,18 +628,18 @@ async function loadEvidence(selSeq: number, _opSeq: number): Promise<void> {
       status: string;
       staleReasons: string[];
     }>(`${base()}/scale-evidence`);
-    // Recheck scope after await: stale selection → drop.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    // Recheck scope after await: stale selection or superseded operation → drop.
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     evidenceSet.value = res.assessment;
     // Load history from the separate endpoint
     const histRes = await api<{ items: EvidenceSet[] }>(
       `${base()}/scale-evidence/history?chapterVersionId=${encodeURIComponent(versionId)}&limit=20`,
     );
     // Recheck scope after await before applying.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     evidenceHistory.value = histRes.items ?? [];
   } catch (e) {
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     // 404 means no evidence yet — not an error state.
     if (e instanceof ApiError && e.status === 404) {
       evidenceSet.value = null;
@@ -702,7 +714,7 @@ async function submitEvidence(): Promise<void> {
       }),
     });
     // Recheck scope after await before subsequent refreshes.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     evidenceDone.value = true;
     resetEvidenceForm();
     evidenceDone.value = true;
@@ -710,10 +722,10 @@ async function submitEvidence(): Promise<void> {
     // Internal calls — reuse this operation's identity (no new bump).
     await loadContext(selSeq, opSeq);
     // Recheck scope again before the next refresh in the chain.
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     await loadEvidence(selSeq, opSeq);
   } catch (e) {
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     evidenceFormError.value = statusErrorKey(e);
   } finally {
     // Clear if the selection is still current. Operation identity is NOT
@@ -751,6 +763,9 @@ watch(
     resetEvidenceForm();
     decisionTarget.value = null;
     loadContext(selSeq, opSeq).then(() => {
+      // Abort the chained evidence load when superseded: a newer operation
+      // owns the refresh now.
+      if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
       return loadEvidence(selSeq, opSeq);
     });
   },
@@ -1170,13 +1185,18 @@ function statusClass(status: ChecklistItem["status"]): string {
           </p>
 
           <!-- New proposal form -->
-          <form class="mt-3 flex flex-col gap-2 border-t border-nf-border pt-3" @submit.prevent="submitProposal">
+          <form
+            data-testid="proposal-form"
+            class="mt-3 flex flex-col gap-2 border-t border-nf-border pt-3"
+            @submit.prevent="submitProposal"
+          >
             <h4 class="text-[12.5px] font-semibold text-nf-text">
               {{ t("workspace.scaleReview.proposal.title") }}
             </h4>
             <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
               {{ t("workspace.scaleReview.proposal.kindLabel") }}
               <select
+                data-testid="proposal-kind"
                 v-model="proposalKind"
                 class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
               >
@@ -1188,18 +1208,18 @@ function statusClass(status: ChecklistItem["status"]): string {
                 </option>
               </select>
             </label>
-            <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-              {{ t("workspace.scaleReview.proposal.payloadLabel") }}
-              <textarea
-                v-model="proposalPayload"
-                rows="4"
-                spellcheck="false"
-                class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[12px] text-nf-text focus-visible:nf-focus"
-              />
-            </label>
+            <!-- Typed payload controls (no raw JSON): the payload is built
+                 from structured inputs matching the server's strict schema. -->
+            <ScalePayloadForm
+              ref="proposalPayloadForm"
+              :kind="proposalKind"
+              :conflicts="evidenceSet?.conflicts ?? []"
+              testid-prefix="proposal"
+            />
             <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
               {{ t("workspace.scaleReview.proposal.reasonLabel") }}
               <textarea
+                data-testid="proposal-reason"
                 v-model="proposalReason"
                 rows="2"
                 maxlength="4000"
@@ -1243,10 +1263,15 @@ function statusClass(status: ChecklistItem["status"]): string {
           <h3 class="text-[13px] font-semibold text-nf-text">
             {{ t("workspace.scaleReview.decision.title") }} — #{{ decisionTarget.sequence }}
           </h3>
-          <form class="mt-2 flex flex-col gap-2" @submit.prevent="submitDecision">
+          <form
+            data-testid="decision-form"
+            class="mt-2 flex flex-col gap-2"
+            @submit.prevent="submitDecision"
+          >
             <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
               {{ t("workspace.scaleReview.decision.actionLabel") }}
               <select
+                data-testid="decision-action"
                 v-model="decisionAction"
                 class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
               >
@@ -1258,6 +1283,7 @@ function statusClass(status: ChecklistItem["status"]): string {
             <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
               {{ t("workspace.scaleReview.decision.reasonLabel") }}
               <textarea
+                data-testid="decision-reason"
                 v-model="decisionReason"
                 rows="2"
                 maxlength="4000"
@@ -1265,21 +1291,23 @@ function statusClass(status: ChecklistItem["status"]): string {
                 class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[12.5px] text-nf-text focus-visible:nf-focus"
               />
             </label>
-            <label
+            <div
               v-if="decisionAction === 'ALTERNATIVE'"
-              class="flex flex-col gap-1 text-[12px] text-nf-text-dim"
+              class="flex flex-col gap-1"
             >
-              {{ t("workspace.scaleReview.decision.alternativePayloadLabel") }}
-              <textarea
-                v-model="decisionAlternativePayload"
-                rows="4"
-                spellcheck="false"
-                class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[12px] text-nf-text focus-visible:nf-focus"
+              <p class="text-[12px] text-nf-text-dim">
+                {{ t("workspace.scaleReview.decision.alternativePayloadLabel") }}
+              </p>
+              <!-- Typed alternative controls: same kind as the proposal,
+                   no raw JSON. Remounts per proposal via :key. -->
+              <ScalePayloadForm
+                ref="altPayloadForm"
+                :key="decisionTarget.id"
+                :kind="decisionTarget.kind"
+                :conflicts="evidenceSet?.conflicts ?? []"
+                testid-prefix="alt"
               />
-              <span class="text-[11.5px] text-nf-text-faint">
-                {{ t("workspace.scaleReview.decision.alternativePayloadHint") }}
-              </span>
-            </label>
+            </div>
             <div class="flex gap-2">
               <button
                 type="submit"

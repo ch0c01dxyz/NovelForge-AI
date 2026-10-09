@@ -1,16 +1,24 @@
 # 050B Scope Amendment Review Record — 2026-10-09 (Slice 2)
 
-**Task:** NF-WF-050B (scale review and author decisions)  
-**Type:** Separate scope-amendment review (per contract amendment procedure)  
-**Status:** RECORDED — AWAITING AUTHOR APPROVAL  
-**Reviewer:** Slice 2 implementer (separate actor; backends MODEL_UNVERIFIED per GAP-013)  
+**Task:** NF-WF-050B (scale review and author decisions)
+**Type:** Separate scope-amendment review (per contract amendment procedure)
+**Status:** RECORDED — AWAITING AUTHOR APPROVAL
+**Reviewer:** Slice 2 implementer (separate actor; backends MODEL_UNVERIFIED per GAP-013)
 **Date:** 2026-10-09
 
 ## Amendments Under Review
 
 The following 4 bounded amendments to the frozen 050B contract (`fed3cea`) are
-submitted for separate author approval. Each is documented with its justification
-and contract impact.
+submitted for separate author approval. Each is documented with its exact path,
+justification, allowlist status against the contract's explicit
+"Scope and interfaces" lists, and semantic change.
+
+**Correction (2026-10-09, fourth repair):** An earlier version of this record
+claimed Amendment 1 was "within the allowed `packages/ai-services/src/`
+package." That blanket package-permission claim was incorrect: the contract's
+allowlist names exact files, not packages. The corrected allowlist status for
+each amendment is recorded below. Historical provenance preserved; the
+amendments remain PROPOSED, not approved.
 
 ### Amendment 1: `packages/ai-services/src/scale-review-types.ts` (NEW)
 
@@ -21,8 +29,14 @@ and contract impact.
 shapes" clause. The types formalize the protocol shapes that were previously
 implicit.
 
-**Contract impact:** Within the allowed `packages/ai-services/src/` package.
-No contract violation. Additive only — no existing shapes modified.
+**Allowlist status:** NOT in the contract's explicit allowlist. The allowlist
+permits `packages/ai-services/src/{scale-evidence,narrative,policy-errors,ai,
+revisions,platform}.ts` and `packages/ai-services/index.ts`; a new
+`scale-review-types.ts` is not listed. This amendment is therefore REQUIRED
+before the file can be considered in-scope — it is proposed here, not assumed.
+
+**Semantic change:** Additive only. New exported types; no existing shapes
+modified. No runtime behavior change.
 
 ### Amendment 2: `apps/api/src/scale-evidence-migration.test.ts` (MODIFIED)
 
@@ -33,8 +47,15 @@ FK failures.
 dedicated migration test (`scale-review-migration.test.ts`). Including 050B
 migrations in the 050A baseline causes foreign-key failures unrelated to 050A.
 
-**Contract impact:** Test-only change. No production code modified. Bounded to
-the test baseline definition.
+**Allowlist status:** NOT in the contract's explicit allowlist. The allowlist
+permits `apps/api/src/{manuscript,narrative,publication,state-consumers,
+scale-evidence}.test.ts`; `scale-evidence-migration.test.ts` is a different
+file and is not listed. This amendment is therefore REQUIRED — proposed here,
+not assumed.
+
+**Semantic change:** Test-only. Baseline definition narrowed; no production
+code modified. No existing passing assertion weakened (the 050B migrations are
+covered by their own dedicated test).
 
 ### Amendment 3: `packages/ai-services/src/policy-errors.ts` (MODIFIED)
 
@@ -44,8 +65,13 @@ the test baseline definition.
 Mapping "incomplete assessment" to the generic `HARD_POLICY_VIOLATION` would
 lose the semantic distinction the contract requires.
 
-**Contract impact:** Additive to the error code union. No existing codes
-modified or removed.
+**Allowlist status:** IN the contract's explicit allowlist
+(`packages/ai-services/src/{...,policy-errors,...}.ts`). No amendment strictly
+required for the path; recorded here for completeness because the error-code
+addition is a contract-visible semantic change.
+
+**Semantic change:** Additive to the error-code union. No existing codes
+modified or removed. No behavior change for existing codes.
 
 ### Amendment 4: `packages/database/prisma/migrations/20261008_nf_wf_050b_scale_decisions/migration.sql` (DOCUMENTED)
 
@@ -55,9 +81,15 @@ modified or removed.
 which selects TIMESTAMPTZ(3). This is NOT Prisma's default mapping (plain
 `DateTime` maps to TIMESTAMP). The explicit declaration is intentional.
 
-**Contract impact:** Precision (3) matches the contract. Timezone-awareness is
-additive and does not change contract semantics. Same pattern as 050A's explicit
-`@db.Timestamptz(6)`. Documentation only — the SQL was already correct.
+**Allowlist status:** The contract permits "one new migration under
+`packages/database/prisma/migrations/<new timestamp>_scale_review_decisions/`".
+The actual migration directory is `20261008_nf_wf_050b_scale_decisions` — the
+name pattern differs from the contract's placeholder. The SQL itself was not
+modified by this amendment; only the rationale is documented. Recorded here
+because the directory name deviates from the contract's stated pattern.
+
+**Semantic change:** Documentation only. The SQL was already correct;
+precision (3) matches the contract. No schema change.
 
 ## Review Assessment
 

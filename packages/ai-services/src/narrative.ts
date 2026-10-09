@@ -636,12 +636,35 @@ export function createNarrativeServices(deps: {
     }
 
     // Hardness-only change: reason + branch/head/policy CAS + branch-aware
-    // revision under the novel -> branch lock order.
+    // revision under the novel -> branch -> chapter lock order.
     // GAP-119: validate ALL context pins (not just branch/policy).
     const updated = await db.$transaction(async (tx) => {
       const branch = await lockCheckedOutBranch(tx, workspaceId, novelId);
       if (pins.expectedBranchId !== branch.id) {
         throw new ConflictError("policy branch changed while this request was in flight");
+      }
+      // GAP-119 (fourth repair): lock the chapter and refuse obsolete
+      // versions under the frozen novel -> branch -> chapter lock order
+      // (same as S2 decisions). A hardness change pinned to an obsolete
+      // chapter version must fail with zero writes — the author must
+      // re-read the current scale review context.
+      const lockedChapter = await tx.$queryRawUnsafe<
+        { id: string; current_version_id: string | null; novel_id: string }[]
+      >(
+        `SELECT id, current_version_id, novel_id FROM chapters WHERE id = $1 FOR UPDATE`,
+        pins.chapterId,
+      );
+      if (
+        !lockedChapter ||
+        lockedChapter.length === 0 ||
+        lockedChapter[0]!.novel_id !== novelId
+      ) {
+        throw new NotFoundError("chapter");
+      }
+      if (lockedChapter[0]!.current_version_id !== pins.chapterVersionId) {
+        throw new ConflictError(
+          "policy version is obsolete; re-read the current scale review context",
+        );
       }
       // Validate head pin against live head.
       if ((branch.headRevisionId ?? null) !== pins.expectedHeadRevisionId) {
@@ -751,6 +774,28 @@ export function createNarrativeServices(deps: {
       const branch = await lockCheckedOutBranch(tx, workspaceId, novelId);
       if (pins.expectedBranchId !== branch.id) {
         throw new ConflictError("policy branch changed while this request was in flight");
+      }
+      // GAP-119 (fourth repair): lock the chapter and refuse obsolete
+      // versions under the frozen novel -> branch -> chapter lock order
+      // (same as S2 decisions). A delete pinned to an obsolete chapter
+      // version must fail with zero writes.
+      const lockedChapter = await tx.$queryRawUnsafe<
+        { id: string; current_version_id: string | null; novel_id: string }[]
+      >(
+        `SELECT id, current_version_id, novel_id FROM chapters WHERE id = $1 FOR UPDATE`,
+        pins.chapterId,
+      );
+      if (
+        !lockedChapter ||
+        lockedChapter.length === 0 ||
+        lockedChapter[0]!.novel_id !== novelId
+      ) {
+        throw new NotFoundError("chapter");
+      }
+      if (lockedChapter[0]!.current_version_id !== pins.chapterVersionId) {
+        throw new ConflictError(
+          "policy version is obsolete; re-read the current scale review context",
+        );
       }
       // Validate chapter/version ownership (pins are required; do not ignore them).
       const versionRow = await tx.chapterVersion.findFirst({

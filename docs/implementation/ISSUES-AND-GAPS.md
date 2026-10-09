@@ -3268,3 +3268,15 @@ main checkout and generated client restored. No implementation merge or push.
 GAP-039/GAP-119 remain OPEN. Next: fix these bounded findings, correct unsupported
 completion claims, and submit one exact revision for separate re-review. Engram
 attribution is unavailable (GAP-021); CURRENT is the durable fallback handoff.
+
+### GAP-108 recurrence (10th) — 2026-10-09 ~12:30 WIB
+
+PostgreSQL role `novelforge_test` absent after VM reset (GAP-108 10th
+recurrence). `pg_isready` reports accepting connections, but the role
+created during the 9th-recurrence recovery no longer exists; password
+authentication fails for all test-database connections. Redis is up (PONG).
+
+**Impact:** Database-backed tests cannot run until the role is recreated.
+**Recovery:** recreate `novelforge_test` as SUPERUSER with the password in
+repo `.env` (`test_password_123`), via OS-peer auth as `postgres`.
+Working data unaffected (disposable test databases only).

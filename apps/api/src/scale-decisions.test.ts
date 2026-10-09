@@ -21,6 +21,7 @@ import {
   fingerprintScalePolicy,
 } from "@novelforge/ai-services";
 import { ConflictError, NotFoundError } from "@novelforge/ai-services";
+import { createRevisionServices } from "./services/revisions.ts";
 
 const TEST_DB = "novelforge_test_scale_decisions";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -1261,50 +1262,12 @@ describe("decideProposal", () => {
     expect((policyAfter.payload as any).standing.scale).toBe("VILLAGE");
   });
 
-  it("STORY restore with old snapshot JSON lacking scale_review: legacy handling, S2 retained, stale applicability", async () => {
+  it("ACTUAL STORY restore with old snapshot JSON lacking scale_review: invokes previewRestore/applyRestore", async () => {
     const f = await seedFixture();
     const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+    const revSvc = createRevisionServices({ db, audit: createAuditService(db) });
 
-    // 1. Create S2 history (proposal + outcome) — OPERATIONAL, append-only.
-    const { proposal } = await (async () => {
-      const set = await seedEvidenceSet(f, {
-        claims: [{ scale: "KINGDOM" }, { scale: "EMPIRE" }],
-      });
-      const result = await svc.createProposal({
-        actorUserId: f.userId,
-        workspaceId: f.workspaceId,
-        novelId: f.novelId,
-        chapterId: f.chapterId,
-        chapterVersionId: f.chapterVersionId,
-        expectedBranchId: f.branchId,
-        expectedHeadRevisionId: f.headRevisionId,
-        expectedSetId: set.id,
-        expectedDecisionId: null,
-        expectedPolicyFingerprint: f.policyFingerprint,
-        kind: "CHAPTER_EXCEPTION",
-        payload: { claimIndices: [0] },
-        reason: "s2 history for restore test",
-      });
-      const decided = await svc.decideProposal({
-        chapterId: f.chapterId,
-        actorUserId: f.userId,
-        workspaceId: f.workspaceId,
-        novelId: f.novelId,
-        proposalId: result.proposal.id,
-        action: "APPROVE",
-        reason: "approve for restore test",
-        expectedBranchId: f.branchId,
-        expectedHeadRevisionId: f.headRevisionId,
-        expectedDecisionId: null,
-        expectedPolicyFingerprint: f.policyFingerprint,
-        expectedVersionId: f.chapterVersionId,
-        expectedSetId: set.id,
-      });
-      return { proposal: result.proposal, outcome: decided.outcome };
-    })();
-
-    // 2. Create a legacy receipt (pre-050B format: scaleReview is NULL).
-    // This simulates a receipt from an old snapshot JSON lacking scale_review.
+    // 1. Create a legacy receipt (pre-050B format: scaleReview NULL).
     const legacyReceipt = await db.finalTextReview.create({
       data: {
         workspaceId: f.workspaceId,
@@ -1319,56 +1282,315 @@ describe("decideProposal", () => {
       },
     });
 
-    // 3. LEGACY RECEIPT HANDLING: A receipt with NULL scaleReview (from an
-    // old snapshot JSON lacking scale_review) must be readable without
-    // crashing. NULL denotes legacy — never fabricated as new proof.
-    // The listFinalTextReviews implementation maps scaleReview through
-    // directly (ai.ts:819); null passes through as null.
-    const rereadLegacy = await db.finalTextReview.findUniqueOrThrow({
-      where: { id: legacyReceipt.id },
+    // 2. HIGH standing change: VILLAGE -> TOWN. No evidence set exists yet, so
+    //    expectedSetId is null. This creates a PRE_MUTATION checkpoint whose
+    //    snapshot captures the pre-change (VILLAGE) standing.
+    const standingProposal = await svc.createProposal({
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      chapterId: f.chapterId,
+      chapterVersionId: f.chapterVersionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
+      kind: "STANDING_CHANGE",
+      payload: validStandingChangePayload(),
+      reason: "standing change before restore test",
     });
-    expect(rereadLegacy.scaleReview).toBeNull(); // Legacy, not crashed
-    expect(rereadLegacy.verdict).toBe("PASS");
-    // The service layer (listFinalTextReviews) includes scaleReview in its
-    // output (Slice 1 fix); null is preserved, not fabricated.
+    const standingDecision = await svc.decideProposal({
+      chapterId: f.chapterId,
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      proposalId: standingProposal.proposal.id,
+      action: "APPROVE",
+      reason: "approve standing change for restore test",
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
+      expectedVersionId: f.chapterVersionId,
+      expectedSetId: null,
+    });
+    const postChangeHead = standingDecision.currentHeadRevisionId;
+    expect(postChangeHead).not.toBe(f.headRevisionId);
+    // Policy is now TOWN (changed from VILLAGE).
+    const policyAfterChange = await db.narrativePolicy.findUniqueOrThrow({
+      where: { novelId_kind: { novelId: f.novelId, kind: "SCALE" } },
+    });
+    expect(
+      (policyAfterChange.payload as { standing: { scale: string } }).standing.scale,
+    ).toBe("TOWN");
+    const townFingerprint = fingerprintScalePolicy({
+      id: policyAfterChange.id,
+      kind: policyAfterChange.kind,
+      hardness: policyAfterChange.hardness,
+      hardReason: policyAfterChange.hardReason,
+      payload: policyAfterChange.payload,
+    });
 
-    // 4. RETAINED OPERATIONAL S2 HISTORY: S2 tables are NOT in the STORY
-    // restore scope (COVERED_TABLES). A STORY restore never rewinds them.
-    const { COVERED_TABLE_NAMES } = await import("@novelforge/story-versioning");
-    expect(COVERED_TABLE_NAMES).not.toContain("scale_decision_proposals");
-    expect(COVERED_TABLE_NAMES).not.toContain("scale_decision_outcomes");
-    // The S2 history created above is intact.
+    // 3. Create S2 history (proposal + outcome) — OPERATIONAL, append-only.
+    //    Uses CHAPTER_EXCEPTION so the decision does not advance the head.
+    const { proposal } = await (async () => {
+      const set = await seedEvidenceSet(f, {
+        claims: [{ scale: "KINGDOM" }, { scale: "EMPIRE" }],
+        sourceRevisionId: postChangeHead,
+      });
+      const result = await svc.createProposal({
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        chapterId: f.chapterId,
+        chapterVersionId: f.chapterVersionId,
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: postChangeHead,
+        expectedSetId: set.id,
+        expectedDecisionId: standingDecision.outcome.id,
+        expectedPolicyFingerprint: townFingerprint,
+        kind: "CHAPTER_EXCEPTION",
+        payload: { claimIndices: [0] },
+        reason: "s2 history for restore test",
+      });
+      const decided = await svc.decideProposal({
+        chapterId: f.chapterId,
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        proposalId: result.proposal.id,
+        action: "APPROVE",
+        reason: "approve for restore test",
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: postChangeHead,
+        expectedDecisionId: standingDecision.outcome.id,
+        expectedPolicyFingerprint: townFingerprint,
+        expectedVersionId: f.chapterVersionId,
+        expectedSetId: set.id,
+      });
+      return { proposal: result.proposal, outcome: decided.outcome };
+    })();
+
+    // 4. Build OLD snapshot JSON: take the PRE_MUTATION checkpoint's snapshot
+    //    payload (which captured the VILLAGE standing) and strip `scale_review`
+    //    from every final_text_reviews row — the pre-050B format.
+    const preMutationCheckpoint = await db.checkpoint.findFirstOrThrow({
+      where: { novelId: f.novelId, kind: "PRE_MUTATION" },
+      orderBy: { createdAt: "desc" },
+      include: { snapshot: true },
+    });
+    const livePayload = preMutationCheckpoint.snapshot.payload as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
+    const oldPayload: Record<string, Array<Record<string, unknown>>> = {};
+    for (const [table, rows] of Object.entries(livePayload)) {
+      oldPayload[table] = rows.map((row) => {
+        if (table === "final_text_reviews") {
+          const { scale_review, ...rest } = row;
+          return rest;
+        }
+        return { ...row };
+      });
+    }
+    // Sanity: the old payload really lacks scale_review and still pins VILLAGE.
+    for (const row of oldPayload["final_text_reviews"] ?? []) {
+      expect("scale_review" in row).toBe(false);
+    }
+    const oldPolicyRow = (oldPayload["narrative_policies"] ?? []).find(
+      (r) => r["kind"] === "SCALE",
+    );
+    expect(oldPolicyRow).toBeDefined();
+    expect(
+      ((oldPolicyRow!["payload"] as { standing: { scale: string } }).standing.scale),
+    ).toBe("VILLAGE");
+
+    // 5. Persist the old-format snapshot + checkpoint. Direct DB writes: there
+    //    is no service for "checkpoint with a custom payload" — the code path
+    //    under test is the REAL previewRestore/applyRestore below.
+    const oldRevision = await db.revision.create({
+      data: {
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        branchId: f.branchId,
+        number: 900,
+        origin: "MANUAL",
+        message: "old-snapshot checkpoint (pre-050B format)",
+        createdById: f.userId,
+      },
+    });
+    const oldSnapshot = await db.snapshot.create({
+      data: {
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        branchId: f.branchId,
+        revisionId: oldRevision.id,
+        formatVersion: 1, // SNAPSHOT_FORMAT_VERSION
+        storage: "INLINE",
+        payload: oldPayload as never,
+        byteSize: JSON.stringify(oldPayload).length,
+      },
+    });
+    const oldCheckpoint = await db.checkpoint.create({
+      data: {
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        branchId: f.branchId,
+        revisionId: oldRevision.id,
+        snapshotId: oldSnapshot.id,
+        kind: "MANUAL",
+        label: "old snapshot without scale_review",
+        createdById: f.userId,
+      },
+    });
+
+    // 6. REAL STORY restore: NovelForge's actual previewRestore + applyRestore.
+    //    This is NOT a simulation — it runs the FULL restore apply path
+    //    (delete covered rows, re-insert from the old snapshot payload,
+    //    rewind the branch head, record the RESTORE revision).
+    const preview = await revSvc.previewRestore({
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      checkpointId: oldCheckpoint.id,
+      scope: "FULL",
+    });
+    expect(preview.restoreOperationId).toBeDefined();
+    expect(preview.preview).toBeDefined();
+
+    const applied = await revSvc.applyRestore({
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      restoreOperationId: preview.restoreOperationId,
+    });
+    expect(applied.status).toBe("APPLIED");
+    expect(applied.revisionId).toBeDefined();
+    expect(applied.revisionId).not.toBe(postChangeHead);
+
+    // 7a. STANDING REWIND: the policy reverts to the old snapshot's VILLAGE
+    //     standing (it was TOWN before the restore).
+    const policyAfterRestore = await db.narrativePolicy.findUniqueOrThrow({
+      where: { novelId_kind: { novelId: f.novelId, kind: "SCALE" } },
+    });
+    expect(
+      (policyAfterRestore.payload as { standing: { scale: string } }).standing.scale,
+    ).toBe("VILLAGE");
+
+    // 7b. LEGACY RECEIPT HANDLING: the restored final_text_reviews rows come
+    //     from the old snapshot JSON (no scale_review key → NULL). They are
+    //     readable without crashing; NULL denotes legacy, never fabricated.
+    const receiptsAfter = await db.finalTextReview.findMany({
+      where: { novelId: f.novelId },
+    });
+    expect(receiptsAfter.length).toBeGreaterThan(0);
+    for (const r of receiptsAfter) {
+      expect(r.scaleReview).toBeNull();
+    }
+    // The pre-restore legacy receipt's content survived the rewind.
+    const restoredLegacy = receiptsAfter.find((r) => r.id === legacyReceipt.id);
+    expect(restoredLegacy).toBeDefined();
+    expect(restoredLegacy!.verdict).toBe("PASS");
+
+    // 7c. RETAINED OPERATIONAL S2 HISTORY: proposals/outcomes are NOT in the
+    //     restore scope — they survive the FULL restore.
     const proposalAfter = await db.scaleDecisionProposal.findUniqueOrThrow({
       where: { id: proposal.id },
       include: { outcome: true },
     });
     expect(proposalAfter.outcome).not.toBeNull();
 
-    // 5. STALE APPLICABILITY: After a restore (new revision), the receipt's
-    // revisionId pin no longer matches the current head → stale.
-    // Simulate by advancing the head (as a restore would).
-    const revision2 = await db.revision.create({
-      data: {
-        workspaceId: f.workspaceId,
-        novelId: f.novelId,
-        branchId: f.branchId,
-        number: 2,
-        origin: "MANUAL",
-        message: "simulated restore",
-        createdById: f.userId,
-      },
-    });
-    await db.novelBranch.update({
+    // 7d. STALE APPLICABILITY: the restore created a NEW revision; the branch
+    //     head moved. Any receipt pinning the pre-restore head is now stale.
+    const branchAfter = await db.novelBranch.findUniqueOrThrow({
       where: { id: f.branchId },
-      data: { headRevisionId: revision2.id },
     });
-    // The legacy receipt pins the old revision → stale after restore.
-    const receiptAfter = await db.finalTextReview.findUniqueOrThrow({
-      where: { id: legacyReceipt.id },
+    expect(branchAfter.headRevisionId).toBe(applied.revisionId);
+    expect(branchAfter.headRevisionId).not.toBe(postChangeHead);
+    for (const r of receiptsAfter) {
+      expect(r.revisionId).not.toBe(branchAfter.headRevisionId);
+    }
+  });
+
+it("PRE_MUTATION checkpoint snapshot captures the pre-change standing", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+
+    // Record the pre-change standing (VILLAGE).
+    const policyBefore = await db.narrativePolicy.findUniqueOrThrow({
+      where: { novelId_kind: { novelId: f.novelId, kind: "SCALE" } },
     });
-    expect(receiptAfter.revisionId).toBe(f.headRevisionId);
-    expect(receiptAfter.revisionId).not.toBe(revision2.id);
-    // Applicability: receipt is stale (does not reflect current head).
+    const standingBefore = (
+      policyBefore.payload as { standing: { scale: string } }
+    ).standing.scale;
+    expect(standingBefore).toBe("VILLAGE");
+
+    // HIGH standing change: VILLAGE -> TOWN.
+    const proposalResult = await svc.createProposal({
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      chapterId: f.chapterId,
+      chapterVersionId: f.chapterVersionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
+      kind: "STANDING_CHANGE",
+      payload: validStandingChangePayload(),
+      reason: "prove pre-change snapshot content",
+    });
+    const decided = await svc.decideProposal({
+      chapterId: f.chapterId,
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      proposalId: proposalResult.proposal.id,
+      action: "APPROVE",
+      reason: "approve to inspect snapshot",
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
+      expectedVersionId: f.chapterVersionId,
+      expectedSetId: null,
+    });
+
+    // The decision advanced the head; the checkpoint must pin the PRE-decision head.
+    expect(decided.currentHeadRevisionId).not.toBe(f.headRevisionId);
+    const checkpoint = await db.checkpoint.findFirstOrThrow({
+      where: { novelId: f.novelId, kind: "PRE_MUTATION" },
+      orderBy: { createdAt: "desc" },
+      include: { snapshot: true },
+    });
+    // Source revision: the checkpoint pins the pre-decision head revision.
+    expect(checkpoint.revisionId).toBe(f.headRevisionId);
+
+    // Snapshot content: the narrative_policies rows carry the PRE-CHANGE
+    // standing (VILLAGE), not the post-decision TOWN.
+    const payload = checkpoint.snapshot.payload as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
+    const policyRows = payload["narrative_policies"] ?? [];
+    const scaleRow = policyRows.find((r) => r["kind"] === "SCALE");
+    expect(scaleRow).toBeDefined();
+    const snapshotStanding = (
+      scaleRow!["payload"] as { standing: { scale: string } }
+    ).standing.scale;
+    expect(snapshotStanding).toBe("VILLAGE");
+    expect(snapshotStanding).toBe(standingBefore);
+
+    // And the live policy is now TOWN — proving the snapshot is pre-change,
+    // not a copy of the current state.
+    const policyAfter = await db.narrativePolicy.findUniqueOrThrow({
+      where: { novelId_kind: { novelId: f.novelId, kind: "SCALE" } },
+    });
+    expect(
+      (policyAfter.payload as { standing: { scale: string } }).standing.scale,
+    ).toBe("TOWN");
   });
 
   it("decision on obsolete version is 409 with zero writes", async () => {

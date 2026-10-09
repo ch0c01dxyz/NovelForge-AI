@@ -1222,7 +1222,15 @@ here; the original evidence and provenance are preserved unchanged below.
 - **What this proves:** Pre-upgrade data is preserved through the additive migration; legacy receipts are not rewritten or fabricated; the nullable column correctly defaults to NULL.
 - **What this does NOT prove:** An actual `pg_restore` of a production snapshot binary, or restore of a snapshot taken from a different Prisma version. The restore-scope classification (both tables OPERATIONAL, never rewound) is unit-tested in `restore-scope.test.ts` (8/8 pass), not via a live restore operation.
 
-## STORY checkpoint restore proof — 2026-10-09 (Slice 2)
+## STORY checkpoint restore proof — 2026-10-09 (Slice 2, superseded 2026-10-09 Slice 2 fourth repair)
+
+**Historical annotation (2026-10-09):** The evidence below was simulation and
+classification, NOT an actual application STORY restore. The test inserted a
+NULL receipt, asserted coverage constants, and manually advanced the head — it
+never constructed old snapshot JSON or invoked NovelForge's restore path
+(`previewRestore`/`applyRestore`). The claim "exercises the STORY restore
+semantics" is retained here for provenance but annotated as UNSUPPORTED as a
+restore proof. See the replacement below.
 
 `apps/api/src/scale-decisions.test.ts` → "STORY restore with old snapshot JSON
 lacking scale_review" (OBSERVED pass) exercises the STORY restore semantics:
@@ -1238,3 +1246,41 @@ lacking scale_review" (OBSERVED pass) exercises the STORY restore semantics:
 - **Stale applicability:** After the head advances (as a restore would), the
   receipt's `revisionId` pin no longer matches the current head → the receipt
   is stale (does not reflect current state).
+
+## ACTUAL STORY restore proof — 2026-10-09 (Slice 2, fourth repair)
+
+`apps/api/src/scale-decisions.test.ts` →
+"ACTUAL STORY restore with old snapshot JSON lacking scale_review: invokes
+previewRestore/applyRestore" (OBSERVED 2026-10-09, 32/32 file pass) invokes
+NovelForge's REAL restore path:
+
+- **Old snapshot JSON constructed:** the PRE_MUTATION checkpoint's snapshot
+  payload (captured by the HIGH VILLAGE→TOWN standing change) is read;
+  `scale_review` is stripped from every `final_text_reviews` row — the
+  pre-050B format. Sanity assertions prove the stripped payload lacks the key
+  and still pins the VILLAGE standing.
+- **Real restore invoked:** `previewRestore` + `applyRestore` (FULL scope) via
+  `createRevisionServices` — the actual application code path (delete covered
+  rows, re-insert from the old payload, rewind the branch head, record the
+  RESTORE revision). Not a simulation: `applyRestore` returns APPLIED with a
+  new revision ID.
+- **Standing rewind proven:** policy standing reverts TOWN → VILLAGE (the old
+  snapshot's value), verified by reading the live policy after restore.
+- **Legacy receipt handling proven:** restored `final_text_reviews` rows have
+  `scaleReview: NULL` (old JSON had no key); readable without crashing; the
+  pre-restore legacy receipt's verdict survives.
+- **Retained S2 history proven:** the proposal + outcome (OPERATIONAL tables,
+  outside restore scope) survive the FULL restore intact.
+- **Stale applicability proven:** the restore advances the head to a new
+  revision; all restored receipts pin older revisions → stale.
+
+`apps/api/src/scale-decisions.test.ts` →
+"PRE_MUTATION checkpoint snapshot captures the pre-change standing" (OBSERVED
+2026-10-09) inspects the successful HIGH mutation's checkpoint:
+
+- **Source revision:** `checkpoint.revisionId` equals the pre-decision head
+  revision ID — the snapshot is pinned to the pre-change revision.
+- **Snapshot content:** the `narrative_policies` SCALE row in the snapshot
+  payload carries `standing.scale: "VILLAGE"` (the pre-change value) while the
+  live policy reads `"TOWN"` — proving the snapshot captured the pre-change
+  standing, not a copy of post-decision state.

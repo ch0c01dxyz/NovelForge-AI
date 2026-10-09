@@ -20,7 +20,10 @@ import {
   createScaleDecisionServices,
   readScaleContext,
   parseScaleReviewProtocol,
+  isProtocolLiveConsistent,
   type ScaleDecisionServices,
+  type ScaleReviewContext,
+  type ScaleReviewProtocol,
 } from "@novelforge/ai-services";
 import { NotFoundError } from "@novelforge/ai-services";
 import { SESSION_COOKIE } from "./auth-routes.ts";
@@ -157,6 +160,47 @@ async function getMembership(
   return membership;
 }
 
+/**
+ * Server-derived receipt applicability (NF-WF-050B fourth repair).
+ *
+ * Compares the retained protocol pins verbatim against the SAME coherent
+ * context snapshot the route just read — never against a separately fetched
+ * state. Statuses:
+ * - ABSENT: no receipt row for this version.
+ * - LEGACY: receipt exists but scaleReview is null/malformed (never trusted).
+ * - STALE: pins mismatch the current snapshot or the protocol is
+ *   live-inconsistent; `reasons` names every mismatched pin.
+ * - FRESH: all pins match and the protocol is live-consistent.
+ */
+export function deriveReceiptApplicability(
+  receipt: { scaleReview: ScaleReviewProtocol | null } | null,
+  context: ScaleReviewContext,
+  applicableException: { outcomeId: string; proposalId: string } | null,
+): { status: "ABSENT" | "LEGACY" | "STALE" | "FRESH"; reasons: string[] } {
+  if (!receipt) return { status: "ABSENT", reasons: ["no receipt"] };
+  const protocol = receipt.scaleReview;
+  if (!protocol) {
+    return { status: "LEGACY", reasons: ["scaleReview missing or malformed"] };
+  }
+  const reasons: string[] = [];
+  const pins = protocol.pins;
+  if (pins.chapterVersionId !== context.chapterVersion.id) reasons.push("chapterVersionId");
+  if (pins.branchId !== context.branch.id) reasons.push("branchId");
+  if (pins.sourceRevisionId !== context.headRevisionId) reasons.push("sourceRevisionId");
+  if (pins.evidenceSetId !== (context.latestSet?.id ?? null)) reasons.push("evidenceSetId");
+  if (pins.policyFingerprint !== context.policyFingerprint) reasons.push("policyFingerprint");
+  if (pins.exceptionOutcomeId !== (applicableException?.outcomeId ?? null)) {
+    reasons.push("exceptionOutcomeId");
+  }
+  const liveHardness = context.policy
+    ? (context.policy.hardness as "HARD" | "SOFT")
+    : null;
+  if (!isProtocolLiveConsistent(protocol, liveHardness)) {
+    reasons.push("live-consistency");
+  }
+  return reasons.length === 0 ? { status: "FRESH", reasons } : { status: "STALE", reasons };
+}
+
 export function registerScaleDecisionRoutes(
   app: FastifyInstance,
   deps: { db: NovelForgeDb; auth: AuthService; audit: import("@novelforge/ai-services").AuditService },
@@ -187,100 +231,131 @@ export function registerScaleDecisionRoutes(
       requireCapability(membership.role, "chapter:read" as Capability);
       requireCapability(membership.role, "canon:read" as Capability);
 
-      // Resolve the version ID: client-supplied or server-derived current.
-      let chapterVersionId = query.chapterVersionId ?? null;
-      if (!chapterVersionId) {
-        const chapter = await db.chapter.findFirst({
-          where: { id: params.chapterId, novelId: params.novelId, novel: { workspaceId: params.workspaceId } },
-          select: { currentVersionId: true },
-        });
-        if (!chapter?.currentVersionId) {
-          return reply.code(404).send({ error: "NOT_FOUND", message: "no saved version" });
-        }
-        chapterVersionId = chapter.currentVersionId;
-      }
+      // GAP-119 (fourth repair): ONE coherent read snapshot. The version is
+      // resolved INSIDE the transaction at RepeatableRead, so the version,
+      // branch head, evidence set, policy and receipt are all read from the
+      // same snapshot — a concurrent version/head advance during the read
+      // can never produce a torn context (old version + new head).
+      const snapshot = await db.$transaction(
+        async (tx) => {
+          // Resolve the version ID inside the transaction: client-supplied
+          // or server-derived current (never client-invented).
+          let chapterVersionId = query.chapterVersionId ?? null;
+          if (!chapterVersionId) {
+            const chapter = await (tx as NovelForgeDb).chapter.findFirst({
+              where: {
+                id: params.chapterId,
+                novelId: params.novelId,
+                novel: { workspaceId: params.workspaceId },
+              },
+              select: { currentVersionId: true },
+            });
+            if (!chapter?.currentVersionId) {
+              throw new NotFoundError("no saved version");
+            }
+            chapterVersionId = chapter.currentVersionId;
+          }
 
-      const snapshot = await db.$transaction(async (tx) => {
-        const context = await readScaleContext(tx as never, {
-          workspaceId: params.workspaceId,
-          novelId: params.novelId,
-          chapterId: params.chapterId,
-          chapterVersionId: chapterVersionId as string,
-        });
-
-        // Decision head: latest decision outcome ID for this branch/version.
-        const latestOutcome = await (tx as NovelForgeDb).scaleDecisionOutcome.findFirst({
-          where: {
+          const context = await readScaleContext(tx as never, {
             workspaceId: params.workspaceId,
             novelId: params.novelId,
+            chapterId: params.chapterId,
             chapterVersionId: chapterVersionId as string,
-            sourceBranchId: context.branch.id,
-          },
-          orderBy: { sequence: "desc" },
-          select: { id: true },
-        });
-        const decisionHeadId = latestOutcome?.id ?? null;
+          });
 
-        // Applicable exception: latest APPROVE outcome for a CHAPTER_EXCEPTION
-        // proposal matching this exact version/branch/set/policy fingerprint.
-        let applicableException: { outcomeId: string; proposalId: string } | null = null;
-        if (context.latestSet) {
-          const exceptionOutcome = await (tx as NovelForgeDb).scaleDecisionOutcome.findFirst({
+          // Decision head: latest decision outcome ID for this branch/version.
+          const latestOutcome = await (tx as NovelForgeDb).scaleDecisionOutcome.findFirst({
             where: {
               workspaceId: params.workspaceId,
               novelId: params.novelId,
               chapterVersionId: chapterVersionId as string,
               sourceBranchId: context.branch.id,
-              action: "APPROVE",
-              proposal: {
-                kind: "CHAPTER_EXCEPTION",
-                evidenceSetId: context.latestSet.id,
-                policyFingerprint: context.policyFingerprint,
-              },
             },
             orderBy: { sequence: "desc" },
-            select: { id: true, proposalId: true },
+            select: { id: true },
           });
-          if (exceptionOutcome) {
-            applicableException = {
-              outcomeId: exceptionOutcome.id,
-              proposalId: exceptionOutcome.proposalId,
-            };
-          }
-        }
+          const decisionHeadId = latestOutcome?.id ?? null;
 
-        // Latest review receipt for this version (with scaleReview protocol).
-        const receiptRow = await (tx as NovelForgeDb).finalTextReview.findUnique({
-          where: { chapterVersionId: chapterVersionId as string },
-          select: {
-            id: true,
-            verdict: true,
-            scaleReview: true,
-            revisionId: true,
-            createdAt: true,
-          },
-        });
-        // Strict retained protocol validation: malformed stored scaleReview
-        // is treated as legacy (null), never trusted.
-        const receipt = receiptRow
-          ? {
-              id: receiptRow.id,
-              verdict: receiptRow.verdict,
-              scaleReview: parseScaleReviewProtocol(receiptRow.scaleReview),
-              revisionId: receiptRow.revisionId,
-              createdAt: receiptRow.createdAt,
+          // Applicable exception: latest APPROVE outcome for a
+          // CHAPTER_EXCEPTION proposal matching this exact version/branch/
+          // set/policy fingerprint AND source revision (GAP-119: an
+          // exception approved at an older head does not apply after the
+          // head advances).
+          let applicableException: { outcomeId: string; proposalId: string } | null = null;
+          if (context.latestSet) {
+            const exceptionOutcome = await (tx as NovelForgeDb).scaleDecisionOutcome.findFirst({
+              where: {
+                workspaceId: params.workspaceId,
+                novelId: params.novelId,
+                chapterVersionId: chapterVersionId as string,
+                sourceBranchId: context.branch.id,
+                action: "APPROVE",
+                proposal: {
+                  kind: "CHAPTER_EXCEPTION",
+                  sourceRevisionId: context.headRevisionId,
+                  evidenceSetId: context.latestSet.id,
+                  policyFingerprint: context.policyFingerprint,
+                },
+              },
+              orderBy: { sequence: "desc" },
+              select: { id: true, proposalId: true },
+            });
+            if (exceptionOutcome) {
+              applicableException = {
+                outcomeId: exceptionOutcome.id,
+                proposalId: exceptionOutcome.proposalId,
+              };
             }
-          : null;
+          }
 
-        return {
-          context: {
-            ...context,
-            decisionHeadId,
+          // Latest review receipt for this version (with scaleReview protocol).
+          const receiptRow = await (tx as NovelForgeDb).finalTextReview.findUnique({
+            where: { chapterVersionId: chapterVersionId as string },
+            select: {
+              id: true,
+              verdict: true,
+              scaleReview: true,
+              revisionId: true,
+              createdAt: true,
+            },
+          });
+          // Strict retained protocol validation: malformed stored scaleReview
+          // is treated as legacy (null), never trusted.
+          const receipt = receiptRow
+            ? {
+                id: receiptRow.id,
+                verdict: receiptRow.verdict,
+                scaleReview: parseScaleReviewProtocol(receiptRow.scaleReview),
+                revisionId: receiptRow.revisionId,
+                createdAt: receiptRow.createdAt,
+              }
+            : null;
+
+          // Server-derived receipt applicability against the SAME coherent
+          // context snapshot, plus the deterministic missing-data checklist.
+          const applicability = deriveReceiptApplicability(
+            receipt,
+            context,
             applicableException,
-          },
-          receipt,
-        };
-      });
+          );
+          const checklist =
+            applicability.status === "FRESH" && receipt?.scaleReview
+              ? receipt.scaleReview.missingData
+              : [];
+
+          return {
+            context: {
+              ...context,
+              decisionHeadId,
+              applicableException,
+            },
+            receipt,
+            applicability,
+            checklist,
+          };
+        },
+        { isolationLevel: "RepeatableRead" },
+      );
 
       return reply.code(200).send(snapshot);
     },

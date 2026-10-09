@@ -144,6 +144,7 @@ export {
 export {
   checkFinalTextReviewGate,
   parseScaleReviewProtocol,
+  isProtocolLiveConsistent,
   type GateCode,
   type GateResult,
   type ReviewGateTx,

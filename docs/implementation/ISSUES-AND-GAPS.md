@@ -3184,3 +3184,83 @@ main checkout and generated client restored. No implementation merge or push.
 GAP-039/GAP-119 remain OPEN. Next: fix these bounded findings, correct unsupported
 completion claims, and submit one exact revision for separate re-review. Engram
 attribution is unavailable (GAP-021); CURRENT is the durable fallback handoff.
+
+### GAP-119 fourth repair re-review — 2026-10-09, 8ccb504
+
+**Status:** OPEN; overall CHANGES REQUESTED. Exact submitted revision:
+8ccb504b2440febb0751e2a41555d8c6d96ebd4e; baseline/main9c1d323.
+**Owner:** NF-WF-050B implementer; separate actors review the next exact diff.
+review_mutations_034 requests changes. review_recovery_034 approves recovery
+source conditionally on local tests and scope regularization; selected local
+tests subsequently passed, but scope and technical findings remain open.
+
+Verified repairs: direct hardness/delete lock novel, branch and chapter and
+reject obsolete versions; transaction-bound audits/CAS preserved. Context now
+uses RepeatableRead with current-version resolution inside the transaction and
+head-scoped exceptions. Parser checks exact fields, canonical scale/span types
+and several internal state constraints. Read responses check operation identity.
+Typed standing/exception/alternative controls replace raw payload textareas.
+scale-decisions.test.ts1264 now calls actual previewRestore/applyRestore with
+old snapshot JSON lacking scale_review, asserts standing rewind, restored null
+receipt and retained S2 history. The separate test1516 checks pre-change snapshot
+contents and pinned revision. These supersede the preceding simulated-only
+restore and missing captured-content findings for this exact revision.
+
+Remaining closure requirements (source review, not executed exploit receipts):
+
+1. **Valid empty access is rejected by the form.**
+   ScalePayloadForm.vue84–86 refuses zero selected access values, contradicting
+   the frozen contract's valid access:[] rule. Permit empty access in proposals
+   and alternatives; verify exact submitted payloads and localized controls.
+2. **HARD standing reason is not validated before persistence.** The form
+   defaults to HARD but permits null hardReason; isValidStandingChangePayload
+   in scale-decisions.ts337–347 permits it too. Approval writes that payload
+   into NarrativePolicy, whose hard_requires_reason constraint rejects blank
+   HARD reasons. A database failure is inferred from source, not an observed
+   HTTP500 in this review. Validate a nonblank HARD reason at API/service and
+   form boundaries; test proposals/alternatives fail cleanly with zero writes.
+3. **Successful superseded mutations skip reconciliation.**
+   ScaleReviewPanel.vue717 drops an older evidence POST's success/refresh when
+   another operation starts. A later review may finish against S1 before the
+   earlier POST commits S2, leaving S1 displayed fresh. Source gate staleness
+   still protects publication; this finding concerns author UI truthfulness.
+   Serialize conflicting operations or reconcile the current selection after
+   every successful mutation using a fresh read identity. Add a deferred POST
+   completion regression, not only reordered GET tests.
+4. **Checklist can falsely imply completeness.**
+   scale-decision-routes.ts341–344 returns a fresh receipt's missingData, or
+   otherwise an empty list. It does not derive current missing data when a
+   receipt is absent/stale. The panel331–346 ignores that field and labels
+   standing/evidence pass based on existence rather than validity/freshness.
+   Derive and consume the deterministic checklist from the same validated
+   current context, including malformed standing and stale evidence; test both
+   locales and explanatory/example/next-action output.
+5. **Retained state is not fully checked against live context.**
+   final-text-review-gate.ts232–245 checks only HARD INCOMPLETE/VIOLATION.
+   Matching-pin NOT_CONFIGURED under a configured policy, or
+   NO_OPERATIVE_CONFLICT against a CONFLICTS evidence declaration, can still
+   pass the source gate path. Internal schema validity is insufficient.
+   Validate state against actual policy/evidence/exception semantics before
+   trusting proof; add negative shared API/worker-gate boundary tests.
+6. **Scope regularization omits new paths.** The independent amendment
+   report covers four earlier amendments but not ScalePayloadForm.vue,
+   scale-policy-direct.test.ts, scale-review-context.test.ts and slice3/slice4
+   component tests outside the frozen exact allowlist. Record/review all exact
+   bounded additions. Preserve proposed status and correct the committed
+   report's stale 'Not committed' ending. Generic reviewer independence is a
+   submitted documentary claim, not an observed session: record a traceable
+   actor and exact input/receipt without inventing identity or author approval.
+
+Fresh local verification:7 selected backend/domain/migration suites90/90 pass;
+4 component/axe suites25/25 pass; no skips. ai-services/API/worker typechecks,
+Prisma generate/validate and submitted diff whitespace pass. UI uses mocks and
+jsdom with canvas warnings. No web typecheck/lint, live browser workflow or
+publication API/worker race execution is claimed. Green existing suites do not
+close the untested negative cases listed above.
+
+All four owned scratch database names were verified absent before tests, then
+disconnected/dropped and absence verified. Tracked migrations unchanged; main
+and generated client restored. No implementation merge, commit or push. GAP-039
+and GAP-119 remain OPEN. Next: repair all six boundaries, preserve accepted
+repairs and obtain separate review of the next exact submitted revision. Engram
+attributed writes remain unavailable (GAP-021); CURRENT is the fallback handoff.

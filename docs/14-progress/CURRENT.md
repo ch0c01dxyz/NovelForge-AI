@@ -1,5 +1,35 @@
 # Current Project State
 
+## External 050B fourth repair re-review — 2026-10-09, 8ccb504
+
+Overall CHANGES REQUESTED on exact external
+8ccb504b2440febb0751e2a41555d8c6d96ebd4e. review_mutations_034 requests changes;
+review_recovery_034 approves recovery/source conditionally on local checks and
+scope regularization. Main remains9c1d323; no implementation merge. Actual
+old-JSON STORY restore and captured pre-change checkpoint contents are now
+exercised. Direct policy current-version locks, coherent RepeatableRead context,
+head-scoped exceptions, stricter parsing and read-response sequencing improved.
+
+GAP-119 records remaining empty-access UI rejection, missing HARD reason
+validation, late successful mutation reconciliation, false-complete checklist,
+retained state versus live evidence mismatch, and incomplete amendment coverage.
+These are source findings; no executed exploit or observed HTTP500 is claimed.
+
+Fresh local selected checks:90/90 backend/domain/migration tests and25/25 UI
+component/axe tests pass without skips. ai-services/API/worker typechecks,
+Prisma validation, generated client and submitted diff whitespace pass. UI
+proof remains mock/jsdom; canvas warnings occurred. No web typecheck/lint,
+live browser author flow or publication API/worker race proof is claimed.
+
+All four dedicated scratch databases were absent before tests and dropped
+after connections closed; absence and unchanged tracked migrations verified.
+Main checkout and its generated Prisma client restored. GAP-039/GAP-119 remain
+OPEN. Next: repair every remaining boundary with negative/deferred regressions,
+regularize exact extra paths through separate review, and submit a new exact
+revision. Engram attribution remains unavailable: the runtime hook supplied no
+authoritative session identity (GAP-021). This is the fallback handoff, not a
+saved Engram checkpoint.
+
 ## External 050B third repair re-review — 2026-10-09, e6b6305
 
 CHANGES REQUESTED by separate actors review_mutations_034 and

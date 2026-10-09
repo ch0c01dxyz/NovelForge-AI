@@ -149,6 +149,8 @@ export {
   computeExpectedScaleProtocol,
   diffRetainedProof,
   checkRetainedProofCompleteness,
+  resolveApplicableExceptionStrict,
+  type StrictExceptionResolution,
   type GateCode,
   type GateResult,
   type ReviewGateTx,

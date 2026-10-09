@@ -61,6 +61,7 @@ import type { AuditService } from "@novelforge/ai-services";
 import {
   assessScaleDeterministic,
   readScaleContext,
+  resolveApplicableExceptionStrict,
 } from "@novelforge/ai-services";
 import type {
   ScaleReviewProtocol,
@@ -382,44 +383,22 @@ export function createFinalTextReviewServices(deps: {
           scaleContext = null;
         }
 
-        // Find applicable approved exception: the LATEST approved
-        // CHAPTER_EXCEPTION outcome whose proposal pins match EXACTLY:
-        // kind, head (sourceRevisionId), policy fingerprint, set ID,
-        // version and branch. An APPROVE row's existence alone is not
-        // sufficient — stale or mismatched exceptions must not apply.
+        // Strict applicable-exception resolution (NF-WF-050B seventh
+        // repair, GAP-119): ONE shared resolver used by the producer, gate
+        // and context. Validates exact payload keys, nonempty/unique/bounded
+        // indices, ownership, provenance, and that coverage refers to actual
+        // violating claims. Malformed historical approvals fail closed
+        // (return null) without deleting audit history.
         let exceptionCoveredIndices: number[] = [];
         let applicableExceptionOutcomeId: string | null = null;
-        if (scaleContext?.latestSet) {
-          const outcome = await tx.scaleDecisionOutcome.findFirst({
-            where: {
-              novelId,
-              chapterVersionId,
-              sourceBranchId: branchId,
-              action: "APPROVE",
-              proposal: {
-                kind: "CHAPTER_EXCEPTION",
-                sourceRevisionId: sourceRevisionId,
-              },
-            },
-            orderBy: { sequence: "desc" },
-            select: { id: true, proposal: { select: { payload: true, evidenceSetId: true, policyFingerprint: true, kind: true, sourceRevisionId: true } } },
-          });
-          if (
-            outcome &&
-            outcome.proposal.kind === "CHAPTER_EXCEPTION" &&
-            outcome.proposal.sourceRevisionId === sourceRevisionId &&
-            outcome.proposal.evidenceSetId === scaleContext.latestSet.id &&
-            outcome.proposal.policyFingerprint === scaleContext.policyFingerprint
-          ) {
-            applicableExceptionOutcomeId = outcome.id;
-            const payload = outcome.proposal.payload as { claimIndices?: unknown };
-            if (
-              payload &&
-              Array.isArray(payload.claimIndices) &&
-              payload.claimIndices.every((i) => Number.isInteger(i))
-            ) {
-              exceptionCoveredIndices = payload.claimIndices as number[];
-            }
+        if (scaleContext) {
+          const strict = await resolveApplicableExceptionStrict(
+            tx as Pick<typeof tx, "scaleDecisionOutcome">,
+            { novelId, context: scaleContext },
+          );
+          if (strict) {
+            applicableExceptionOutcomeId = strict.outcomeId;
+            exceptionCoveredIndices = strict.coveredIndices;
           }
         }
 

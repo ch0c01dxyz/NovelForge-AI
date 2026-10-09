@@ -121,6 +121,49 @@ Slice 3 implementer; backends MODEL_UNVERIFIED per GAP-013
 4. **Bounded/additive/non-weakening:** test-only new file; dedicated disposable
    DB (`novelforge_test_scale_gate_fire`); no production logic modified.
 
+## Hash correction — Amendment 17 worker test (seventh repair, 2026-10-09)
+
+**A hash mismatch was found between this record and the submitted bytes.**
+This section corrects the receipt WITHOUT overwriting the historical record
+above. The original hash listing is preserved verbatim.
+
+**Historical receipt (preserved):** At review time (`git rev-parse HEAD` =
+`b502d0f55a9f1ab277d39b4074fa4bad62abe769`), `apps/worker/src/scale-gate-fire.test.ts`
+was an untracked new file whose SHA-256 was:
+
+`99c1cc045674787a1f991f2060d80bcaedfbe5a79eb83715699068e8e9971047`
+
+The per-amendment verdict for Amendment 17 above was made against THOSE bytes.
+
+**What changed after the review:** During the sixth repair's Slice 3
+re-review, a P1 finding (worker typecheck: `error TS2339: Property 'code'
+does not exist on type 'FireOutcome'` at two call sites) was fixed by adding
+a discriminated-union narrowing guard before each `.code` access:
+
+```ts
+if (outcome.outcome !== "refused") throw new Error("expected refused outcome");
+```
+
+Added at exactly two lines (261 and 302 of the submitted file), immediately
+after `expect(outcome.outcome).toBe("refused")` and before
+`expect(outcome.code).toBe("REVIEW_STALE")`. No other bytes changed; no test
+logic, assertions, or production code was altered. The fix was re-verified:
+worker typecheck clean (0 errors), `scale-gate-fire.test.ts` 3/3 pass.
+
+**Submitted bytes:** The file was committed in `64168cd` with the fix
+applied. The SHA-256 of the submitted (and current working-tree) bytes is:
+
+`afea22ea5cedd3bd5391d6da18ab6e70707e2741481496eca5d596316c9fb516`
+
+**Exact-artifact re-review:** Because the reviewed bytes differ from the
+submitted bytes, a SEPARATE reviewer re-reviewed the actual submitted bytes
+(hash above) — see the separate re-review record
+(`050B-scope-amendment-17-rereview-2026-10-09.md`, written by a reviewer
+actor distinct from both the Slice 3 implementer and this correction's
+author). This correction does NOT claim that the original review covered
+the fixed bytes, and it does NOT claim author (Klein) approval — Amendments
+13–17 remain PROPOSED, AWAITING AUTHOR APPROVAL.
+
 ## Review assessment
 
 All 5 amendments are:

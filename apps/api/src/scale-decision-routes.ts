@@ -22,6 +22,7 @@ import {
   parseScaleReviewProtocol,
   isProtocolLiveConsistent,
   checkRetainedProofCompleteness,
+  resolveApplicableExceptionStrict,
   isValidScalePayload,
   type ScaleDecisionServices,
   type ScaleReviewContext,
@@ -440,37 +441,15 @@ export function registerScaleDecisionRoutes(
           });
           const decisionHeadId = latestOutcome?.id ?? null;
 
-          // Applicable exception: latest APPROVE outcome for a
-          // CHAPTER_EXCEPTION proposal matching this exact version/branch/
-          // set/policy fingerprint AND source revision (GAP-119: an
-          // exception approved at an older head does not apply after the
-          // head advances).
-          let applicableException: { outcomeId: string; proposalId: string } | null = null;
-          if (context.latestSet) {
-            const exceptionOutcome = await (tx as NovelForgeDb).scaleDecisionOutcome.findFirst({
-              where: {
-                workspaceId: params.workspaceId,
-                novelId: params.novelId,
-                chapterVersionId: chapterVersionId as string,
-                sourceBranchId: context.branch.id,
-                action: "APPROVE",
-                proposal: {
-                  kind: "CHAPTER_EXCEPTION",
-                  sourceRevisionId: context.headRevisionId,
-                  evidenceSetId: context.latestSet.id,
-                  policyFingerprint: context.policyFingerprint,
-                },
-              },
-              orderBy: { sequence: "desc" },
-              select: { id: true, proposalId: true },
-            });
-            if (exceptionOutcome) {
-              applicableException = {
-                outcomeId: exceptionOutcome.id,
-                proposalId: exceptionOutcome.proposalId,
-              };
-            }
-          }
+          // Applicable exception via the ONE shared strict resolver
+          // (NF-WF-050B seventh repair, GAP-119): same resolution and
+          // validation as the review producer and the gate. Malformed
+          // historical approvals fail closed (null) without deleting
+          // audit history.
+          const applicableException = await resolveApplicableExceptionStrict(
+            tx as Pick<NovelForgeDb, "scaleDecisionOutcome">,
+            { novelId: params.novelId, context },
+          );
 
           // Latest review receipt for this version (with scaleReview protocol).
           const receiptRow = await (tx as NovelForgeDb).finalTextReview.findUnique({

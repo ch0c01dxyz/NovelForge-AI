@@ -292,64 +292,168 @@ export function isProtocolLiveStateConsistent(
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the applicable approved CHAPTER_EXCEPTION using the receipt
- * writer's EXACT logic (`final-text-review.ts`).
+ * Strict applicable-exception resolution (NF-WF-050B seventh repair, GAP-119).
  *
- * The writer finds the LATEST (by sequence) APPROVE outcome for a
- * CHAPTER_EXCEPTION proposal matching (novel, version, branch, kind, head),
- * then verifies evidenceSetId and policyFingerprint in JS. If the latest
- * does not match those, NO exception applies — even if an older one would.
- * This differs from a WHERE-clause filter; replicating it exactly is
- * required for the completeness comparison to be sound.
+ * ONE resolver shared by the review producer (`final-text-review.ts`), the
+ * gate (`checkFinalTextReviewGate` / `checkRetainedProofCompleteness`), and
+ * context (`deriveReceiptApplicability`). Replaces the loose `claimIndices`
+ * casts that accepted any integer array.
+ *
+ * Resolution follows the receipt writer's EXACT logic: the LATEST (by
+ * sequence) APPROVE outcome for a CHAPTER_EXCEPTION proposal matching
+ * (novel, version, branch, kind, head). If the latest does not match
+ * provenance, NO exception applies — even if an older one would.
+ *
+ * Strict validation (all must hold, else null — fail closed):
+ * - Current complete evidence (latestSet exists) and valid standing
+ *   (policy exists). Without these, coverage is meaningless.
+ * - Proposal/outcome ownership: the outcome's proposal agrees on
+ *   novel/chapter/branch; proposal kind is CHAPTER_EXCEPTION.
+ * - Source provenance: proposal.sourceRevisionId, evidenceSetId and
+ *   policyFingerprint match the live context.
+ * - Exact payload keys (`claimIndices` only); nonempty, unique, bounded
+ *   claim indices (0 <= i < live claim count).
+ * - Coverage refers to ACTUAL violating claims: each covered index must be
+ *   ok:false in the live assessment (run without coverage).
+ *
+ * Malformed historical approvals return null WITHOUT deleting or rewriting
+ * audit history — the records stay; they're just not trusted.
  */
-async function resolveWriterException(
+export interface StrictExceptionResolution {
+  outcomeId: string;
+  proposalId: string;
+  coveredIndices: number[];
+}
+
+export async function resolveApplicableExceptionStrict(
   tx: Pick<NovelForgeDb, "scaleDecisionOutcome">,
   input: {
     novelId: string;
-    chapterVersionId: string;
-    branchId: string;
-    headRevisionId: string | null;
-    latestSetId: string | null;
-    policyFingerprint: string;
+    context: ScaleReviewContext;
   },
-): Promise<{ outcomeId: string; coveredIndices: number[] } | null> {
-  if (!input.latestSetId) return null;
+): Promise<StrictExceptionResolution | null> {
+  const { novelId, context } = input;
+  const latestSet = context.latestSet;
+  const policy = context.policy;
+
+  // Current complete evidence and valid standing are prerequisites.
+  // Without a validated live set or policy, exception coverage is meaningless.
+  if (!latestSet || !policy) return null;
+  const liveClaimCount = latestSet.conflicts.length;
+  if (liveClaimCount === 0) return null;
+
+  // Writer's exact resolution: LATEST (by sequence) APPROVE outcome for a
+  // CHAPTER_EXCEPTION proposal matching (novel, version, branch, kind, head).
   const outcome = await tx.scaleDecisionOutcome.findFirst({
     where: {
-      novelId: input.novelId,
-      chapterVersionId: input.chapterVersionId,
-      sourceBranchId: input.branchId,
+      novelId,
+      chapterVersionId: context.chapterVersion.id,
+      sourceBranchId: context.branch.id,
       action: "APPROVE",
       proposal: {
         kind: "CHAPTER_EXCEPTION",
-        sourceRevisionId: input.headRevisionId,
+        sourceRevisionId: context.headRevisionId,
       },
     },
     orderBy: { sequence: "desc" },
     select: {
       id: true,
+      proposalId: true,
+      novelId: true,
+      chapterVersionId: true,
+      sourceBranchId: true,
       proposal: {
-        select: { payload: true, evidenceSetId: true, policyFingerprint: true },
+        select: {
+          id: true,
+          novelId: true,
+          chapterVersionId: true,
+          sourceBranchId: true,
+          kind: true,
+          sourceRevisionId: true,
+          payload: true,
+          evidenceSetId: true,
+          policyFingerprint: true,
+        },
       },
     },
   });
+  if (!outcome) return null;
+
+  // Proposal/outcome ownership: the outcome's proposal must agree on
+  // novel/chapter/branch, and the proposal kind must be CHAPTER_EXCEPTION.
+  const proposal = outcome.proposal;
   if (
-    !outcome ||
-    outcome.proposal.evidenceSetId !== input.latestSetId ||
-    outcome.proposal.policyFingerprint !== input.policyFingerprint
+    proposal.novelId !== outcome.novelId ||
+    proposal.chapterVersionId !== outcome.chapterVersionId ||
+    proposal.sourceBranchId !== outcome.sourceBranchId ||
+    proposal.kind !== "CHAPTER_EXCEPTION"
   ) {
     return null;
   }
-  const payload = outcome.proposal.payload as { claimIndices?: unknown };
-  let coveredIndices: number[] = [];
+
+  // Source provenance: must match the live context.
   if (
-    payload &&
-    Array.isArray(payload.claimIndices) &&
-    payload.claimIndices.every((i) => Number.isInteger(i))
+    proposal.sourceRevisionId !== context.headRevisionId ||
+    proposal.evidenceSetId !== latestSet.id ||
+    proposal.policyFingerprint !== context.policyFingerprint
   ) {
-    coveredIndices = payload.claimIndices as number[];
+    return null;
   }
-  return { outcomeId: outcome.id, coveredIndices };
+
+  // Strict payload validation: exact keys, nonempty, unique, bounded.
+  const payload = proposal.payload;
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const payloadKeys = Object.keys(payload as Record<string, unknown>);
+  if (payloadKeys.length !== 1 || payloadKeys[0] !== "claimIndices") {
+    return null;
+  }
+  const indices = (payload as { claimIndices: unknown }).claimIndices;
+  if (!Array.isArray(indices) || indices.length === 0) {
+    return null;
+  }
+  const seen = new Set<number>();
+  for (const i of indices) {
+    if (!Number.isInteger(i) || (i as number) < 0 || (i as number) >= liveClaimCount) {
+      return null;
+    }
+    if (seen.has(i as number)) {
+      return null; // duplicate index (e.g. [0,0]) — malformed
+    }
+    seen.add(i as number);
+  }
+  const coveredIndices = indices as number[];
+
+  // Coverage must refer to ACTUAL violating claims: run the deterministic
+  // assessor WITHOUT coverage and require each covered index to be ok:false
+  // in the live assessment. Covering a non-violating claim is malformed.
+  const claims: AssessmentClaimInput[] = latestSet.conflicts.map((c, idx) => ({
+    index: idx,
+    scale: c.scale,
+    span: { start: c.source.start, end: c.source.end },
+    quote: c.source.quote,
+  }));
+  const baseline = assessScaleDeterministic({
+    context,
+    claims,
+    exceptionCoveredIndices: [],
+    noOperativeConflict: latestSet.declaration === "NO_OPERATIVE_CONFLICT",
+  });
+  const violating = new Set(
+    baseline.claims.filter((c) => !c.ok).map((c) => c.index),
+  );
+  for (const i of coveredIndices) {
+    if (!violating.has(i)) {
+      return null;
+    }
+  }
+
+  return {
+    outcomeId: outcome.id,
+    proposalId: outcome.proposalId,
+    coveredIndices,
+  };
 }
 
 /**
@@ -501,13 +605,9 @@ export async function checkRetainedProofCompleteness(
 ): Promise<ProofCompletenessResult> {
   const { novelId, context, retained } = input;
 
-  const exception = await resolveWriterException(tx, {
+  const exception = await resolveApplicableExceptionStrict(tx, {
     novelId,
-    chapterVersionId: context.chapterVersion.id,
-    branchId: context.branch.id,
-    headRevisionId: context.headRevisionId,
-    latestSetId: context.latestSet?.id ?? null,
-    policyFingerprint: context.policyFingerprint,
+    context,
   });
   const expected = computeExpectedScaleProtocol({
     context,

@@ -1,5 +1,44 @@
 # Current Project State
 
+## 050B second repair dispatch — 2026-10-09
+
+The author authorized publishing the separately reviewed709ba66 rejection
+receipt and requested the next external repair prompt. Both source reviewers
+request changes; review_mutations_034 APPROVE the scoped CURRENT/GAP-119
+evidence record. Fetch this main update into work/nf-wf-050b-scale-review and
+repair ALL remaining findings, preserving the frozen contract and historical
+receipts. Required boundary proofs include a successful HIGH standing approval,
+stale quiet-evidence refusal, obsolete-version/invalid-exception refusal, atomic
+direct approval and the real saved-chapter UI/API flow. Passing current selected
+tests is not acceptance of those untested boundaries. No implementation merge
+or050C dispatch is authorized by this publication. GAP-039/GAP-119 stay OPEN.
+Prior main/no-commit statements describe the review boundary. Engram attribution
+is unavailable (GAP-021); these published records are the fallback handoff.
+
+## External 050B first repair re-review — 2026-10-09, 709ba66
+
+CHANGES REQUESTED by both separate reviewers; do not merge. Tenant ownership,
+HIGH mutation plumbing, branch-aware policy writes and review verdict/re-review
+repairs improved, but GAP-119 still records invalid UUID standing change-set ID,
+stale quiet-evidence bypass, obsolete-version approvals, invalid exception
+approvals and non-atomic direct approval. UI evidence/decision schemas and scale
+vocabulary remain wrong; selection races, context applicability, branch history
+and malformed-input handling still need correction. Required restore/approval/
+concurrency proofs and independent amendment attribution remain incomplete.
+
+Fresh local selected checks at exact709ba66:44/44 decision DB/private-migration/
+assessor/domain/classification tests and6/6 component/axe tests pass, no skips.
+Prisma generate/validate and ai-services/API/worker typechecks pass; submitted
+diff whitespace passes. Canvas warnings occurred in jsdom. These passes do not
+prove real saved-chapter UI, successful HIGH standing approval, old-snapshot
+restore or real route/worker races; those checks were not run. Web typecheck
+and changed-source lint were also not run.
+
+Only owned scratch databases were used; both dropped and absence verified.
+Working data/migration source preserved; main/client restored to b068227. No
+merge/commit/push or source repair. GAP-039/GAP-119 stay OPEN; no 050C dispatch.
+Engram attribution unavailable (GAP-021); this is the repair handoff fallback.
+
 ## 050B repair dispatch authorization — 2026-10-09
 
 The author authorized publishing the reviewed rejection receipt and requested

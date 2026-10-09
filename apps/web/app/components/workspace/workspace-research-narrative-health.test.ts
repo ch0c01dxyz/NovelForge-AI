@@ -449,11 +449,26 @@ describe("Antagonists", () => {
 });
 
 describe("NarrativePanel", () => {
-  it("renders all four tabs and keeps SCALE out of the readouts", async () => {
+  it("renders all five tabs including SCALE and keeps readouts reachable", async () => {
     apiMock.mockResolvedValue(null);
     const w = mount(NarrativePanel, { props });
-    expect(w.findAll('[role="tab"]')).toHaveLength(4);
-    await w.findAll('[role="tab"]')[3]!.trigger("click");
+    const tabs = w.findAll('[role="tab"]');
+    expect(tabs).toHaveLength(5);
+    expect(tabs.map((t) => t.text())).toEqual([
+      "workspace.narrative.panel.tabDna",
+      "workspace.narrative.panel.tabPolicies",
+      "workspace.narrative.panel.tabAntagonists",
+      "workspace.scaleReview.title",
+      "workspace.narrative.panel.tabReadouts",
+    ]);
+    // SCALE tab is reachable and renders the SCALE review surface.
+    await tabs[3]!.trigger("click");
+    await tick();
+    expect(w.text()).toContain("workspace.scaleReview.title");
+    // Readouts selected by accessible label, not numeric tab index.
+    await tabs
+      .find((t) => t.text() === "workspace.narrative.panel.tabReadouts")!
+      .trigger("click");
     await tick();
     expect(w.text()).toContain("workspace.narrative.readouts.drama.title");
     expect(w.text()).toContain("workspace.narrative.readouts.cooldown.title");
@@ -463,7 +478,10 @@ describe("NarrativePanel", () => {
   it("runs the drama-window readout and displays the result", async () => {
     apiMock.mockResolvedValue(null);
     const w = mount(NarrativePanel, { props });
-    await w.findAll('[role="tab"]')[3]!.trigger("click");
+    await w
+      .findAll('[role="tab"]')
+      .find((t) => t.text() === "workspace.narrative.panel.tabReadouts")!
+      .trigger("click");
     await w.findAll('input[inputmode="numeric"]')[0]!.setValue("7");
     apiMock.mockResolvedValueOnce({ withinWindow: true });
     await w.findAll("form")[0]!.trigger("submit.prevent");

@@ -2,11 +2,13 @@
 /**
  * Narrative workspace panel (NF-WF-016, Invariant 1.8).
  *
- * Tab shell: DNA | Policies | Antagonists | Readouts. The Readouts tab
+ * Tab shell: DNA | Policies | Antagonists | SCALE | Readouts. The Readouts tab
  * hosts the read-only assessment tools — drama-window, cooldown, and
  * patterns — as small forms whose results are displayed but never
- * persisted. There is NO assessment form for SCALE (GAP-039): the SCALE
- * policy payload is shown display-only inside the Policies tab.
+ * persisted. The SCALE tab (NF-WF-050B) hosts the deterministic SCALE review
+ * status, author standing/exception decisions and the shared publication
+ * gate checklist — all server-enforced; the UI shows the policy payload
+ * display-only and performs no AI calls (050C owns those).
  */
 import { ref } from "vue";
 import { useLocale } from "../../composables/useLocale";

@@ -3257,6 +3257,88 @@ commit or push. GAP-039/GAP-119 remain OPEN. Next: repair the two stale fixtures
 and comment, complete safe frozen regression checks, and separately verify the
 exact diff. Engram attribution unavailable (GAP-021); CURRENT is fallback handoff.
 
+### GAP-119 tenth repair acceptance run — 2026-10-09, f0cd711 + working tree
+
+**Acceptance actor:** separate actor (backends MODEL_UNVERIFIED per GAP-013).
+**Scope:** contract "Expected checks" + remaining scale API/worker regressions.
+**Environment:** Ubuntu 24.04, Node v24.20.0, pnpm 12.5.1; PostgreSQL 16.15
+(:5432) + Redis 7.0.15 (:6379). `DATABASE_URL` parent-provided with a fresh
+test-only password for the `novelforge_test` role (set via OS peer auth;
+transient, not stored); repo `.env` carries only a placeholder.
+**Correction to the ninth-repair entry above:** on THIS host the five
+regression databases (`novelforge_test_manuscript`, `novelforge_test_phase9`,
+`novelforge_test_publication`, `novelforge_test_stateconsumers`,
+`novelforge_test_publication_worker`) did NOT exist — verified via
+`pg_database` before the run. The tests' `DROP IF EXISTS + CREATE` therefore
+touched no unverified data; the five DBs were created fresh, owned by
+`novelforge_test`, and dropped after the run (cleanup verified below).
+Pre-existing scale-* DBs were left untouched (tests recreate their own).
+
+**Results (all OBSERVED 2026-10-09, fresh for this revision):**
+
+| Check | Result |
+|---|---|
+| `prisma generate` + `prisma validate` | pass |
+| scale-review (32) + scale-decisions (36) + scale-review-migration (2, `--testTimeout 120000`) | 70/70 |
+| scale-evidence + manuscript + narrative | 121/121 |
+| publication | 17/17 pass |
+| state-consumers | 30/32 — **2 FAILED** (see below) |
+| worker publication-jobs + scale-gate-fire + scale-gate-fire-scale | 28/28 |
+| 12 remaining scale API files (no-scale-receipt 5, exception-workspace 3, exception-strict 7, gate-publish, proof-completeness, review-checklist 12, review-context, ctx-gate-agreement, gate-callers, gate-live-semantics, policy-direct, evidence-migration 2) | 58/58 |
+| story-versioning restore-scope | 8/8 (pure, no DB) |
+| UI contract suites ×5 (`--maxWorkers 1`): ScaleReviewPanel, ScaleReviewPanel.axe, workspace-research-narrative-health (repaired fixtures), useReceipts, EvaluationReceipts | 39/39 |
+| typechecks ai-services / api / worker / web | 0 errors each |
+| ESLint (final-text-review-gate.ts, scale-decision-routes.ts, narrative-health test) | 0 errors (NarrativePanel.vue ignored by config — scoping note, not a failure) |
+| `git diff --check` | clean |
+
+**The 2 state-consumers failures — RECORDED, not fixed (no source edits made):**
+
+1. `malformed DRAMA_GAP/COOLDOWN/SCALE writes → 409 MALFORMED_POLICY`:
+   `SCALE: expected 400 to be 409`. Mechanism (source-traced): the first SCALE
+   case `{ standing: { scale: "EMPIRE", access: [], reputation: 50 } }` passes
+   `isValidScalePayload` ("EMPIRE" ∈ NARRATIVE_SCALES; the validator checks
+   `access.length > 8` but does NOT enforce the documented non-empty access),
+   so the write reaches `putScalePolicy`, where the missing `reason` throws
+   `MemoryError(400, "INVALID_INPUT")`. The 050B first repair (709ba66)
+   introduced `putScalePolicy` with the reason/authorDecision safeguards;
+   none of the involved files (narrative.ts, policy-errors.ts,
+   platform-routes.ts, narrative-routes.ts, the test) changed in repairs
+   2–10 (verified via git diff). **Pre-existing since 709ba66.**
+2. `IN_REVIEW→PUBLISHED is gated on a FAIL receipt (NF-WF-012, GAP-045)`:
+   `expected 409 to be 200` at the initial IN_REVIEW→PUBLISHED (line 742).
+   Mechanism (source-traced): the eighth repair made new no-SCALE reviews
+   write a pinned NOT_CONFIGURED protocol; `setStatus` DRAFT→IN_REVIEW is a
+   covered mutation taking head CAS (R1→R2); the subsequent PUBLISHED gate
+   recomputes the expected protocol from live context
+   (`pins.sourceRevisionId` = R2) and it mismatches the retained protocol
+   (pinned R1) → REVIEW_STALE. At 88883c4 the receipt was NULL and the legacy
+   path had no head comparison, so the test passed. **Regression introduced
+   by the eighth repair (97da59c).** Whether the intended author flow
+   (review → IN_REVIEW → PUBLISHED with one review) should survive a
+   status-change head advance is a product-semantics question for the
+   author — not fixed here.
+
+Both failures are in the contract's "Expected checks" list but were absent
+from all repair-round selected suites (146/146, 150/150, 171/171), which is
+why they surfaced only in this first full acceptance run. **Full 050B
+acceptance is NOT green.** Fixing either requires a bounded, separately
+reviewed change (validator non-empty-access enforcement and/or
+status-change/head-pinning semantics) — proposed for author decision, not
+implemented.
+
+**Evidence boundaries (not claimed):** component tests are jsdom/Fastify
+inject (no live browser workflow executed); worker tests call
+`fireScheduledPublication` directly (no BullMQ queue delivery executed);
+worker publication-jobs used isolated Redis DB index 15; Ubuntu migration
+4/4 pass does not establish a permanent Windows cleanup fix.
+
+**Cleanup:** the five newly created regression DBs
+(manuscript/phase9/publication/stateconsumers/publication_worker) were
+dropped after the run; `pg_database` verified to match the pre-run list
+(14 pre-existing `novelforge_test*` DBs, all owned by `novelforge_test`);
+no temp dirs left behind. The transient test-role password was wiped
+(`/tmp/nf_test_pw` removed).
+
 ### GAP-119 eighth repair re-review — 2026-10-09, 97da59c
 
 **Status:** OPEN; CHANGES REQUESTED by review_mutations_034 and

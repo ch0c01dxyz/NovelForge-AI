@@ -186,7 +186,7 @@ describe("ScaleReviewPanel Slice 3", () => {
     const set = makeEvidenceSet(SET1, 1, null);
     apiImpl = async (url: string) => {
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, SET1), receipt: null };
+        return {  context: makeContext(V1, R1, SET1), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence/history")) {
         return { items: [], nextBeforeSequence: null };
@@ -231,7 +231,7 @@ describe("ScaleReviewPanel Slice 3", () => {
     const set2 = makeEvidenceSet("77777777-7777-7777-7777-777777777777", 2, SET1);
     apiImpl = async (url: string) => {
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, set2.id), receipt: null };
+        return {  context: makeContext(V1, R1, set2.id), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence/history")) {
         return { items: [set2, set1], nextBeforeSequence: null };
@@ -273,7 +273,7 @@ describe("ScaleReviewPanel Slice 3", () => {
     const staleReceipt = makeReceipt(V1, R1, SET1, FP);
     apiImpl = async (url: string) => {
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R2, SET1), receipt: staleReceipt };
+        return {  context: makeContext(V1, R2, SET1), receipt: staleReceipt , applicability: { status: "STALE", reasons: ["evidenceSetId"] }, checklist: [] };
       }
       if (url.includes("scale-evidence/history")) {
         return { items: [], nextBeforeSequence: null };
@@ -305,7 +305,7 @@ describe("ScaleReviewPanel Slice 3", () => {
     const freshReceipt = makeReceipt(V1, R1, SET1, FP);
     apiImpl = async (url: string) => {
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, SET1), receipt: freshReceipt };
+        return {  context: makeContext(V1, R1, SET1), receipt: freshReceipt , applicability: { status: "FRESH", reasons: [] }, checklist: [] };
       }
       if (url.includes("scale-evidence/history")) {
         return { items: [], nextBeforeSequence: null };
@@ -341,7 +341,7 @@ describe("ScaleReviewPanel Slice 3", () => {
     const staleReceipt = makeReceipt(V1, R1, SET1, FP);
     apiImpl = async (url: string) => {
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, SET2), receipt: staleReceipt };
+        return {  context: makeContext(V1, R1, SET2), receipt: staleReceipt , applicability: { status: "STALE", reasons: ["evidenceSetId"] }, checklist: [] };
       }
       if (url.includes("scale-evidence/history")) {
         return { items: [], nextBeforeSequence: null };
@@ -375,7 +375,7 @@ describe("ScaleReviewPanel Slice 3", () => {
       if (url.includes("scale-review-context")) {
         const ctx = makeContext(V1, R1, SET1);
         ctx.policyFingerprint = newFp;
-        return { context: ctx, receipt: staleReceipt };
+        return {  context: ctx, receipt: staleReceipt , applicability: { status: "STALE", reasons: ["policyFingerprint"] }, checklist: [] };
       }
       if (url.includes("scale-evidence/history")) {
         return { items: [], nextBeforeSequence: null };

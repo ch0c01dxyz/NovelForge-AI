@@ -21,6 +21,7 @@ import {
   readScaleContext,
   parseScaleReviewProtocol,
   isProtocolLiveConsistent,
+  checkRetainedProofCompleteness,
   isValidScalePayload,
   type ScaleDecisionServices,
   type ScaleReviewContext,
@@ -162,22 +163,36 @@ async function getMembership(
 }
 
 /**
- * Server-derived receipt applicability (NF-WF-050B fourth repair).
+ * Server-derived receipt applicability (NF-WF-050B fourth repair; sixth
+ * repair wires the shared complete consistency check).
  *
  * Compares the retained protocol pins verbatim against the SAME coherent
  * context snapshot the route just read — never against a separately fetched
- * state. Statuses:
+ * state — then applies the SHARED complete proof-consistency check
+ * (`checkRetainedProofCompleteness`), the same check the release gate
+ * (`checkFinalTextReviewGate`) applies. This keeps context freshness in
+ * agreement with the gate: a retained receipt the gate would reject as
+ * REVIEW_STALE is never labeled FRESH here.
+ *
+ * The fast-paths (pin comparison, `isProtocolLiveConsistent`) are preserved:
+ * they reject cheaply before the DB-backed completeness check runs.
+ *
+ * Statuses:
  * - ABSENT: no receipt row for this version.
  * - LEGACY: receipt exists but scaleReview is null/malformed (never trusted).
- * - STALE: pins mismatch the current snapshot or the protocol is
- *   live-inconsistent; `reasons` names every mismatched pin.
- * - FRESH: all pins match and the protocol is live-consistent.
+ * - STALE: pins mismatch the current snapshot, the protocol is
+ *   live-inconsistent, or the retained proof does not match the live
+ *   assessment; `reasons` names every mismatch.
+ * - FRESH: all pins match, the protocol is live-consistent, AND the
+ *   retained proof matches the deterministic live assessment exactly.
  */
-export function deriveReceiptApplicability(
+export async function deriveReceiptApplicability(
+  tx: Pick<NovelForgeDb, "scaleDecisionOutcome">,
+  novelId: string,
   receipt: { scaleReview: ScaleReviewProtocol | null } | null,
   context: ScaleReviewContext,
   applicableException: { outcomeId: string; proposalId: string } | null,
-): { status: "ABSENT" | "LEGACY" | "STALE" | "FRESH"; reasons: string[] } {
+): Promise<{ status: "ABSENT" | "LEGACY" | "STALE" | "FRESH"; reasons: string[] }> {
   if (!receipt) return { status: "ABSENT", reasons: ["no receipt"] };
   const protocol = receipt.scaleReview;
   if (!protocol) {
@@ -199,7 +214,24 @@ export function deriveReceiptApplicability(
   if (!isProtocolLiveConsistent(protocol, liveHardness)) {
     reasons.push("live-consistency");
   }
-  return reasons.length === 0 ? { status: "FRESH", reasons } : { status: "STALE", reasons };
+  if (reasons.length > 0) {
+    return { status: "STALE", reasons };
+  }
+  // Shared complete consistency check (sixth repair, GAP-119 finding 2):
+  // reuse the deterministic assessor to compute the EXPECTED protocol from
+  // validated live context + applicable exception coverage, then compare
+  // the complete normalized protocol (state, blocking, claims, missingData,
+  // pins). A matching-pin receipt whose retained proof contradicts the live
+  // assessment is STALE — the gate would reject it as REVIEW_STALE.
+  const completeness = await checkRetainedProofCompleteness(tx, {
+    novelId,
+    context,
+    retained: protocol,
+  });
+  if (completeness.status === "mismatch") {
+    return { status: "STALE", reasons: ["proof-incomplete", ...completeness.reasons] };
+  }
+  return { status: "FRESH", reasons: [] };
 }
 
 /**
@@ -465,7 +497,12 @@ export function registerScaleDecisionRoutes(
 
           // Server-derived receipt applicability against the SAME coherent
           // context snapshot, plus the deterministic missing-data checklist.
-          const applicability = deriveReceiptApplicability(
+          // The applicability check reuses the shared complete proof-
+          // consistency check so context freshness agrees with the release
+          // gate (sixth repair, GAP-119 finding 2).
+          const applicability = await deriveReceiptApplicability(
+            tx as Pick<NovelForgeDb, "scaleDecisionOutcome">,
+            params.novelId,
             receipt,
             context,
             applicableException,

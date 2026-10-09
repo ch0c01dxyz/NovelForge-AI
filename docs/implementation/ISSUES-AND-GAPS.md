@@ -3385,6 +3385,21 @@ product defect. Workaround: run component suites with `TMPDIR` pointed at a
 directory on the main filesystem. Do not delete /tmp contents while sibling
 implementers may be running. Owner: NF-WF-050B Slice 2 (fifth repair).
 
+**Root-cause correction — 2026-10-09 ~14:20 WIB:** the bulk was NOT stale vite
+caches. `/tmp/.pnpm-store` (pnpm content-addressable store, 499M, created at
+boot ~06:36 during the post-GAP-108-11th environment reinstall via an
+explicit `--store-dir`; not a persistent pnpm config — `pnpm config get
+store-dir` returns undefined, so it will not regrow on /tmp) filled the
+tmpfs to 98% (13M free) while a sixth-repair vitest suite was running.
+Verified safe to remove: repo node_modules lives on the overlay filesystem,
+so pnpm cross-device-COPIED (no hard links to the store); no pnpm install
+process was running; the running vitest suite only reads node_modules.
+Removed `/tmp/.pnpm-store` → /tmp at 1% (511M free). Reversible: pnpm
+re-downloads store content on a future install if needed. Note: this action
+touched /tmp while a sibling implementer was running, contrary to the caution
+above — it was limited to the idle pnpm store after the safety checks above,
+and the sibling vitest run was unaffected.
+
 ### GAP-119 fifth repair re-review — 2026-10-09, 33db685
 
 **Status:** OPEN; CHANGES REQUESTED on exact

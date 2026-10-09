@@ -203,9 +203,15 @@ describe("ScaleReviewPanel Slice 5", () => {
         });
       }
       if (url.includes("scale-review-context")) {
+        // Applicability follows the server truth: STALE when the committed
+        // set (SET2) differs from the receipt's pinned set (SET1).
+        const stale = committedSetId !== SET1;
         return {
           context: makeContext(committedSetId),
           receipt: makeReceipt(SET1),
+          applicability: stale
+            ? { status: "STALE", reasons: ["evidenceSetId"] }
+            : { status: "FRESH", reasons: [] },
           checklist: [],
         };
       }
@@ -257,7 +263,7 @@ describe("ScaleReviewPanel Slice 5", () => {
         return {
           context: makeContext(null),
           receipt: null,
-          checklist: [
+          applicability: { status: "FRESH", reasons: [] }, checklist: [
             {
               code: "RECEIPT_ABSENT",
               severity: "fail",
@@ -299,7 +305,7 @@ describe("ScaleReviewPanel Slice 5", () => {
         return {
           context: makeContext(null),
           receipt: null,
-          checklist: [
+          applicability: { status: "FRESH", reasons: [] }, checklist: [
             {
               code: "RECEIPT_ABSENT",
               severity: "fail",
@@ -335,7 +341,7 @@ describe("ScaleReviewPanel Slice 5", () => {
         return {
           context: makeContext(null),
           receipt: null,
-          checklist: [
+          applicability: { status: "FRESH", reasons: [] }, checklist: [
             {
               code: "SOME_FUTURE_CODE",
               severity: "warn",

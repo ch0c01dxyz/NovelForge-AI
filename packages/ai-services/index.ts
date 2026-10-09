@@ -146,7 +146,11 @@ export {
   parseScaleReviewProtocol,
   isProtocolLiveConsistent,
   isProtocolLiveStateConsistent,
+  computeExpectedScaleProtocol,
+  diffRetainedProof,
+  checkRetainedProofCompleteness,
   type GateCode,
   type GateResult,
   type ReviewGateTx,
+  type ProofCompletenessResult,
 } from "./src/final-text-review-gate.ts";

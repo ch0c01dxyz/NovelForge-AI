@@ -105,6 +105,11 @@ interface ScaleReviewContextResponse {
     revisionId: string;
     createdAt: string;
   } | null;
+  /** Server-derived receipt applicability (GAP-119 sixth repair). */
+  applicability: {
+    status: "ABSENT" | "LEGACY" | "STALE" | "FRESH";
+    reasons: string[];
+  };
   /** Server-derived deterministic checklist (GAP-119 fifth repair). */
   checklist: Array<{
     code: string;
@@ -192,29 +197,6 @@ function statusErrorKey(e: unknown): string {
   return t("workspace.scaleReview.errors.network");
 }
 
-/**
- * Server-computed receipt applicability: a receipt is FRESH only when every
- * pin in its retained protocol matches the current coherent context
- * snapshot. Any mismatch (version, branch, head revision, evidence set,
- * policy fingerprint, exception) means the underlying data changed → STALE.
- * Never marks a receipt fresh unconditionally.
- */
-function isReceiptApplicable(
-  receipt: ScaleReviewContextResponse["receipt"],
-  ctx: ScaleReviewContext,
-): boolean {
-  const pins = receipt?.scaleReview?.pins;
-  if (!receipt || !pins) return false;
-  return (
-    pins.chapterVersionId === ctx.chapterVersion.id &&
-    pins.branchId === ctx.branch.id &&
-    pins.sourceRevisionId === ctx.headRevisionId &&
-    pins.evidenceSetId === (ctx.latestSet?.id ?? null) &&
-    pins.policyFingerprint === ctx.policyFingerprint &&
-    pins.exceptionOutcomeId === (ctx.applicableException?.outcomeId ?? null)
-  );
-}
-
 async function loadContext(selSeq: number, opSeq: number): Promise<void> {
   if (!hasSavedVersion.value) {
     loadState.value = "idle";
@@ -249,8 +231,11 @@ async function loadContext(selSeq: number, opSeq: number): Promise<void> {
     // Sync the review display from the receipt's protocol (truthful).
     review.value = res.receipt?.scaleReview ?? null;
     // Server-computed applicability from the coherent snapshot — never
-    // unconditional freshness.
-    reviewStale.value = !isReceiptApplicable(res.receipt, res.context);
+    // unconditional freshness. Uses the server's shared completeness check
+    // (GAP-119 sixth repair), not the client-side pin check, so context
+    // freshness agrees with the release gate. Falls back to stale when the
+    // server omits applicability (defensive; the real endpoint always sends it).
+    reviewStale.value = res.applicability?.status !== "FRESH";
     loadState.value = "loaded";
     await loadProposals(selSeq, opSeq);
   } catch (e) {
@@ -422,24 +407,15 @@ async function rerunReview(): Promise<void> {
         body: JSON.stringify({ chapterVersionId: versionId }),
       },
     );
-    // Recheck scope after await. If THIS operation was superseded by a newer
-    // operation, the review still committed server-side (receipt upsert):
-    // reconcile the current selection with a fresh read identity so the UI
-    // never displays pre-commit data as current.
+    // Recheck scope after await. The review committed server-side (receipt
+    // upsert) whether or not THIS operation was superseded: refresh the
+    // coherent context with a fresh read identity so receipt, applicability,
+    // and server checklist update together from the server (GAP-119 sixth
+    // repair, finding 3). This handles ABSENT-to-fresh and STALE-to-fresh
+    // transitions on the normal non-superseded path too; loadContext syncs
+    // review/reviewStale truthfully from the server's receipt.
     if (selSeq !== selectionSeq || isUnmounted) return;
-    if (opSeq !== operationSeq) {
-      await reconcileSelection();
-      return;
-    }
-    review.value = res.scaleReview;
-    // Just computed against the current context: recompute applicability
-    // from the returned protocol pins when context is available.
-    reviewStale.value = context.value
-      ? !isReceiptApplicable(
-          res.scaleReview ? { scaleReview: res.scaleReview } as ScaleReviewContextResponse["receipt"] : null,
-          context.value,
-        )
-      : false;
+    await reconcileSelection();
   } catch (e) {
     if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     reviewError.value = statusErrorKey(e);

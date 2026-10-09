@@ -83,6 +83,26 @@ function codes(items: Array<{ code: string }>): string[] {
   return items.map((i) => i.code);
 }
 
+/**
+ * Fake tx for deriveReceiptApplicability: the completeness check resolves
+ * the writer's exception via scaleDecisionOutcome.findFirst. Returning null
+ * means no applicable exception (matches the mock contexts' null
+ * exceptionOutcomeId pins).
+ */
+const FAKE_TX = {
+  scaleDecisionOutcome: { findFirst: async () => null },
+} as never;
+const FAKE_NOVEL_ID = "novel-1";
+
+/** Awaitable wrapper: deriveReceiptApplicability is async (sixth repair). */
+function applicabilityOf(
+  receipt: { scaleReview: ScaleReviewProtocol | null } | null,
+  ctx: ScaleReviewContext,
+  applicableException: { outcomeId: string; proposalId: string } | null = null,
+) {
+  return deriveReceiptApplicability(FAKE_TX, FAKE_NOVEL_ID, receipt, ctx, applicableException);
+}
+
 function assertFullText(items: Array<{ code: string; explanation: string; example: string; nextAction: string }>) {
   for (const item of items) {
     expect(item.explanation.trim().length, `${item.code} explanation`).toBeGreaterThan(0);
@@ -92,9 +112,9 @@ function assertFullText(items: Array<{ code: string; explanation: string; exampl
 }
 
 describe("deriveChecklist", () => {
-  it("derives RECEIPT_ABSENT when no receipt exists", () => {
+  it("derives RECEIPT_ABSENT when no receipt exists", async () => {
     const ctx = makeContext();
-    const applicability = deriveReceiptApplicability(null, ctx, null);
+    const applicability = await applicabilityOf(null, ctx);
     expect(applicability.status).toBe("ABSENT");
     const items = deriveChecklist(ctx, null, applicability);
     expect(codes(items)).toContain("RECEIPT_ABSENT");
@@ -103,19 +123,19 @@ describe("deriveChecklist", () => {
     assertFullText(items);
   });
 
-  it("derives RECEIPT_LEGACY when scaleReview is missing or malformed", () => {
+  it("derives RECEIPT_LEGACY when scaleReview is missing or malformed", async () => {
     const ctx = makeContext();
-    const applicability = deriveReceiptApplicability({ scaleReview: null }, ctx, null);
+    const applicability = await applicabilityOf({ scaleReview: null }, ctx);
     expect(applicability.status).toBe("LEGACY");
     const items = deriveChecklist(ctx, { scaleReview: null }, applicability);
     expect(codes(items)).toContain("RECEIPT_LEGACY");
     assertFullText(items);
   });
 
-  it("derives RECEIPT_STALE naming the mismatched pins", () => {
+  it("derives RECEIPT_STALE naming the mismatched pins", async () => {
     const ctx = makeContext();
     const protocol = makeProtocol({ evidenceSetId: SET_OLD });
-    const applicability = deriveReceiptApplicability({ scaleReview: protocol }, ctx, null);
+    const applicability = await applicabilityOf({ scaleReview: protocol }, ctx);
     expect(applicability.status).toBe("STALE");
     expect(applicability.reasons).toContain("evidenceSetId");
     const items = deriveChecklist(ctx, { scaleReview: protocol }, applicability);
@@ -126,14 +146,14 @@ describe("deriveChecklist", () => {
     assertFullText(items);
   });
 
-  it("derives STANDING_ABSENT when no SCALE policy is configured", () => {
+  it("derives STANDING_ABSENT when no SCALE policy is configured", async () => {
     const ctx = makeContext({ policy: null });
-    const items = deriveChecklist(ctx, null, deriveReceiptApplicability(null, ctx, null));
+    const items = deriveChecklist(ctx, null, await applicabilityOf(null, ctx));
     expect(codes(items)).toContain("STANDING_ABSENT");
     assertFullText(items);
   });
 
-  it("derives STANDING_MALFORMED when the standing payload does not validate", () => {
+  it("derives STANDING_MALFORMED when the standing payload does not validate", async () => {
     const ctx = makeContext({
       policy: {
         id: "p1",
@@ -143,14 +163,14 @@ describe("deriveChecklist", () => {
         payload: { standing: { scale: "BOGUS", access: [], reputation: 40 } },
       },
     });
-    const items = deriveChecklist(ctx, null, deriveReceiptApplicability(null, ctx, null));
+    const items = deriveChecklist(ctx, null, await applicabilityOf(null, ctx));
     expect(codes(items)).toContain("STANDING_MALFORMED");
     const malformed = items.find((i) => i.code === "STANDING_MALFORMED")!;
     expect(malformed.severity).toBe("fail");
     assertFullText(items);
   });
 
-  it("does not flag malformed standing for a valid empty-access standing", () => {
+  it("does not flag malformed standing for a valid empty-access standing", async () => {
     const ctx = makeContext({
       policy: {
         id: "p1",
@@ -160,19 +180,19 @@ describe("deriveChecklist", () => {
         payload: { standing: { scale: "VILLAGE", access: [], reputation: 50 } },
       },
     });
-    const items = deriveChecklist(ctx, null, deriveReceiptApplicability(null, ctx, null));
+    const items = deriveChecklist(ctx, null, await applicabilityOf(null, ctx));
     expect(codes(items)).not.toContain("STANDING_MALFORMED");
     expect(codes(items)).not.toContain("STANDING_ABSENT");
   });
 
-  it("derives EVIDENCE_ABSENT when no evidence set exists", () => {
+  it("derives EVIDENCE_ABSENT when no evidence set exists", async () => {
     const ctx = makeContext({ latestSet: null });
-    const items = deriveChecklist(ctx, null, deriveReceiptApplicability(null, ctx, null));
+    const items = deriveChecklist(ctx, null, await applicabilityOf(null, ctx));
     expect(codes(items)).toContain("EVIDENCE_ABSENT");
     assertFullText(items);
   });
 
-  it("derives EVIDENCE_STALE when the set source revision differs from the head", () => {
+  it("derives EVIDENCE_STALE when the set source revision differs from the head", async () => {
     const ctx = makeContext({
       latestSet: {
         id: SET1,
@@ -190,12 +210,60 @@ describe("deriveChecklist", () => {
         createdAt: new Date(),
       },
     });
-    const items = deriveChecklist(ctx, null, deriveReceiptApplicability(null, ctx, null));
+    const items = deriveChecklist(ctx, null, await applicabilityOf(null, ctx));
     expect(codes(items)).toContain("EVIDENCE_STALE");
     assertFullText(items);
   });
 
-  it("returns the protocol missingData when the receipt is FRESH", () => {
+  it("returns the protocol missingData when the receipt is FRESH", async () => {
+    // Assessor-consistent fixture: no evidence set -> the deterministic
+    // assessor produces INCOMPLETE + MISSING_EVIDENCE_SET (blocking, HARD).
+    // The retained protocol must match the assessor output exactly to be
+    // FRESH under the shared completeness check (sixth repair).
+    const ctx = makeContext({ latestSet: null });
+    const protocol: ScaleReviewProtocol = {
+      protocol: 1,
+      state: "INCOMPLETE",
+      blocking: true,
+      pins: {
+        chapterVersionId: V1,
+        branchId: B1,
+        sourceRevisionId: R1,
+        evidenceSetId: null,
+        policyFingerprint: FP,
+        exceptionOutcomeId: null,
+      },
+      claims: [],
+      missingData: [
+        {
+          code: "MISSING_EVIDENCE_SET",
+          field: "evidenceSet",
+          reason: "No SCALE evidence set exists for this branch/version",
+          explanation:
+            "SCALE review requires an author-appended evidence set for the current branch and chapter version.",
+          example:
+            "Example (hypothetical): append an evidence set with ACTION/STAKES/CONSEQUENCE claims, or declare no operative conflict.",
+          nextAction:
+            "Append a SCALE evidence set via the 050A surface, or declare NO_OPERATIVE_CONFLICT.",
+        },
+      ],
+    };
+    const applicability = await applicabilityOf({ scaleReview: protocol }, ctx);
+    expect(applicability.status).toBe("FRESH");
+    const items = deriveChecklist(ctx, { scaleReview: protocol }, applicability);
+    expect(codes(items)).toContain("MISSING_EVIDENCE_SET");
+    const md = items.find((i) => i.code === "MISSING_EVIDENCE_SET")!;
+    expect(md.severity).toBe("fail");
+    expect(md.explanation).toContain("author-appended evidence set");
+    assertFullText(items);
+  });
+
+  it("labels an internally inconsistent WITHIN_REACH receipt STALE (completeness)", async () => {
+    // Sixth repair, GAP-119 finding 2: a WITHIN_REACH receipt with
+    // non-empty missingData passes the pin and live-consistency fast-paths
+    // but contradicts the deterministic assessor (which never emits
+    // missingData for WITHIN_REACH). The shared completeness check must
+    // label it STALE so context freshness agrees with the release gate.
     const ctx = makeContext();
     const protocol = makeProtocol();
     protocol.missingData = [
@@ -208,21 +276,18 @@ describe("deriveChecklist", () => {
         nextAction: "Server next action.",
       },
     ];
-    const applicability = deriveReceiptApplicability({ scaleReview: protocol }, ctx, null);
-    expect(applicability.status).toBe("FRESH");
+    const applicability = await applicabilityOf({ scaleReview: protocol }, ctx);
+    expect(applicability.status).toBe("STALE");
+    expect(applicability.reasons).toContain("proof-incomplete");
     const items = deriveChecklist(ctx, { scaleReview: protocol }, applicability);
-    expect(codes(items)).toContain("MISSING_EVIDENCE_SET");
-    const md = items.find((i) => i.code === "MISSING_EVIDENCE_SET")!;
-    expect(md.explanation).toBe("Server explanation.");
-    expect(md.example).toBe("Server example.");
-    expect(md.nextAction).toBe("Server next action.");
+    expect(codes(items)).toContain("RECEIPT_STALE");
     assertFullText(items);
   });
 
-  it("returns an empty checklist when everything is fresh and complete", () => {
+  it("returns an empty checklist when everything is fresh and complete", async () => {
     const ctx = makeContext();
     const protocol = makeProtocol();
-    const applicability = deriveReceiptApplicability({ scaleReview: protocol }, ctx, null);
+    const applicability = await applicabilityOf({ scaleReview: protocol }, ctx);
     expect(applicability.status).toBe("FRESH");
     const items = deriveChecklist(ctx, { scaleReview: protocol }, applicability);
     expect(items).toEqual([]);

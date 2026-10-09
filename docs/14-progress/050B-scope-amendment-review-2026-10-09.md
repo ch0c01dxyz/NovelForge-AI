@@ -321,3 +321,113 @@ fifth repair (Slice 3). Implements GAP-119 fourth repair re-review finding 6:
 "Regularize every additional path outside the frozen allowlist." Amendments
 1–4 above are unchanged; their independent review
 (`050B-scope-amendment-independent-review-2026-10-09.md`) stands.
+
+### Amendment 13: `apps/api/src/scale-proof-completeness.test.ts` (NEW)
+
+**What:** 5 DB-backed tests (sixth repair, finding 1): the shared complete
+proof-consistency check. 4 negatives (WITHIN_REACH/empty-claims/matching-pins
+under HARD with ABSENT evidence, STALE evidence, MALFORMED standing,
+inconsistent exception/claim coverage) + 1 positive (genuine WITHIN_REACH
+with real claims passes).
+
+**Justification:** GAP-119 required negative proofs for absent/stale/malformed
+sources and inconsistent exception/claim coverage against the complete
+producer/live comparison.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. Amendment
+REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+### Amendment 14: `apps/api/src/scale-context-gate-agreement.test.ts` (NEW)
+
+**What:** DB-backed tests (sixth repair, finding 2): the context endpoint's
+applicability agrees with the release gate for contradictory retained
+receipts. A gate-rejected receipt is never labeled FRESH by the context
+endpoint.
+
+**Justification:** GAP-119 required actual context endpoint responses tested
+against gate results, including stale checklist guidance.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. Amendment
+REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+### Amendment 15: `apps/web/app/components/workspace/ScaleReviewPanel.slice6.test.ts` (NEW)
+
+**What:** 3 component tests + 1 author-workflow test (4 total) (sixth
+repair, finding 3): successful review refreshes coherent context after
+EVERY successful review (ABSENT-to-fresh and STALE-to-fresh transitions
+update receipt, applicability and checklist); busy-state cleanup preserved.
+Plus 1 complete author-workflow test (proposal → decision → re-review)
+against real response shapes.
+
+**Justification:** GAP-119 required ABSENT-to-fresh and STALE-to-fresh
+transition proofs and author-workflow acceptance evidence.
+
+**Allowlist status:** NOT in the contract's explicit allowlist (same as
+Amendment 8). Amendment REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+### Amendment 16: `apps/api/src/scale-gate-callers.test.ts` (NEW)
+
+**What:** 4 DB-backed tests (sixth repair, acceptance): the REAL API route
+callers of the shared SCALE gate. PATCH .../status (setStatus) with a
+contradictory retained receipt → 409 REVIEW_STALE; genuine receipt from the
+real review route → 200; save-vs-setStatus race → consistent outcome, never
+a 500; DRAFT→IN_REVIEW with contradictory receipt → 409.
+
+**Justification:** GAP-119 required real caller/lock/race and refusal
+evidence through actual API routes, not DB-backed helpers alone.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. Amendment
+REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+### Amendment 17: `apps/worker/src/scale-gate-fire.test.ts` (NEW)
+
+**What:** 3 DB-backed tests (sixth repair, acceptance): the REAL scheduled
+worker (`fireScheduledPublication`) with SCALE gate scenarios. Contradictory
+retained receipt → refused + REVIEW_STALE + UNPUBLISHED (audit-logged);
+genuine legacy PASS receipt with no SCALE rows → published (legacy
+compatibility); no receipt → refused + REVIEW_STALE.
+
+**Justification:** GAP-119 required actual scheduled-worker execution with
+SCALE gate checks, not mocked workers.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. Amendment
+REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+## Review Assessment (Amendments 13–17)
+
+All 5 additional amendments are:
+- **Bounded:** Each affects a single new test file with a narrow, well-defined scope.
+- **Documented:** Justification and contract impact recorded above.
+- **Non-weakening:** None relax contract requirements; all 5 are test-only.
+
+## Author Action Required (Amendments 13–17)
+
+**The author (Klein) is requested to:**
+1. Review the 5 additional amendments above.
+2. Record APPROVE or CHANGES_REQUESTED for the scope amendments.
+3. If approved, the amendments are regularized per the contract procedure.
+
+**This record does NOT claim author approval.** Approval must be explicitly
+recorded by the author. Until then, GAP-119 remains OPEN on the scope-amendment
+item.
+
+---
+
+*Sixth-repair note (2026-10-09): Amendments 13–17 added by the Slice 3
+implementer. A distinct independent review of Amendments 13–17 follows
+in a separate record. Engram unavailable (GAP-021); file-based handoff.*

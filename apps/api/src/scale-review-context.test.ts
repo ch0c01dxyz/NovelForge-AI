@@ -417,6 +417,25 @@ describe("scale-review-context coherence", () => {
   it("returns FRESH applicability and the protocol checklist for a matching receipt", async () => {
     const f = await seedFixture();
     const app = await buildTestApp(f.userId);
+    // Genuinely consistent fixture (sixth repair): the evidence set declares
+    // NO_OPERATIVE_CONFLICT, so the deterministic assessor produces
+    // NO_OPERATIVE_CONFLICT with empty claims/missingData. The retained
+    // receipt must match the assessor output exactly to be FRESH under the
+    // shared completeness check.
+    const set = await db.scaleEvidenceSet.create({
+      data: {
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        chapterVersionId: f.chapterVersionId,
+        sourceBranchId: f.branchId,
+        sourceRevisionId: f.headRevisionId,
+        sequence: 1,
+        declaration: "NO_OPERATIVE_CONFLICT",
+        explanation: "quiet chapter",
+        conflictsJson: [],
+        actorUserId: f.userId,
+      },
+    });
     const protocol = {
       protocol: 1,
       state: "NO_OPERATIVE_CONFLICT",
@@ -425,7 +444,7 @@ describe("scale-review-context coherence", () => {
         chapterVersionId: f.chapterVersionId,
         branchId: f.branchId,
         sourceRevisionId: f.headRevisionId,
-        evidenceSetId: null,
+        evidenceSetId: set.id,
         policyFingerprint: f.policyFingerprint,
         exceptionOutcomeId: null,
       },

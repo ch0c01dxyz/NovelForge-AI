@@ -23,10 +23,14 @@ import type { NovelForgeDb } from "@novelforge/database";
 import { NARRATIVE_SCALES } from "@novelforge/narrative-rhythm";
 import {
   readScaleContext,
+  type ScaleReviewContext,
   type ScaleReviewContextTx,
 } from "./scale-evidence.ts";
-import { fingerprintScalePolicy } from "./scale-review-types.ts";
 import type { ScaleReviewProtocol, ScaleReviewPins } from "./scale-review-types.ts";
+import {
+  assessScaleDeterministic,
+  type AssessmentClaimInput,
+} from "./scale-decisions.ts";
 
 export type GateCode =
   | "REVIEW_STALE"
@@ -283,6 +287,241 @@ export function isProtocolLiveStateConsistent(
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// Complete producer/live proof consistency (NF-WF-050B sixth repair, GAP-119)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the applicable approved CHAPTER_EXCEPTION using the receipt
+ * writer's EXACT logic (`final-text-review.ts`).
+ *
+ * The writer finds the LATEST (by sequence) APPROVE outcome for a
+ * CHAPTER_EXCEPTION proposal matching (novel, version, branch, kind, head),
+ * then verifies evidenceSetId and policyFingerprint in JS. If the latest
+ * does not match those, NO exception applies — even if an older one would.
+ * This differs from a WHERE-clause filter; replicating it exactly is
+ * required for the completeness comparison to be sound.
+ */
+async function resolveWriterException(
+  tx: Pick<NovelForgeDb, "scaleDecisionOutcome">,
+  input: {
+    novelId: string;
+    chapterVersionId: string;
+    branchId: string;
+    headRevisionId: string | null;
+    latestSetId: string | null;
+    policyFingerprint: string;
+  },
+): Promise<{ outcomeId: string; coveredIndices: number[] } | null> {
+  if (!input.latestSetId) return null;
+  const outcome = await tx.scaleDecisionOutcome.findFirst({
+    where: {
+      novelId: input.novelId,
+      chapterVersionId: input.chapterVersionId,
+      sourceBranchId: input.branchId,
+      action: "APPROVE",
+      proposal: {
+        kind: "CHAPTER_EXCEPTION",
+        sourceRevisionId: input.headRevisionId,
+      },
+    },
+    orderBy: { sequence: "desc" },
+    select: {
+      id: true,
+      proposal: {
+        select: { payload: true, evidenceSetId: true, policyFingerprint: true },
+      },
+    },
+  });
+  if (
+    !outcome ||
+    outcome.proposal.evidenceSetId !== input.latestSetId ||
+    outcome.proposal.policyFingerprint !== input.policyFingerprint
+  ) {
+    return null;
+  }
+  const payload = outcome.proposal.payload as { claimIndices?: unknown };
+  let coveredIndices: number[] = [];
+  if (
+    payload &&
+    Array.isArray(payload.claimIndices) &&
+    payload.claimIndices.every((i) => Number.isInteger(i))
+  ) {
+    coveredIndices = payload.claimIndices as number[];
+  }
+  return { outcomeId: outcome.id, coveredIndices };
+}
+
+/**
+ * Compute the EXPECTED protocol 1 from validated live context + applicable
+ * exception coverage, reusing the deterministic assessor
+ * (`assessScaleDeterministic`) — the same producer the receipt writer uses.
+ *
+ * The assessor handles all cases including no-policy (NOT_CONFIGURED) and
+ * no-set (INCOMPLETE); it never returns null. The `exceptionOutcomeId` pin
+ * placeholder ("applicable") is replaced with the caller-provided actual
+ * outcome ID, mirroring the writer.
+ */
+export function computeExpectedScaleProtocol(input: {
+  context: ScaleReviewContext;
+  exceptionCoveredIndices: number[];
+  applicableExceptionOutcomeId: string | null;
+}): ScaleReviewProtocol {
+  const { context, exceptionCoveredIndices, applicableExceptionOutcomeId } = input;
+
+  // Build claim inputs from the validated latest set — the same mapping the
+  // receipt writer uses (050A claims have { scale, source: { start, end, quote } }).
+  const claims: AssessmentClaimInput[] = (context.latestSet?.conflicts ?? []).map(
+    (c, idx) => ({
+      index: idx,
+      scale: c.scale,
+      span: { start: c.source.start, end: c.source.end },
+      quote: c.source.quote,
+    }),
+  );
+  const assessed = assessScaleDeterministic({
+    context,
+    claims,
+    exceptionCoveredIndices,
+    noOperativeConflict:
+      context.latestSet?.declaration === "NO_OPERATIVE_CONFLICT",
+  });
+  // Patch the exception outcome pin (resolved by caller per assessor contract).
+  return {
+    ...assessed,
+    pins: { ...assessed.pins, exceptionOutcomeId: applicableExceptionOutcomeId },
+  };
+}
+
+/**
+ * Compare the complete normalized protocol between a retained receipt and
+ * the freshly-assessed expectation. Returns the list of mismatched fields
+ * (empty = complete match).
+ *
+ * All of state, blocking, claims, missingData, AND pins must match exactly.
+ * An internally valid JSON shape is not proof of a complete live assessment —
+ * the retained proof must MATCH what the deterministic assessor produces
+ * from validated live context right now.
+ */
+export function diffRetainedProof(
+  retained: ScaleReviewProtocol,
+  expected: ScaleReviewProtocol,
+): string[] {
+  const mismatches: string[] = [];
+  if (retained.state !== expected.state) mismatches.push("state");
+  if (retained.blocking !== expected.blocking) mismatches.push("blocking");
+
+  // Pins: all six must match verbatim.
+  const rp = retained.pins;
+  const ep = expected.pins;
+  if (rp.chapterVersionId !== ep.chapterVersionId) mismatches.push("pins.chapterVersionId");
+  if (rp.branchId !== ep.branchId) mismatches.push("pins.branchId");
+  if (rp.sourceRevisionId !== ep.sourceRevisionId) mismatches.push("pins.sourceRevisionId");
+  if (rp.evidenceSetId !== ep.evidenceSetId) mismatches.push("pins.evidenceSetId");
+  if (rp.policyFingerprint !== ep.policyFingerprint) mismatches.push("pins.policyFingerprint");
+  if (rp.exceptionOutcomeId !== ep.exceptionOutcomeId) mismatches.push("pins.exceptionOutcomeId");
+
+  // Claims: length and every field of every claim.
+  if (retained.claims.length !== expected.claims.length) {
+    mismatches.push("claims.length");
+  } else {
+    for (let i = 0; i < retained.claims.length; i++) {
+      const rc = retained.claims[i]!;
+      const ec = expected.claims[i]!;
+      if (
+        rc.index !== ec.index ||
+        rc.scale !== ec.scale ||
+        rc.reach !== ec.reach ||
+        rc.gap !== ec.gap ||
+        rc.ok !== ec.ok ||
+        rc.span.start !== ec.span.start ||
+        rc.span.end !== ec.span.end ||
+        rc.quote !== ec.quote ||
+        rc.coveredByException !== ec.coveredByException
+      ) {
+        mismatches.push(`claims[${i}]`);
+      }
+    }
+  }
+
+  // MissingData: length and every field of every item.
+  if (retained.missingData.length !== expected.missingData.length) {
+    mismatches.push("missingData.length");
+  } else {
+    for (let i = 0; i < retained.missingData.length; i++) {
+      const rm = retained.missingData[i]!;
+      const em = expected.missingData[i]!;
+      if (
+        rm.code !== em.code ||
+        rm.field !== em.field ||
+        rm.reason !== em.reason ||
+        rm.explanation !== em.explanation ||
+        rm.example !== em.example ||
+        rm.nextAction !== em.nextAction
+      ) {
+        mismatches.push(`missingData[${i}]`);
+      }
+    }
+  }
+
+  return mismatches;
+}
+
+/**
+ * Shared complete-consistency check result.
+ * - "match": retained proof matches the live assessment exactly.
+ * - "mismatch": retained proof contradicts the live assessment (fail closed);
+ *   `reasons` names the mismatched fields.
+ */
+export type ProofCompletenessResult =
+  | { status: "match" }
+  | { status: "mismatch"; reasons: string[] };
+
+/**
+ * Shared complete-consistency check (NF-WF-050B sixth repair, GAP-119).
+ *
+ * Reuses the deterministic assessor to compute the EXPECTED protocol from
+ * validated live context + applicable exception coverage (writer's exact
+ * exception resolution), then compares the complete normalized protocol
+ * (state, blocking, claims, missingData, pins) against the retained receipt.
+ *
+ * This is the single authoritative proof-consistency check shared between
+ * publication gates (`checkFinalTextReviewGate`) and context applicability
+ * (`deriveReceiptApplicability`). It subsumes the isolated
+ * `isProtocolLiveConsistent` / `isProtocolLiveStateConsistent` fast-paths
+ * (kept for backward compatibility and cheap early rejection).
+ */
+export async function checkRetainedProofCompleteness(
+  tx: Pick<NovelForgeDb, "scaleDecisionOutcome">,
+  input: {
+    novelId: string;
+    context: ScaleReviewContext;
+    retained: ScaleReviewProtocol;
+  },
+): Promise<ProofCompletenessResult> {
+  const { novelId, context, retained } = input;
+
+  const exception = await resolveWriterException(tx, {
+    novelId,
+    chapterVersionId: context.chapterVersion.id,
+    branchId: context.branch.id,
+    headRevisionId: context.headRevisionId,
+    latestSetId: context.latestSet?.id ?? null,
+    policyFingerprint: context.policyFingerprint,
+  });
+  const expected = computeExpectedScaleProtocol({
+    context,
+    exceptionCoveredIndices: exception?.coveredIndices ?? [],
+    applicableExceptionOutcomeId: exception?.outcomeId ?? null,
+  });
+
+  const mismatches = diffRetainedProof(retained, expected);
+  if (mismatches.length > 0) {
+    return { status: "mismatch", reasons: mismatches };
+  }
+  return { status: "match" };
+}
+
 /**
  * Check the final-text review gate transactionally.
  *
@@ -355,49 +594,25 @@ export async function checkFinalTextReviewGate(
       : { ok: false, code: "HARD_POLICY_VIOLATION" };
   }
 
-  // Validate ALL pins verbatim.
-  const pins = scaleReview!.pins;
-  if (
-    pins.chapterVersionId !== chapterVersionId ||
-    pins.branchId !== context.branch.id ||
-    pins.sourceRevisionId !== context.headRevisionId ||
-    pins.evidenceSetId !== (context.latestSet?.id ?? null) ||
-    pins.policyFingerprint !== context.policyFingerprint
-  ) {
-    return { ok: false, code: "REVIEW_STALE" };
-  }
-
-  // Verify exception pin: resolve the LATEST applicable approved
-  // CHAPTER_EXCEPTION outcome and require it to match the pin EXACTLY.
-  // Applicability requires: kind=CHAPTER_EXCEPTION, head matches current,
-  // policy fingerprint matches, set ID matches, version and branch match.
-  // A stale pin (superseded by a newer outcome, or mismatched pins) is
-  // REVIEW_STALE — the author must re-review.
-  const latestApplicableOutcome = await tx.scaleDecisionOutcome.findFirst({
-    where: {
-      novelId,
-      chapterVersionId,
-      sourceBranchId: context.branch.id,
-      action: "APPROVE",
-      proposal: {
-        kind: "CHAPTER_EXCEPTION",
-        sourceRevisionId: context.headRevisionId,
-        evidenceSetId: context.latestSet?.id ?? null,
-        policyFingerprint: context.policyFingerprint,
-      },
-    },
-    orderBy: { sequence: "desc" },
-    select: { id: true },
-  });
-  const expectedExceptionId = latestApplicableOutcome?.id ?? null;
-  if (pins.exceptionOutcomeId !== expectedExceptionId) {
-    // Pin mismatch: either a stale pin, a revoked/superseded exception,
-    // or an exception that no longer applies to the current head/policy/set.
-    return { ok: false, code: "REVIEW_STALE" };
-  }
-
-  // Fresh protocol: apply gate logic.
+  // Fresh protocol: complete producer/live consistency (GAP-119 sixth repair).
+  // Reuses the deterministic assessor to compute the EXPECTED protocol from
+  // validated live context + applicable exception coverage (writer's exact
+  // exception resolution), then compares the complete normalized protocol
+  // (state, blocking, claims, missingData, pins). This single authoritative
+  // check subsumes the verbatim pin verification, exception-pin check, and
+  // the isolated live-consistency fast-paths below.
   const protocol = scaleReview!;
+  const completeness = await checkRetainedProofCompleteness(tx, {
+    novelId,
+    context,
+    retained: protocol,
+  });
+  if (completeness.status === "mismatch") {
+    return { ok: false, code: "REVIEW_STALE" };
+  }
+
+  // Fast-path isolated checks (kept for backward compatibility; the complete
+  // check above is authoritative and subsumes them).
   // GAP-119: live hardness/state consistency (fail closed). A retained
   // protocol claiming non-blocking INCOMPLETE/VIOLATION under a live HARD
   // policy is inconsistent — never pass.

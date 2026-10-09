@@ -345,7 +345,7 @@ describe("ScaleReviewPanel Slice 4", () => {
         return { id: "proposal-1" };
       }
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence")) {
         return { assessment: null, status: "UNASSESSED", staleReasons: [] };
@@ -405,7 +405,7 @@ describe("ScaleReviewPanel Slice 4", () => {
         return { id: "proposal-1" };
       }
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", SET1), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", SET1), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence/history")) {
         return { items: [], nextBeforeSequence: null };
@@ -456,7 +456,7 @@ describe("ScaleReviewPanel Slice 4", () => {
         return { id: "outcome-1" };
       }
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence")) {
         return { assessment: null, status: "UNASSESSED", staleReasons: [] };
@@ -503,7 +503,7 @@ describe("ScaleReviewPanel Slice 4", () => {
     currentLocale = "id";
     apiImpl = async (url: string) => {
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence")) {
         return { assessment: null, status: "UNASSESSED", staleReasons: [] };
@@ -540,7 +540,7 @@ describe("ScaleReviewPanel Slice 4", () => {
     try {
       apiImpl = async (url: string) => {
         if (url.includes("scale-review-context")) {
-          return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+          return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
         }
         if (url.includes("scale-evidence")) {
           return { assessment: null, status: "UNASSESSED", staleReasons: [] };
@@ -574,7 +574,7 @@ describe("ScaleReviewPanel Slice 4", () => {
         return { id: "proposal-1" };
       }
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence")) {
         return { assessment: null, status: "UNASSESSED", staleReasons: [] };
@@ -623,7 +623,7 @@ describe("ScaleReviewPanel Slice 4", () => {
         return { id: "outcome-1" };
       }
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence")) {
         return { assessment: null, status: "UNASSESSED", staleReasons: [] };
@@ -668,7 +668,7 @@ describe("ScaleReviewPanel Slice 4", () => {
         return { id: "proposal-1" };
       }
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence")) {
         return { assessment: null, status: "UNASSESSED", staleReasons: [] };
@@ -715,7 +715,7 @@ describe("ScaleReviewPanel Slice 4", () => {
         return { id: "outcome-1" };
       }
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence")) {
         return { assessment: null, status: "UNASSESSED", staleReasons: [] };
@@ -758,7 +758,7 @@ describe("ScaleReviewPanel Slice 4", () => {
         return { id: "proposal-1" };
       }
       if (url.includes("scale-review-context")) {
-        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+        return {  context: makeContext(V1, R1, "VILLAGE", null), receipt: null , applicability: { status: "ABSENT", reasons: ["no receipt"] }, checklist: [] };
       }
       if (url.includes("scale-evidence")) {
         return { assessment: null, status: "UNASSESSED", staleReasons: [] };

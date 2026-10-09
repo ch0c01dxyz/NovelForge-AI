@@ -1,5 +1,41 @@
 # Current Project State
 
+## External 050B fifth repair re-review — 2026-10-09, 33db685
+
+CHANGES REQUESTED on exact33db68512d786273c5ce6c368346162fe25d48b4.
+review_mutations_034 found incomplete retained-proof/live assessment validation
+and two context/UI wiring defects. review_recovery_034 approves assigned recovery
+source subject to fresh checks and scope acceptance. Main remains d549887; no
+implementation merge. Empty access, HARD reasons, superseded mutation refresh,
+context-derived checklist and two shared-gate negative cases are repaired.
+Actual old-JSON restore, pre-change checkpoint contents and transactional CAS
+repairs remain intact.
+
+Remaining: a matching-pin WITHIN_REACH receipt with empty claims can pass HARD
+gate checks despite absent evidence (also stale evidence/malformed standing).
+This is a traced source path, not an executed exploit. Reuse one complete
+deterministic producer/live protocol comparison in both gate and context
+applicability instead of adding individual state exceptions. The context endpoint
+currently omits even the new live-state validator. A normal successful review
+also fails to refresh its receipt/checklist, retaining old ABSENT/STALE guidance.
+GAP-119 records fixes and negative/deferred acceptance requirements.
+
+Fresh local selected checks:108/108 backend/domain/migration tests and34/34
+component/axe tests pass, without skips. ai-services/API/worker typechecks,
+Prisma generate/validate and submitted diff whitespace pass. The DB-backed gate
+suite calls the shared helper; it does not execute direct status transition,
+immediate publication or scheduled worker. UI remains mock/jsdom with canvas
+warnings. No web typecheck/lint or live browser acceptance is claimed.
+
+All five owned scratch database names were absent before tests, then dropped
+after connections closed; absence and unchanged tracked migrations verified.
+Main/client restored. Proposed scope records now describe additions through12,
+but generic actors and uncommitted input revisions do not identify exact reviewed
+content; retain external attribution as a claim pending traceable review.
+GAP-039/GAP-119 remain OPEN. Engram attribution is unavailable because the runtime
+hook supplied no authoritative session identity (GAP-021); this is the fallback
+handoff, not an Engram save. No commit/push or merge performed in this review.
+
 ## External 050B fourth repair re-review — 2026-10-09, 8ccb504
 
 Overall CHANGES REQUESTED on exact external

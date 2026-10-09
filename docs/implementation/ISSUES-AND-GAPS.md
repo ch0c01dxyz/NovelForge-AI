@@ -3384,3 +3384,78 @@ passes in isolation. Root cause is environmental (tmpfs exhaustion), not a
 product defect. Workaround: run component suites with `TMPDIR` pointed at a
 directory on the main filesystem. Do not delete /tmp contents while sibling
 implementers may be running. Owner: NF-WF-050B Slice 2 (fifth repair).
+
+### GAP-119 fifth repair re-review — 2026-10-09, 33db685
+
+**Status:** OPEN; CHANGES REQUESTED on exact
+33db68512d786273c5ce6c368346162fe25d48b4; baseline/main d549887.
+**Owner:** NF-WF-050B implementer; separate review of the next exact diff.
+review_mutations_034 requests changes. review_recovery_034 approves assigned
+recovery source subject to fresh tests and scope acceptance. Fresh selected
+tests passed; that does not close the technical/acceptance findings below.
+
+Verified repairs: access:[] form payloads are permitted; nonblank HARD reasons
+are validated before persistence, including alternatives; superseded successful
+mutations reconcile; current-context checklist is derived/consumed; shared gate
+rejects the two new NOT_CONFIGURED/configured-policy and quiet/CONFLICTS cases.
+Actual restore, pre-change snapshot contents, tx audits/CAS and live-version
+locks are preserved. Scope records describe exact additions through amendment12.
+
+Remaining closure requirements:
+
+1. **Complete producer/live proof consistency is still missing (P1 source
+   blocker).** final-text-review-gate.ts's parser accepts WITHIN_REACH with
+   claims:[]/missingData:[]/blocking:false. Both live helpers accept that state.
+   With matching pins, no exception and PASS verdict, the shared gate returns
+   ok:true even under HARD policy with absent evidence; the traced path also
+   permits stale evidence or malformed standing with crafted matching pins.
+   This is source tracing, not an executed exploit or an observed author input
+   bypass. Avoid another patch for only one state: resolve validated applicable
+   exception coverage, run the existing deterministic assessor over live context,
+   and compare the complete normalized protocol (state/blocking/claims/missing
+   data/pins). Share this consistency result between release gate and context
+   applicability; preserve explicit legacy/no-SCALE compatibility. Add negative
+   proofs for absent/stale/malformed sources and inconsistent exception/claim
+   coverage, plus positive valid states. Do not call an internally valid JSON
+   shape proof of a complete live assessment.
+2. **Context freshness disagrees with the gate.**
+   scale-decision-routes.ts196–202 calls only isProtocolLiveConsistent, omitting
+   the new live-state helper. The same two retained-state fixtures rejected by
+   the gate can be labeled FRESH with an empty checklist by the context endpoint.
+   Use the shared complete consistency result from item1 and test actual context
+   endpoint responses against gate results, including stale checklist guidance.
+3. **Normal successful review retains the old checklist.**
+   ScaleReviewPanel.vue436–446 updates review but not receipt/serverChecklist.
+   Its non-superseded path leaves prior ABSENT/STALE guidance after a successful
+   fresh review. Refresh coherent context after every successful review, not
+   only superseded operations. Prove ABSENT-to-fresh and STALE-to-fresh flows
+   update receipt, applicability and checklist while preserving async guards.
+
+Acceptance and handoff boundaries still required:
+
+- New scale-gate-live-semantics.test.ts exercises a DB-backed shared helper,
+  not direct setStatus, immediate publication or actual scheduled worker. The
+  frozen contract requires real caller/lock/race and refusal evidence. Keep this
+  separate from pure/schema and helper checks; do not claim end-to-end release
+  acceptance from the new four helper tests. UI tests use mocks, not a live
+  author workflow. Retain full task acceptance/check commands before closure.
+- Amendments through12 have bounded descriptions and correct allowlist status.
+  Submitted review records use generic actor descriptions and a HEAD with
+  uncommitted files, without exact input hashes. Treat independence as an
+  external documentary claim until linked to a traceable actor and exact
+  reviewed content. Obtain a genuine exact-diff amendment review; do not invent
+  author approval or add routine per-step permission gates.
+
+Fresh local evidence:9 selected backend/domain/migration suites108/108 pass;
+5 component/axe suites34/34 pass, no skips. ai-services/API/worker typechecks,
+Prisma generate/validate and submitted diff whitespace pass. Canvas warnings
+occurred in jsdom. No web typecheck/lint, live browser workflow, immediate
+publication or real scheduled-worker/race execution is claimed in this review.
+
+All five owned scratch database names were verified absent before use, then
+disconnected/dropped and absence verified. Tracked migration files unchanged;
+main checkout and generated client restored. No implementation merge, commit
+or push. GAP-039/GAP-119 remain OPEN. Next: one shared complete consistency
+repair, two wiring fixes, missing caller acceptance proofs and exact scope
+review, then separate review of the submitted revision. Engram attribution
+unavailable (GAP-021); CURRENT is the fallback handoff.

@@ -401,10 +401,13 @@ export function registerScaleDecisionRoutes(
       const body = parsedBody.value;
 
       // Service enforces chapter:update AND canon:manage AND canon:approve.
+      // GAP-119: pass URL chapterId so the service validates it matches the
+      // proposal's chapter (prevents cross-chapter decision confusion).
       const result = await decisions.decideProposal({
         actorUserId: session.userId,
         workspaceId: params.workspaceId,
         novelId: params.novelId,
+        chapterId: params.chapterId,
         proposalId: params.proposalId,
         ...body,
       });

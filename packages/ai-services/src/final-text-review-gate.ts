@@ -25,7 +25,7 @@ import {
   type ScaleReviewContextTx,
 } from "./scale-evidence.ts";
 import { fingerprintScalePolicy } from "./scale-review-types.ts";
-import type { ScaleReviewProtocol } from "./scale-review-types.ts";
+import type { ScaleReviewProtocol, ScaleReviewPins } from "./scale-review-types.ts";
 
 export type GateCode =
   | "REVIEW_STALE"
@@ -39,9 +39,53 @@ export type ReviewGateTx = ScaleReviewContextTx &
   Pick<NovelForgeDb, "finalTextReview" | "scaleDecisionOutcome" | "chapterVersion">;
 
 /**
- * Validate a stored scaleReview payload against the protocol 1 schema.
+ * Validate a stored scaleReview payload against the FULL protocol 1 schema.
  * Returns the parsed protocol, or null if invalid/legacy.
+ *
+ * GAP-119: validates ALL fields, types and enums — not just top-level shape.
+ * A shallow cast could let a malformed retained protocol pass the gate.
  */
+function isUuidOrNull(v: unknown): v is string | null {
+  return v === null || (typeof v === "string" && v.length > 0);
+}
+
+function isValidPins(pins: unknown): pins is ScaleReviewPins {
+  if (typeof pins !== "object" || pins === null || Array.isArray(pins)) return false;
+  const p = pins as Record<string, unknown>;
+  if (typeof p.chapterVersionId !== "string" || p.chapterVersionId.length === 0) return false;
+  if (typeof p.branchId !== "string" || p.branchId.length === 0) return false;
+  if (!isUuidOrNull(p.sourceRevisionId)) return false;
+  if (!isUuidOrNull(p.evidenceSetId)) return false;
+  if (typeof p.policyFingerprint !== "string" || !/^[0-9a-f]{64}$/.test(p.policyFingerprint)) return false;
+  if (!isUuidOrNull(p.exceptionOutcomeId)) return false;
+  return true;
+}
+
+function isValidClaim(c: unknown): boolean {
+  if (typeof c !== "object" || c === null || Array.isArray(c)) return false;
+  const claim = c as Record<string, unknown>;
+  if (typeof claim.index !== "number" || !Number.isInteger(claim.index) || claim.index < 0) return false;
+  if (typeof claim.scale !== "string") return false;
+  if (typeof claim.reach !== "string") return false;
+  if (typeof claim.gap !== "string") return false;
+  if (typeof claim.ok !== "boolean") return false;
+  const span = claim.span as Record<string, unknown> | null;
+  if (typeof span !== "object" || span === null) return false;
+  if (typeof span.start !== "number" || typeof span.end !== "number") return false;
+  if (typeof claim.quote !== "string") return false;
+  if (typeof claim.coveredByException !== "boolean") return false;
+  return true;
+}
+
+function isValidMissingData(m: unknown): boolean {
+  if (typeof m !== "object" || m === null || Array.isArray(m)) return false;
+  const item = m as Record<string, unknown>;
+  for (const field of ["code", "field", "reason", "explanation", "example", "nextAction"]) {
+    if (typeof item[field] !== "string") return false;
+  }
+  return true;
+}
+
 export function parseScaleReviewProtocol(raw: unknown): ScaleReviewProtocol | null {
   if (raw === null || raw === undefined) return null;
   if (typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -57,10 +101,31 @@ export function parseScaleReviewProtocol(raw: unknown): ScaleReviewProtocol | nu
   ]);
   if (typeof p.state !== "string" || !validStates.has(p.state)) return null;
   if (typeof p.blocking !== "boolean") return null;
-  if (typeof p.pins !== "object" || p.pins === null) return null;
-  if (!Array.isArray(p.claims)) return null;
-  if (!Array.isArray(p.missingData)) return null;
+  if (!isValidPins(p.pins)) return null;
+  if (!Array.isArray(p.claims) || !p.claims.every(isValidClaim)) return null;
+  if (!Array.isArray(p.missingData) || !p.missingData.every(isValidMissingData)) return null;
   return p as unknown as ScaleReviewProtocol;
+}
+
+/**
+ * Validate live hardness/state consistency (fail closed).
+ * A retained protocol claiming INCOMPLETE with blocking:false while the LIVE
+ * policy is HARD is inconsistent — treat as invalid (never pass).
+ */
+export function isProtocolLiveConsistent(
+  protocol: ScaleReviewProtocol,
+  liveHardness: "HARD" | "SOFT" | null,
+): boolean {
+  // HARD policy + INCOMPLETE state must always block. If the retained protocol
+  // says otherwise, it's stale or tampered — fail closed.
+  if (protocol.state === "INCOMPLETE" && liveHardness === "HARD" && !protocol.blocking) {
+    return false;
+  }
+  // HARD policy + VIOLATION must always block.
+  if (protocol.state === "VIOLATION" && liveHardness === "HARD" && !protocol.blocking) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -178,6 +243,15 @@ export async function checkFinalTextReviewGate(
 
   // Fresh protocol: apply gate logic.
   const protocol = scaleReview!;
+  // GAP-119: live hardness/state consistency (fail closed). A retained
+  // protocol claiming non-blocking INCOMPLETE/VIOLATION under a live HARD
+  // policy is inconsistent — never pass.
+  const liveHardness = context.policy
+    ? (context.policy.hardness as "HARD" | "SOFT")
+    : null;
+  if (!isProtocolLiveConsistent(protocol, liveHardness)) {
+    return { ok: false, code: "REVIEW_STALE" };
+  }
   if (protocol.state === "INCOMPLETE" && protocol.blocking) {
     return { ok: false, code: "SCALE_ASSESSMENT_INCOMPLETE" };
   }

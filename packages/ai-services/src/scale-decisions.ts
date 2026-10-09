@@ -400,6 +400,7 @@ export interface DecideProposalInput {
   actorUserId: string;
   workspaceId: string;
   novelId: string;
+  chapterId: string;
   proposalId: string;
   action: "APPROVE" | "REJECT" | "ALTERNATIVE";
   reason: string;
@@ -488,9 +489,40 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         throw new MemoryError(400, "INVALID_INPUT", "payload exceeds 64KiB");
       }
 
-      // Lock order: novel -> branch -> chapter
+      // Lock order: novel -> branch -> chapter (frozen, same as decisions).
+      // GAP-119: proposal creation must lock the participating branch/chapter,
+      // not just the novel, and must refuse a supplied obsolete version.
       {
         await tx.$queryRaw`SELECT id FROM novels WHERE id = ${novelId} FOR NO KEY UPDATE`;
+        // Resolve and lock the checked-out branch.
+        const lockedNovel = await tx.novel.findFirst({
+          where: { id: novelId, workspaceId },
+          select: { currentBranchId: true },
+        });
+        if (!lockedNovel) throw new NotFoundError("novel");
+        const lockedBranch = await tx.$queryRawUnsafe<{ id: string }[]>(
+          `SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`,
+          lockedNovel.currentBranchId ?? "",
+        );
+        if (!lockedBranch || lockedBranch.length === 0) {
+          throw new ConflictError("no checked-out branch exists");
+        }
+        // Lock the chapter and read the live current version pointer.
+        const lockedChapter = await tx.$queryRawUnsafe<{ id: string; current_version_id: string | null }[]>(
+          `SELECT id, current_version_id FROM chapters WHERE id = $1 FOR UPDATE`,
+          chapterId,
+        );
+        if (!lockedChapter || lockedChapter.length === 0) {
+          throw new NotFoundError("chapter");
+        }
+        // Refuse obsolete-version proposal creation: the supplied version must
+        // be the live current version. An obsolete version needs a new proposal
+        // against the current version, not a backdated one.
+        if (lockedChapter[0]!.current_version_id !== chapterVersionId) {
+          throw new ConflictError(
+            "proposal version is obsolete; create the proposal against the current chapter version",
+          );
+        }
         const context = await readScaleContext(tx as ScaleReviewContextTx, {
           workspaceId,
           novelId,
@@ -599,13 +631,17 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
           },
         });
 
-        await audit.record({
-          actorUserId,
-          workspaceId,
-          action: "scale.decision-proposed",
-          entityType: "ScaleDecisionProposal",
-          entityId: proposal.id,
-          payload: { chapterVersionId, kind, sequence },
+        // GAP-119 (audit atomicity): write audit through the SAME tx so a
+        // rolled-back proposal/outcome leaves no orphaned audit record.
+        await tx.auditLog.create({
+          data: {
+            actorUserId,
+            workspaceId,
+            action: "scale.decision-proposed",
+            entityType: "ScaleDecisionProposal",
+            entityId: proposal.id,
+            payload: { chapterVersionId, kind, sequence },
+          },
         });
 
         return {
@@ -626,6 +662,7 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         actorUserId,
         workspaceId,
         novelId,
+        chapterId,
         proposalId,
         action,
         reason,
@@ -716,10 +753,15 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         ) {
           throw new NotFoundError("chapter version");
         }
-        const chapterId = versionPre.chapterId;
+        // GAP-119: validate URL chapterId matches the proposal's chapter.
+        // A mismatched URL chapter is 404 (never operate on a different chapter).
+        if (versionPre.chapterId !== chapterId) {
+          throw new NotFoundError("chapter");
+        }
+        const resolvedChapterId = versionPre.chapterId;
         await tx.$queryRawUnsafe(
           `SELECT id FROM chapters WHERE id = $1 FOR UPDATE`,
-          chapterId,
+          resolvedChapterId,
         );
 
         // Re-read current context under lock via the frozen context reader.
@@ -972,19 +1014,27 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
           },
         });
 
-        await audit.record({
-          actorUserId,
-          workspaceId,
-          action: `scale.decision-${action.toLowerCase()}`,
-          entityType: "ScaleDecisionOutcome",
-          entityId: outcome.id,
-          payload: { proposalId, action, sequence },
+        // GAP-119 (audit atomicity): write audit through the SAME tx so a
+        // rolled-back outcome leaves no orphaned audit record.
+        await tx.auditLog.create({
+          data: {
+            actorUserId,
+            workspaceId,
+            action: `scale.decision-${action.toLowerCase()}`,
+            entityType: "ScaleDecisionOutcome",
+            entityId: outcome.id,
+            payload: { proposalId, action, sequence },
+          },
         });
 
+        // GAP-119: return the ACTUAL committed head. For APPROVE
+        // STANDING_CHANGE, advanceForMutation commits a new revision, so the
+        // client must use resultRevisionId (not the stale pre-decision head)
+        // for subsequent expectations.
         return {
           outcome,
           alternativeProposal,
-          currentHeadRevisionId: context.headRevisionId,
+          currentHeadRevisionId: resultRevisionId ?? context.headRevisionId,
         };
       }
   }

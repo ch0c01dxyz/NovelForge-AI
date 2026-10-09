@@ -1179,11 +1179,34 @@ Bounded amendments to the frozen contract's allowed paths:
 
 All amendments are bounded, documented, and do not weaken the contract.
 
-## Old-snapshot restore proof — 2026-10-09
+## Migration preservation proof (relabeled 2026-10-09) — was "Old-snapshot restore proof"
 
-`apps/api/src/scale-review-migration.test.ts` proves old-snapshot handling (OBSERVED 2/2 pass):
+**Historical note:** This section was originally titled "Old-snapshot restore
+proof" (2026-10-09). That title was misleading: the evidence below proves
+pre-upgrade receipt preservation through the additive 050B migration, NOT a
+STORY checkpoint restore via NovelForge's restore path. The title is corrected
+here; the original evidence and provenance are preserved unchanged below.
 
-- **What was tested:** A genuine `FinalTextReview` row (verdict, hardViolations, advisory, evaluatedPolicies — no `scale_review` column existing) is inserted into the BASELINE database BEFORE the 050B migration runs. This baseline represents an old snapshot / pre-upgrade database.
+`apps/api/src/scale-review-migration.test.ts` proves migration preservation (OBSERVED 2/2 pass):
+
+- **What was tested:** A genuine `FinalTextReview` row (verdict, hardViolations, advisory, evaluatedPolicies — no `scale_review` column existing) is inserted into the BASELINE database BEFORE the 050B migration runs. This baseline represents a pre-upgrade database.
 - **After upgrade:** The receipt is re-read and verified field-by-field identical (verdict, hardViolations, advisory, evaluatedPolicies all preserved). The new `scale_review` column reads NULL for the legacy row — NULL denotes legacy receipt, never fabricated proof of SCALE completeness.
 - **What this proves:** Pre-upgrade data is preserved through the additive migration; legacy receipts are not rewritten or fabricated; the nullable column correctly defaults to NULL.
 - **What this does NOT prove:** An actual `pg_restore` of a production snapshot binary, or restore of a snapshot taken from a different Prisma version. The restore-scope classification (both tables OPERATIONAL, never rewound) is unit-tested in `restore-scope.test.ts` (8/8 pass), not via a live restore operation.
+
+## STORY checkpoint restore proof — 2026-10-09 (Slice 2)
+
+`apps/api/src/scale-decisions.test.ts` → "STORY restore with old snapshot JSON
+lacking scale_review" (OBSERVED pass) exercises the STORY restore semantics:
+
+- **Legacy receipt handling:** A `FinalTextReview` with `scaleReview: null`
+  (simulating a pre-050B snapshot JSON lacking `scale_review`) is returned by
+  `listFinalTextReviews` without crashing, with `scaleReview: null` — null
+  denotes legacy, never fabricated proof.
+- **Retained OPERATIONAL S2 history:** `scale_decision_proposals` and
+  `scale_decision_outcomes` are NOT in `COVERED_TABLE_NAMES` (verified in-test);
+  STORY restore never rewinds them. S2 proposal+outcome created before the
+  simulated restore remain intact.
+- **Stale applicability:** After the head advances (as a restore would), the
+  receipt's `revisionId` pin no longer matches the current head → the receipt
+  is stale (does not reflect current state).

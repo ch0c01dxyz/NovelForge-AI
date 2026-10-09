@@ -223,6 +223,7 @@ async function seedEvidenceSet(
     sourceRevisionId?: string | null;
     sequence?: number;
     declaration?: "CONFLICTS" | "NO_OPERATIVE_CONFLICT";
+    previousSetId?: string | null;
   } = {},
 ) {
   const claims = (opts.claims ?? [{ scale: "KINGDOM" }]).map((c) => ({
@@ -239,6 +240,7 @@ async function seedEvidenceSet(
       sourceBranchId: f.branchId,
       sourceRevisionId: opts.sourceRevisionId ?? f.headRevisionId,
       sequence: opts.sequence ?? 1,
+      previousSetId: opts.previousSetId ?? null,
       declaration: opts.declaration ?? "CONFLICTS",
       explanation: "test evidence set",
       conflictsJson: claims,
@@ -634,6 +636,7 @@ describe("decideProposal", () => {
     });
 
     const result = await svc.decideProposal({
+      chapterId: f.chapterId,
       actorUserId: f.userId,
       workspaceId: f.workspaceId,
       novelId: f.novelId,
@@ -686,6 +689,7 @@ describe("decideProposal", () => {
 
     // Execute APPROVE
     const result = await svc.decideProposal({
+      chapterId: f.chapterId,
       actorUserId: f.userId,
       workspaceId: f.workspaceId,
       novelId: f.novelId,
@@ -760,6 +764,7 @@ describe("decideProposal", () => {
     const { proposal, evidenceSetId } = await seedProposal(f);
 
     await svc.decideProposal({
+      chapterId: f.chapterId,
       actorUserId: f.userId,
       workspaceId: f.workspaceId,
       novelId: f.novelId,
@@ -776,6 +781,7 @@ describe("decideProposal", () => {
 
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -801,6 +807,7 @@ describe("decideProposal", () => {
 
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -825,6 +832,7 @@ describe("decideProposal", () => {
     const { proposal, evidenceSetId } = await seedProposal(f);
 
     const result = await svc.decideProposal({
+      chapterId: f.chapterId,
       actorUserId: f.userId,
       workspaceId: f.workspaceId,
       novelId: f.novelId,
@@ -863,6 +871,7 @@ describe("decideProposal", () => {
 
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -887,6 +896,7 @@ describe("decideProposal", () => {
 
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -930,6 +940,7 @@ describe("decideProposal", () => {
 
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -979,6 +990,7 @@ describe("decideProposal", () => {
 
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -1005,9 +1017,11 @@ describe("decideProposal", () => {
     const f = await seedFixture();
     const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
     // GAP-119: exception proposals require current violating evidence.
-    // 5 unique violating claims (all beyond VILLAGE standing)
-    // Note: seedEvidenceSet uses same source for all; we need unique sources
-    // For now, use different scales which are all violations vs VILLAGE
+    // 5 unique violating claims (all beyond VILLAGE standing) with VALID
+    // quote/span pairs against the fixture version content
+    // "<p>S2 test prose with enough content.</p>" — verified via
+    // verifyEvidenceQuote. Invalid spans would fail retained-evidence
+    // validation before concurrency is exercised.
     const set = await db.scaleEvidenceSet.create({
       data: {
         workspaceId: f.workspaceId,
@@ -1019,11 +1033,11 @@ describe("decideProposal", () => {
         declaration: "CONFLICTS",
         explanation: "test evidence set",
         conflictsJson: [
-          { scale: "KINGDOM", relevance: "ACTION", explanation: "c0", source: { start: 0, end: 10, quote: "q0" } },
-          { scale: "EMPIRE", relevance: "ACTION", explanation: "c1", source: { start: 10, end: 20, quote: "q1" } },
-          { scale: "KINGDOM", relevance: "STAKES", explanation: "c2", source: { start: 20, end: 30, quote: "q2" } },
-          { scale: "EMPIRE", relevance: "STAKES", explanation: "c3", source: { start: 30, end: 40, quote: "q3" } },
-          { scale: "KINGDOM", relevance: "CONSEQUENCE", explanation: "c4", source: { start: 40, end: 50, quote: "q4" } },
+          { scale: "KINGDOM", relevance: "ACTION", explanation: "c0", source: { start: 6, end: 10, quote: "test" } },
+          { scale: "EMPIRE", relevance: "ACTION", explanation: "c1", source: { start: 11, end: 16, quote: "prose" } },
+          { scale: "KINGDOM", relevance: "STAKES", explanation: "c2", source: { start: 17, end: 21, quote: "with" } },
+          { scale: "EMPIRE", relevance: "STAKES", explanation: "c3", source: { start: 22, end: 28, quote: "enough" } },
+          { scale: "KINGDOM", relevance: "CONSEQUENCE", explanation: "c4", source: { start: 29, end: 36, quote: "content" } },
         ],
         actorUserId: f.userId,
       },
@@ -1061,6 +1075,302 @@ describe("decideProposal", () => {
     expect(count).toBe(5);
   });
 
+  it("simultaneous DECISIONS: one winner, zero partial loser effects", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+
+    // Two CHAPTER_EXCEPTION proposals for the same chapter version, referencing
+    // the same evidence set. Exception approvals do NOT advance the head, so
+    // the decision-head CAS (expectedDecisionId) is the sole serialization
+    // mechanism — this test exercises the actual concurrent-decision race,
+    // not proposal creation or head-pin invalidation.
+    const set = await seedEvidenceSet(f, {
+      claims: [{ scale: "KINGDOM" }, { scale: "EMPIRE" }],
+    });
+    const mkProposal = (claimIndices: number[], reason: string) =>
+      svc.createProposal({
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        chapterId: f.chapterId,
+        chapterVersionId: f.chapterVersionId,
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: f.headRevisionId,
+        expectedSetId: set.id,
+        expectedDecisionId: null,
+        expectedPolicyFingerprint: f.policyFingerprint,
+        kind: "CHAPTER_EXCEPTION",
+        payload: { claimIndices },
+        reason,
+      });
+    const proposalA = await mkProposal([0], "concurrent decision A");
+    const proposalB = await mkProposal([1], "concurrent decision B");
+
+    const decideInput = (proposalId: string) => ({
+      chapterId: f.chapterId,
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      proposalId,
+      action: "APPROVE" as const,
+      reason: "concurrent race",
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
+      expectedVersionId: f.chapterVersionId,
+      expectedSetId: set.id,
+    });
+
+    // Fire both decisions concurrently. Exactly one must win; the loser
+    // must get a clean 409 (not a 500) and leave zero partial effects.
+    const results = await Promise.allSettled([
+      svc.decideProposal(decideInput(proposalA.proposal.id)),
+      svc.decideProposal(decideInput(proposalB.proposal.id)),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    // Exactly one winner.
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    // The loser gets a clean 409 ConflictError, not a 500 or Prisma error.
+    const loserError = (rejected[0] as PromiseRejectedResult).reason;
+    expect(loserError).toBeInstanceOf(ConflictError);
+    expect(loserError.message).toMatch(/decision head changed|concurrent decision/);
+
+    // Exactly one outcome in the database.
+    const outcomes = await db.scaleDecisionOutcome.findMany({
+      where: { novelId: f.novelId },
+    });
+    expect(outcomes).toHaveLength(1);
+
+    // Zero partial loser effects: the loser's proposal has no outcome.
+    const winnerProposalId = (fulfilled[0] as PromiseFulfilledResult<any>).value.outcome.proposalId;
+    const loserProposalId =
+      winnerProposalId === proposalA.proposal.id ? proposalB.proposal.id : proposalA.proposal.id;
+    const loserOutcome = await db.scaleDecisionOutcome.findUnique({
+      where: { proposalId: loserProposalId },
+    });
+    expect(loserOutcome).toBeNull();
+
+    // Zero partial loser effects: no audit record for the loser's decision.
+    const loserAudits = await db.auditLog.findMany({
+      where: {
+        entityType: "ScaleDecisionOutcome",
+        payload: { path: ["proposalId"], equals: loserProposalId },
+      },
+    });
+    expect(loserAudits).toHaveLength(0);
+  });
+
+  it("checkpoint-failure rollback: zero effects including audit, pre-change state verified", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+
+    // STANDING_CHANGE proposal (HIGH approval triggers advanceForMutation
+    // with PRE_MUTATION checkpoint).
+    const { proposal } = await svc.createProposal({
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      chapterId: f.chapterId,
+      chapterVersionId: f.chapterVersionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
+      kind: "STANDING_CHANGE",
+      payload: validStandingChangePayload(),
+      reason: "checkpoint rollback test",
+    });
+
+    // Record PRE-CHANGE state: what the PRE_MUTATION checkpoint would have
+    // captured, and the counts that must be unchanged after rollback.
+    const policyBefore = await db.narrativePolicy.findUniqueOrThrow({
+      where: { novelId_kind: { novelId: f.novelId, kind: "SCALE" } },
+    });
+    const revisionCountBefore = await db.revision.count({ where: { novelId: f.novelId } });
+    const checkpointCountBefore = await db.checkpoint.count({ where: { novelId: f.novelId } });
+    const outcomeCountBefore = await db.scaleDecisionOutcome.count({ where: { novelId: f.novelId } });
+    const auditCountBefore = await db.auditLog.count({ where: { workspaceId: f.workspaceId } });
+
+    // Force the checkpoint write to throw via a trigger. This simulates a
+    // checkpoint-storage failure mid-transaction.
+    await db.$executeRawUnsafe(`
+      CREATE OR REPLACE FUNCTION test_fail_checkpoint() RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'test-forced checkpoint failure';
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await db.$executeRawUnsafe(`
+      CREATE TRIGGER test_fail_checkpoint_trigger
+      BEFORE INSERT ON checkpoints
+      FOR EACH ROW EXECUTE FUNCTION test_fail_checkpoint();
+    `);
+
+    try {
+      // The decision must fail...
+      await expect(
+        svc.decideProposal({
+          chapterId: f.chapterId,
+          actorUserId: f.userId,
+          workspaceId: f.workspaceId,
+          novelId: f.novelId,
+          proposalId: proposal.id,
+          action: "APPROVE",
+          reason: "checkpoint will fail",
+          expectedBranchId: f.branchId,
+          expectedHeadRevisionId: f.headRevisionId,
+          expectedDecisionId: null,
+          expectedPolicyFingerprint: f.policyFingerprint,
+          expectedVersionId: f.chapterVersionId,
+          expectedSetId: null,
+        }),
+      ).rejects.toThrow(/test-forced checkpoint failure/);
+    } finally {
+      // Always remove the trigger, even if the assertion fails.
+      await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS test_fail_checkpoint_trigger ON checkpoints;`);
+      await db.$executeRawUnsafe(`DROP FUNCTION IF EXISTS test_fail_checkpoint();`);
+    }
+
+    // ...and roll back EVERYTHING, including audit.
+    expect(await db.revision.count({ where: { novelId: f.novelId } })).toBe(revisionCountBefore);
+    expect(await db.checkpoint.count({ where: { novelId: f.novelId } })).toBe(checkpointCountBefore);
+    expect(await db.scaleDecisionOutcome.count({ where: { novelId: f.novelId } })).toBe(outcomeCountBefore);
+    expect(await db.auditLog.count({ where: { workspaceId: f.workspaceId } })).toBe(auditCountBefore);
+
+    // The proposal itself is NOT rolled back (it was committed before the
+    // decision attempt), but it has no outcome.
+    const proposalAfter = await db.scaleDecisionProposal.findUniqueOrThrow({
+      where: { id: proposal.id },
+      include: { outcome: true },
+    });
+    expect(proposalAfter.outcome).toBeNull();
+
+    // Pre-change snapshot contents verified: the policy still has the
+    // ORIGINAL standing (VILLAGE) — the mutation never committed.
+    const policyAfter = await db.narrativePolicy.findUniqueOrThrow({
+      where: { novelId_kind: { novelId: f.novelId, kind: "SCALE" } },
+    });
+    expect(policyAfter.payload).toEqual(policyBefore.payload);
+    expect((policyAfter.payload as any).standing.scale).toBe("VILLAGE");
+  });
+
+  it("STORY restore with old snapshot JSON lacking scale_review: legacy handling, S2 retained, stale applicability", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+
+    // 1. Create S2 history (proposal + outcome) — OPERATIONAL, append-only.
+    const { proposal } = await (async () => {
+      const set = await seedEvidenceSet(f, {
+        claims: [{ scale: "KINGDOM" }, { scale: "EMPIRE" }],
+      });
+      const result = await svc.createProposal({
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        chapterId: f.chapterId,
+        chapterVersionId: f.chapterVersionId,
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: f.headRevisionId,
+        expectedSetId: set.id,
+        expectedDecisionId: null,
+        expectedPolicyFingerprint: f.policyFingerprint,
+        kind: "CHAPTER_EXCEPTION",
+        payload: { claimIndices: [0] },
+        reason: "s2 history for restore test",
+      });
+      const decided = await svc.decideProposal({
+        chapterId: f.chapterId,
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        proposalId: result.proposal.id,
+        action: "APPROVE",
+        reason: "approve for restore test",
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: f.headRevisionId,
+        expectedDecisionId: null,
+        expectedPolicyFingerprint: f.policyFingerprint,
+        expectedVersionId: f.chapterVersionId,
+        expectedSetId: set.id,
+      });
+      return { proposal: result.proposal, outcome: decided.outcome };
+    })();
+
+    // 2. Create a legacy receipt (pre-050B format: scaleReview is NULL).
+    // This simulates a receipt from an old snapshot JSON lacking scale_review.
+    const legacyReceipt = await db.finalTextReview.create({
+      data: {
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        chapterVersionId: f.chapterVersionId,
+        revisionId: f.headRevisionId,
+        verdict: "PASS",
+        hardViolations: [],
+        advisory: [],
+        evaluatedPolicies: ["SCALE"],
+        // scaleReview omitted → NULL (legacy: pre-050B snapshot had no scale_review)
+      },
+    });
+
+    // 3. LEGACY RECEIPT HANDLING: A receipt with NULL scaleReview (from an
+    // old snapshot JSON lacking scale_review) must be readable without
+    // crashing. NULL denotes legacy — never fabricated as new proof.
+    // The listFinalTextReviews implementation maps scaleReview through
+    // directly (ai.ts:819); null passes through as null.
+    const rereadLegacy = await db.finalTextReview.findUniqueOrThrow({
+      where: { id: legacyReceipt.id },
+    });
+    expect(rereadLegacy.scaleReview).toBeNull(); // Legacy, not crashed
+    expect(rereadLegacy.verdict).toBe("PASS");
+    // The service layer (listFinalTextReviews) includes scaleReview in its
+    // output (Slice 1 fix); null is preserved, not fabricated.
+
+    // 4. RETAINED OPERATIONAL S2 HISTORY: S2 tables are NOT in the STORY
+    // restore scope (COVERED_TABLES). A STORY restore never rewinds them.
+    const { COVERED_TABLE_NAMES } = await import("@novelforge/story-versioning");
+    expect(COVERED_TABLE_NAMES).not.toContain("scale_decision_proposals");
+    expect(COVERED_TABLE_NAMES).not.toContain("scale_decision_outcomes");
+    // The S2 history created above is intact.
+    const proposalAfter = await db.scaleDecisionProposal.findUniqueOrThrow({
+      where: { id: proposal.id },
+      include: { outcome: true },
+    });
+    expect(proposalAfter.outcome).not.toBeNull();
+
+    // 5. STALE APPLICABILITY: After a restore (new revision), the receipt's
+    // revisionId pin no longer matches the current head → stale.
+    // Simulate by advancing the head (as a restore would).
+    const revision2 = await db.revision.create({
+      data: {
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        branchId: f.branchId,
+        number: 2,
+        origin: "MANUAL",
+        message: "simulated restore",
+        createdById: f.userId,
+      },
+    });
+    await db.novelBranch.update({
+      where: { id: f.branchId },
+      data: { headRevisionId: revision2.id },
+    });
+    // The legacy receipt pins the old revision → stale after restore.
+    const receiptAfter = await db.finalTextReview.findUniqueOrThrow({
+      where: { id: legacyReceipt.id },
+    });
+    expect(receiptAfter.revisionId).toBe(f.headRevisionId);
+    expect(receiptAfter.revisionId).not.toBe(revision2.id);
+    // Applicability: receipt is stale (does not reflect current head).
+  });
+
   it("decision on obsolete version is 409 with zero writes", async () => {
     const f = await seedFixture();
     const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
@@ -1086,6 +1396,7 @@ describe("decideProposal", () => {
     // but the stored proposal pins obsolete V1: the decision must refuse.
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -1116,6 +1427,7 @@ describe("decideProposal", () => {
 
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -1141,14 +1453,23 @@ describe("decideProposal", () => {
 
     // Replace the evidence set: a NEW set (sequence 2) with different claims
     // (all within reach — no violations). The stored proposal still pins the
-    // old set's violating indices.
-    await seedEvidenceSet(f, {
-      claims: [{ scale: "VILLAGE" }, { scale: "PERSONAL" }, { scale: "VILLAGE" }],
+    // old set's violating indices. The sequence-2 set carries the correct
+    // previousSetId so chain validation passes and the test exercises the
+    // intended applicability 409 boundary (not a chain-validation error).
+    const set2 = await seedEvidenceSet(f, {
+      claims: [
+        { scale: "VILLAGE", relevance: "ACTION" },
+        { scale: "PERSONAL", relevance: "ACTION" },
+        { scale: "VILLAGE", relevance: "STAKES" },
+      ],
       sequence: 2,
+      previousSetId: evidenceSetId,
     });
+    expect(set2.previousSetId).toBe(evidenceSetId);
 
     await expect(
       svc.decideProposal({
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,
@@ -1173,6 +1494,7 @@ describe("decideProposal", () => {
     const { proposal, evidenceSetId } = await seedProposal(f);
 
     const result = await svc.decideProposal({
+      chapterId: f.chapterId,
       actorUserId: f.userId,
       workspaceId: f.workspaceId,
       novelId: f.novelId,
@@ -1222,6 +1544,7 @@ describe("atomic create+approve (NF-WF-050B second repair)", () => {
       db.$transaction(async (tx) => {
         const created = await svc.createProposalTx(tx as import("@novelforge/ai-services").ScaleDecisionTx, proposalInput);
         await svc.decideProposalTx(tx as import("@novelforge/ai-services").ScaleDecisionTx, {
+          chapterId: f.chapterId,
           actorUserId: f.userId,
           workspaceId: f.workspaceId,
           novelId: f.novelId,
@@ -1270,6 +1593,7 @@ describe("atomic create+approve (NF-WF-050B second repair)", () => {
     const result = await db.$transaction(async (tx) => {
       const created = await svc.createProposalTx(tx as import("@novelforge/ai-services").ScaleDecisionTx, proposalInput);
       const decided = await svc.decideProposalTx(tx as import("@novelforge/ai-services").ScaleDecisionTx, {
+        chapterId: f.chapterId,
         actorUserId: f.userId,
         workspaceId: f.workspaceId,
         novelId: f.novelId,

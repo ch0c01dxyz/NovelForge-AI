@@ -136,13 +136,19 @@ const proposals = ref<ProposalRow[]>([]);
 const proposalsLoading = ref(false);
 const proposalsError = ref<string | null>(null);
 
-// Request invalidation: ignore late responses for old selections.
-let requestSeq = 0;
+// Selection identity: bumped ONLY on selection change or unmount.
+// Guards against applying late responses to a different chapter/version.
+let selectionSeq = 0;
+// Operation identity: bumped at the start of each top-level operation
+// (load, rerun, submit). Separate from selection so a concurrent
+// successful mutation cannot suppress another operation's busy cleanup.
+// Internal refresh helpers receive the parent's IDs and never bump.
+let operationSeq = 0;
 // Unmount guard: never update state after unmount.
 let isUnmounted = false;
 onUnmounted(() => {
   isUnmounted = true;
-  requestSeq++; // invalidate any in-flight requests
+  selectionSeq++; // invalidate any in-flight requests
 });
 
 const base = () =>
@@ -170,7 +176,30 @@ function statusErrorKey(e: unknown): string {
   return t("workspace.scaleReview.errors.network");
 }
 
-async function loadContext(): Promise<void> {
+/**
+ * Server-computed receipt applicability: a receipt is FRESH only when every
+ * pin in its retained protocol matches the current coherent context
+ * snapshot. Any mismatch (version, branch, head revision, evidence set,
+ * policy fingerprint, exception) means the underlying data changed → STALE.
+ * Never marks a receipt fresh unconditionally.
+ */
+function isReceiptApplicable(
+  receipt: ScaleReviewContextResponse["receipt"],
+  ctx: ScaleReviewContext,
+): boolean {
+  const pins = receipt?.scaleReview?.pins;
+  if (!receipt || !pins) return false;
+  return (
+    pins.chapterVersionId === ctx.chapterVersion.id &&
+    pins.branchId === ctx.branch.id &&
+    pins.sourceRevisionId === ctx.headRevisionId &&
+    pins.evidenceSetId === (ctx.latestSet?.id ?? null) &&
+    pins.policyFingerprint === ctx.policyFingerprint &&
+    pins.exceptionOutcomeId === (ctx.applicableException?.outcomeId ?? null)
+  );
+}
+
+async function loadContext(selSeq: number, opSeq: number): Promise<void> {
   if (!hasSavedVersion.value) {
     loadState.value = "idle";
     context.value = null;
@@ -178,7 +207,6 @@ async function loadContext(): Promise<void> {
     effectiveVersionId.value = null;
     return;
   }
-  const seq = ++requestSeq;
   loadState.value = "loading";
   loadError.value = null;
   loadErrorStatus.value = null;
@@ -191,25 +219,40 @@ async function loadContext(): Promise<void> {
     const res = await api<ScaleReviewContextResponse>(
       `${base()}/scale-review-context${versionParam}`,
     );
-    if (seq !== requestSeq || isUnmounted) return; // stale selection or unmounted
+    // Recheck scope after await: stale selection or unmounted → drop.
+    if (selSeq !== selectionSeq || isUnmounted) return;
     context.value = res.context;
     receipt.value = res.receipt;
     // Store the server-derived version ID for subsequent calls.
     effectiveVersionId.value = res.context.chapterVersion.id;
     // Sync the review display from the receipt's protocol (truthful).
     review.value = res.receipt?.scaleReview ?? null;
-    reviewStale.value = false;
+    // Server-computed applicability from the coherent snapshot — never
+    // unconditional freshness.
+    reviewStale.value = !isReceiptApplicable(res.receipt, res.context);
     loadState.value = "loaded";
-    await loadProposals(seq);
+    await loadProposals(selSeq, opSeq);
   } catch (e) {
-    if (seq !== requestSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || isUnmounted) return;
     loadState.value = "error";
     loadError.value = statusErrorKey(e);
     loadErrorStatus.value = e instanceof ApiError ? e.status : null;
   }
 }
 
-async function loadProposals(seq: number): Promise<void> {
+/**
+ * Retry button handler: starts a fresh top-level load operation with
+ * current selection identity and a new operation identity.
+ */
+async function retryLoad(): Promise<void> {
+  const selSeq = selectionSeq;
+  const opSeq = ++operationSeq;
+  await loadContext(selSeq, opSeq);
+  if (selSeq !== selectionSeq || isUnmounted) return;
+  await loadEvidence(selSeq, opSeq);
+}
+
+async function loadProposals(selSeq: number, _opSeq: number): Promise<void> {
   const versionId = effectiveVersionId.value;
   if (!versionId) return;
   proposalsLoading.value = true;
@@ -218,13 +261,13 @@ async function loadProposals(seq: number): Promise<void> {
     const res = await api<{ items: ProposalRow[]; nextBeforeSequence: number | null }>(
       `${base()}/scale-decisions?chapterVersionId=${encodeURIComponent(versionId)}&limit=20`,
     );
-    if (seq !== requestSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || isUnmounted) return;
     proposals.value = res.items;
   } catch (e) {
-    if (seq !== requestSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || isUnmounted) return;
     proposalsError.value = statusErrorKey(e);
   } finally {
-    if (seq === requestSeq && !isUnmounted) proposalsLoading.value = false;
+    if (selSeq === selectionSeq && !isUnmounted) proposalsLoading.value = false;
   }
 }
 
@@ -329,26 +372,44 @@ const reviewError = ref<string | null>(null);
 async function rerunReview(): Promise<void> {
   const versionId = effectiveVersionId.value;
   if (!hasSavedVersion.value || reviewRunning.value || !versionId) return;
-  // Selection generation: ignore late responses for a previous chapter.
-  const seq = requestSeq;
+  // Separate selection and operation identity. This rerun owns an
+  // operation identity, but busy cleanup is guarded by selection only:
+  // a concurrent different-type operation must never suppress it.
+  const selSeq = selectionSeq;
+  ++operationSeq;
   reviewRunning.value = true;
   reviewError.value = null;
   try {
-    const res = await api<{ scaleReview: ScaleReviewProtocol | null; stale: boolean }>(
+    // Server returns ReviewVerdict (no `stale` field — never read invented fields).
+    const res = await api<{ scaleReview: ScaleReviewProtocol | null }>(
       `${base()}/final-text-review`,
       {
         method: "POST",
         body: JSON.stringify({ chapterVersionId: versionId }),
       },
     );
-    if (seq !== requestSeq || isUnmounted) return;
+    // Recheck scope after await: stale selection → drop.
+    if (selSeq !== selectionSeq || isUnmounted) return;
     review.value = res.scaleReview;
-    reviewStale.value = res.stale;
+    // Just computed against the current context: recompute applicability
+    // from the returned protocol pins when context is available.
+    reviewStale.value = context.value
+      ? !isReceiptApplicable(
+          res.scaleReview ? { scaleReview: res.scaleReview } as ScaleReviewContextResponse["receipt"] : null,
+          context.value,
+        )
+      : false;
   } catch (e) {
-    if (seq !== requestSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || isUnmounted) return;
     reviewError.value = statusErrorKey(e);
   } finally {
-    if (seq === requestSeq && !isUnmounted) reviewRunning.value = false;
+    // Clear if the selection is still current. Operation identity is NOT
+    // checked here: every operation guards re-entry via its own busy flag,
+    // so a concurrent different-type operation must never suppress this
+    // cleanup. (Selection change clears all busy flags in the watcher.)
+    if (selSeq === selectionSeq && !isUnmounted) {
+      reviewRunning.value = false;
+    }
   }
 }
 
@@ -382,8 +443,9 @@ async function submitProposal(): Promise<void> {
     proposalError.value = t("workspace.scaleReview.proposal.payloadInvalid");
     return;
   }
-  // Selection generation: ignore late responses for a previous chapter.
-  const seq = requestSeq;
+  // Separate selection and operation identity.
+  const selSeq = selectionSeq;
+  const opSeq = ++operationSeq;
   proposalRunning.value = true;
   proposalError.value = null;
   try {
@@ -401,19 +463,25 @@ async function submitProposal(): Promise<void> {
         reason,
       }),
     });
-    if (seq !== requestSeq || isUnmounted) return;
+    // Recheck scope after await before subsequent refreshes.
+    if (selSeq !== selectionSeq || isUnmounted) return;
     proposalDone.value = true;
-    await loadProposals(seq);
-    // Refresh context: decision head may have changed.
-    // (loadContext bumps requestSeq once as part of this operation's chain.)
-    await loadContext();
+    await loadProposals(selSeq, opSeq);
+    // Recheck scope again before the next refresh in the chain.
+    if (selSeq !== selectionSeq || isUnmounted) return;
+    // Refresh context: decision head may have changed. Internal call —
+    // reuses this operation's identity (no new bump).
+    await loadContext(selSeq, opSeq);
   } catch (e) {
-    if (seq !== requestSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || isUnmounted) return;
     proposalError.value = statusErrorKey(e);
   } finally {
-    // Clear only if no newer operation started after our own refresh chain
-    // (which accounts for exactly one requestSeq bump via loadContext).
-    if (!isUnmounted && requestSeq <= seq + 1) proposalRunning.value = false;
+    // Clear if the selection is still current. Operation identity is NOT
+    // checked: a concurrent different-type operation must never suppress
+    // this operation's own busy cleanup.
+    if (selSeq === selectionSeq && !isUnmounted) {
+      proposalRunning.value = false;
+    }
   }
 }
 
@@ -452,8 +520,9 @@ async function submitDecision(): Promise<void> {
       return;
     }
   }
-  // Selection generation: ignore late responses for a previous chapter.
-  const seq = requestSeq;
+  // Separate selection and operation identity.
+  const selSeq = selectionSeq;
+  const opSeq = ++operationSeq;
   decisionRunning.value = true;
   decisionError.value = null;
   try {
@@ -476,21 +545,27 @@ async function submitDecision(): Promise<void> {
       method: "POST",
       body: JSON.stringify(body),
     });
-    if (seq !== requestSeq || isUnmounted) return;
+    // Recheck scope after await before subsequent refreshes.
+    if (selSeq !== selectionSeq || isUnmounted) return;
     decisionTarget.value = null;
-    // (loadContext bumps requestSeq once as part of this operation's chain.)
-    await loadContext();
+    // Internal refresh — reuses this operation's identity (no new bump).
+    await loadContext(selSeq, opSeq);
   } catch (e) {
-    if (seq !== requestSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || isUnmounted) return;
     decisionError.value = statusErrorKey(e);
   } finally {
-    // Clear only if no newer operation started after our own refresh chain.
-    if (!isUnmounted && requestSeq <= seq + 1) decisionRunning.value = false;
+    // Clear if the selection is still current. Operation identity is NOT
+    // checked: a concurrent different-type operation must never suppress
+    // this operation's own busy cleanup.
+    if (selSeq === selectionSeq && !isUnmounted) {
+      decisionRunning.value = false;
+    }
   }
 }
 
 // --- 050A evidence authoring ---
 // Frozen 050A claim shape: { scale, relevance, explanation, source: { start, end, quote } }
+// Server field name is `conflicts` (ScaleEvidenceSetRecord.conflicts), never `claims`.
 interface EvidenceClaim {
   scale: string;
   relevance: "ACTION" | "STAKES" | "CONSEQUENCE";
@@ -503,7 +578,7 @@ interface EvidenceSet {
   sequence: number;
   declaration: "CONFLICTS" | "NO_OPERATIVE_CONFLICT";
   explanation: string;
-  claims: EvidenceClaim[];
+  conflicts: EvidenceClaim[];
   createdAt: string;
 }
 
@@ -527,7 +602,7 @@ const evidenceDone = ref(false);
 
 const NARRATIVE_SCALES = ["PERSONAL", "FAMILY", "VILLAGE", "TOWN", "CITY", "PROVINCE", "KINGDOM", "EMPIRE"];
 
-async function loadEvidence(seq: number): Promise<void> {
+async function loadEvidence(selSeq: number, _opSeq: number): Promise<void> {
   const versionId = effectiveVersionId.value;
   if (!versionId) return;
   evidenceLoading.value = true;
@@ -541,16 +616,18 @@ async function loadEvidence(seq: number): Promise<void> {
       status: string;
       staleReasons: string[];
     }>(`${base()}/scale-evidence`);
-    if (seq !== requestSeq || isUnmounted) return;
+    // Recheck scope after await: stale selection → drop.
+    if (selSeq !== selectionSeq || isUnmounted) return;
     evidenceSet.value = res.assessment;
     // Load history from the separate endpoint
     const histRes = await api<{ items: EvidenceSet[] }>(
       `${base()}/scale-evidence/history?chapterVersionId=${encodeURIComponent(versionId)}&limit=20`,
     );
-    if (seq !== requestSeq || isUnmounted) return;
+    // Recheck scope after await before applying.
+    if (selSeq !== selectionSeq || isUnmounted) return;
     evidenceHistory.value = histRes.items ?? [];
   } catch (e) {
-    if (seq !== requestSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || isUnmounted) return;
     // 404 means no evidence yet — not an error state.
     if (e instanceof ApiError && e.status === 404) {
       evidenceSet.value = null;
@@ -559,7 +636,7 @@ async function loadEvidence(seq: number): Promise<void> {
       evidenceError.value = statusErrorKey(e);
     }
   } finally {
-    if (seq === requestSeq && !isUnmounted) evidenceLoading.value = false;
+    if (selSeq === selectionSeq && !isUnmounted) evidenceLoading.value = false;
   }
 }
 
@@ -606,8 +683,9 @@ async function submitEvidence(): Promise<void> {
     });
   }
 
-  // Selection generation: ignore late responses for a previous chapter.
-  const seq = requestSeq;
+  // Separate selection and operation identity.
+  const selSeq = selectionSeq;
+  const opSeq = ++operationSeq;
   evidenceRunning.value = true;
   evidenceFormError.value = null;
   try {
@@ -623,21 +701,27 @@ async function submitEvidence(): Promise<void> {
         conflicts: claims,
       }),
     });
-    if (seq !== requestSeq || isUnmounted) return;
+    // Recheck scope after await before subsequent refreshes.
+    if (selSeq !== selectionSeq || isUnmounted) return;
     evidenceDone.value = true;
     resetEvidenceForm();
     evidenceDone.value = true;
     // Refresh context: latest set changed, review is now stale.
-    // (loadContext bumps requestSeq once as part of this operation's chain.)
-    await loadContext();
-    const seq2 = requestSeq;
-    await loadEvidence(seq2);
+    // Internal calls — reuse this operation's identity (no new bump).
+    await loadContext(selSeq, opSeq);
+    // Recheck scope again before the next refresh in the chain.
+    if (selSeq !== selectionSeq || isUnmounted) return;
+    await loadEvidence(selSeq, opSeq);
   } catch (e) {
-    if (seq !== requestSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || isUnmounted) return;
     evidenceFormError.value = statusErrorKey(e);
   } finally {
-    // Clear only if no newer operation started after our own refresh chain.
-    if (!isUnmounted && requestSeq <= seq + 1) evidenceRunning.value = false;
+    // Clear if the selection is still current. Operation identity is NOT
+    // checked: a concurrent different-type operation must never suppress
+    // this operation's own busy cleanup.
+    if (selSeq === selectionSeq && !isUnmounted) {
+      evidenceRunning.value = false;
+    }
   }
 }
 
@@ -645,7 +729,9 @@ async function submitEvidence(): Promise<void> {
 watch(
   () => [props.workspaceId, props.novelId, props.chapterId, props.chapterVersionId, props.hasSavedVersion],
   () => {
-    requestSeq++; // invalidate in-flight
+    selectionSeq++; // invalidate in-flight (selection identity only)
+    const selSeq = selectionSeq;
+    const opSeq = ++operationSeq; // this load chain owns an operation identity
     // Drop stale in-flight mutation state for the old selection; the
     // seq-guarded continuations above will no-op instead of touching the
     // new selection's state.
@@ -664,9 +750,8 @@ watch(
     resetProposalForm();
     resetEvidenceForm();
     decisionTarget.value = null;
-    loadContext().then(() => {
-      const seq = requestSeq;
-      return loadEvidence(seq);
+    loadContext(selSeq, opSeq).then(() => {
+      return loadEvidence(selSeq, opSeq);
     });
   },
   { immediate: true },
@@ -731,7 +816,7 @@ function statusClass(status: ChecklistItem["status"]): string {
         <button
           type="button"
           class="mt-2 rounded-lg border border-nf-border-strong px-3 py-1.5 text-[12.5px] font-medium text-nf-text hover:bg-nf-bg-2 focus-visible:nf-focus"
-          @click="loadContext"
+          @click="retryLoad"
         >
           {{ t("workspace.scaleReview.retry") }}
         </button>
@@ -844,9 +929,9 @@ function statusClass(status: ChecklistItem["status"]): string {
                 {{ t(`workspace.scaleReview.evidence.declaration.${evidenceSet.declaration}`) }}
               </p>
               <p class="mt-1 text-[12px] leading-relaxed text-nf-text-dim">{{ evidenceSet.explanation }}</p>
-              <ul v-if="evidenceSet.claims.length > 0" class="mt-2 flex flex-col gap-1.5">
+              <ul v-if="evidenceSet.conflicts.length > 0" class="mt-2 flex flex-col gap-1.5">
                 <li
-                  v-for="(c, i) in evidenceSet.claims"
+                  v-for="(c, i) in evidenceSet.conflicts"
                   :key="i"
                   class="rounded border border-nf-border px-2 py-1.5 text-[12px]"
                 >
@@ -874,7 +959,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                   class="rounded border border-nf-border px-2 py-1.5 text-[12px] text-nf-text-dim"
                 >
                   #{{ h.sequence }} · {{ t(`workspace.scaleReview.evidence.declaration.${h.declaration}`) }} ·
-                  {{ h.claims.length }} {{ t("workspace.scaleReview.evidence.claims") }}
+                  {{ h.conflicts.length }} {{ t("workspace.scaleReview.evidence.claims") }}
                 </li>
               </ul>
             </details>

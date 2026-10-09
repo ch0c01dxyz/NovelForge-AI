@@ -454,24 +454,24 @@ export function createNarrativeServices(deps: {
     tx: RevisionTx,
     workspaceId: string,
     novelId: string,
-  ): Promise<{ id: string; name: string }> {
+  ): Promise<{ id: string; name: string; headRevisionId: string | null }> {
     await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
     const novel = await tx.novel.findFirst({
       where: { id: novelId, workspaceId },
       select: { currentBranchId: true },
     });
     if (!novel) throw new NotFoundError("novel");
-    let branch: { id: string; name: string } | null = null;
+    let branch: { id: string; name: string; headRevisionId: string | null } | null = null;
     if (novel.currentBranchId) {
       branch = await tx.novelBranch.findFirst({
         where: { id: novel.currentBranchId, novelId },
-        select: { id: true, name: true },
+        select: { id: true, name: true, headRevisionId: true },
       });
     }
     if (!branch) {
       branch = await tx.novelBranch.findFirst({
         where: { novelId, name: "main" },
-        select: { id: true, name: true },
+        select: { id: true, name: true, headRevisionId: true },
       });
     }
     if (!branch) throw new NotFoundError("novel");
@@ -616,6 +616,7 @@ export function createNarrativeServices(deps: {
           actorUserId,
           workspaceId,
           novelId,
+          chapterId: pins.chapterId,
           proposalId: created.proposal.id,
           action: "APPROVE",
           reason,
@@ -636,10 +637,50 @@ export function createNarrativeServices(deps: {
 
     // Hardness-only change: reason + branch/head/policy CAS + branch-aware
     // revision under the novel -> branch lock order.
+    // GAP-119: validate ALL context pins (not just branch/policy).
     const updated = await db.$transaction(async (tx) => {
       const branch = await lockCheckedOutBranch(tx, workspaceId, novelId);
       if (pins.expectedBranchId !== branch.id) {
         throw new ConflictError("policy branch changed while this request was in flight");
+      }
+      // Validate head pin against live head.
+      if ((branch.headRevisionId ?? null) !== pins.expectedHeadRevisionId) {
+        throw new ConflictError("head changed while this request was in flight");
+      }
+      // Validate chapter/version ownership.
+      const version = await tx.chapterVersion.findFirst({
+        where: {
+          id: pins.chapterVersionId,
+          chapterId: pins.chapterId,
+          chapter: { novelId, novel: { workspaceId } },
+        },
+        select: { id: true },
+      });
+      if (!version) {
+        throw new ConflictError("chapter version changed while this request was in flight");
+      }
+      // Validate evidence set pin against live latest set.
+      // GAP-119: scope evidence lookup to the EXACT chapter version.
+      const latestSet = await tx.scaleEvidenceSet.findFirst({
+        where: { novelId, sourceBranchId: branch.id, chapterVersionId: pins.chapterVersionId },
+        orderBy: { sequence: "desc" },
+        select: { id: true },
+      });
+      if ((latestSet?.id ?? null) !== pins.expectedSetId) {
+        throw new ConflictError("evidence set changed while this request was in flight");
+      }
+      // Validate decision head pin.
+      const latestOutcome = await tx.scaleDecisionOutcome.findFirst({
+        where: {
+          novelId,
+          sourceBranchId: branch.id,
+          chapterVersionId: pins.chapterVersionId,
+        },
+        orderBy: { sequence: "desc" },
+        select: { id: true },
+      });
+      if ((latestOutcome?.id ?? null) !== pins.expectedDecisionId) {
+        throw new ConflictError("decision head changed while this request was in flight");
       }
       const current = await tx.narrativePolicy.findUnique({
         where: { novelId_kind: { novelId, kind: "SCALE" } },
@@ -729,8 +770,9 @@ export function createNarrativeServices(deps: {
       }
       // Validate evidence-set and decision-head expectations against current
       // context so a stale client view cannot delete under changed state.
+      // GAP-119: scope evidence lookup to the EXACT chapter version.
       const latestSet = await tx.scaleEvidenceSet.findFirst({
-        where: { novelId, sourceBranchId: branch.id },
+        where: { novelId, sourceBranchId: branch.id, chapterVersionId: pins.chapterVersionId },
         orderBy: { sequence: "desc" },
         select: { id: true },
       });

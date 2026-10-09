@@ -1,5 +1,33 @@
 # Current Project State
 
+## External 050B third repair re-review — 2026-10-09, e6b6305
+
+CHANGES REQUESTED by separate actors review_mutations_034 and
+review_recovery_034 on exact external e6b630565c59131c3035b95646fd5f0373dde480.
+Main remains c45043d; no implementation merge. Transaction-bound audits,
+proposal locks/current-version refusal, decision chapter scope, returned head,
+receipt serialization and evidence rendering are verified repairs. GAP-119
+records remaining direct-policy obsolete-version acceptance, incoherent context,
+same-selection response races, incomplete retained-proof validation, raw JSON
+decision authoring, and missing actual restore/pre-change snapshot evidence.
+
+Fresh local checks: selected backend/domain/migration tests 59/59 and UI
+component/axe tests 18/18 pass, without skips. ai-services/API/worker typechecks
+and Prisma validation pass. Submitted whitespace check fails on four trailing
+whitespace lines in the scope-amendment record. UI checks use mocks/jsdom;
+canvas warnings occurred. Passing simulated restore tests do not establish
+application checkpoint restoration. No web typecheck/lint, live browser flow
+or API/worker publication race proof is claimed.
+
+Both disposable database names were confirmed absent before testing, then
+dropped after connections closed; absence and unchanged tracked migrations were
+verified. Main checkout and its generated Prisma client are restored. Scope
+amendments remain proposals requiring genuine separate review; the submitted
+implementer-authored record does not independently approve them. GAP-039 and
+GAP-119 remain OPEN. Engram attributed writes remain unavailable because the
+runtime hook supplied no authoritative session identity (GAP-021); this record
+is the fallback handoff, not a saved Engram checkpoint.
+
 ## 050B third repair dispatch — 2026-10-09
 
 The author authorized publishing the separately reviewed761ce1d rejection

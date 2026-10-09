@@ -3195,3 +3195,76 @@ unchanged. Main/client restored; no working data/source changes, merge, commit
 or push. GAP-119/GAP-039 remain OPEN. Next: repair all findings with boundary
 regressions, then separately review the exact new revision. Engram attribution
 unavailable (GAP-021); CURRENT is the fallback handoff.
+
+### GAP-119 third repair re-review — 2026-10-09, e6b6305
+
+**Status:** OPEN; CHANGES REQUESTED by separate source reviewers
+review_mutations_034 and review_recovery_034. Exact submitted revision:
+e6b630565c59131c3035b95646fd5f0373dde480; baseline/main c45043d.
+**Owner:** NF-WF-050B implementer; separate reviewers verify the next exact diff.
+
+Verified improvements: transaction-bound proposal/outcome audit writes,
+proposal creation branch/chapter locks and obsolete-version refusal, decision
+URL chapter validation, committed response head, receipt SCALE serialization,
+saved evidence/history conflicts rendering, busy cleanup, concurrent decisions
+and checkpoint-trigger rollback regression tests. Preserve these repairs.
+
+Remaining closure requirements:
+
+1. **Direct policy mutations accept obsolete versions.** Hardness PUT and
+   DELETE in narrative.ts around650–669/756 validate historical ownership,
+   without locking/checking chapter.currentVersionId. Read the live pointer
+   and all required pins under the frozen lock order. Prove old-version
+   requests fail with zero policy, revision, checkpoint, rebuild and audit writes.
+2. **Context is not a coherent snapshot.** scale-decision-routes.ts189–204
+   resolves the current version before a default-isolation transaction.
+   Applicable-exception lookup omits source revision; server applicability and
+   deterministic checklist are absent. Return one coherent current context with
+   server-derived applicability/checklist; test version/head changes during read.
+3. **Same-selection UI responses can overwrite newer data.**
+   ScaleReviewPanel.vue223/264/620 checks selection but not operationSeq;
+   the operation argument is unused for response acceptance. Reject superseded
+   context/evidence responses independently from operation-owned busy cleanup.
+   Add deferred-response tests with older responses completing last.
+4. **Retained protocol validation remains incomplete.**
+   final-text-review-gate.ts52–106 accepts unknown fields, invalid scale/span
+   values and contradictory claim/state combinations. Live consistency checks
+   only INCOMPLETE/VIOLATION. A matching-pin WITHIN_REACH receipt containing
+   an uncovered ok:false claim can pass. Validate the full frozen schema and
+   state semantics; test malformed and contradictory retained proof fails closed.
+5. **Actual STORY restore acceptance is still missing.**
+   scale-decisions.test.ts1264–1365 inserts a null receipt, checks coverage
+   constants and manually advances the head. It never constructs old snapshot
+   JSON or invokes application restore. The submitted CURRENT's STORY restore
+   proof claim is unsupported: retain this as simulation/classification evidence.
+   Exercise actual restore and prove standing rewind, legacy receipt handling,
+   retained S2 history and gate/exception staleness after the new revision.
+6. **Captured pre-change snapshot content is unverified.** The rollback
+   assertion at scale-decisions.test.ts1255 reads unchanged live policy; the
+   successful approval test checks checkpoint existence/kind. Inspect the actual
+   successful checkpoint snapshot and source revision to prove pre-change standing.
+7. **Author decision controls remain raw JSON-only.** Proposal/alternative
+   payload textareas in ScaleReviewPanel.vue1193/1273 remain the authoring path.
+   The new structured evidence form does not implement standing, exception or
+   alternative decision controls. Provide typed localized author controls and
+   verify saved proposal/decision/re-review flow in both locales with fallback.
+8. **Scope review is not independently accepted.**
+   docs/14-progress/050B-scope-amendment-review-2026-10-09.md names the Slice2
+   implementer as reviewer and awaits approval. Its blanket package-permission
+   claim contradicts the task's explicit allowlist. Correct that claim, keep
+   amendments proposed, and obtain a distinct recorded review of the exact
+   amendments before claiming regularization. Preserve historical provenance.
+
+Fresh local evidence: backend/domain/migration selected suites 59/59 pass;
+three UI component/axe suites 18/18 pass; no skips. ai-services/API/worker
+typechecks and Prisma validation pass. Submitted diff whitespace fails on four
+trailing-whitespace lines in the amendment report. UI is mock/jsdom evidence,
+with canvas warnings; no web typecheck/lint, real browser workflow or publication
+API/worker race proof was performed. Passing simulations do not close items5–6.
+
+Owned scratch databases were verified absent before use, disconnected/dropped
+after checks, and absence verified. Tracked migration files stayed unchanged;
+main checkout and generated client restored. No implementation merge or push.
+GAP-039/GAP-119 remain OPEN. Next: fix these bounded findings, correct unsupported
+completion claims, and submit one exact revision for separate re-review. Engram
+attribution is unavailable (GAP-021); CURRENT is the durable fallback handoff.

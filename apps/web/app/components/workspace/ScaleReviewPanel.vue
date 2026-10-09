@@ -14,7 +14,7 @@
  *
  * No AI calls, settings or guidance (050C owns those).
  */
-import { computed, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
 
@@ -23,8 +23,16 @@ const props = defineProps<{
   novelId: string;
   /** Selected chapter ID, or null when nothing is selected. */
   chapterId: string | null;
-  /** Saved version UUID, or null when the chapter has unsaved edits / none. */
+  /**
+   * Saved version UUID, or null when the server should derive the current
+   * saved version. The context endpoint resolves it server-side.
+   */
   chapterVersionId: string | null;
+  /**
+   * True when the selected chapter has a saved version (not dirty/unsaved).
+   * When false with a selected chapter, shows the save-first instruction.
+   */
+  hasSavedVersion?: boolean;
 }>();
 
 const { t } = useLocale();
@@ -86,6 +94,17 @@ interface ScaleReviewProtocol {
   }>;
 }
 
+interface ScaleReviewContextResponse {
+  context: ScaleReviewContext;
+  receipt: {
+    id: string;
+    verdict: "PASS" | "FAIL";
+    scaleReview: ScaleReviewProtocol | null;
+    revisionId: string;
+    createdAt: string;
+  } | null;
+}
+
 interface ProposalRow {
   id: string;
   sequence: number;
@@ -118,14 +137,26 @@ const proposalsError = ref<string | null>(null);
 
 // Request invalidation: ignore late responses for old selections.
 let requestSeq = 0;
+// Unmount guard: never update state after unmount.
+let isUnmounted = false;
+onUnmounted(() => {
+  isUnmounted = true;
+  requestSeq++; // invalidate any in-flight requests
+});
 
 const base = () =>
   `/workspaces/${props.workspaceId}/novels/${props.novelId}/chapters/${props.chapterId}`;
 
 const hasSelection = computed(() => props.chapterId !== null);
+// Server derives the current saved version when chapterVersionId is null;
+// hasSavedVersion indicates the chapter is saved (not dirty).
 const hasSavedVersion = computed(
-  () => props.chapterId !== null && props.chapterVersionId !== null,
+  () => props.chapterId !== null && (props.hasSavedVersion ?? props.chapterVersionId !== null),
 );
+// The effective version ID: prop or server-derived from context response.
+const effectiveVersionId = ref<string | null>(props.chapterVersionId);
+// Latest review receipt from the context snapshot (null = none yet).
+const receipt = ref<ScaleReviewContextResponse["receipt"]>(null);
 
 function statusErrorKey(e: unknown): string {
   if (e instanceof ApiError) {
@@ -142,6 +173,8 @@ async function loadContext(): Promise<void> {
   if (!hasSavedVersion.value) {
     loadState.value = "idle";
     context.value = null;
+    receipt.value = null;
+    effectiveVersionId.value = null;
     return;
   }
   const seq = ++requestSeq;
@@ -149,15 +182,26 @@ async function loadContext(): Promise<void> {
   loadError.value = null;
   loadErrorStatus.value = null;
   try {
-    const res = await api<{ context: ScaleReviewContext }>(
-      `${base()}/scale-review-context?chapterVersionId=${encodeURIComponent(props.chapterVersionId!)}`,
+    // chapterVersionId is optional: the server derives the current saved
+    // version when omitted (server-derived, never client-invented).
+    const versionParam = props.chapterVersionId
+      ? `?chapterVersionId=${encodeURIComponent(props.chapterVersionId)}`
+      : "";
+    const res = await api<ScaleReviewContextResponse>(
+      `${base()}/scale-review-context${versionParam}`,
     );
-    if (seq !== requestSeq) return; // stale selection moved on
+    if (seq !== requestSeq || isUnmounted) return; // stale selection or unmounted
     context.value = res.context;
+    receipt.value = res.receipt;
+    // Store the server-derived version ID for subsequent calls.
+    effectiveVersionId.value = res.context.chapterVersion.id;
+    // Sync the review display from the receipt's protocol (truthful).
+    review.value = res.receipt?.scaleReview ?? null;
+    reviewStale.value = false;
     loadState.value = "loaded";
     await loadProposals(seq);
   } catch (e) {
-    if (seq !== requestSeq) return;
+    if (seq !== requestSeq || isUnmounted) return;
     loadState.value = "error";
     loadError.value = statusErrorKey(e);
     loadErrorStatus.value = e instanceof ApiError ? e.status : null;
@@ -165,19 +209,21 @@ async function loadContext(): Promise<void> {
 }
 
 async function loadProposals(seq: number): Promise<void> {
+  const versionId = effectiveVersionId.value;
+  if (!versionId) return;
   proposalsLoading.value = true;
   proposalsError.value = null;
   try {
     const res = await api<{ items: ProposalRow[]; nextBeforeSequence: number | null }>(
-      `${base()}/scale-decisions?chapterVersionId=${encodeURIComponent(props.chapterVersionId!)}&limit=20`,
+      `${base()}/scale-decisions?chapterVersionId=${encodeURIComponent(versionId)}&limit=20`,
     );
-    if (seq !== requestSeq) return;
+    if (seq !== requestSeq || isUnmounted) return;
     proposals.value = res.items;
   } catch (e) {
-    if (seq !== requestSeq) return;
+    if (seq !== requestSeq || isUnmounted) return;
     proposalsError.value = statusErrorKey(e);
   } finally {
-    if (seq === requestSeq) proposalsLoading.value = false;
+    if (seq === requestSeq && !isUnmounted) proposalsLoading.value = false;
   }
 }
 
@@ -280,7 +326,8 @@ const reviewRunning = ref(false);
 const reviewError = ref<string | null>(null);
 
 async function rerunReview(): Promise<void> {
-  if (!hasSavedVersion.value || reviewRunning.value) return;
+  const versionId = effectiveVersionId.value;
+  if (!hasSavedVersion.value || reviewRunning.value || !versionId) return;
   reviewRunning.value = true;
   reviewError.value = null;
   try {
@@ -288,15 +335,17 @@ async function rerunReview(): Promise<void> {
       `${base()}/final-text-review`,
       {
         method: "POST",
-        body: JSON.stringify({ chapterVersionId: props.chapterVersionId }),
+        body: JSON.stringify({ chapterVersionId: versionId }),
       },
     );
+    if (isUnmounted) return;
     review.value = res.scaleReview;
     reviewStale.value = res.stale;
   } catch (e) {
+    if (isUnmounted) return;
     reviewError.value = statusErrorKey(e);
   } finally {
-    reviewRunning.value = false;
+    if (!isUnmounted) reviewRunning.value = false;
   }
 }
 
@@ -316,7 +365,8 @@ function resetProposalForm(): void {
 }
 
 async function submitProposal(): Promise<void> {
-  if (!context.value || proposalRunning.value) return;
+  const versionId = effectiveVersionId.value;
+  if (!context.value || proposalRunning.value || !versionId) return;
   const reason = proposalReason.value.trim();
   if (reason.length < 1 || reason.length > 4000) {
     proposalError.value = t("workspace.scaleReview.proposal.reasonInvalid");
@@ -335,7 +385,7 @@ async function submitProposal(): Promise<void> {
     await api(`${base()}/scale-decisions`, {
       method: "POST",
       body: JSON.stringify({
-        chapterVersionId: props.chapterVersionId,
+        chapterVersionId: versionId,
         expectedBranchId: context.value.branch.id,
         expectedHeadRevisionId: context.value.headRevisionId,
         expectedSetId: context.value.latestSet?.id ?? null,
@@ -346,6 +396,7 @@ async function submitProposal(): Promise<void> {
         reason,
       }),
     });
+    if (isUnmounted) return;
     proposalDone.value = true;
     const seq = requestSeq;
     await loadProposals(seq);
@@ -361,6 +412,7 @@ async function submitProposal(): Promise<void> {
 // --- S2 decision form ---
 const decisionAction = ref<"APPROVE" | "REJECT" | "ALTERNATIVE">("APPROVE");
 const decisionReason = ref("");
+const decisionAlternativePayload = ref("{}");
 const decisionTarget = ref<ProposalRow | null>(null);
 const decisionRunning = ref(false);
 const decisionError = ref<string | null>(null);
@@ -369,53 +421,217 @@ function openDecision(p: ProposalRow): void {
   decisionTarget.value = p;
   decisionAction.value = "APPROVE";
   decisionReason.value = "";
+  decisionAlternativePayload.value = "{}";
   decisionError.value = null;
 }
 
 async function submitDecision(): Promise<void> {
   const target = decisionTarget.value;
-  if (!context.value || !target || decisionRunning.value) return;
+  const versionId = effectiveVersionId.value;
+  if (!context.value || !target || decisionRunning.value || !versionId) return;
   const reason = decisionReason.value.trim();
   if (reason.length < 1 || reason.length > 4000) {
     decisionError.value = t("workspace.scaleReview.decision.reasonInvalid");
     return;
   }
+  // ALTERNATIVE requires a new strictly validated payload of the same kind.
+  let alternativePayload: unknown = undefined;
+  if (decisionAction.value === "ALTERNATIVE") {
+    try {
+      alternativePayload = JSON.parse(decisionAlternativePayload.value);
+    } catch {
+      decisionError.value = t("workspace.scaleReview.proposal.payloadInvalid");
+      return;
+    }
+  }
   decisionRunning.value = true;
   decisionError.value = null;
   try {
+    const body: Record<string, unknown> = {
+      chapterVersionId: versionId,
+      expectedBranchId: context.value.branch.id,
+      expectedHeadRevisionId: context.value.headRevisionId,
+      expectedDecisionId: context.value.decisionHeadId,
+      expectedPolicyFingerprint: context.value.policyFingerprint,
+      action: decisionAction.value,
+      reason,
+    };
+    if (decisionAction.value === "ALTERNATIVE") {
+      body.alternativePayload = alternativePayload;
+    }
     await api(`${base()}/scale-decisions/${target.id}/decision`, {
       method: "POST",
-      body: JSON.stringify({
-        chapterVersionId: props.chapterVersionId,
-        expectedBranchId: context.value.branch.id,
-        expectedHeadRevisionId: context.value.headRevisionId,
-        expectedSetId: context.value.latestSet?.id ?? null,
-        expectedDecisionId: context.value.decisionHeadId,
-        expectedPolicyFingerprint: context.value.policyFingerprint,
-        action: decisionAction.value,
-        reason,
-      }),
+      body: JSON.stringify(body),
     });
+    if (isUnmounted) return;
     decisionTarget.value = null;
     await loadContext();
   } catch (e) {
+    if (isUnmounted) return;
     decisionError.value = statusErrorKey(e);
   } finally {
-    decisionRunning.value = false;
+    if (!isUnmounted) decisionRunning.value = false;
   }
 }
 
-// --- Watchers: invalidate on selection/version change ---
+// --- 050A evidence authoring ---
+interface EvidenceClaim {
+  scale: string;
+  reach: string;
+  gap: string;
+  span: { start: number; end: number };
+  quote: string;
+}
+
+interface EvidenceSet {
+  id: string;
+  sequence: number;
+  declaration: "CONFLICTS" | "NO_OPERATIVE_CONFLICT";
+  explanation: string;
+  claims: EvidenceClaim[];
+  createdAt: string;
+}
+
+const evidenceSet = ref<EvidenceSet | null>(null);
+const evidenceHistory = ref<EvidenceSet[]>([]);
+const evidenceLoading = ref(false);
+const evidenceError = ref<string | null>(null);
+
+// Claim form (structured, not raw JSON-only)
+const claimScale = ref("VILLAGE");
+const claimReach = ref("");
+const claimGap = ref("");
+const claimSpanStart = ref("");
+const claimSpanEnd = ref("");
+const claimQuote = ref("");
+const evidenceDeclaration = ref<"CONFLICTS" | "NO_OPERATIVE_CONFLICT">("CONFLICTS");
+const evidenceExplanation = ref("");
+const evidenceRunning = ref(false);
+const evidenceFormError = ref<string | null>(null);
+const evidenceDone = ref(false);
+
+const NARRATIVE_SCALES = ["VILLAGE", "TOWN", "CITY", "DUCHY", "KINGDOM", "EMPIRE", "WORLD", "COSMIC"];
+
+async function loadEvidence(seq: number): Promise<void> {
+  const versionId = effectiveVersionId.value;
+  if (!versionId) return;
+  evidenceLoading.value = true;
+  evidenceError.value = null;
+  try {
+    const res = await api<{ set: EvidenceSet | null; history: EvidenceSet[] }>(
+      `${base()}/scale-evidence?chapterVersionId=${encodeURIComponent(versionId)}`,
+    );
+    if (seq !== requestSeq || isUnmounted) return;
+    evidenceSet.value = res.set;
+    evidenceHistory.value = res.history ?? [];
+  } catch (e) {
+    if (seq !== requestSeq || isUnmounted) return;
+    // 404 means no evidence yet — not an error state.
+    if (e instanceof ApiError && e.status === 404) {
+      evidenceSet.value = null;
+      evidenceHistory.value = [];
+    } else {
+      evidenceError.value = statusErrorKey(e);
+    }
+  } finally {
+    if (seq === requestSeq && !isUnmounted) evidenceLoading.value = false;
+  }
+}
+
+function resetEvidenceForm(): void {
+  claimScale.value = "VILLAGE";
+  claimReach.value = "";
+  claimGap.value = "";
+  claimSpanStart.value = "";
+  claimSpanEnd.value = "";
+  claimQuote.value = "";
+  evidenceExplanation.value = "";
+  evidenceFormError.value = null;
+  evidenceDone.value = false;
+}
+
+async function submitEvidence(): Promise<void> {
+  const versionId = effectiveVersionId.value;
+  if (!context.value || evidenceRunning.value || !versionId) return;
+
+  // Build the claim from structured fields (server validates everything).
+  const start = parseInt(claimSpanStart.value, 10);
+  const end = parseInt(claimSpanEnd.value, 10);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start) {
+    evidenceFormError.value = t("workspace.scaleReview.evidence.spanInvalid");
+    return;
+  }
+  if (!claimQuote.value.trim()) {
+    evidenceFormError.value = t("workspace.scaleReview.evidence.quoteRequired");
+    return;
+  }
+  if (evidenceDeclaration.value === "CONFLICTS" && !claimReach.value.trim()) {
+    evidenceFormError.value = t("workspace.scaleReview.evidence.reachRequired");
+    return;
+  }
+
+  const claims: EvidenceClaim[] = [];
+  if (evidenceDeclaration.value === "CONFLICTS") {
+    claims.push({
+      scale: claimScale.value,
+      reach: claimReach.value.trim(),
+      gap: claimGap.value.trim(),
+      span: { start, end },
+      quote: claimQuote.value,
+    });
+  }
+
+  evidenceRunning.value = true;
+  evidenceFormError.value = null;
+  try {
+    await api(`${base()}/scale-evidence`, {
+      method: "POST",
+      body: JSON.stringify({
+        chapterVersionId: versionId,
+        expectedBranchId: context.value.branch.id,
+        expectedHeadRevisionId: context.value.headRevisionId,
+        expectedSetId: context.value.latestSet?.id ?? null,
+        declaration: evidenceDeclaration.value,
+        explanation: evidenceExplanation.value.trim(),
+        conflicts: claims,
+      }),
+    });
+    if (isUnmounted) return;
+    evidenceDone.value = true;
+    resetEvidenceForm();
+    evidenceDone.value = true;
+    // Refresh context: latest set changed, review is now stale.
+    await loadContext();
+    const seq = requestSeq;
+    await loadEvidence(seq);
+  } catch (e) {
+    if (isUnmounted) return;
+    evidenceFormError.value = statusErrorKey(e);
+  } finally {
+    if (!isUnmounted) evidenceRunning.value = false;
+  }
+}
+
+// --- Watchers: invalidate on selection/version/save-state change ---
 watch(
-  () => [props.workspaceId, props.novelId, props.chapterId, props.chapterVersionId],
+  () => [props.workspaceId, props.novelId, props.chapterId, props.chapterVersionId, props.hasSavedVersion],
   () => {
     requestSeq++; // invalidate in-flight
     context.value = null;
+    receipt.value = null;
     review.value = null;
+    reviewStale.value = false;
     proposals.value = [];
+    evidenceSet.value = null;
+    evidenceHistory.value = [];
+    effectiveVersionId.value = props.chapterVersionId;
     resetProposalForm();
+    resetEvidenceForm();
     decisionTarget.value = null;
-    loadContext();
+    loadContext().then(() => {
+      const seq = requestSeq;
+      return loadEvidence(seq);
+    });
   },
   { immediate: true },
 );
@@ -561,6 +777,178 @@ function statusClass(status: ChecklistItem["status"]): string {
           <p class="mt-2 text-[11.5px] leading-relaxed text-nf-text-faint">
             {{ t("workspace.scaleReview.review.backendEnforces") }}
           </p>
+        </div>
+
+        <!-- 050A evidence authoring -->
+        <div class="rounded-lg border border-nf-border bg-nf-bg-2 p-3">
+          <h3 class="text-[13px] font-semibold text-nf-text">
+            {{ t("workspace.scaleReview.evidence.title") }}
+          </h3>
+
+          <p
+            v-if="evidenceLoading"
+            role="status"
+            class="mt-2 text-[12.5px] text-nf-text-dim"
+          >
+            {{ t("workspace.scaleReview.loading") }}
+          </p>
+          <p
+            v-else-if="evidenceError"
+            role="alert"
+            class="mt-2 text-[12.5px] text-nf-danger"
+          >
+            {{ evidenceError }}
+          </p>
+          <template v-else>
+            <!-- Current set -->
+            <div v-if="evidenceSet" class="mt-2 rounded-md border border-nf-border bg-nf-bg-0 p-2.5">
+              <p class="text-[12.5px] font-semibold text-nf-text">
+                {{ t("workspace.scaleReview.evidence.currentSet", { sequence: String(evidenceSet.sequence) }) }}
+                ·
+                {{ t(`workspace.scaleReview.evidence.declaration.${evidenceSet.declaration}`) }}
+              </p>
+              <p class="mt-1 text-[12px] leading-relaxed text-nf-text-dim">{{ evidenceSet.explanation }}</p>
+              <ul v-if="evidenceSet.claims.length > 0" class="mt-2 flex flex-col gap-1.5">
+                <li
+                  v-for="(c, i) in evidenceSet.claims"
+                  :key="i"
+                  class="rounded border border-nf-border px-2 py-1.5 text-[12px]"
+                >
+                  <p class="font-mono font-medium text-nf-text">#{{ i }} {{ c.scale }} → {{ c.reach }}</p>
+                  <p class="mt-0.5 text-nf-text-dim">{{ c.gap }}</p>
+                  <p class="mt-0.5 font-mono text-[11.5px] text-nf-text-faint">
+                    [{{ c.span.start }}–{{ c.span.end }}] “{{ c.quote }}”
+                  </p>
+                </li>
+              </ul>
+            </div>
+            <p v-else class="mt-2 text-[12.5px] text-nf-text-dim">
+              {{ t("workspace.scaleReview.evidence.noSet") }}
+            </p>
+
+            <!-- History -->
+            <details v-if="evidenceHistory.length > 0" class="mt-2 text-[12.5px]">
+              <summary class="cursor-pointer font-medium text-nf-text focus-visible:nf-focus">
+                {{ t("workspace.scaleReview.evidence.history", { count: String(evidenceHistory.length) }) }}
+              </summary>
+              <ul class="mt-1.5 flex flex-col gap-1.5">
+                <li
+                  v-for="h in evidenceHistory"
+                  :key="h.id"
+                  class="rounded border border-nf-border px-2 py-1.5 text-[12px] text-nf-text-dim"
+                >
+                  #{{ h.sequence }} · {{ t(`workspace.scaleReview.evidence.declaration.${h.declaration}`) }} ·
+                  {{ h.claims.length }} {{ t("workspace.scaleReview.evidence.claims") }}
+                </li>
+              </ul>
+            </details>
+
+            <!-- New set form (structured, not raw JSON-only) -->
+            <form class="mt-3 flex flex-col gap-2 border-t border-nf-border pt-3" @submit.prevent="submitEvidence">
+              <h4 class="text-[12.5px] font-semibold text-nf-text">
+                {{ t("workspace.scaleReview.evidence.newSet") }}
+              </h4>
+              <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
+                {{ t("workspace.scaleReview.evidence.declarationLabel") }}
+                <select
+                  v-model="evidenceDeclaration"
+                  class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
+                >
+                  <option value="CONFLICTS">{{ t("workspace.scaleReview.evidence.declaration.CONFLICTS") }}</option>
+                  <option value="NO_OPERATIVE_CONFLICT">{{ t("workspace.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT") }}</option>
+                </select>
+              </label>
+              <template v-if="evidenceDeclaration === 'CONFLICTS'">
+                <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
+                  {{ t("workspace.scaleReview.evidence.scaleLabel") }}
+                  <select
+                    v-model="claimScale"
+                    class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[13px] text-nf-text focus-visible:nf-focus"
+                  >
+                    <option v-for="s in NARRATIVE_SCALES" :key="s" :value="s">{{ s }}</option>
+                  </select>
+                </label>
+                <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
+                  {{ t("workspace.scaleReview.evidence.reachLabel") }}
+                  <input
+                    v-model="claimReach"
+                    type="text"
+                    class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[13px] text-nf-text focus-visible:nf-focus"
+                  />
+                </label>
+                <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
+                  {{ t("workspace.scaleReview.evidence.gapLabel") }}
+                  <input
+                    v-model="claimGap"
+                    type="text"
+                    class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
+                  />
+                </label>
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
+                    {{ t("workspace.scaleReview.evidence.spanStartLabel") }}
+                    <input
+                      v-model="claimSpanStart"
+                      type="number"
+                      min="0"
+                      class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[13px] text-nf-text focus-visible:nf-focus"
+                    />
+                  </label>
+                  <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
+                    {{ t("workspace.scaleReview.evidence.spanEndLabel") }}
+                    <input
+                      v-model="claimSpanEnd"
+                      type="number"
+                      min="1"
+                      class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[13px] text-nf-text focus-visible:nf-focus"
+                    />
+                  </label>
+                </div>
+                <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
+                  {{ t("workspace.scaleReview.evidence.quoteLabel") }}
+                  <textarea
+                    v-model="claimQuote"
+                    rows="2"
+                    class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[12.5px] text-nf-text focus-visible:nf-focus"
+                  />
+                  <span class="text-[11.5px] text-nf-text-faint">
+                    {{ t("workspace.scaleReview.evidence.quoteHint") }}
+                  </span>
+                </label>
+              </template>
+              <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
+                {{ t("workspace.scaleReview.evidence.explanationLabel") }}
+                <textarea
+                  v-model="evidenceExplanation"
+                  rows="2"
+                  class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[12.5px] text-nf-text focus-visible:nf-focus"
+                />
+              </label>
+              <div>
+                <button
+                  type="submit"
+                  :disabled="evidenceRunning"
+                  class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
+                >
+                  {{ t("workspace.scaleReview.evidence.submit") }}
+                </button>
+              </div>
+              <p
+                v-if="evidenceFormError"
+                role="alert"
+                class="rounded-md border border-nf-warn/40 bg-nf-warn/10 px-2.5 py-1.5 text-[12px] text-nf-warn"
+              >
+                {{ evidenceFormError }}
+              </p>
+              <p
+                v-if="evidenceDone"
+                role="status"
+                class="rounded-md border border-nf-ok/40 bg-nf-ok/10 px-2.5 py-1.5 text-[12px] text-nf-ok"
+              >
+                {{ t("workspace.scaleReview.evidence.submitted") }}
+              </p>
+            </form>
+          </template>
         </div>
 
         <!-- Deterministic checklist -->
@@ -752,6 +1140,21 @@ function statusClass(status: ChecklistItem["status"]): string {
                 required
                 class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[12.5px] text-nf-text focus-visible:nf-focus"
               />
+            </label>
+            <label
+              v-if="decisionAction === 'ALTERNATIVE'"
+              class="flex flex-col gap-1 text-[12px] text-nf-text-dim"
+            >
+              {{ t("workspace.scaleReview.decision.alternativePayloadLabel") }}
+              <textarea
+                v-model="decisionAlternativePayload"
+                rows="4"
+                spellcheck="false"
+                class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[12px] text-nf-text focus-visible:nf-focus"
+              />
+              <span class="text-[11.5px] text-nf-text-faint">
+                {{ t("workspace.scaleReview.decision.alternativePayloadHint") }}
+              </span>
             </label>
             <div class="flex gap-2">
               <button

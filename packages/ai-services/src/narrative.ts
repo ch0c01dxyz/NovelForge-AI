@@ -68,9 +68,12 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 import type { InputJsonValue, NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError } from "./platform.ts";
 import { PolicyError } from "./policy-errors.ts";
+import { MemoryError } from "./memory.ts";
 import type { AuditService } from "./audit.ts";
 // Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
-import { advanceForMutation, createWithRevision } from "./revisions.ts";
+import { advanceForMutation, createWithRevision, type RevisionTx } from "./revisions.ts";
+// NF-WF-050B: policy fingerprint for branch/head/policy CAS on SCALE writes.
+import { fingerprintScalePolicy } from "./scale-review-types.ts";
 
 /**
  * NF-WF-010 (GAP-012): the SCALE payload schema, in one place because it
@@ -171,6 +174,23 @@ export interface NarrativeScope {
 }
 
 /**
+ * NF-WF-050B: required SCALE context pins for direct SCALE PUT/DELETE.
+ * Every pin is REQUIRED at runtime (a missing pin is a 400); the nullable
+ * pins accept explicit null but never undefined. No pin may be defaulted or
+ * inferred — a SCALE write without them is refused, never applied globally.
+ */
+export interface ScalePolicyContextPins {
+  chapterId: string;
+  chapterVersionId: string;
+  expectedBranchId: string;
+  expectedHeadRevisionId: string | null;
+  expectedSetId: string | null;
+  expectedDecisionId: string | null;
+  expectedPolicyFingerprint: string;
+  reason: string;
+}
+
+/**
  * A hard problem refuses the write; an advisory one is reported and the row
  * still lands. The split is the ADR-009 line, and it is the reason
  * `validateAntagonistProgression` returns a list instead of a boolean.
@@ -191,10 +211,33 @@ export interface NarrativeServices {
     hardness: PolicyHardness;
     hardReason: string | null;
     payload: unknown;
+    /**
+     * NF-WF-050B: REQUIRED at runtime when kind === "SCALE" (400 when a pin
+     * is missing). Non-SCALE requests retain their existing schema and ignore
+     * these fields.
+     */
+    chapterId?: string;
+    chapterVersionId?: string;
+    expectedBranchId?: string;
+    expectedHeadRevisionId?: string | null;
+    expectedSetId?: string | null;
+    expectedDecisionId?: string | null;
+    expectedPolicyFingerprint?: string;
+    reason?: string;
+    /**
+     * Required to be "APPROVE" when a SCALE standing changes or the SCALE
+     * policy is initialized. A standing-changing direct call without it is
+     * refused 400. Hardness-only SCALE changes must not send this field.
+     */
+    authorDecision?: "APPROVE";
   }): Promise<NarrativePolicyView>;
 
-  /** Unserts a policy. putPolicy upserts, so without this a policy is permanent. */
-  deletePolicy(input: NarrativeScope & { kind: NarrativePolicyKind }): Promise<void>;
+  /**
+   * Unserts a policy. putPolicy upserts, so without this a policy is permanent.
+   * NF-WF-050B: when kind === "SCALE" the context/reason pins are REQUIRED at
+   * runtime (400 when missing) — there is no unpinned empty-body deletion.
+   */
+  deletePolicy(input: NarrativeScope & { kind: NarrativePolicyKind } & Partial<ScalePolicyContextPins>): Promise<void>;
 
   /** Loads this novel's DRAMA_GAP policy; no policy is a refusal, not a default. */
   assessWindow(input: NarrativeScope & { chaptersSinceDrama: number }): Promise<DramaWindow>;
@@ -333,6 +376,374 @@ export function createNarrativeServices(deps: {
     return db.narrativePolicy.findUnique({ where: { novelId_kind: { novelId, kind } } });
   }
 
+  function toPolicyView(row: {
+    id: string; novelId: string; kind: string; hardness: string;
+    hardReason: string | null; payload: unknown; updatedAt: Date;
+  }): NarrativePolicyView {
+    return {
+      id: row.id,
+      novelId: row.novelId,
+      kind: row.kind as NarrativePolicyKind,
+      hardness: row.hardness as PolicyHardness,
+      hardReason: row.hardReason,
+      payload: row.payload,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  /**
+   * NF-WF-050B: every SCALE context pin is REQUIRED. A missing pin is a 400 —
+   * never a silent default, never an unpinned global mutation. The nullable
+   * pins accept explicit null; only undefined counts as missing.
+   */
+  function requireScalePins(input: {
+    chapterId?: string;
+    chapterVersionId?: string;
+    expectedBranchId?: string;
+    expectedHeadRevisionId?: string | null;
+    expectedSetId?: string | null;
+    expectedDecisionId?: string | null;
+    expectedPolicyFingerprint?: string;
+    reason?: string;
+  }): ScalePolicyContextPins {
+    const missing: string[] = [];
+    if (!input.chapterId) missing.push("chapterId");
+    if (!input.chapterVersionId) missing.push("chapterVersionId");
+    if (!input.expectedBranchId) missing.push("expectedBranchId");
+    if (input.expectedHeadRevisionId === undefined) missing.push("expectedHeadRevisionId");
+    if (input.expectedSetId === undefined) missing.push("expectedSetId");
+    if (input.expectedDecisionId === undefined) missing.push("expectedDecisionId");
+    if (!input.expectedPolicyFingerprint) missing.push("expectedPolicyFingerprint");
+    if (input.reason === undefined) missing.push("reason");
+    if (missing.length > 0) {
+      throw new MemoryError(
+        400,
+        "INVALID_INPUT",
+        `SCALE policy write requires context pins: missing ${missing.join(", ")}`,
+      );
+    }
+    return {
+      chapterId: input.chapterId!,
+      chapterVersionId: input.chapterVersionId!,
+      expectedBranchId: input.expectedBranchId!,
+      expectedHeadRevisionId: input.expectedHeadRevisionId ?? null,
+      expectedSetId: input.expectedSetId ?? null,
+      expectedDecisionId: input.expectedDecisionId ?? null,
+      expectedPolicyFingerprint: input.expectedPolicyFingerprint!,
+      reason: input.reason!,
+    };
+  }
+
+  /** Standing comparison for the approve-path decision. Access is a set. */
+  function standingsEqual(
+    a: { scale: NarrativeScale; access: NarrativeScale[]; reputation: number },
+    b: { scale: NarrativeScale; access: NarrativeScale[]; reputation: number },
+  ): boolean {
+    if (a.scale !== b.scale || a.reputation !== b.reputation) return false;
+    if (a.access.length !== b.access.length) return false;
+    const set = new Set(a.access);
+    return b.access.every((s) => set.has(s));
+  }
+
+  /**
+   * NF-WF-050B: lock order novel NO KEY UPDATE -> checked-out branch UPDATE.
+   * The branch is resolved server-side from Novel.currentBranchId (falling
+   * back to main); the client never names it.
+   */
+  async function lockCheckedOutBranch(
+    tx: RevisionTx,
+    workspaceId: string,
+    novelId: string,
+  ): Promise<{ id: string; name: string }> {
+    await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
+    const novel = await tx.novel.findFirst({
+      where: { id: novelId, workspaceId },
+      select: { currentBranchId: true },
+    });
+    if (!novel) throw new NotFoundError("novel");
+    let branch: { id: string; name: string } | null = null;
+    if (novel.currentBranchId) {
+      branch = await tx.novelBranch.findFirst({
+        where: { id: novel.currentBranchId, novelId },
+        select: { id: true, name: true },
+      });
+    }
+    if (!branch) {
+      branch = await tx.novelBranch.findFirst({
+        where: { novelId, name: "main" },
+        select: { id: true, name: true },
+      });
+    }
+    if (!branch) throw new NotFoundError("novel");
+    await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`, branch.id);
+    return branch;
+  }
+
+  /**
+   * NF-WF-050B: branch-aware revision wrapper for policy mutations.
+   * Replaces the main-only createWithRevision for policies: locks novel ->
+   * checked-out branch, runs the write, then advances THAT branch's head.
+   * A non-SCALE HARD edit on branch B must advance B; advancing main would
+   * leave a false fresh PASS on B.
+   */
+  async function withCheckedOutBranchRevision<T extends object>(
+    scope: { workspaceId: string; novelId: string; actorUserId: string },
+    operation: string,
+    entityType: string,
+    tables: readonly string[],
+    write: (tx: RevisionTx) => Promise<T>,
+    options?: {
+      entityId?: string;
+      itemOperation?: "CREATE" | "UPDATE" | "DELETE";
+      expectedHeadRevisionId?: string | null;
+    },
+  ): Promise<T> {
+    return db.$transaction(async (tx) => {
+      const branch = await lockCheckedOutBranch(tx, scope.workspaceId, scope.novelId);
+      const row = await write(tx);
+      const entityId = options?.entityId ?? (row as { id?: string }).id;
+      if (!entityId) {
+        throw new Error(
+          `withCheckedOutBranchRevision: ${entityType} has no id — pass options.entityId`,
+        );
+      }
+      await advanceForMutation(tx, {
+        workspaceId: scope.workspaceId,
+        novelId: scope.novelId,
+        expectedHeadRevisionId: options?.expectedHeadRevisionId,
+        branchName: branch.name,
+        operation,
+        origin: "MANUAL",
+        actorUserId: scope.actorUserId,
+        tables,
+        items: [{ entityType, entityId, operation: options?.itemOperation ?? "CREATE" }],
+      });
+      return row;
+    });
+  }
+
+  /**
+   * NF-WF-050B: direct SCALE policy write safeguards.
+   *
+   * Two paths, decided by whether the standing changes:
+   *
+   * - Standing change or initialization: requires explicit
+   *   authorDecision: "APPROVE" (400 otherwise) and rides the S2 approve
+   *   service — same caps, reason/expectations, atomically recorded
+   *   proposal + outcome, HIGH checkpoint + revision + rebuild intent.
+   * - Hardness-only change: requires reason plus branch/head/policy CAS and
+   *   a branch-aware revision under the novel -> branch lock order.
+   */
+  async function putScalePolicy(input: NarrativeScope & {
+    hardness: PolicyHardness;
+    hardReason: string | null;
+    payload: unknown;
+    chapterId?: string;
+    chapterVersionId?: string;
+    expectedBranchId?: string;
+    expectedHeadRevisionId?: string | null;
+    expectedSetId?: string | null;
+    expectedDecisionId?: string | null;
+    expectedPolicyFingerprint?: string;
+    reason?: string;
+    authorDecision?: "APPROVE";
+  }): Promise<NarrativePolicyView> {
+    const { actorUserId, workspaceId, novelId, hardness, hardReason, payload } = input;
+
+    const pins = requireScalePins(input);
+    const reason = pins.reason.trim();
+    if (reason.length < 1 || reason.length > 4000) {
+      throw new MemoryError(400, "INVALID_INPUT", "reason must be 1..4000 characters");
+    }
+
+    // The payload shape was already probed by putPolicy (409 MALFORMED_POLICY);
+    // re-derive here so the S2 payload carries the validated standing.
+    const newStanding = scaleStandingOf(payload);
+    if (!newStanding) {
+      throw new PolicyError(
+        "MALFORMED_POLICY",
+        "scale policy invalid: standing must be { scale, access, reputation } with valid narrative scales and reputation an integer 0-100",
+      );
+    }
+
+    const existing = await db.narrativePolicy.findUnique({
+      where: { novelId_kind: { novelId, kind: "SCALE" } },
+    });
+    const oldStanding = existing ? scaleStandingOf(existing.payload) : null;
+    const standingChanged =
+      !existing || !oldStanding || !standingsEqual(oldStanding, newStanding);
+
+    if (standingChanged) {
+      if (input.authorDecision !== "APPROVE") {
+        throw new MemoryError(
+          400,
+          "INVALID_INPUT",
+          "a SCALE standing change or policy initialization requires authorDecision: \"APPROVE\"",
+        );
+      }
+      // Same caps as the approve service, checked BEFORE creating a proposal
+      // so a refused decision leaves no orphan pending proposal behind.
+      await gate(actorUserId, workspaceId, novelId, "chapter:update");
+      await gate(actorUserId, workspaceId, novelId, "canon:approve");
+      // Lazy import: scale-decisions.ts imports isValidScalePayload from this
+      // module; a dynamic import keeps module evaluation order out of the
+      // picture entirely (usage is deferred to call time either way).
+      const { createScaleDecisionServices } = await import("./scale-decisions.ts");
+      const decisions = createScaleDecisionServices({ db, audit });
+      const created = await decisions.createProposal({
+        actorUserId,
+        workspaceId,
+        novelId,
+        chapterId: pins.chapterId,
+        chapterVersionId: pins.chapterVersionId,
+        expectedBranchId: pins.expectedBranchId,
+        expectedHeadRevisionId: pins.expectedHeadRevisionId,
+        expectedSetId: pins.expectedSetId,
+        expectedDecisionId: pins.expectedDecisionId,
+        expectedPolicyFingerprint: pins.expectedPolicyFingerprint,
+        kind: "STANDING_CHANGE",
+        payload: { standing: newStanding, hardness, hardReason },
+        reason,
+      });
+      await decisions.decideProposal({
+        actorUserId,
+        workspaceId,
+        novelId,
+        proposalId: created.proposal.id,
+        action: "APPROVE",
+        reason,
+        expectedBranchId: pins.expectedBranchId,
+        expectedHeadRevisionId: pins.expectedHeadRevisionId,
+        expectedDecisionId: pins.expectedDecisionId,
+        expectedPolicyFingerprint: pins.expectedPolicyFingerprint,
+      });
+      const row = await db.narrativePolicy.findUnique({
+        where: { novelId_kind: { novelId, kind: "SCALE" } },
+      });
+      if (!row) throw new NotFoundError("narrative policy");
+      return toPolicyView(row);
+    }
+
+    // Hardness-only change: reason + branch/head/policy CAS + branch-aware
+    // revision under the novel -> branch lock order.
+    const updated = await db.$transaction(async (tx) => {
+      const branch = await lockCheckedOutBranch(tx, workspaceId, novelId);
+      if (pins.expectedBranchId !== branch.id) {
+        throw new ConflictError("policy branch changed while this request was in flight");
+      }
+      const current = await tx.narrativePolicy.findUnique({
+        where: { novelId_kind: { novelId, kind: "SCALE" } },
+      });
+      if (!current) throw new NotFoundError("narrative policy");
+      const currentFingerprint = fingerprintScalePolicy({
+        id: current.id,
+        kind: current.kind,
+        hardness: current.hardness,
+        hardReason: current.hardReason,
+        payload: current.payload,
+      });
+      if (currentFingerprint !== pins.expectedPolicyFingerprint) {
+        throw new ConflictError("policy changed while this request was in flight");
+      }
+      // The standing must still be unchanged under the lock; a concurrent
+      // standing change belongs on the approve path, not this one.
+      const lockedStanding = scaleStandingOf(current.payload);
+      if (!lockedStanding || !standingsEqual(lockedStanding, newStanding)) {
+        throw new ConflictError(
+          "policy standing changed while this request was in flight; use the approve path",
+        );
+      }
+      const row = await tx.narrativePolicy.update({
+        where: { id: current.id },
+        data: { hardness, hardReason },
+      });
+      await advanceForMutation(tx, {
+        workspaceId,
+        novelId,
+        expectedHeadRevisionId: pins.expectedHeadRevisionId,
+        branchName: branch.name,
+        operation: "policy.write",
+        origin: "MANUAL",
+        actorUserId,
+        tables: ["narrative_policies"],
+        items: [{ entityType: "NarrativePolicy", entityId: row.id, operation: "UPDATE" }],
+      });
+      return row;
+    });
+    await audit.record({
+      actorUserId,
+      workspaceId,
+      action: "narrative.policy-set",
+      entityType: "NarrativePolicy",
+      entityId: updated.id,
+      payload: { kind: "SCALE", hardness },
+    });
+    return toPolicyView(updated);
+  }
+
+  /**
+   * NF-WF-050B: direct SCALE policy deletion safeguards. The context/reason
+   * body is REQUIRED — no unpinned empty-body deletion. Branch/head/policy
+   * CAS under the novel -> branch lock order, then a branch-aware revision.
+   */
+  async function deleteScalePolicy(
+    input: NarrativeScope & Partial<ScalePolicyContextPins>,
+  ): Promise<void> {
+    const { actorUserId, workspaceId, novelId } = input;
+    const pins = requireScalePins(input);
+    const reason = pins.reason.trim();
+    if (reason.length < 1 || reason.length > 4000) {
+      throw new MemoryError(400, "INVALID_INPUT", "reason must be 1..4000 characters");
+    }
+    let deletedId: string;
+    await db.$transaction(async (tx) => {
+      const branch = await lockCheckedOutBranch(tx, workspaceId, novelId);
+      if (pins.expectedBranchId !== branch.id) {
+        throw new ConflictError("policy branch changed while this request was in flight");
+      }
+      const existing = await tx.narrativePolicy.findUnique({
+        where: { novelId_kind: { novelId, kind: "SCALE" } },
+      });
+      if (!existing) throw new NotFoundError("narrative policy");
+      const currentFingerprint = fingerprintScalePolicy({
+        id: existing.id,
+        kind: existing.kind,
+        hardness: existing.hardness,
+        hardReason: existing.hardReason,
+        payload: existing.payload,
+      });
+      if (currentFingerprint !== pins.expectedPolicyFingerprint) {
+        throw new ConflictError("policy changed while this request was in flight");
+      }
+      // Novel-scoped predicate; count 0 = lost a concurrent-delete race.
+      // The count check is INSIDE the transaction (C4).
+      const deleted = await tx.narrativePolicy.deleteMany({
+        where: { id: existing.id, novelId },
+      });
+      if (deleted.count === 0) throw new NotFoundError("narrative policy");
+      deletedId = existing.id;
+      await advanceForMutation(tx, {
+        workspaceId,
+        novelId,
+        expectedHeadRevisionId: pins.expectedHeadRevisionId,
+        branchName: branch.name,
+        operation: "policy.write",
+        origin: "MANUAL",
+        actorUserId,
+        tables: ["narrative_policies"],
+        items: [{ entityType: "NarrativePolicy", entityId: existing.id, operation: "DELETE" }],
+      });
+    });
+    await audit.record({
+      actorUserId,
+      workspaceId,
+      action: "narrative.policy-deleted",
+      entityType: "NarrativePolicy",
+      entityId: deletedId!,
+      payload: { kind: "SCALE", reason },
+    });
+  }
+
   /**
    * The COOLDOWN payload predicate, in one place because it is applied twice:
    * on write (putPolicy refuses a bad shape) and on read (checkBeat refuses a
@@ -405,7 +816,7 @@ export function createNarrativeServices(deps: {
       }));
     },
 
-    async putPolicy({ actorUserId, workspaceId, novelId, kind, hardness, hardReason, payload }) {
+    async putPolicy({ actorUserId, workspaceId, novelId, kind, hardness, hardReason, payload, ...scaleCtx }) {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
 
       // NarrativePolicy_hard_requires_reason, stated at the boundary so the
@@ -442,14 +853,22 @@ export function createNarrativeServices(deps: {
         if (!isValidScalePayload(payload)) {
           throw new PolicyError(
             "MALFORMED_POLICY",
-            "scale policy invalid: standing must be { scale, access, reputation } with valid narrative scales, non-empty access, and reputation an integer 0-100",
+            "scale policy invalid: standing must be { scale, access, reputation } with valid narrative scales and reputation an integer 0-100",
           );
         }
+        // NF-WF-050B: direct SCALE writes carry explicit author-decision
+        // safeguards (pins, approve routing, CAS) — see putScalePolicy.
+        return putScalePolicy({
+          actorUserId, workspaceId, novelId, hardness, hardReason: reason, payload,
+          ...scaleCtx,
+        });
       }
 
-      // Upsert, so the change-log item is UPDATE rather than CREATE (the C2
-      // vocabulary has no UPSERT); see the note in putDna.
-      const row = await withRevision(
+      // NF-WF-050B: ALL policy puts — including non-SCALE — lock and advance
+      // the CHECKED-OUT branch, not main. A non-SCALE HARD edit on branch B
+      // must advance B; the old main-only wrapper would leave a false fresh
+      // PASS on B. Non-SCALE payload/capability/error semantics unchanged.
+      const row = await withCheckedOutBranchRevision(
         { workspaceId, novelId, actorUserId },
         "policy.write",
         "NarrativePolicy",
@@ -469,19 +888,17 @@ export function createNarrativeServices(deps: {
         entityId: row.id,
         payload: { kind, hardness },
       });
-      return {
-        id: row.id,
-        novelId: row.novelId,
-        kind: row.kind as NarrativePolicyKind,
-        hardness: row.hardness as PolicyHardness,
-        hardReason: row.hardReason,
-        payload: row.payload,
-        updatedAt: row.updatedAt,
-      };
+      return toPolicyView(row);
     },
 
-    async deletePolicy({ actorUserId, workspaceId, novelId, kind }) {
+    async deletePolicy({ actorUserId, workspaceId, novelId, kind, ...scaleCtx }) {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
+      // NF-WF-050B: direct SCALE deletion carries the same context/reason
+      // safeguards as SCALE PUT (minus payload/authorDecision) — no
+      // novel-global deletion via an unpinned empty-body request.
+      if (kind === "SCALE") {
+        return deleteScalePolicy({ actorUserId, workspaceId, novelId, ...scaleCtx });
+      }
       // Read the id first: audit_log.entity_id is @db.Uuid, so the composite
       // (novelId, kind) this row is keyed by cannot be the audit reference.
       const existing = await db.narrativePolicy.findUnique({
@@ -489,27 +906,28 @@ export function createNarrativeServices(deps: {
         select: { id: true },
       });
       if (!existing) throw new NotFoundError("narrative policy");
-      // deleteMany with the novel-scoped predicate: count 0 = lost a
-      // concurrent-delete race, which is the same 404 (and P2025 impossible).
-      // The count check is INSIDE the transaction: a 404 thrown after the
-      // commit would leave a revision for a delete that deleted nothing (C4).
-      await db.$transaction(async (tx) => {
-        const deleted = await tx.narrativePolicy.deleteMany({
-          where: { id: existing.id, novelId },
-        });
-        if (deleted.count === 0) throw new NotFoundError("narrative policy");
-        await advanceForMutation(tx, {
-          workspaceId,
-          novelId,
-          operation: "policy.write",
-          origin: "MANUAL",
-          actorUserId,
-          tables: ["narrative_policies"],
-          items: [
-            { entityType: "NarrativePolicy", entityId: existing.id, operation: "DELETE" },
-          ],
-        });
-      });
+      // NF-WF-050B: ALL policy deletes — including non-SCALE — lock and
+      // advance the CHECKED-OUT branch. The old path advanced main with no
+      // branch lock, so a non-SCALE HARD delete on branch B kept a false
+      // fresh PASS on B. deleteMany with the novel-scoped predicate: count 0
+      // = lost a concurrent-delete race, which is the same 404 (and P2025
+      // impossible). The count check is INSIDE the transaction: a 404 thrown
+      // after the commit would leave a revision for a delete that deleted
+      // nothing (C4).
+      await withCheckedOutBranchRevision(
+        { workspaceId, novelId, actorUserId },
+        "policy.write",
+        "NarrativePolicy",
+        ["narrative_policies"],
+        async (tx) => {
+          const deleted = await tx.narrativePolicy.deleteMany({
+            where: { id: existing.id, novelId },
+          });
+          if (deleted.count === 0) throw new NotFoundError("narrative policy");
+          return { id: existing.id };
+        },
+        { entityId: existing.id, itemOperation: "DELETE" },
+      );
       await audit.record({
         actorUserId,
         workspaceId,

@@ -393,7 +393,47 @@ describe("migration: populated baseline via Prisma ledger", () => {
         slug: "mig-050b-novel",
       });
 
+      // 2b. GENUINE BASELINE RECEIPT: create chapter/version and insert a REAL
+      // FinalTextReview row BEFORE the upgrade (the scale_review column does
+      // not exist yet in the baseline schema). This proves pre-upgrade receipt
+      // preservation, not post-upgrade insertion.
+      const chapter = await db.chapter.create({
+        data: { novelId: novel.id, title: "Ch1", number: 1, createdById: user.id },
+      });
+      const version = await db.chapterVersion.create({
+        data: {
+          chapterId: chapter.id,
+          number: 1,
+          content: "<p>Legacy prose.</p>",
+          wordCount: 2,
+          authorId: user.id,
+        },
+      });
+      await db.chapter.update({ where: { id: chapter.id }, data: { currentVersionId: version.id } });
+      const branch = await db.novelBranch.findFirst({ where: { novelId: novel.id } });
+      const revision = await db.revision.findFirst({ where: { novelId: novel.id } });
+      let baselineReceiptId: string | null = null;
+      if (branch && revision) {
+        const ins = await client.query(
+          `INSERT INTO final_text_reviews
+             (workspace_id, novel_id, chapter_version_id, revision_id, verdict, hard_violations, advisory, evaluated_policies)
+           VALUES ($1, $2, $3, $4, 'PASS', '[{"code":"H1"}]', '[]', '{"SCALE":{"kind":"SCALE"}}')
+           RETURNING id, verdict, hard_violations::text AS hv`,
+          [ws.id, novel.id, version.id, revision.id],
+        );
+        baselineReceiptId = ins.rows[0].id as string;
+        // Record the pre-upgrade receipt data for post-upgrade comparison.
+        // (Compare parsed JSON: Postgres normalizes JSONB whitespace.)
+        expect(ins.rows[0].verdict).toBe("PASS");
+        expect(JSON.parse(ins.rows[0].hv)).toEqual([{ code: "H1" }]);
+      }
+      expect(baselineReceiptId, "baseline receipt inserted before upgrade").not.toBeNull();
+
       // 3. Record the Prisma ledger AND data hashes BEFORE the 050B upgrade.
+      // Note: final_text_reviews is excluded from checksum comparison because
+      // the upgrade legitimately adds the scale_review column (NULL for existing
+      // rows changes the raw row hash); data preservation is verified explicitly
+      // in step 8 below via field-by-field comparison.
       const tables = ["users", "workspaces", "memberships", "novels", "sessions", "scale_evidence_sets"];
       const before = new Map<string, { count: number; hash: string }>();
       for (const t of tables) {
@@ -435,36 +475,21 @@ describe("migration: populated baseline via Prisma ledger", () => {
         expect(c.rows[0].c, `${tbl} empty after upgrade`).toBe(0);
       }
 
-      // 8. Legacy receipts: scale_review is NULL for pre-existing rows (never
-      //    fabricated proof). Insert a legacy receipt row, then verify null.
-      const chapter = await db.chapter.create({
-        data: { novelId: novel.id, title: "Ch1", number: 1, createdById: user.id },
-      });
-      const version = await db.chapterVersion.create({
-        data: {
-          chapterId: chapter.id,
-          number: 1,
-          content: "<p>Legacy prose.</p>",
-          wordCount: 2,
-          authorId: user.id,
-        },
-      });
-      await db.chapter.update({ where: { id: chapter.id }, data: { currentVersionId: version.id } });
-      const branch = await db.novelBranch.findFirst({ where: { novelId: novel.id } });
-      const revision = await db.revision.findFirst({ where: { novelId: novel.id } });
-      if (branch && revision) {
-        await client.query(
-          `INSERT INTO final_text_reviews
-             (workspace_id, novel_id, chapter_version_id, revision_id, verdict, hard_violations, advisory, evaluated_policies)
-           VALUES ($1, $2, $3, $4, 'PASS', '[]', '[]', '{}')`,
-          [ws.id, novel.id, version.id, revision.id],
-        );
-        const sr = await client.query(
-          `SELECT scale_review FROM final_text_reviews WHERE chapter_version_id = $1`,
-          [version.id],
-        );
-        expect(sr.rows[0].scale_review, "legacy receipt scale_review is NULL").toBeNull();
-      }
+      // 8. Legacy receipt preservation: the PRE-UPGRADE receipt still exists
+      //    with identical data, and scale_review is NULL (legacy, never
+      //    fabricated proof). This verifies genuine pre-upgrade preservation.
+      const sr = await client.query(
+        `SELECT id, verdict, hard_violations::text AS hv, advisory::text AS adv,
+                evaluated_policies::text AS ep, scale_review
+         FROM final_text_reviews WHERE id = $1`,
+        [baselineReceiptId],
+      );
+      expect(sr.rowCount, "pre-upgrade receipt survives upgrade").toBe(1);
+      expect(sr.rows[0].verdict, "receipt verdict preserved").toBe("PASS");
+      expect(JSON.parse(sr.rows[0].hv), "receipt hard_violations preserved").toEqual([{ code: "H1" }]);
+      expect(JSON.parse(sr.rows[0].adv), "receipt advisory preserved").toEqual([]);
+      expect(JSON.parse(sr.rows[0].ep), "receipt evaluated_policies preserved").toEqual({ SCALE: { kind: "SCALE" } });
+      expect(sr.rows[0].scale_review, "legacy receipt scale_review is NULL").toBeNull();
 
       // 9. The baseline novel remains fully usable.
       const seenNovel = await db.novel.findUnique({ where: { id: novel.id } });

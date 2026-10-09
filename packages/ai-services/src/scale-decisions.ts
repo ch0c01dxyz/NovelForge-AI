@@ -26,6 +26,7 @@ import {
   type AuditService,
 } from "@novelforge/ai-services";
 import { isValidScalePayload, scaleStandingOf } from "./narrative.ts";
+import { advanceForMutation } from "./revisions.ts";
 import type { ScalePolicySnapshot } from "./scale-review-types.ts";
 import {
   readScaleContext,
@@ -495,6 +496,7 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
       expectedBranchId: string;
       expectedHeadRevisionId: string | null;
       expectedDecisionId: string | null;
+      expectedPolicyFingerprint: string;
     }) {
       const {
         actorUserId,
@@ -507,6 +509,7 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         expectedBranchId,
         expectedHeadRevisionId,
         expectedDecisionId,
+        expectedPolicyFingerprint,
       } = input;
 
       await checkCapability(actorUserId, workspaceId, novelId, "chapter:update" as Capability);
@@ -528,9 +531,38 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
       }
 
       return await db.$transaction(async (tx) => {
-        // Lock order: novel -> branch -> chapter
-        await tx.$queryRaw`SELECT id FROM novels WHERE id = ${novelId} FOR NO KEY UPDATE`;
+        // Frozen lock order (same as reviewFinalText and the shared gate):
+        // novel NO KEY UPDATE -> checked-out branch UPDATE -> chapter UPDATE.
+        // Every stored pin and every client expectation is re-read under
+        // these locks; a failed expectation aborts with zero writes.
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`,
+          novelId,
+        );
 
+        // Re-read the novel under lock and resolve the checked-out branch
+        // from the server, never from the client.
+        const lockedNovel = await tx.novel.findFirst({
+          where: { id: novelId, workspaceId },
+          select: { id: true, currentBranchId: true },
+        });
+        if (!lockedNovel || !lockedNovel.currentBranchId) {
+          throw new NotFoundError("novel");
+        }
+        const checkedOutBranchId = lockedNovel.currentBranchId;
+
+        // Lock the checked-out branch.
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`,
+          checkedOutBranchId,
+        );
+        const lockedBranch = await tx.novelBranch.findFirst({
+          where: { id: checkedOutBranchId, novelId },
+          select: { id: true, name: true },
+        });
+        if (!lockedBranch) throw new NotFoundError("branch");
+
+        // Re-read the stored proposal under lock. Its pins are immutable.
         const proposal = await tx.scaleDecisionProposal.findFirst({
           where: { id: proposalId, novelId, workspaceId },
           include: { outcome: true },
@@ -540,19 +572,78 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
           throw new ConflictError("proposal already decided");
         }
 
-        // Verify stored pins match current context (cannot repin old proposal).
-        // Note: we do NOT call readScaleContext here with a caught error —
-        // a failed query aborts the Postgres transaction. The direct
-        // branch/head reads below are sufficient for pin verification.
-        const branch = await tx.novelBranch.findFirst({
-          where: { id: proposal.sourceBranchId, novelId },
-          select: { id: true, headRevisionId: true },
+        // Resolve the chapter from the proposal's immutable version pin and
+        // lock it. Version/chapter/novel/workspace ownership is enforced here
+        // before any decision history is read or written.
+        const versionPre = await tx.chapterVersion.findFirst({
+          where: { id: proposal.chapterVersionId },
+          select: {
+            id: true,
+            chapterId: true,
+            chapter: { select: { novelId: true, novel: { select: { workspaceId: true } } } },
+          },
         });
-        if (!branch || branch.id !== expectedBranchId) {
+        if (
+          !versionPre ||
+          versionPre.chapter.novelId !== novelId ||
+          versionPre.chapter.novel.workspaceId !== workspaceId
+        ) {
+          throw new NotFoundError("chapter version");
+        }
+        const chapterId = versionPre.chapterId;
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM chapters WHERE id = $1 FOR UPDATE`,
+          chapterId,
+        );
+
+        // Re-read current context under lock via the frozen context reader.
+        // Corrupt retained evidence throws ScaleEvidenceValidationError
+        // (honest 400, zero writes); missing/foreign rows throw 404. Both
+        // roll the transaction back without touching decision history.
+        const context = await readScaleContext(tx as ScaleReviewContextTx, {
+          workspaceId,
+          novelId,
+          chapterId,
+          chapterVersionId: proposal.chapterVersionId,
+        });
+
+        // Validate the STORED proposal pins against CURRENT context. Stored
+        // pins are immutable: any mismatch means the proposal is stale and
+        // must NOT be repinned — the author creates a new proposal and the
+        // old record is retained. Zero writes on 409.
+        const mismatchedPins: string[] = [];
+        if (proposal.sourceBranchId !== context.branch.id) {
+          mismatchedPins.push("branchId");
+        }
+        if (proposal.chapterVersionId !== context.chapterVersion.id) {
+          mismatchedPins.push("chapterVersionId");
+        }
+        if (proposal.sourceRevisionId !== context.headRevisionId) {
+          mismatchedPins.push("sourceRevisionId");
+        }
+        if (proposal.evidenceSetId !== (context.latestSet?.id ?? null)) {
+          mismatchedPins.push("evidenceSetId");
+        }
+        if (proposal.policyFingerprint !== context.policyFingerprint) {
+          mismatchedPins.push("policyFingerprint");
+        }
+        if (mismatchedPins.length > 0) {
+          throw new ConflictError(
+            `proposal is stale (${mismatchedPins.join(", ")} no longer match current context); create a new proposal`,
+          );
+        }
+
+        // Validate the CLIENT expectations against current context. Current
+        // client expectations cannot repin an old proposal; any mismatch is
+        // 409 with zero writes.
+        if (expectedBranchId !== context.branch.id) {
           throw new ConflictError("branch expectation mismatch");
         }
-        if (branch.headRevisionId !== expectedHeadRevisionId) {
-          throw new ConflictError("head revision changed; proposal is stale");
+        if (expectedHeadRevisionId !== context.headRevisionId) {
+          throw new ConflictError("head revision expectation mismatch");
+        }
+        if (expectedPolicyFingerprint !== context.policyFingerprint) {
+          throw new ConflictError("policy fingerprint expectation mismatch");
         }
 
         // Verify decision head (concurrent stale expectedDecisionId → 409)
@@ -585,14 +676,35 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         let alternativeProposal: unknown = null;
 
         if (action === "APPROVE" && proposal.kind === "STANDING_CHANGE") {
-          // HIGH classification: advanceForMutation + checkpoint + rebuild intent
-          // in SAME transaction. Simplified here: record outcome with policy update.
-          // Full advanceForMutation integration is in the API layer.
           const payload = proposal.payload as {
             standing: { scale: string; access: string[]; reputation: number };
             hardness: string;
             hardReason: string | null;
           };
+
+          // HIGH scale.standing.approve: advanceForMutation FIRST (before any
+          // policy write) so the PRE_MUTATION checkpoint captures pre-mutation
+          // state. Creates revision + change set + checkpoint + rebuild intent
+          // in this SAME transaction. A missing baseline or stale head refuses
+          // here with zero writes.
+          const advance = await advanceForMutation(tx, {
+            workspaceId,
+            novelId,
+            expectedHeadRevisionId: context.headRevisionId,
+            branchName: lockedBranch.name,
+            operation: "scale.standing.approve",
+            origin: "MANUAL",
+            actorUserId,
+            tables: ["narrative_policies"],
+            items: [
+              {
+                entityType: "NarrativePolicy",
+                entityId: `novel:${novelId}:SCALE`,
+                operation: "UPDATE",
+              },
+            ],
+          });
+          resultRevisionId = advance.revisionId;
 
           // Update the SCALE policy (REWOUND classification)
           await tx.narrativePolicy.upsert({
@@ -689,7 +801,7 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         return {
           outcome,
           alternativeProposal,
-          currentHeadRevisionId: branch.headRevisionId,
+          currentHeadRevisionId: context.headRevisionId,
         };
       });
     },

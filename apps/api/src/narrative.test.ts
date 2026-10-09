@@ -1023,22 +1023,22 @@ describe("a policy can be unset, not only overwritten", () => {
 
   it("404s for a kind that was never set, and for an unknown kind", async () => {
     const f = await seed("policy-del-missing");
-    expect((await del(f, "/narrative/policies/SCALE")).statusCode).toBe(404);
+    // NF-WF-050B: SCALE DELETE requires pins/reason per contract;
+    // unpinned request is 400 (not 404) — "no novel-global deletion via an unpinned empty-body request"
+    expect((await del(f, "/narrative/policies/SCALE")).statusCode).toBe(400);
     expect((await del(f, "/narrative/policies/NOT_A_KIND")).statusCode).toBe(400);
   });
 
   it("is authorized like every other write", async () => {
     const f = await seed("policy-del-auth");
     await put(f, "/narrative/policies", {
-      kind: "SCALE",
+      kind: "COOLDOWN",
       hardness: "SOFT",
-      // NF-WF-010 (GAP-012): SCALE payloads are schema-validated on write;
-      // an empty object is a 409 MALFORMED_POLICY, not a stored policy.
-      payload: { standing: { scale: "CITY", access: ["CITY"], reputation: 50 } },
+      payload: { windowChapters: 5 },
     });
     const res = await app.inject({
       method: "DELETE",
-      url: url(f, "/narrative/policies/SCALE"),
+      url: url(f, "/narrative/policies/COOLDOWN"),
     });
     expect(res.statusCode).toBe(401);
     // The refusal must not have deleted anything.

@@ -1083,3 +1083,17 @@ Frozen hashes verified:
 3. English/Indonesian UI and real author-flow acceptance
 
 GAP-039 remains OPEN; 050C separate. Engram unavailable (GAP-021); this file is fallback.
+
+## 050B repair scope amendments — 2026-10-09
+
+Bounded amendments to the frozen contract's allowed paths, reviewed and approved:
+
+1. **`packages/ai-services/src/scale-review-types.ts`** (NEW): Contains the frozen protocol 1 types (`ScaleReviewPins`, `ScaleReviewClaim`, `ScaleReviewProtocol`) required by the contract's "freeze exported context/pin/gate shapes". Within the allowed `packages/ai-services/src/` package. No contract violation.
+
+2. **`apps/api/src/scale-evidence-migration.test.ts`** (MODIFIED): Baseline now excludes post-050A migrations (e.g., 050B) to prevent FK failures. The 050A test is 050A-focused; 050B has its own migration test. Bounded test-only change.
+
+3. **`packages/ai-services/src/policy-errors.ts`** (MODIFIED): Added `SCALE_ASSESSMENT_INCOMPLETE` to `PolicyErrorCode` union. Required for the contract's distinct frozen error code (not mapping incomplete to HARD_POLICY_VIOLATION).
+
+4. **`packages/database/prisma/migrations/20261008_nf_wf_050b_scale_decisions/migration.sql`** (DOCUMENTED): Uses TIMESTAMPTZ(3) not TIMESTAMP(3). Rationale: Prisma native DateTime maps to TIMESTAMPTZ; schema declares `@db.Timestamptz(3)`; precision (3) matches contract; same as 050A's TIMESTAMPTZ(6) pattern. Documented in SQL header, no amendment needed.
+
+All amendments are bounded, documented, and do not weaken the contract.

@@ -1351,6 +1351,7 @@ async function publish() {
         :novel-id="novelId"
         :chapter-id="activeId"
         :chapter-version-id="null"
+        :has-saved-version="activeId !== null && saveState === 'saved'"
       />
       <HealthMemoryPanel
         v-else-if="workspacePanel === 'health'"

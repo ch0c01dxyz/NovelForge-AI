@@ -3,6 +3,13 @@
 -- tables with constraints, FKs and indexes. No backfill: existing
 -- FinalTextReview rows keep scale_review NULL (legacy receipt, never proof).
 -- Both decision tables are OPERATIONAL (never rewound by restore).
+--
+-- Timestamp note (GAP-119): created_at uses TIMESTAMPTZ(3), not the contract's
+-- shorthand "TIMESTAMP(3)". This is deliberate: Prisma's native DateTime maps
+-- to TIMESTAMPTZ in PostgreSQL, and the schema declares @db.Timestamptz(3).
+-- The precision (3) matches the contract; the timezone-awareness aligns with
+-- Prisma native types (same as 050A's TIMESTAMPTZ(6) pattern). Using plain
+-- TIMESTAMP would create schema-vs-migration drift.
 
 -- Decision-kind enum: STANDING_CHANGE alters the approved SCALE policy;
 -- CHAPTER_EXCEPTION grants a bounded per-claim exception.

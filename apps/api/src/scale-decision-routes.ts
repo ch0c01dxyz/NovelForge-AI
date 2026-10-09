@@ -32,6 +32,10 @@ const scaleDecisionParams = z.object({
   chapterId: uuid,
 });
 
+const scaleReviewContextQuery = z.object({
+  chapterVersionId: uuid.optional(),
+});
+
 const proposalIdParams = scaleDecisionParams.extend({
   proposalId: uuid,
 });
@@ -110,6 +114,7 @@ const decideProposalBody = z
     expectedBranchId: uuid,
     expectedHeadRevisionId: uuid.nullable(),
     expectedDecisionId: uuid.nullable(),
+    expectedPolicyFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
   })
   .strict();
 
@@ -134,11 +139,17 @@ export function registerScaleDecisionRoutes(
   const decisions: ScaleDecisionServices = createScaleDecisionServices({ db, audit });
 
   // GET /chapters/:chapterId/scale-review-context
+  // Contract: server-derived current version/branch/head, latest set,
+  // policy+fingerprint, decision head, applicable exception, receipt/
+  // applicability and checklist. One coherent read snapshot.
+  //
+  // chapterVersionId is optional: when omitted, the server resolves the
+  // chapter's current saved version (server-derived, never client-invented).
   app.get(
     "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scale-review-context",
     async (req: FastifyRequest, reply: FastifyReply) => {
       const params = scaleDecisionParams.parse(req.params);
-      const query = z.object({ chapterVersionId: uuid }).parse(req.query);
+      const query = scaleReviewContextQuery.parse(req.query);
       const token = req.cookies[SESSION_COOKIE];
       const session = token ? await auth.validateSession(token) : null;
       if (!session) return reply.code(401).send({ error: "UNAUTHORIZED" });
@@ -146,16 +157,100 @@ export function registerScaleDecisionRoutes(
       requireCapability(membership.role, "chapter:read" as Capability);
       requireCapability(membership.role, "canon:read" as Capability);
 
-      const context = await db.$transaction(async (tx) => {
-        return await readScaleContext(tx as never, {
+      // Resolve the version ID: client-supplied or server-derived current.
+      let chapterVersionId = query.chapterVersionId ?? null;
+      if (!chapterVersionId) {
+        const chapter = await db.chapter.findFirst({
+          where: { id: params.chapterId, novelId: params.novelId, novel: { workspaceId: params.workspaceId } },
+          select: { currentVersionId: true },
+        });
+        if (!chapter?.currentVersionId) {
+          return reply.code(404).send({ error: "NOT_FOUND", message: "no saved version" });
+        }
+        chapterVersionId = chapter.currentVersionId;
+      }
+
+      const snapshot = await db.$transaction(async (tx) => {
+        const context = await readScaleContext(tx as never, {
           workspaceId: params.workspaceId,
           novelId: params.novelId,
           chapterId: params.chapterId,
-          chapterVersionId: query.chapterVersionId,
+          chapterVersionId: chapterVersionId as string,
         });
+
+        // Decision head: latest decision outcome ID for this branch/version.
+        const latestOutcome = await (tx as NovelForgeDb).scaleDecisionOutcome.findFirst({
+          where: {
+            workspaceId: params.workspaceId,
+            novelId: params.novelId,
+            chapterVersionId: chapterVersionId as string,
+            sourceBranchId: context.branch.id,
+          },
+          orderBy: { sequence: "desc" },
+          select: { id: true },
+        });
+        const decisionHeadId = latestOutcome?.id ?? null;
+
+        // Applicable exception: latest APPROVE outcome for a CHAPTER_EXCEPTION
+        // proposal matching this exact version/branch/set/policy fingerprint.
+        let applicableException: { outcomeId: string; proposalId: string } | null = null;
+        if (context.latestSet) {
+          const exceptionOutcome = await (tx as NovelForgeDb).scaleDecisionOutcome.findFirst({
+            where: {
+              workspaceId: params.workspaceId,
+              novelId: params.novelId,
+              chapterVersionId: chapterVersionId as string,
+              sourceBranchId: context.branch.id,
+              action: "APPROVE",
+              proposal: {
+                kind: "CHAPTER_EXCEPTION",
+                evidenceSetId: context.latestSet.id,
+                policyFingerprint: context.policyFingerprint,
+              },
+            },
+            orderBy: { sequence: "desc" },
+            select: { id: true, proposalId: true },
+          });
+          if (exceptionOutcome) {
+            applicableException = {
+              outcomeId: exceptionOutcome.id,
+              proposalId: exceptionOutcome.proposalId,
+            };
+          }
+        }
+
+        // Latest review receipt for this version (with scaleReview protocol).
+        const receiptRow = await (tx as NovelForgeDb).finalTextReview.findUnique({
+          where: { chapterVersionId: chapterVersionId as string },
+          select: {
+            id: true,
+            verdict: true,
+            scaleReview: true,
+            revisionId: true,
+            createdAt: true,
+          },
+        });
+        const receipt = receiptRow
+          ? {
+              id: receiptRow.id,
+              verdict: receiptRow.verdict,
+              scaleReview: receiptRow.scaleReview,
+              revisionId: receiptRow.revisionId,
+              createdAt: receiptRow.createdAt,
+            }
+          : null;
+
+        return {
+          context: {
+            ...context,
+            decisionHeadId,
+            applicableException,
+          },
+          receipt,
+        };
       });
 
-      return reply.code(200).send({ context });
+      return reply.code(200).send(snapshot);
     },
   );
 
@@ -195,7 +290,27 @@ export function registerScaleDecisionRoutes(
       requireCapability(membership.role, "chapter:read" as Capability);
       requireCapability(membership.role, "canon:read" as Capability);
 
+      // P1 fix: resolve all tenant/source identities before querying.
+      // Verify novel belongs to workspace, chapter belongs to novel,
+      // and version belongs to chapter. Foreign IDs -> 404.
+      const novel = await db.novel.findFirst({
+        where: { id: params.novelId, workspaceId: params.workspaceId },
+        select: { id: true },
+      });
+      if (!novel) return reply.code(404).send({ error: "NOT_FOUND" });
+      const chapter = await db.chapter.findFirst({
+        where: { id: params.chapterId, novelId: params.novelId },
+        select: { id: true },
+      });
+      if (!chapter) return reply.code(404).send({ error: "NOT_FOUND" });
+      const version = await db.chapterVersion.findFirst({
+        where: { id: query.chapterVersionId, chapterId: params.chapterId },
+        select: { id: true },
+      });
+      if (!version) return reply.code(404).send({ error: "NOT_FOUND" });
+
       const where = {
+        workspaceId: params.workspaceId,
         novelId: params.novelId,
         chapterVersionId: query.chapterVersionId,
         ...(query.beforeSequence ? { sequence: { lt: query.beforeSequence } } : {}),

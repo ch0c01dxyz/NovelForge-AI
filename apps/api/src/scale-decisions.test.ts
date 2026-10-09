@@ -464,6 +464,7 @@ describe("decideProposal", () => {
       expectedBranchId: f.branchId,
       expectedHeadRevisionId: f.headRevisionId,
       expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
     });
 
     expect(result.outcome.action).toBe("REJECT");
@@ -490,6 +491,7 @@ describe("decideProposal", () => {
       expectedBranchId: f.branchId,
       expectedHeadRevisionId: f.headRevisionId,
       expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
     });
 
     await expect(
@@ -503,6 +505,7 @@ describe("decideProposal", () => {
         expectedBranchId: f.branchId,
         expectedHeadRevisionId: f.headRevisionId,
         expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
       }),
     ).rejects.toThrow(ConflictError);
 
@@ -525,6 +528,7 @@ describe("decideProposal", () => {
         expectedBranchId: f.branchId,
         expectedHeadRevisionId: f.headRevisionId,
         expectedDecisionId: "00000000-0000-0000-0000-000000000000",
+      expectedPolicyFingerprint: f.policyFingerprint,
       }),
     ).rejects.toThrow(ConflictError);
 
@@ -547,15 +551,21 @@ describe("decideProposal", () => {
       expectedBranchId: f.branchId,
       expectedHeadRevisionId: f.headRevisionId,
       expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
     });
 
     expect(result.outcome.action).toBe("ALTERNATIVE");
     expect(result.alternativeProposal).toBeTruthy();
-    expect(result.alternativeProposal!.sequence).toBe(2);
-    expect(result.alternativeProposal!.predecessorProposalId).toBe(proposal.id);
+    const altProposal = result.alternativeProposal as {
+      id: string;
+      sequence: number;
+      predecessorProposalId: string | null;
+    };
+    expect(altProposal.sequence).toBe(2);
+    expect(altProposal.predecessorProposalId).toBe(proposal.id);
 
     const altOutcome = await db.scaleDecisionOutcome.findUnique({
-      where: { proposalId: result.alternativeProposal!.id },
+      where: { proposalId: altProposal.id },
     });
     expect(altOutcome).toBeNull();
   });
@@ -576,6 +586,7 @@ describe("decideProposal", () => {
         expectedBranchId: f.branchId,
         expectedHeadRevisionId: f.headRevisionId,
         expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
       }),
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
 
@@ -597,7 +608,138 @@ describe("decideProposal", () => {
         expectedBranchId: f.branchId,
         expectedHeadRevisionId: f.headRevisionId,
         expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
       }),
     ).rejects.toThrow(NotFoundError);
+  });
+
+  it("stale stored policy pin is 409 with zero writes and is never repinned", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+    const proposal = await seedProposal(f);
+
+    // Policy changes AFTER the proposal was created: the stored pin is now
+    // stale. The client passes FRESH expectations (the new fingerprint) —
+    // fresh client expectations must never repin the old proposal.
+    const updated = await db.narrativePolicy.update({
+      where: { novelId_kind: { novelId: f.novelId, kind: "SCALE" } },
+      data: {
+        payload: {
+          standing: { scale: "TOWN", access: ["TOWN"], reputation: 60 },
+        },
+      },
+    });
+    const freshFingerprint = fingerprintScalePolicy({
+      id: updated.id,
+      kind: updated.kind,
+      hardness: updated.hardness,
+      hardReason: updated.hardReason,
+      payload: updated.payload,
+    });
+    expect(freshFingerprint).not.toBe(f.policyFingerprint);
+
+    await expect(
+      svc.decideProposal({
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        proposalId: proposal.id,
+        action: "REJECT",
+        reason: "stale pin",
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: f.headRevisionId,
+        expectedDecisionId: null,
+        expectedPolicyFingerprint: freshFingerprint,
+      }),
+    ).rejects.toThrow(/proposal is stale/);
+
+    // Zero writes: no outcome recorded.
+    expect(await db.scaleDecisionOutcome.count()).toBe(0);
+    // The proposal is retained and its pins are NOT repinned to current.
+    const reread = await db.scaleDecisionProposal.findUniqueOrThrow({
+      where: { id: proposal.id },
+    });
+    expect(reread.policyFingerprint).toBe(f.policyFingerprint);
+  });
+
+  it("stale stored head pin is 409 with zero writes", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+    const proposal = await seedProposal(f);
+
+    // Head advances AFTER the proposal was created: the stored
+    // sourceRevisionId pin is stale.
+    const revision2 = await db.revision.create({
+      data: {
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        branchId: f.branchId,
+        number: 2,
+        origin: "MANUAL",
+        message: "head moved",
+        createdById: f.userId,
+      },
+    });
+    await db.novelBranch.update({
+      where: { id: f.branchId },
+      data: { headRevisionId: revision2.id },
+    });
+
+    await expect(
+      svc.decideProposal({
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        proposalId: proposal.id,
+        action: "REJECT",
+        reason: "head moved",
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: revision2.id,
+        expectedDecisionId: null,
+        expectedPolicyFingerprint: f.policyFingerprint,
+      }),
+    ).rejects.toThrow(/proposal is stale/);
+
+    expect(await db.scaleDecisionOutcome.count()).toBe(0);
+    const reread = await db.scaleDecisionProposal.findUniqueOrThrow({
+      where: { id: proposal.id },
+    });
+    expect(reread.sourceRevisionId).toBe(f.headRevisionId);
+  });
+
+  it("concurrent proposal creation allocates unique sequences (no duplicates)", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+
+    // Create 5 proposals concurrently; each should get a unique sequence 1-5.
+    const results = await Promise.all(
+      [1, 2, 3, 4, 5].map((i) =>
+        svc.createProposal({
+          actorUserId: f.userId,
+          workspaceId: f.workspaceId,
+          novelId: f.novelId,
+          chapterId: f.chapterId,
+          chapterVersionId: f.chapterVersionId,
+          expectedBranchId: f.branchId,
+          expectedHeadRevisionId: f.headRevisionId,
+          expectedSetId: null,
+          expectedDecisionId: null,
+          expectedPolicyFingerprint: f.policyFingerprint,
+          kind: "CHAPTER_EXCEPTION",
+          payload: { claimIndices: [i - 1] },
+          reason: `concurrent ${i}`,
+        }),
+      ),
+    );
+
+    // All succeed with unique sequences.
+    const sequences = results.map((r) => r.proposal.sequence).sort((a, b) => a - b);
+    expect(sequences).toEqual([1, 2, 3, 4, 5]);
+
+    // Verify in DB: 5 proposals, no duplicate sequences.
+    const count = await db.scaleDecisionProposal.count({
+      where: { novelId: f.novelId, chapterVersionId: f.chapterVersionId },
+    });
+    expect(count).toBe(5);
   });
 });

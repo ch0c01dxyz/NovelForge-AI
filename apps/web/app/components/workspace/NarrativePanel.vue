@@ -21,8 +21,10 @@ const props = defineProps<{
   novelId: string;
   /** Selected chapter ID from the workspace, or null. */
   chapterId?: string | null;
-  /** Saved version UUID, or null when unsaved/none. */
+  /** Saved version UUID, or null when the server should derive it. */
   chapterVersionId?: string | null;
+  /** True when the selected chapter has a saved version (not dirty). */
+  hasSavedVersion?: boolean;
 }>();
 
 const { t } = useLocale();
@@ -239,6 +241,7 @@ async function runPatterns() {
         :novel-id="novelId"
         :chapter-id="props.chapterId ?? null"
         :chapter-version-id="props.chapterVersionId ?? null"
+        :has-saved-version="props.hasSavedVersion"
       />
     </div>
 

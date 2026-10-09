@@ -400,7 +400,7 @@ export async function assertPublishReviewGate(
   }
   if (result.code === "SCALE_ASSESSMENT_INCOMPLETE") {
     throw new PolicyError(
-      "HARD_POLICY_VIOLATION",
+      "SCALE_ASSESSMENT_INCOMPLETE",
       `SCALE assessment is incomplete for a HARD policy — complete the assessment before publishing`,
     );
   }

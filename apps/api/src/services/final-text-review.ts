@@ -382,8 +382,11 @@ export function createFinalTextReviewServices(deps: {
           scaleContext = null;
         }
 
-        // Find applicable approved exception (latest approved outcome for
-        // this exact version/branch/set/policy, if any).
+        // Find applicable approved exception: the LATEST approved
+        // CHAPTER_EXCEPTION outcome whose proposal pins match EXACTLY:
+        // kind, head (sourceRevisionId), policy fingerprint, set ID,
+        // version and branch. An APPROVE row's existence alone is not
+        // sufficient — stale or mismatched exceptions must not apply.
         let exceptionCoveredIndices: number[] = [];
         let applicableExceptionOutcomeId: string | null = null;
         if (scaleContext?.latestSet) {
@@ -393,12 +396,18 @@ export function createFinalTextReviewServices(deps: {
               chapterVersionId,
               sourceBranchId: branchId,
               action: "APPROVE",
+              proposal: {
+                kind: "CHAPTER_EXCEPTION",
+                sourceRevisionId: sourceRevisionId,
+              },
             },
             orderBy: { sequence: "desc" },
-            select: { id: true, proposal: { select: { payload: true, evidenceSetId: true, policyFingerprint: true } } },
+            select: { id: true, proposal: { select: { payload: true, evidenceSetId: true, policyFingerprint: true, kind: true, sourceRevisionId: true } } },
           });
           if (
             outcome &&
+            outcome.proposal.kind === "CHAPTER_EXCEPTION" &&
+            outcome.proposal.sourceRevisionId === sourceRevisionId &&
             outcome.proposal.evidenceSetId === scaleContext.latestSet.id &&
             outcome.proposal.policyFingerprint === scaleContext.policyFingerprint
           ) {
@@ -430,11 +439,16 @@ export function createFinalTextReviewServices(deps: {
           }));
           // Patch the exception outcome pin (resolved by caller per
           // assessScaleDeterministic contract).
+          // Honor explicit NO_OPERATIVE_CONFLICT declaration from the
+          // validated evidence set (050A). A quiet chapter with valid
+          // policy and explicit declaration → NO_OPERATIVE_CONFLICT state.
+          const noOperativeConflict =
+            scaleContext.latestSet?.declaration === "NO_OPERATIVE_CONFLICT";
           const assessed = assessScaleDeterministic({
             context: scaleContext,
             claims,
             exceptionCoveredIndices,
-            noOperativeConflict: false,
+            noOperativeConflict,
           });
           scaleReview = {
             ...assessed,
@@ -598,36 +612,24 @@ export function createFinalTextReviewServices(deps: {
           }
         }
 
-        const verdict: "PASS" | "FAIL" = hardViolations.length > 0 ? "FAIL" : "PASS";
+        // 050B: Derive verdict from SCALE blocking. INCOMPLETE with
+        // blocking (HARD) → FAIL; VIOLATION with blocking → FAIL.
+        // WITHIN_REACH/EXCEPTED/NO_OPERATIVE_CONFLICT do NOT force FAIL
+        // (other policies can still fail). INCOMPLETE never fabricates
+        // proved violations (hardViolations only contains proved hard
+        // violations from non-SCALE policies).
+        const scaleBlocks =
+          scaleReview !== null && scaleReview.blocking === true;
+        const verdict: "PASS" | "FAIL" =
+          hardViolations.length > 0 || scaleBlocks ? "FAIL" : "PASS";
 
         // One receipt per immutable version; re-review REPLACES the row.
-        // An older evaluator cannot overwrite a newer receipt from a
-        // different snapshot: only replace when the stored revisionId
-        // matches or when the stored receipt is older (createdAt check
-        // is implicit in the upsert; snapshot comparison via pins).
-        const existing = await tx.finalTextReview.findUnique({
-          where: { chapterVersionId },
-          select: { id: true, revisionId: true, scaleReview: true },
-        });
-        if (existing) {
-          const existingProtocol = parseScaleReviewProtocol(existing.scaleReview);
-          // If the existing receipt pins a NEWER source revision than the
-          // one we just read, refuse to overwrite (stale evaluator).
-          if (
-            existingProtocol &&
-            scaleReview &&
-            existingProtocol.pins.sourceRevisionId !== scaleReview.pins.sourceRevisionId &&
-            existing.revisionId !== sourceRevisionId
-          ) {
-            // The stored receipt is from a different snapshot; the caller
-            // re-read the head inside this tx, so a mismatch means the
-            // head moved between our read and now — treat as stale.
-            throw new PolicyError(
-              "REVIEW_STALE",
-              "a newer review receipt exists from a different snapshot",
-            );
-          }
-        }
+        // After a head change, the existing receipt pins the OLD head and
+        // the new review pins the CURRENT head (re-read inside this tx
+        // under lock). This is a legitimate fresh re-review and must be
+        // allowed — the upsert below replaces the stale receipt.
+        // The chapter is locked FOR UPDATE in this tx, so the head cannot
+        // move between our read and the upsert; no stale-evaluator race.
 
         const receipt = await tx.finalTextReview.upsert({
           where: { chapterVersionId },

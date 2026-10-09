@@ -54,16 +54,32 @@ describe("ScaleReviewPanel", () => {
     expect(wrapper.text()).toContain("workspace.scaleReview.noSelection");
   });
 
-  it("shows unsaved-edits warning when chapter has no version", () => {
+  it("shows unsaved-edits warning when chapter has no saved version", () => {
     const wrapper = mount(ScaleReviewPanel, {
       props: {
         workspaceId: "ws-1",
         novelId: "novel-1",
         chapterId: "ch-1",
         chapterVersionId: null,
+        hasSavedVersion: false,
       },
     });
     expect(wrapper.text()).toContain("workspace.scaleReview.unsavedEdits");
+  });
+
+  it("does not show unsaved warning when saved but version ID is null (server derives)", () => {
+    const wrapper = mount(ScaleReviewPanel, {
+      props: {
+        workspaceId: "ws-1",
+        novelId: "novel-1",
+        chapterId: "ch-1",
+        chapterVersionId: null,
+        hasSavedVersion: true,
+      },
+    });
+    // Server derives the version; the panel should attempt loading, not warn.
+    expect(wrapper.text()).not.toContain("workspace.scaleReview.unsavedEdits");
+    expect(wrapper.text()).not.toContain("workspace.scaleReview.noSelection");
   });
 
   it("renders title", () => {

@@ -147,20 +147,33 @@ export async function checkFinalTextReviewGate(
     return { ok: false, code: "REVIEW_STALE" };
   }
 
-  // Verify exception pin (if any) is still the applicable approved outcome.
-  if (pins.exceptionOutcomeId) {
-    const outcome = await tx.scaleDecisionOutcome.findFirst({
-      where: {
-        id: pins.exceptionOutcomeId,
-        novelId,
-        chapterVersionId,
-        action: "APPROVE",
+  // Verify exception pin: resolve the LATEST applicable approved
+  // CHAPTER_EXCEPTION outcome and require it to match the pin EXACTLY.
+  // Applicability requires: kind=CHAPTER_EXCEPTION, head matches current,
+  // policy fingerprint matches, set ID matches, version and branch match.
+  // A stale pin (superseded by a newer outcome, or mismatched pins) is
+  // REVIEW_STALE — the author must re-review.
+  const latestApplicableOutcome = await tx.scaleDecisionOutcome.findFirst({
+    where: {
+      novelId,
+      chapterVersionId,
+      sourceBranchId: context.branch.id,
+      action: "APPROVE",
+      proposal: {
+        kind: "CHAPTER_EXCEPTION",
+        sourceRevisionId: context.headRevisionId,
+        evidenceSetId: context.latestSet?.id ?? null,
+        policyFingerprint: context.policyFingerprint,
       },
-      select: { id: true },
-    });
-    if (!outcome) {
-      return { ok: false, code: "REVIEW_STALE" };
-    }
+    },
+    orderBy: { sequence: "desc" },
+    select: { id: true },
+  });
+  const expectedExceptionId = latestApplicableOutcome?.id ?? null;
+  if (pins.exceptionOutcomeId !== expectedExceptionId) {
+    // Pin mismatch: either a stale pin, a revoked/superseded exception,
+    // or an exception that no longer applies to the current head/policy/set.
+    return { ok: false, code: "REVIEW_STALE" };
   }
 
   // Fresh protocol: apply gate logic.

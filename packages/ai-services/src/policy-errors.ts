@@ -13,7 +13,8 @@
 export type PolicyErrorCode =
   | "MALFORMED_POLICY"
   | "HARD_POLICY_VIOLATION"
-  | "REVIEW_STALE";
+  | "REVIEW_STALE"
+  | "SCALE_ASSESSMENT_INCOMPLETE";
 
 export class PolicyError extends Error {
   readonly code: PolicyErrorCode;

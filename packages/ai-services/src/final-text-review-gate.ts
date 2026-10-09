@@ -696,18 +696,25 @@ export async function checkFinalTextReviewGate(
 
   const scaleReview = parseScaleReviewProtocol(receipt.scaleReview);
 
-  // Legacy/null receipt with SCALE rows → REVIEW_STALE.
-  if (!scaleReview && hasScaleRows) {
+  // Malformed non-null stored proof is NOT a legacy receipt — invalid is
+  // never absent. Refuse before any legacy handling (ninth repair, GAP-119).
+  if (receipt.scaleReview !== null && !scaleReview) {
     return { ok: false, code: "REVIEW_STALE" };
   }
 
-  // No SCALE: genuine historical receipts (pre-050B, null scaleReview)
-  // retain legacy non-SCALE PASS/FAIL compatibility — but the receipt must
-  // still pin the current head. A later head advance (e.g. a non-SCALE
-  // HARD policy mutation) makes the old receipt REVIEW_STALE. New reviews
-  // always carry a NOT_CONFIGURED protocol (never null), so this path is
-  // only reachable for historical rows.
-  if (!scaleReview && !hasScaleRows) {
+  // Legacy/null receipt with SCALE rows → REVIEW_STALE. (After the
+  // malformed check above, !scaleReview implies receipt.scaleReview === null.)
+  if (receipt.scaleReview === null && hasScaleRows) {
+    return { ok: false, code: "REVIEW_STALE" };
+  }
+
+  // No SCALE: legacy compatibility ONLY for genuine historical receipts
+  // (receipt.scaleReview === null, pre-050B) — never for malformed proof.
+  // The receipt must still pin the current head. A later head advance
+  // (e.g. a non-SCALE HARD policy mutation) makes the old receipt
+  // REVIEW_STALE. New reviews always carry a NOT_CONFIGURED protocol
+  // (never null), so this path is only reachable for historical rows.
+  if (receipt.scaleReview === null && !hasScaleRows) {
     if (receipt.revisionId !== context.headRevisionId) {
       return { ok: false, code: "REVIEW_STALE" };
     }

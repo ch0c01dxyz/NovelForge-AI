@@ -191,14 +191,23 @@ export async function deriveReceiptApplicability(
   tx: Pick<NovelForgeDb, "scaleDecisionOutcome">,
   novelId: string,
   workspaceId: string,
-  receipt: { scaleReview: ScaleReviewProtocol | null } | null,
+  receipt: {
+    scaleReview: ScaleReviewProtocol | null;
+    /** Raw stored value; distinguishes malformed proof from genuine null. */
+    scaleReviewRaw?: unknown;
+  } | null,
   context: ScaleReviewContext,
   applicableException: { outcomeId: string; proposalId: string } | null,
 ): Promise<{ status: "ABSENT" | "LEGACY" | "STALE" | "FRESH"; reasons: string[] }> {
   if (!receipt) return { status: "ABSENT", reasons: ["no receipt"] };
   const protocol = receipt.scaleReview;
+  // Malformed non-null stored proof is NOT legacy — invalid is never absent
+  // (ninth repair, GAP-119). Report STALE so the checklist fails closed.
+  if (receipt.scaleReviewRaw !== null && receipt.scaleReviewRaw !== undefined && !protocol) {
+    return { status: "STALE", reasons: ["scaleReview-malformed"] };
+  }
   if (!protocol) {
-    return { status: "LEGACY", reasons: ["scaleReview missing or malformed"] };
+    return { status: "LEGACY", reasons: ["scaleReview missing"] };
   }
   const reasons: string[] = [];
   const pins = protocol.pins;
@@ -270,7 +279,11 @@ export interface ChecklistEntry {
  */
 export function deriveChecklist(
   context: ScaleReviewContext,
-  receipt: { scaleReview: ScaleReviewProtocol | null } | null,
+  receipt: {
+    scaleReview: ScaleReviewProtocol | null;
+    /** Raw stored value; distinguishes malformed proof from genuine null. */
+    scaleReviewRaw?: unknown;
+  } | null,
   applicability: { status: "ABSENT" | "LEGACY" | "STALE" | "FRESH"; reasons: string[] },
 ): ChecklistEntry[] {
   // FRESH: the deterministic assessment's own missing-data list is the checklist.
@@ -297,15 +310,29 @@ export function deriveChecklist(
       details: {},
     });
   } else if (!receipt.scaleReview) {
-    items.push({
-      code: "RECEIPT_LEGACY",
-      severity: "warn",
-      explanation:
-        "A review receipt exists but carries no SCALE protocol (pre-050B format or malformed); it is never trusted.",
-      example: "Example: a receipt written before the SCALE protocol was introduced.",
-      nextAction: "Re-run the deterministic SCALE review to produce a protocol receipt.",
-      details: {},
-    });
+    // Ninth repair, GAP-119: the applicability check distinguishes genuine
+    // historical null (LEGACY, warn) from malformed stored proof (STALE,
+    // fail). Malformed proof fails closed here too — never a legacy warn.
+    if (applicability.status === "STALE") {
+      items.push({
+        code: "RECEIPT_STALE",
+        severity: "fail",
+        explanation: `The retained review receipt carries a malformed SCALE protocol that cannot be trusted (mismatched: ${applicability.reasons.join(", ") || "unknown"}).`,
+        example: "Example: the stored protocol JSON was corrupted and no longer parses as a valid protocol 1 receipt.",
+        nextAction: "Re-run the deterministic SCALE review to produce a valid protocol receipt.",
+        details: { reasons: applicability.reasons.join(",") },
+      });
+    } else {
+      items.push({
+        code: "RECEIPT_LEGACY",
+        severity: "warn",
+        explanation:
+          "A review receipt exists but carries no SCALE protocol (pre-050B format); it is never trusted.",
+        example: "Example: a receipt written before the SCALE protocol was introduced.",
+        nextAction: "Re-run the deterministic SCALE review to produce a protocol receipt.",
+        details: {},
+      });
+    }
   } else {
     items.push({
       code: "RECEIPT_STALE",
@@ -464,13 +491,16 @@ export function registerScaleDecisionRoutes(
               createdAt: true,
             },
           });
-          // Strict retained protocol validation: malformed stored scaleReview
-          // is treated as legacy (null), never trusted.
+          // Strict retained protocol validation (ninth repair, GAP-119):
+          // malformed stored scaleReview is NOT legacy — invalid is never
+          // absent. Keep the raw value so applicability can report STALE
+          // (never LEGACY) for corrupt proof.
           const receipt = receiptRow
             ? {
                 id: receiptRow.id,
                 verdict: receiptRow.verdict,
                 scaleReview: parseScaleReviewProtocol(receiptRow.scaleReview),
+                scaleReviewRaw: receiptRow.scaleReview as unknown,
                 revisionId: receiptRow.revisionId,
                 createdAt: receiptRow.createdAt,
               }

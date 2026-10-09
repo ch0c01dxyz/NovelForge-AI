@@ -97,7 +97,7 @@ const FAKE_WORKSPACE_ID = "workspace-1";
 
 /** Awaitable wrapper: deriveReceiptApplicability is async (sixth repair). */
 function applicabilityOf(
-  receipt: { scaleReview: ScaleReviewProtocol | null } | null,
+  receipt: { scaleReview: ScaleReviewProtocol | null; scaleReviewRaw?: unknown } | null,
   ctx: ScaleReviewContext,
   applicableException: { outcomeId: string; proposalId: string } | null = null,
 ) {
@@ -124,12 +124,35 @@ describe("deriveChecklist", () => {
     assertFullText(items);
   });
 
-  it("derives RECEIPT_LEGACY when scaleReview is missing or malformed", async () => {
+  it("derives RECEIPT_LEGACY when scaleReview is genuinely null", async () => {
     const ctx = makeContext();
     const applicability = await applicabilityOf({ scaleReview: null }, ctx);
     expect(applicability.status).toBe("LEGACY");
     const items = deriveChecklist(ctx, { scaleReview: null }, applicability);
     expect(codes(items)).toContain("RECEIPT_LEGACY");
+    assertFullText(items);
+  });
+
+  it("derives RECEIPT_STALE (fail) for a malformed non-null stored protocol", async () => {
+    // Ninth repair, GAP-119: invalid is never absent. A non-null stored
+    // value that the protocol parser rejects is STALE, not LEGACY.
+    const ctx = makeContext();
+    const malformed = { protocol: 1, state: "BOGUS", blocking: "yes" };
+    const applicability = await applicabilityOf(
+      { scaleReview: null, scaleReviewRaw: malformed },
+      ctx,
+    );
+    expect(applicability.status).toBe("STALE");
+    expect(applicability.reasons).toContain("scaleReview-malformed");
+    const items = deriveChecklist(
+      ctx,
+      { scaleReview: null, scaleReviewRaw: malformed },
+      applicability,
+    );
+    expect(codes(items)).toContain("RECEIPT_STALE");
+    expect(codes(items)).not.toContain("RECEIPT_LEGACY");
+    const stale = items.find((i) => i.code === "RECEIPT_STALE")!;
+    expect(stale.severity).toBe("fail");
     assertFullText(items);
   });
 

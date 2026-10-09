@@ -330,4 +330,57 @@ describe("new no-SCALE reviews emit pinned NOT_CONFIGURED (never null)", () => {
     expect(st.statusCode, st.body).toBe(409);
     expect(st.json()).toMatchObject({ error: "REVIEW_STALE" });
   });
+
+  it("a malformed non-null stored protocol is REVIEW_STALE, never legacy", async () => {
+    const { cookie, userId } = await seedUser("noscale5@example.com");
+    const ids = await seedNovel(userId, "noscale-5");
+    const ch = await makeChapter(cookie, ids, "Ch 1");
+    const head = await currentHead(ids.novelId);
+
+    // Corrupt retained row: non-null scaleReview that the protocol parser
+    // rejects. Invalid is never absent — this must NOT take the legacy path.
+    const malformed = { protocol: 1, state: "BOGUS_STATE", blocking: "yes" };
+    expect(parseScaleReviewProtocol(malformed)).toBeNull();
+    await db.finalTextReview.create({
+      data: {
+        workspaceId: ids.workspaceId,
+        novelId: ids.novelId,
+        chapterVersionId: ch.versionId,
+        revisionId: head,
+        verdict: "PASS",
+        hardViolations: [],
+        advisory: [],
+        evaluatedPolicies: [],
+        scaleReview: malformed,
+      },
+    });
+
+    // Pre-call state: publication refusal must have no side effects.
+    const before = await db.chapter.findUniqueOrThrow({
+      where: { id: ch.id },
+      select: { status: true },
+    });
+
+    // No SCALE rows, current matching head, PASS verdict — but the stored
+    // proof is malformed, so publication must be refused.
+    const st = await app.inject({
+      method: "PATCH",
+      url: statusUrl(ids, ch.id),
+      headers: { cookie },
+      payload: { status: "PUBLISHED", chapterVersionId: ch.versionId },
+    });
+    expect(st.statusCode, st.body).toBe(409);
+    expect(st.json()).toMatchObject({ error: "REVIEW_STALE" });
+
+    // No side effects: chapter status unchanged, corrupt row preserved.
+    const after = await db.chapter.findUniqueOrThrow({
+      where: { id: ch.id },
+      select: { status: true },
+    });
+    expect(after.status).toBe(before.status);
+    const receipt = await db.finalTextReview.findUniqueOrThrow({
+      where: { chapterVersionId: ch.versionId },
+    });
+    expect(receipt.scaleReview).toEqual(malformed);
+  });
 });

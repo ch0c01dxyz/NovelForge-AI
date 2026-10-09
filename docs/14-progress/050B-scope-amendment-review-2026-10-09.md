@@ -499,16 +499,25 @@ REQUIRED — proposed here, not assumed.
 **Semantic change:** Test-only. No production code modified. No existing
 passing assertion weakened.
 
-**Post-review update (2026-10-09, eighth repair final checks):** After the
-independent review, the final-checks actor added ONE additive line to this
-file (`workspaceId: seed.workspaceId,` at line 232 — required by the
-eighth-repair Item 2 signature change; worker typecheck failed without it).
-The new SHA-256 is
+**Post-review update (2026-10-09, eighth repair final checks) — preserved
+historical receipt + subsequent change annotation:** The 18–20 independent
+review's exact-artifact receipt for this file is
+`a009dd2c1d51d7ae4a57fd98d68fdb46df6c80a82b0b9044d60d25f5d82491ea`.
+That receipt covers ONLY the pre-change bytes; it does NOT cover any
+subsequent change. After the independent review, the final-checks actor
+added ONE additive line to this file (`workspaceId: seed.workspaceId,`
+at line 234, inside the `genuineScaleProtocol` helper's
+`resolveApplicableExceptionStrict` call — required by the eighth-repair Item 2 signature change;
+worker typecheck failed without it). The post-change bytes (as submitted
+in 97da59c) hash to
 `bdb4f5015a66cef857d07826cc4c47c491262e0e4dc8f6bc15ff320db7b90d9e`.
-The change is additive-only (no assertion altered); worker 4/4 tests pass.
-The independent reviewer had already flagged this exact re-hash condition.
-This note does NOT re-validate the amendment; author approval remains
-explicitly unclaimed.
+The change is additive-only (zero removed or modified lines, no
+assertion altered); worker 4/4 tests pass on the changed bytes. The
+independent reviewer had already flagged this exact re-hash condition.
+No claim is made that the old exact-artifact receipt covers the changed
+bytes; a separate review of the actual submitted bytes is recorded in
+the ninth repair (see Amendment 20 actual-bytes review record).
+Author approval remains explicitly unclaimed.
 
 ## Review Assessment (Amendments 18–20)
 
@@ -530,6 +539,106 @@ item.
 
 ---
 
+## Amendments 21–22 (ninth repair, 2026-10-09)
+
+### Amendment 21: `apps/api/src/scale-no-scale-receipt.test.ts` (NEW)
+
+**What:** DB-backed tests (eighth repair, Item 1; extended in ninth repair,
+Item 1): NEW reviews on novels with no SCALE rows must emit a pinned
+NOT_CONFIGURED protocol (never null); null reserved for genuine historical
+(pre-050B) receipts; gate compares head for no-SCALE receipts
+(REVIEW_STALE on head advance). Through real callers (Fastify inject):
+new no-SCALE review → pinned NOT_CONFIGURED; non-SCALE policy/head change
+→ REVIEW_STALE; historical null at same head → legacy PASS; historical
+null after head advance → REVIEW_STALE. Ninth-repair Item 1 adds a
+malformed non-null stored-protocol negative (refused, no side effects)
+reusing this file — no new test file introduced.
+
+**Justification:** GAP-119 (seventh repair re-review, finding 1 — P1)
+required new no-SCALE reviews to emit NOT_CONFIGURED with explicit policy
+absence and current pins; GAP-119 (eighth repair re-review) requires
+malformed non-null proof to be refused as REVIEW_STALE before any legacy
+handling, with real-caller negatives in this existing file.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. The allowed
+API test paths are `{manuscript,narrative,publication,state-consumers,
+scale-evidence}.test.ts`; the proposed new paths are `scale-review.test.ts`,
+`scale-decisions.test.ts`, `scale-review-migration.test.ts`. This file is
+not listed. Amendment REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+### Amendment 22: `apps/api/src/scale-exception-workspace.test.ts` (NEW)
+
+**What:** 3 DB-backed tests (eighth repair, Item 2): the shared strict
+exception resolver selects and validates BOTH `proposal.workspaceId` and
+`outcome.workspaceId` against the authorized context workspace. Corrupted
+retained rows with foreign workspace fields fail closed (null) with audit
+history preserved; a valid owned exception (same workspace) is accepted
+as control. Disposable database
+(`novelforge_test_scale_exception_workspace`); no working data touched.
+
+**Justification:** GAP-119 (seventh repair re-review, finding 2 — P2)
+required the strict resolver to validate proposal/outcome workspace
+provenance against the authorized context workspace, with
+corrupted-retained-row negatives preserving history plus an owned valid
+approval control.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. The allowed
+API test paths are `{manuscript,narrative,publication,state-consumers,
+scale-evidence}.test.ts`; the proposed new paths are `scale-review.test.ts`,
+`scale-decisions.test.ts`, `scale-review-migration.test.ts`. This file is
+not listed. Amendment REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+## Review Assessment (Amendments 21–22)
+
+Both additional amendments are:
+- **Bounded:** Each affects a single new test file with a narrow, well-defined scope.
+- **Documented:** Justification and contract impact recorded above.
+- **Non-weakening:** None relax contract requirements; both are test-only.
+- **No new unregistered files:** the ninth-repair malformed-proof negative
+  reuses the Amendment 21 file; no additional test file is introduced.
+
+## Author Action Required (Amendments 21–22)
+
+**The author (Klein) is requested to:**
+1. Review the 2 additional amendments above.
+2. Record APPROVE or CHANGES_REQUESTED for the scope amendments.
+3. If approved, the amendments are regularized per the contract procedure.
+
+**This record does NOT claim author approval.** Approval must be explicitly
+recorded by the author. Until then, GAP-119 remains OPEN on the scope-amendment
+item.
+
+---
+
 *Eighth-repair note (2026-10-09): Amendments 18–20 added by the Items 3+4
 implementer. A distinct independent review of Amendments 18–20 follows
 in a separate record. Engram unavailable (GAP-021); file-based handoff.*
+
+---
+
+## Final amendment hash verification (ninth repair, 2026-10-09)
+
+Verified by the Items 2+3 implementer AFTER all implementer edits, against
+the actual working-tree bytes (input commit `66f9b5b`):
+
+| Amendment | Exact path | SHA-256 (final) | Independently reviewed |
+|---|---|---|---|
+| 18 | `apps/api/src/scale-exception-strict.test.ts` | `cd727b5e74cbd97ea0c2cbab46b74c8799fc69faa28b4851ffb65d14cd71e8a9` | 18–20 report ✅ match |
+| 19 | `apps/api/src/scale-gate-publish.test.ts` | `71edba2296f3bb4f447ca1890c208666a9fda6bf52cc5092e75a849364641ab8` | 18–20 report ✅ match |
+| 20 | `apps/worker/src/scale-gate-fire-scale.test.ts` | `bdb4f5015a66cef857d07826cc4c47c491262e0e4dc8f6bc15ff320db7b90d9e` | Actual-bytes review ✅ ACCEPT (historical `a009dd2c…` covers pre-change bytes only) |
+| 21 | `apps/api/src/scale-no-scale-receipt.test.ts` | `16225b55e50058998a5943c713683f7ff7fa68fbf1b4f3442695dbc7e31cac03` | 21–22 report ✅ ACCEPT (re-hash required if the file changes again — the ninth-repair Item 1 sibling slice was still extending this file at review time) |
+| 22 | `apps/api/src/scale-exception-workspace.test.ts` | `9c1f9b7d8c07409afface95083d92957a2bd4ead367dd35d219bdf448305391a` | 21–22 report ✅ ACCEPT (clean) |
+
+**Notes:**
+- Amendment 21's hash covers the file bytes as extended by the ninth-repair
+  Item 1 sibling slice (malformed-proof negative). If the sibling edits this
+  file further before commit, the hash must be re-verified.
+- Author approval is explicitly NOT claimed for any amendment; GAP-119 stays
+  OPEN on the scope-amendment item until the author (Klein) records a decision.
+- Engram unavailable (GAP-021); file-based handoff only.

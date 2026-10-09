@@ -2965,3 +2965,72 @@ implementation acceptance. Keep the frozen contract; repair implementation and
 add real failing boundary/race regressions before claiming closure.
 GAP-119/GAP-039 remain OPEN. Main remains fed3cea; no merge/commit/push accepted.
 Engram attribution unavailable (GAP-021); CURRENT is the fallback checkpoint.
+
+### GAP-119 first repair re-review — 2026-10-09, 709ba66
+
+CHANGES REQUESTED by both separate reviewers on exact submission
+709ba661250fb4cf333de3293bfa1c4e1a4d53dd. Improvements observed: tenant ownership
+before history reads, HIGH classification/advance-before-policy-write, stored
+head/set/policy comparisons, checked-out policy writes, truthful overall SCALE
+blocking, fresh re-review replacement and pre-upgrade legacy receipt seeding.
+These are bounded repairs, not full acceptance. Remaining inspected defects:
+
+- P1 successful standing approval: scale-decisions.ts702 passes
+  novel:<UUID>:SCALE to UUID ChangeSetItem.entityId. Use the existing policy UUID
+  or preallocate one for initial creation and prove a real successful approval
+  with checkpoint/revision/outcome/rebuild intent. Existing tests never exercise
+  a successful standing APPROVE; this defect is source-observed, not a local
+  successful/failed mutation receipt.
+- P1 stale quiet evidence: assessor returns NO_OPERATIVE_CONFLICT at131 before
+  checking set existence/freshness at145/166. Move provenance checks before any
+  complete state; an old quiet declaration must hold HARD review, never silently
+  gain a receipt pinned to a newer head.
+- P1 obsolete-version proposals: readScaleContext resolves the supplied owned
+  immutable version but never Chapter.currentVersionId. Decision comparison
+  therefore compares a proposal version to itself. Re-read current pointer under
+  chapter lock; add required decision request version/set expectations.
+- P1 exceptions: creation/approval only checks claim-index shape, not CURRENT
+  complete evidence/valid standing/actual violating indices. Existing exception
+  creation fixture accepts absence of evidence; correct it and prove refusal.
+- Direct standing PUT still commits proposal and approval in two transactions
+  (narrative.ts593/608); a refused approval leaves a proposal. Make the whole
+  explicit operation atomic, including rollback of proposal on checkpoint/stale
+  failure. Direct configuration/deletion also ignore chapter/version/set/decision
+  expectations; validate every required context pin before writes.
+- UI decision requests include chapterVersionId, forbidden by the current strict
+  route; evidence claims use reach/gap/span/quote instead of frozen relevance/
+  explanation/source. Quiet authoring still requires quote/span unnecessarily.
+  Evidence reads expect set/history instead of the actual assessment response
+  plus separate /history endpoint, and assume claims instead of conflicts.
+- UI vocabulary invents DUCHY/WORLD/COSMIC and omits PERSONAL/FAMILY/PROVINCE
+  (panel512). Use the exact eight domain scales, not a new vocabulary.
+- Mutation responses are guarded only on unmount, not selection generation.
+  Review/proposal/decision/evidence success/error/finally can modify another
+  chapter's state. Context resolves current version before its transaction and
+  returns no reliable receipt applicability/checklist; panel marks receipts
+  fresh unconditionally. Use coherent server context and stale-safe client flows.
+- Decision history still mixes independent branch sequences. Scope reads/cursors
+  to checked-out branch. New route Zod.parse errors still fall through to500;
+  authenticate then map invalid input to400. Strict retained protocol validation
+  and receipt-list SCALE serialization remain missing.
+- Actual old-snapshot restore, concurrent decision and successful checkpointed
+  standing/rollback proofs remain absent. Scope amendments claim independent
+  approval without identifying its receipt. The TIMESTAMPTZ rationale incorrectly
+  describes Prisma's default mapping: explicit @db.Timestamptz selects that type.
+  Align with frozen contract or obtain a real reviewed amendment; preserve history.
+
+Fresh local evidence at709ba66:44/44 across decision-service DB, private migration,
+assessor, restore classification and pure SCALE suites pass;6/6 component/axe
+tests pass with jsdom canvas warnings. Prisma generate/validate and ai-services/
+API/worker typechecks pass; submitted diff whitespace passes. No local web
+typecheck, changed-source lint, real route/publication-worker race, successful
+standing-approval or old-snapshot restore acceptance is claimed. The component
+tests do not exercise the failing saved-chapter/evidence/decision flow.
+
+Both owned test databases were absent before testing, then created only for
+these suites, disconnected, dropped and their absence verified. Live repository
+migration files remained unchanged. Main/client restored to b068227; no working
+data changes, source fix, merge, commit or push in this review turn.
+GAP-119/GAP-039 stay OPEN. Next: repair every remaining boundary with failing
+regressions, then separately review the exact new diff. Engram attribution is
+unavailable (GAP-021); CURRENT preserves the fallback handoff.

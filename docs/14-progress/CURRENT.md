@@ -1,5 +1,41 @@
 # Current Project State
 
+## 050B repair dispatch authorization — 2026-10-09
+
+The author authorized publishing the reviewed rejection receipt and requested
+an external repair prompt. Both technical reviewers reject external1ad5c47;
+review_mutations_034 separately APPROVE the CURRENT/GAP-119 review documentation.
+The receiving coordinator must fetch the published main documentation, merge it
+into work/nf-wf-050b-scale-review without losing historical evidence, then repair
+ALL GAP-119 findings against the frozen 050B contract. Obtain separate review
+of bounded scope amendments before out-of-contract edits; preserve required
+negative tests and acceptance criteria. Do not merge the implementation or
+dispatch 050C. Verify the final repaired revision locally on that host.
+Engram attribution is unavailable (GAP-021); these records are the handoff
+fallback. Prior no-commit/main-fed3cea statements describe the review boundary.
+
+## External 050B review — 2026-10-09, 1ad5c47
+
+CHANGES REQUESTED by both separate reviewers; no merge. Main remains fed3cea.
+GAP-119 records tenant history exposure, missing standing checkpoint/revision,
+repinnable stale proposals, direct policy bypass, inconsistent review verdict/
+fresh re-review refusal, incomplete exception pins and unusable/mismatched UI.
+Repair the submitted code against the unchanged frozen contract, not the gate
+requirements. Missing migration/restore proof and unreviewed scope additions
+also require correction. GAP-039 and GAP-119 stay OPEN; no 050C dispatch.
+
+Local checks at exact1ad5c47: Prisma generate/validate and25/25 selected pure
+assessor/domain/classification tests pass;5/5 panel/component axe tests pass
+with jsdom canvas warnings. ai-services/worker typechecks pass; API typecheck
+fails TS2339 in scale-decisions.test.ts554/555/558 (untyped alternative proposal).
+Submitted diff whitespace passes. No DB-backed gate/decision/migration tests,
+old-snapshot restore, web typecheck or full release verification was run. These
+limited passes do not prove the required author/API/worker workflow.
+
+No working database or source changes, no scratch resources created. Main
+checkout restored; no merge/commit/push. Engram attribution is unavailable
+(GAP-021); these local review records preserve the next repair handoff.
+
 ## 050B external dispatch preparation — 2026-10-09
 
 The author authorized commit/push of the separately reviewed 050B contract and

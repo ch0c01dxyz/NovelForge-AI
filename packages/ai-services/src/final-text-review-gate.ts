@@ -329,10 +329,12 @@ export async function resolveApplicableExceptionStrict(
   tx: Pick<NovelForgeDb, "scaleDecisionOutcome">,
   input: {
     novelId: string;
+    /** Authorized context workspace — both proposal and outcome must belong to it. */
+    workspaceId: string;
     context: ScaleReviewContext;
   },
 ): Promise<StrictExceptionResolution | null> {
-  const { novelId, context } = input;
+  const { novelId, workspaceId, context } = input;
   const latestSet = context.latestSet;
   const policy = context.policy;
 
@@ -360,12 +362,14 @@ export async function resolveApplicableExceptionStrict(
       id: true,
       proposalId: true,
       novelId: true,
+      workspaceId: true,
       chapterVersionId: true,
       sourceBranchId: true,
       proposal: {
         select: {
           id: true,
           novelId: true,
+          workspaceId: true,
           chapterVersionId: true,
           sourceBranchId: true,
           kind: true,
@@ -388,6 +392,14 @@ export async function resolveApplicableExceptionStrict(
     proposal.sourceBranchId !== outcome.sourceBranchId ||
     proposal.kind !== "CHAPTER_EXCEPTION"
   ) {
+    return null;
+  }
+
+  // Workspace provenance (eighth repair, GAP-119 P2): BOTH the outcome and
+  // the proposal must belong to the authorized context workspace.
+  // Independent database FKs allow inconsistent historical tenant fields;
+  // a retained exception with foreign workspace fields fails closed.
+  if (outcome.workspaceId !== workspaceId || proposal.workspaceId !== workspaceId) {
     return null;
   }
 
@@ -599,14 +611,16 @@ export async function checkRetainedProofCompleteness(
   tx: Pick<NovelForgeDb, "scaleDecisionOutcome">,
   input: {
     novelId: string;
+    workspaceId: string;
     context: ScaleReviewContext;
     retained: ScaleReviewProtocol;
   },
 ): Promise<ProofCompletenessResult> {
-  const { novelId, context, retained } = input;
+  const { novelId, workspaceId, context, retained } = input;
 
   const exception = await resolveApplicableExceptionStrict(tx, {
     novelId,
+    workspaceId,
     context,
   });
   const expected = computeExpectedScaleProtocol({
@@ -687,8 +701,16 @@ export async function checkFinalTextReviewGate(
     return { ok: false, code: "REVIEW_STALE" };
   }
 
-  // No SCALE: preserve legacy non-SCALE PASS/FAIL compatibility.
+  // No SCALE: genuine historical receipts (pre-050B, null scaleReview)
+  // retain legacy non-SCALE PASS/FAIL compatibility — but the receipt must
+  // still pin the current head. A later head advance (e.g. a non-SCALE
+  // HARD policy mutation) makes the old receipt REVIEW_STALE. New reviews
+  // always carry a NOT_CONFIGURED protocol (never null), so this path is
+  // only reachable for historical rows.
   if (!scaleReview && !hasScaleRows) {
+    if (receipt.revisionId !== context.headRevisionId) {
+      return { ok: false, code: "REVIEW_STALE" };
+    }
     return receipt.verdict === "PASS"
       ? { ok: true }
       : { ok: false, code: "HARD_POLICY_VIOLATION" };
@@ -704,6 +726,7 @@ export async function checkFinalTextReviewGate(
   const protocol = scaleReview!;
   const completeness = await checkRetainedProofCompleteness(tx, {
     novelId,
+    workspaceId,
     context,
     retained: protocol,
   });

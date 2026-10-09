@@ -296,6 +296,7 @@ describe("strict applicable-exception resolver", () => {
       });
       return resolveApplicableExceptionStrict(tx as never, {
         novelId: f.novelId,
+        workspaceId: f.workspaceId,
         context: context!,
       });
     });
@@ -334,6 +335,7 @@ describe("strict applicable-exception resolver", () => {
       });
       return resolveApplicableExceptionStrict(tx as never, {
         novelId: f.novelId,
+        workspaceId: f.workspaceId,
         context: context!,
       });
     });
@@ -354,6 +356,7 @@ describe("strict applicable-exception resolver", () => {
       });
       return resolveApplicableExceptionStrict(tx as never, {
         novelId: f.novelId,
+        workspaceId: f.workspaceId,
         context: context!,
       });
     });
@@ -374,6 +377,7 @@ describe("strict applicable-exception resolver", () => {
       });
       return resolveApplicableExceptionStrict(tx as never, {
         novelId: f.novelId,
+        workspaceId: f.workspaceId,
         context: context!,
       });
     });
@@ -394,6 +398,7 @@ describe("strict applicable-exception resolver", () => {
       });
       return resolveApplicableExceptionStrict(tx as never, {
         novelId: f.novelId,
+        workspaceId: f.workspaceId,
         context: context!,
       });
     });
@@ -477,6 +482,7 @@ describe("strict applicable-exception resolver", () => {
       });
       return resolveApplicableExceptionStrict(tx as never, {
         novelId: f.novelId,
+        workspaceId: f.workspaceId,
         context: context!,
       });
     });
@@ -497,6 +503,7 @@ describe("strict applicable-exception resolver", () => {
       });
       return resolveApplicableExceptionStrict(tx as never, {
         novelId: f.novelId,
+        workspaceId: f.workspaceId,
         context: context!,
       });
     });

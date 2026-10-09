@@ -3244,7 +3244,27 @@ Remaining closure requirements:
    host/test-harness evidence, not a proven schema regression. Investigate bounded
    cleanup retry after Prisma children close, preserving the verified temp-root
    and owned-prefix guards; do not traverse junction targets or reset user data.
-   Obtain a clean completed migration run before claiming acceptance.
+
+   **Eighth-repair investigation (2026-10-09, Ubuntu host) — OBSERVED:**
+   - Child-process completion: `prismaMigrateDeployAt` uses `execFileSync`
+     (synchronous) — the Prisma child has fully exited before `removeTempDir`
+     runs. Incomplete child process is NOT the cause.
+   - Likely Windows cause (INFERRED, not proven): the temp home contains a
+     `node_modules` directory symlink (`fs.symlinkSync(..., "dir")`). Windows
+     `fs.rmSync(recursive)` on directory symlinks/junctions is a known EPERM
+     source; antivirus/handle retention is another candidate. The migration
+     assertions themselves passed — the failure was in the `finally`-block
+     cleanup, not a schema assertion.
+   - Ubuntu clean run: `scale-review-migration.test.ts` 2/2 pass (empty +
+     populated, 8.5s) and `scale-evidence-migration.test.ts` 2/2 pass;
+     no temp dirs left behind (`050b-mig-*`/`050a-mig-*` absent after run).
+   - **An Ubuntu pass does not establish that Windows cleanup is repaired.**
+     The harness was NOT changed (no bounded retry added) because a Windows-
+     only fix cannot be verified from Ubuntu. Proposed path amendment (for
+     author decision, not implemented): bounded EPERM retry in `removeTempDir`
+     preserving the temp-root/owned-prefix guards, never traversing junction
+     targets. This would itself require a separately reviewed scope amendment
+     (test-harness path, outside the frozen allowlist).   Obtain a clean completed migration run before claiming acceptance.
 
 Fresh checks:16 selected backend/domain/migration/worker suites select139 tests;
 137 pass and2 migration tests time out. Isolated migration rerun selects2:
@@ -3612,3 +3632,20 @@ or push. GAP-039/GAP-119 remain OPEN. Next: one shared complete consistency
 repair, two wiring fixes, missing caller acceptance proofs and exact scope
 review, then separate review of the submitted revision. Engram attribution
 unavailable (GAP-021); CURRENT is the fallback handoff.
+
+### GAP-108 recurrence (12th) — 2026-10-09 ~15:50 WIB
+
+VM rebooted (uptime 0.02 hours at 15:50 WIB — host replaced/reset during
+the NF-WF-050B eighth repair final checks). PostgreSQL 16 and Redis are
+completely absent from the filesystem: `psql`/`pg_isready`/`redis-cli`
+not found; `/usr/lib/postgresql/` absent; dpkg entries gone. This is a
+full package loss, identical to the 11th recurrence (not a role-only
+loss like the 10th).
+
+**Impact:** All database-backed checks (API suites, migration suites) and
+worker tests (Redis) are BLOCKED until the environment is reinstalled.
+Typechecks, lint, and `git diff --check` are unaffected (no DB needed).
+**Recovery:** reinstall postgresql-16 + postgresql-16-pgvector + redis
+via apt (cogentco mirror previously stalled apt-get update — remove if it
+hangs), recreate `novelforge_test` SUPERUSER with repo `.env` password,
+start both services. Working data unaffected (disposable test databases only).

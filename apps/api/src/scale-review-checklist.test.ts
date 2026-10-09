@@ -93,6 +93,7 @@ const FAKE_TX = {
   scaleDecisionOutcome: { findFirst: async () => null },
 } as never;
 const FAKE_NOVEL_ID = "novel-1";
+const FAKE_WORKSPACE_ID = "workspace-1";
 
 /** Awaitable wrapper: deriveReceiptApplicability is async (sixth repair). */
 function applicabilityOf(
@@ -100,7 +101,7 @@ function applicabilityOf(
   ctx: ScaleReviewContext,
   applicableException: { outcomeId: string; proposalId: string } | null = null,
 ) {
-  return deriveReceiptApplicability(FAKE_TX, FAKE_NOVEL_ID, receipt, ctx, applicableException);
+  return deriveReceiptApplicability(FAKE_TX, FAKE_NOVEL_ID, FAKE_WORKSPACE_ID, receipt, ctx, applicableException);
 }
 
 function assertFullText(items: Array<{ code: string; explanation: string; example: string; nextAction: string }>) {

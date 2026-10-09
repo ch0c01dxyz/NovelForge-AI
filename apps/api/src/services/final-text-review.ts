@@ -111,7 +111,11 @@ export interface ReviewVerdict {
   }>;
   sourceRevisionId: string;
   receiptId: string;
-  /** Protocol 1 SCALE review (050B). Null for legacy receipts. */
+  /**
+   * Protocol 1 SCALE review (050B). Always set for new reviews (eighth
+   * repair: NOT_CONFIGURED with current pins when no SCALE rows exist).
+   * Null only when reading genuine historical (pre-050B) receipts.
+   */
   scaleReview: ScaleReviewProtocol | null;
 }
 
@@ -367,21 +371,18 @@ export function createFinalTextReviewServices(deps: {
         // 050B: read SCALE context (latest set, policy, fingerprint) inside
         // the same transaction. readScaleContext re-validates retained
         // evidence via 050A validators.
-        let scaleContext: ScaleReviewContext | null = null;
-        try {
-          scaleContext = await readScaleContext(tx as never, {
-            workspaceId,
-            novelId,
-            chapterId: resolvedChapterId,
-            chapterVersionId,
-          });
-        } catch {
-          // No SCALE context available; scaleReview stays null only when
-          // no SCALE rows exist (handled below). A context read failure
-          // with SCALE rows present is treated as INCOMPLETE via the
-          // missing-set path.
-          scaleContext = null;
-        }
+        //
+        // NF-WF-050B eighth repair (GAP-119): context resolution failure
+        // REFUSES the review (throws) rather than fabricating proof.
+        // readScaleContext only throws on genuine failures (missing
+        // version/chapter/novel/branch); absent SCALE rows are returned as
+        // null policy/set, never thrown. Never invent pins.
+        const scaleContext: ScaleReviewContext = await readScaleContext(tx as never, {
+          workspaceId,
+          novelId,
+          chapterId: resolvedChapterId,
+          chapterVersionId,
+        });
 
         // Strict applicable-exception resolution (NF-WF-050B seventh
         // repair, GAP-119): ONE shared resolver used by the producer, gate
@@ -391,10 +392,10 @@ export function createFinalTextReviewServices(deps: {
         // (return null) without deleting audit history.
         let exceptionCoveredIndices: number[] = [];
         let applicableExceptionOutcomeId: string | null = null;
-        if (scaleContext) {
+        {
           const strict = await resolveApplicableExceptionStrict(
             tx as Pick<typeof tx, "scaleDecisionOutcome">,
-            { novelId, context: scaleContext },
+            { novelId, workspaceId, context: scaleContext },
           );
           if (strict) {
             applicableExceptionOutcomeId = strict.outcomeId;
@@ -402,41 +403,40 @@ export function createFinalTextReviewServices(deps: {
           }
         }
 
-        // Compute protocol 1 scaleReview when SCALE rows exist.
-        let scaleReview: ScaleReviewProtocol | null = null;
-        const hasScaleRows =
-          scaleContext !== null &&
-          (scaleContext.policy !== null || scaleContext.latestSet !== null);
-        if (hasScaleRows && scaleContext) {
-          // Build claim inputs from the validated latest set (050A claims
-          // have { scale, relevance, explanation, source: { start, end, quote } }).
-          const claims = (scaleContext.latestSet?.conflicts ?? []).map((c, idx) => ({
-            index: idx,
-            scale: c.scale,
-            span: { start: c.source.start, end: c.source.end },
-            quote: c.source.quote,
-          }));
-          // Patch the exception outcome pin (resolved by caller per
-          // assessScaleDeterministic contract).
-          // Honor explicit NO_OPERATIVE_CONFLICT declaration from the
-          // validated evidence set (050A). A quiet chapter with valid
-          // policy and explicit declaration → NO_OPERATIVE_CONFLICT state.
-          const noOperativeConflict =
-            scaleContext.latestSet?.declaration === "NO_OPERATIVE_CONFLICT";
-          const assessed = assessScaleDeterministic({
-            context: scaleContext,
-            claims,
-            exceptionCoveredIndices,
-            noOperativeConflict,
-          });
-          scaleReview = {
-            ...assessed,
-            pins: {
-              ...assessed.pins,
-              exceptionOutcomeId: applicableExceptionOutcomeId,
-            },
-          };
-        }
+        // Compute protocol 1 scaleReview ALWAYS (eighth repair, GAP-119).
+        // When SCALE rows exist, run the full deterministic assessment.
+        // When no SCALE rows exist, the assessor emits NOT_CONFIGURED with
+        // explicit policy absence and current pins — never null. Null is
+        // reserved for genuine historical (pre-050B) receipts.
+        // Build claim inputs from the validated latest set (050A claims
+        // have { scale, relevance, explanation, source: { start, end, quote } }).
+        // Empty when no SCALE rows: the assessor returns NOT_CONFIGURED.
+        const claims = (scaleContext.latestSet?.conflicts ?? []).map((c, idx) => ({
+          index: idx,
+          scale: c.scale,
+          span: { start: c.source.start, end: c.source.end },
+          quote: c.source.quote,
+        }));
+        // Patch the exception outcome pin (resolved by caller per
+        // assessScaleDeterministic contract).
+        // Honor explicit NO_OPERATIVE_CONFLICT declaration from the
+        // validated evidence set (050A). A quiet chapter with valid
+        // policy and explicit declaration → NO_OPERATIVE_CONFLICT state.
+        const noOperativeConflict =
+          scaleContext.latestSet?.declaration === "NO_OPERATIVE_CONFLICT";
+        const assessed = assessScaleDeterministic({
+          context: scaleContext,
+          claims,
+          exceptionCoveredIndices,
+          noOperativeConflict,
+        });
+        const scaleReview: ScaleReviewProtocol = {
+          ...assessed,
+          pins: {
+            ...assessed.pins,
+            exceptionOutcomeId: applicableExceptionOutcomeId,
+          },
+        };
 
         const policyRows = await tx.narrativePolicy.findMany({
           where: { novelId },
@@ -598,7 +598,7 @@ export function createFinalTextReviewServices(deps: {
         // proved violations (hardViolations only contains proved hard
         // violations from non-SCALE policies).
         const scaleBlocks =
-          scaleReview !== null && scaleReview.blocking === true;
+          scaleReview.blocking === true;
         const verdict: "PASS" | "FAIL" =
           hardViolations.length > 0 || scaleBlocks ? "FAIL" : "PASS";
 
@@ -643,7 +643,7 @@ export function createFinalTextReviewServices(deps: {
           payload: {
             chapterVersionId,
             verdict,
-            scaleReviewState: scaleReview?.state ?? null,
+            scaleReviewState: scaleReview.state,
           },
         });
 

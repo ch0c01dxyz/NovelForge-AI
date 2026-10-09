@@ -431,3 +431,105 @@ item.
 *Sixth-repair note (2026-10-09): Amendments 13–17 added by the Slice 3
 implementer. A distinct independent review of Amendments 13–17 follows
 in a separate record. Engram unavailable (GAP-021); file-based handoff.*
+
+### Amendment 18: `apps/api/src/scale-exception-strict.test.ts` (NEW)
+
+**What:** 8 DB-backed tests (seventh repair, Slice 1): the SHARED strict
+applicable-exception resolver (`resolveApplicableExceptionStrict`) at real
+caller boundaries — the publication gate (`checkFinalTextReviewGate`) and
+the context endpoint. Valid full/partial exception coverage accepted;
+corrupted `[0,0]` duplicate indices, out-of-bounds, empty, unknown-key and
+non-violating-claim coverage all fail closed with audit history preserved.
+
+**Justification:** GAP-119 (sixth repair re-review, source blocker) required
+strict retained exception validation — the loose `claimIndices` casts in
+`final-text-review-gate.ts` and `final-text-review.ts` accepted any integer
+array. This test file proves the shared resolver at the real gate and
+context boundaries.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. Amendment
+REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+**State note (eighth repair):** At the time of this amendment record the file
+carries uncommitted changes from the eighth repair's Items 1+2 (7 added
+lines: `workspaceId: f.workspaceId` arguments to resolver calls). The
+independent reviewer must review the exact bytes at review time; the input
+hash below is the current working-tree hash.
+
+### Amendment 19: `apps/api/src/scale-gate-publish.test.ts` (NEW)
+
+**What:** 4 DB-backed tests (seventh repair, Slice 2): the ACTUAL
+immediate-publication route (`POST .../publication/publish` →
+`publishChapter` → `assertPublishReviewGate` → `checkFinalTextReviewGate`)
+via real Fastify inject. Genuine SCALE receipt → 200 PUBLISHED;
+contradictory retained receipt → 409 REVIEW_STALE (stays DRAFT, no
+publication row); evidence-set pin change → 409; policy-change race →
+consistent outcome, never 500.
+
+**Justification:** GAP-119 (sixth repair re-review, acceptance) required
+real caller/lock/race and refusal evidence through actual API routes —
+the sixth repair's caller suite covered status transitions, not immediate
+publication.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. Amendment
+REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+### Amendment 20: `apps/worker/src/scale-gate-fire-scale.test.ts` (NEW)
+
+**What:** 4 DB-backed tests (seventh repair, Slice 2): the REAL scheduled
+worker (`fireScheduledPublication`) with FRESH configured SCALE (not
+legacy/no-SCALE). Genuine fresh SCALE receipt (computed with the shared
+deterministic assessor) → PUBLISHED; contradictory retained receipt →
+refused + REVIEW_STALE + UNPUBLISHED (audit-logged); evidence-set and
+policy-fingerprint pin changes → refused + UNPUBLISHED.
+
+**Justification:** GAP-119 (sixth repair re-review, acceptance) required
+fresh configured-SCALE scheduled-worker success/refusal proofs — the sixth
+repair's worker suite covered contradictory refusal and legacy success only.
+
+**Allowlist status:** NOT in the contract's explicit allowlist. Amendment
+REQUIRED — proposed here, not assumed.
+
+**Semantic change:** Test-only. No production code modified. No existing
+passing assertion weakened.
+
+**Post-review update (2026-10-09, eighth repair final checks):** After the
+independent review, the final-checks actor added ONE additive line to this
+file (`workspaceId: seed.workspaceId,` at line 232 — required by the
+eighth-repair Item 2 signature change; worker typecheck failed without it).
+The new SHA-256 is
+`bdb4f5015a66cef857d07826cc4c47c491262e0e4dc8f6bc15ff320db7b90d9e`.
+The change is additive-only (no assertion altered); worker 4/4 tests pass.
+The independent reviewer had already flagged this exact re-hash condition.
+This note does NOT re-validate the amendment; author approval remains
+explicitly unclaimed.
+
+## Review Assessment (Amendments 18–20)
+
+All 3 additional amendments are:
+- **Bounded:** Each affects a single new test file with a narrow, well-defined scope.
+- **Documented:** Justification and contract impact recorded above.
+- **Non-weakening:** None relax contract requirements; all 3 are test-only.
+
+## Author Action Required (Amendments 18–20)
+
+**The author (Klein) is requested to:**
+1. Review the 3 additional amendments above.
+2. Record APPROVE or CHANGES_REQUESTED for the scope amendments.
+3. If approved, the amendments are regularized per the contract procedure.
+
+**This record does NOT claim author approval.** Approval must be explicitly
+recorded by the author. Until then, GAP-119 remains OPEN on the scope-amendment
+item.
+
+---
+
+*Eighth-repair note (2026-10-09): Amendments 18–20 added by the Items 3+4
+implementer. A distinct independent review of Amendments 18–20 follows
+in a separate record. Engram unavailable (GAP-021); file-based handoff.*

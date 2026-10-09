@@ -231,6 +231,7 @@ async function genuineScaleProtocol(seed: Seed): Promise<ScaleReviewProtocol> {
   });
   const exception = await resolveApplicableExceptionStrict(db as never, {
     novelId: seed.novelId,
+    workspaceId: seed.workspaceId,
     context,
   });
   return computeExpectedScaleProtocol({

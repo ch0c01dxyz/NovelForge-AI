@@ -190,6 +190,7 @@ async function getMembership(
 export async function deriveReceiptApplicability(
   tx: Pick<NovelForgeDb, "scaleDecisionOutcome">,
   novelId: string,
+  workspaceId: string,
   receipt: { scaleReview: ScaleReviewProtocol | null } | null,
   context: ScaleReviewContext,
   applicableException: { outcomeId: string; proposalId: string } | null,
@@ -226,6 +227,7 @@ export async function deriveReceiptApplicability(
   // assessment is STALE — the gate would reject it as REVIEW_STALE.
   const completeness = await checkRetainedProofCompleteness(tx, {
     novelId,
+    workspaceId,
     context,
     retained: protocol,
   });
@@ -448,7 +450,7 @@ export function registerScaleDecisionRoutes(
           // audit history.
           const applicableException = await resolveApplicableExceptionStrict(
             tx as Pick<NovelForgeDb, "scaleDecisionOutcome">,
-            { novelId: params.novelId, context },
+            { novelId: params.novelId, workspaceId: params.workspaceId, context },
           );
 
           // Latest review receipt for this version (with scaleReview protocol).
@@ -482,6 +484,7 @@ export function registerScaleDecisionRoutes(
           const applicability = await deriveReceiptApplicability(
             tx as Pick<NovelForgeDb, "scaleDecisionOutcome">,
             params.novelId,
+            params.workspaceId,
             receipt,
             context,
             applicableException,

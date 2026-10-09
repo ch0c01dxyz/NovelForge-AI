@@ -3118,3 +3118,80 @@ complex fixture setup issues (not source defects):
 **Status:** Source code repairs (Fix 1-9) are complete and typecheck-clean.
 The 2 failing tests are fixture issues, not implementation defects. They do
 not block the core functionality which is proven by the 26 passing tests.
+
+### GAP-119 second repair re-review — 2026-10-09, 761ce1d
+
+Verdict: CHANGES REQUESTED by both separate reviewers. Exact submission
+761ce1d64c5fe9d90d2216f555d844c1fb15ac47; main remains70c3005.
+Verified source repairs: policy UUID allocation/HIGH advance-before-write,
+composed direct standing transaction, stale quiet-evidence ordering, current
+version checks on decisions, exception prerequisites,400 route validation,
+branch-scoped history, evidence claim payload and canonical scale vocabulary.
+The successful HIGH standing-approval and direct-standing service tests pass
+locally in this revision; this does not prove all rollback/audit/race invariants.
+
+Fresh selected run:54/56 pass,2 fail, no skips (five backend/domain/migration
+files). Failure1, concurrent proposal sequence test: invalid source quote/span
+causes retained evidence validation to fail before concurrency behavior is
+exercised. Failure2, replaced-evidence exception test: a sequence2 set lacks
+previousSetId and fails chain validation before the intended applicability409.
+Correct real fixture spans/chains; never weaken quote/predecessor validation or
+change expectations to accept the wrong failure boundary. UI6/6 component/axe
+tests pass with canvas warnings; Prisma generate/validate and ai-services/API/
+worker typechecks pass. Submitted diff whitespace passes. No web typecheck,
+changed-source lint, real API/worker races or application old-snapshot restore
+verification ran locally.
+
+Remaining inspected blockers:
+
+- Audit atomicity: createProposalTx602 and decideProposalTx975 call the outer
+  audit service, whose db client commits independently. A failed composed approval
+  can leave a success audit for a rolled-back proposal/outcome. Bind successful
+  mutation audit writes to tx; test audit rollback alongside all other effects.
+- Policy context: hardness-only PUT still ignores chapter/version/set/decision
+  pins. DELETE resolves latest set by novel/branch without chapterVersionId and
+  does not compare current version; another chapter can control its CAS. Use
+  scoped live context under chapter lock for every direct policy mutation.
+- Proposal creation only locks novel, not participating branch/chapter, and does
+  not refuse supplied obsolete version. Decisions now refuse obsolete versions;
+  bring creation to the same frozen source/lock contract. Decision route also
+  drops URL chapterId, permitting a valid proposal through another chapter URL.
+- UI records: the corrected assessment/history fetch now assigns real050A
+  records, but templates847/877 still use claims.length instead of conflicts.
+  Test saved assessments and history against actual server response types.
+- UI busy/selection handling: shared requestSeq conflates selection changes and
+  same-selection refresh. A concurrent successful mutation increments it and
+  suppresses review busy cleanup forever. Separate selection and operation
+  identity; recheck scope after each await before subsequent refreshes.
+- Context: current version is resolved before a default-isolation transaction;
+  receipt applicability/checklist is not computed and exception head is omitted.
+  Panel still marks fetched receipts fresh unconditionally. Resolve pins and
+  applicability in one coherent read; test stale receipt after set/head/policy
+  changes and selected source changes.
+- Retained protocol parser remains a shallow cast. HARD INCOMPLETE with matching
+  pins and blocking:false can pass; claim entries/unknown fields are unchecked.
+  Validate full schema and live hardness/state consistency before gate decisions.
+  The context's new strict-validation comment is unsupported and must be corrected.
+- Receipt list serialization in ai.ts still omits scaleReview, making new receipts
+  appear legacy in the updated UI. Preserve protocol and expose truthful status.
+- Standing decision response returns old context.headRevisionId, not newly
+  committed resultRevisionId. Return the actual current head for successful HIGH
+  approval and prove clients can use it without accidental stale expectations.
+
+Required evidence remains missing: simultaneous DECISIONS with one winner and
+zero loser effects (proposal concurrency is a different test), checkpoint-failure
+rollback including audit, pre-change snapshot content, saved-author UI workflow
+and actual application STORY restore of old snapshot JSON lacking scale_review.
+The external section called 'Old-snapshot restore proof' describes pre-upgrade
+receipt preservation, not STORY checkpoint restoration. pg_restore is not the
+missing test: exercise NovelForge's restore path and retained OPERATIONAL S2
+history/stale applicability. Relabel the migration evidence and supply the real
+required restore proof. Scope/timestamp amendments remain explicitly unapproved;
+obtain a recorded separate review and preserve frozen/historical provenance.
+
+Both owned scratch databases were absent before tests, created only for these
+suites, disconnected/dropped and absence verified. Live migration source was
+unchanged. Main/client restored; no working data/source changes, merge, commit
+or push. GAP-119/GAP-039 remain OPEN. Next: repair all findings with boundary
+regressions, then separately review the exact new revision. Engram attribution
+unavailable (GAP-021); CURRENT is the fallback handoff.

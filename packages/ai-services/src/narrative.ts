@@ -96,8 +96,9 @@ export function isValidScalePayload(payload: unknown): boolean {
   if (!NARRATIVE_SCALES.includes(s.scale as NarrativeScale)) return false;
   if (
     !Array.isArray(s.access) ||
-    s.access.length === 0 ||
-    !s.access.every((a) => NARRATIVE_SCALES.includes(a as NarrativeScale))
+    s.access.length > 8 ||
+    !s.access.every((a) => NARRATIVE_SCALES.includes(a as NarrativeScale)) ||
+    new Set(s.access).size !== s.access.length
   ) {
     return false;
   }

@@ -20,7 +20,7 @@ import { requireCapability, type Capability } from "@novelforge/auth/authorizati
 // throws the auth-package ForbiddenError, which the platform routes'
 // setErrorHandler (registered once for the whole app) maps to 403.
 import { NotFoundError, ConflictError } from "@novelforge/ai-services";
-import { PolicyError } from "@novelforge/ai-services";
+import { PolicyError, checkFinalTextReviewGate } from "@novelforge/ai-services";
 import type { AuditService } from "@novelforge/ai-services";
 // The head CAS every covered mutation must take inside its own transaction
 // (STORY-VERSIONING.md C3/C4). Imported directly rather than threaded through
@@ -378,30 +378,36 @@ export function sanitizeChapterHtml(html: string): string {
  * service calls it inside its locked transaction.
  */
 export async function assertPublishReviewGate(
-  db: PrismaClient,
-  currentVersionId: string,
+  tx: PrismaClient,
+  input: {
+    workspaceId: string;
+    novelId: string;
+    chapterId: string;
+    chapterVersionId: string;
+  },
 ): Promise<void> {
-  const receipt = await db.finalTextReview.findUnique({
-    where: { chapterVersionId: currentVersionId },
-    select: { verdict: true, hardViolations: true },
-  });
-  if (!receipt) {
+  // 050B: use the shared transactional gate (API and worker use the same
+  // helper). The caller must hold the lock order (novel NO KEY UPDATE ->
+  // branch UPDATE -> chapter UPDATE) before calling.
+  const result = await checkFinalTextReviewGate(tx as never, input);
+  if (result.ok) return;
+  // Map gate codes to typed PolicyError.
+  if (result.code === "REVIEW_STALE") {
     throw new PolicyError(
       "REVIEW_STALE",
-      `chapter has no final-text review receipt for its current version — review it before publishing`,
+      `chapter has no current final-text review receipt for its version — review it before publishing`,
     );
   }
-  if (receipt.verdict === "FAIL") {
-    const rules = Array.isArray(receipt.hardViolations)
-      ? (receipt.hardViolations as Array<{ rule?: unknown }>)
-          .map((v) => v.rule)
-          .filter((r): r is string => typeof r === "string")
-      : [];
+  if (result.code === "SCALE_ASSESSMENT_INCOMPLETE") {
     throw new PolicyError(
       "HARD_POLICY_VIOLATION",
-      `final-text review failed${rules.length > 0 ? `: ${rules.join(", ")}` : ""} — see the review receipt for evidence`,
+      `SCALE assessment is incomplete for a HARD policy — complete the assessment before publishing`,
     );
   }
+  throw new PolicyError(
+    "HARD_POLICY_VIOLATION",
+    `final-text review failed with a HARD policy violation — see the review receipt for evidence`,
+  );
 }
 
 export function createManuscriptServices(
@@ -818,30 +824,63 @@ export function createManuscriptServices(
       // PUBLISHED→IN_REVIEW "unpublish" path stays ungated.
       // (The route only accepts IN_REVIEW|PUBLISHED as the target status.)
       //
-      // The gate reads the receipt directly (no service call): the
-      // receipt's verdict is the whole contract here, and the typed
-      // PolicyError carries the machine-readable code (mapped before the
-      // generic ConflictError branch, like CanonApplicationError).
-      if (chapter.status === "DRAFT" || status === "PUBLISHED") {
-        if (chapter.currentVersionId) {
-          await assertPublishReviewGate(db, chapter.currentVersionId);
-        } else {
-          // No version at all: nothing to review. The PUBLISHED target is
-          // already refused above ("cannot publish a chapter with no
-          // content"); IN_REVIEW of an empty chapter reads as a stale
-          // (missing) review rather than a silent pass.
-          throw new PolicyError(
-            "REVIEW_STALE",
-            `chapter has no content version to review — save a version and review it before leaving DRAFT`,
-          );
-        }
-      } // end review gate
+      // 050B: the gate runs INSIDE the locked transaction below (see
+      // "050B: gate before writes"). The old outside-tx gate is removed.
       // A status change is a covered mutation like any other and takes the
       // head CAS (C3 LOW). `chapters.status` is deliberately NOT in the
       // snapshot payload (C7) — restore never rewinds publication — so the
       // revision records the change while the state restore can see does not
       // include it.
+      //
+      // 050B: the review gate runs INSIDE the locked transaction. Lock order:
+      // novel NO KEY UPDATE -> checked-out branch UPDATE -> chapter UPDATE.
+      // The gate re-reads the receipt and validates ALL pins before writes.
       await db.$transaction(async (tx) => {
+        // Lock novel.
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`,
+          novelId,
+        );
+        const lockedNovel = await tx.novel.findFirst({
+          where: { id: novelId, workspaceId },
+          select: { id: true, currentBranchId: true },
+        });
+        if (!lockedNovel || !lockedNovel.currentBranchId) {
+          throw new NotFoundError("novel");
+        }
+        // Lock the checked-out branch.
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`,
+          lockedNovel.currentBranchId,
+        );
+        // Lock the chapter and re-read status/version inside the tx.
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM chapters WHERE id = $1 FOR UPDATE`,
+          chapterId,
+        );
+        const lockedChapter = await tx.chapter.findUnique({
+          where: { id: chapterId },
+          select: { id: true, status: true, currentVersionId: true },
+        });
+        if (!lockedChapter) throw new NotFoundError("chapter");
+
+        // 050B: gate before writes, using the locked tx.
+        if (lockedChapter.status === "DRAFT" || status === "PUBLISHED") {
+          if (lockedChapter.currentVersionId) {
+            await assertPublishReviewGate(tx as never, {
+              workspaceId,
+              novelId,
+              chapterId,
+              chapterVersionId: lockedChapter.currentVersionId,
+            });
+          } else {
+            throw new PolicyError(
+              "REVIEW_STALE",
+              `chapter has no content version to review — save a version and review it before leaving DRAFT`,
+            );
+          }
+        }
+
         const branch = await lockManuscriptBranch(tx, novelId);
         await tx.chapter.update({ where: { id: chapterId }, data: { status } });
         await advanceForMutation(tx, {

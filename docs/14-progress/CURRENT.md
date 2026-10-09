@@ -1028,3 +1028,22 @@ restore, malformed stored evidence, deletion/create race, parent cleanup.
 GAP-108 8th recurrence during repair (VM reset); environment restored.
 Final diff review dispatched; awaiting verdict before commit/push.
 GAP-039 remains OPEN.
+
+## 050B implementation started — 2026-10-09
+
+Branch `work/nf-wf-050b-scale-review` created from `fed3cea` (frozen 050B contract).
+Frozen hashes verified:
+- Task: B6A44390D2485D90A62C23B971E0B1039DB177A4F412D970D2C4A78AA78ABE45
+- ADR-0016: 1909A48A9B958C787F76FCBF678528E106165F079192B30D764922ECDC917C52
+
+**Assignments (2026-10-09):**
+- Implementer: coordinator (this session; backends MODEL_UNVERIFIED per GAP-013)
+- Separate slice reviewers: to be dispatched per slice (MODEL_UNVERIFIED per GAP-013)
+- Contract reviewers (prior): review_mutations_034, review_recovery_034 (APPROVE)
+
+**Execution order (serial reviewed slices):**
+1. Additive storage, migration proofs, frozen context interfaces
+2. Author decisions, deterministic SCALE review, shared API/worker gate
+3. English/Indonesian UI and real author-flow acceptance
+
+GAP-039 remains OPEN; 050C separate. Engram unavailable (GAP-021); this file is fallback.

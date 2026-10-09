@@ -14,17 +14,22 @@ import { useApi, ApiError } from "../../composables/useApi";
 import DnaEditor from "./DnaEditor.vue";
 import PolicyList from "./PolicyList.vue";
 import Antagonists from "./Antagonists.vue";
+import ScaleReviewPanel from "./ScaleReviewPanel.vue";
 
 const props = defineProps<{
   workspaceId: string;
   novelId: string;
+  /** Selected chapter ID from the workspace, or null. */
+  chapterId?: string | null;
+  /** Saved version UUID, or null when unsaved/none. */
+  chapterVersionId?: string | null;
 }>();
 
 const { t } = useLocale();
 const { api } = useApi();
 
-type Tab = "dna" | "policies" | "antagonists" | "readouts";
-const tabs: Tab[] = ["dna", "policies", "antagonists", "readouts"];
+type Tab = "dna" | "policies" | "antagonists" | "scale" | "readouts";
+const tabs: Tab[] = ["dna", "policies", "antagonists", "scale", "readouts"];
 const active = ref<Tab>("dna");
 const tabRefs = ref<Array<HTMLButtonElement | null>>([]);
 
@@ -51,6 +56,7 @@ function onTabKeydown(e: KeyboardEvent) {
 }
 
 function tabLabel(tabId: Tab): string {
+  if (tabId === "scale") return t("workspace.scaleReview.title");
   return t(
     `workspace.narrative.panel.tab${tabId === "dna" ? "Dna" : tabId === "policies" ? "Policies" : tabId === "antagonists" ? "Antagonists" : "Readouts"}`,
   );
@@ -225,6 +231,15 @@ async function runPatterns() {
 
     <div v-else-if="active === 'antagonists'" role="tabpanel">
       <Antagonists :workspace-id="workspaceId" :novel-id="novelId" />
+    </div>
+
+    <div v-else-if="active === 'scale'" role="tabpanel">
+      <ScaleReviewPanel
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+        :chapter-id="props.chapterId ?? null"
+        :chapter-version-id="props.chapterVersionId ?? null"
+      />
     </div>
 
     <div v-else role="tabpanel" class="flex flex-col gap-4">

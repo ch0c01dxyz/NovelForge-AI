@@ -1349,6 +1349,8 @@ async function publish() {
         v-else-if="workspacePanel === 'narrative'"
         :workspace-id="workspaceId"
         :novel-id="novelId"
+        :chapter-id="activeId"
+        :chapter-version-id="null"
       />
       <HealthMemoryPanel
         v-else-if="workspacePanel === 'health'"

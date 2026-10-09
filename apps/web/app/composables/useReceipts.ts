@@ -79,6 +79,26 @@ export interface FinalTextReviewRow {
   evaluatedPolicies: unknown;
   revisionId: string;
   createdAt: string;
+  /** Protocol 1 SCALE review (050B). Null = legacy receipt (pre-050B), never new proof. */
+  scaleReview: {
+    protocol: 1;
+    state:
+      | "NOT_CONFIGURED"
+      | "INCOMPLETE"
+      | "WITHIN_REACH"
+      | "VIOLATION"
+      | "EXCEPTED"
+      | "NO_OPERATIVE_CONFLICT";
+    blocking: boolean;
+    pins: {
+      chapterVersionId: string;
+      branchId: string;
+      sourceRevisionId: string | null;
+      evidenceSetId: string | null;
+      policyFingerprint: string;
+      exceptionOutcomeId: string | null;
+    };
+  } | null;
 }
 
 export interface NovelSummary {

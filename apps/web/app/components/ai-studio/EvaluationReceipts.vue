@@ -48,6 +48,21 @@ function violationCount(row: FinalTextReviewRow): number {
   return Array.isArray(row.hardViolations) ? row.hardViolations.length : 0;
 }
 
+/**
+ * SCALE review display (050B): legacy (null) vs current protocol 1.
+ * Null scaleReview = legacy receipt, never new proof of SCALE completeness.
+ */
+function scaleStateLabel(row: FinalTextReviewRow): string {
+  if (!row.scaleReview) return t("receipts.evaluations.scaleLegacy");
+  return t(`receipts.evaluations.scaleState.${row.scaleReview.state}`);
+}
+
+function scaleStateClass(row: FinalTextReviewRow): string {
+  if (!row.scaleReview) return "bg-nf-bg-2 text-nf-text-dim";
+  if (row.scaleReview.blocking) return "bg-nf-danger/15 text-nf-danger";
+  return "bg-nf-ok/15 text-nf-ok";
+}
+
 function verdictClass(verdict: string): string {
   return verdict === "PASS" ? "bg-nf-ok/15 text-nf-ok" : "bg-nf-warn/15 text-nf-warn";
 }
@@ -172,6 +187,7 @@ watch(() => props.workspaceId, async () => {
               <th scope="col" class="px-3 py-2 font-semibold text-nf-text-dim">{{ t("receipts.evaluations.chapter") }}</th>
               <th scope="col" class="px-3 py-2 font-semibold text-nf-text-dim">{{ t("receipts.evaluations.verdict") }}</th>
               <th scope="col" class="px-3 py-2 font-semibold text-nf-text-dim">{{ t("receipts.evaluations.violations") }}</th>
+              <th scope="col" class="px-3 py-2 font-semibold text-nf-text-dim">{{ t("receipts.evaluations.scale") }}</th>
               <th scope="col" class="px-3 py-2 font-semibold text-nf-text-dim">{{ t("receipts.evaluations.revisionPin") }}</th>
               <th scope="col" class="px-3 py-2 font-semibold text-nf-text-dim">{{ t("receipts.evaluations.created") }}</th>
             </tr>
@@ -194,13 +210,18 @@ watch(() => props.workspaceId, async () => {
                   </span>
                 </td>
                 <td class="px-3 py-2 text-nf-text-dim">{{ violationCount(row) }}</td>
+                <td class="px-3 py-2">
+                  <span class="rounded-full px-2 py-0.5 text-[11px] font-medium" :class="scaleStateClass(row)">
+                    {{ scaleStateLabel(row) }}
+                  </span>
+                </td>
                 <td class="px-3 py-2 font-mono text-[11.5px] text-nf-text-dim" :title="row.revisionId">
                   {{ row.revisionId.slice(0, 8) }}
                 </td>
                 <td class="whitespace-nowrap px-3 py-2 text-nf-text-dim">{{ formatDate(row.createdAt) }}</td>
               </tr>
               <tr v-if="selectedId === row.id" class="border-b border-nf-border/60 bg-nf-bg-2/40">
-                <td colspan="5" class="px-4 py-3">
+                <td colspan="6" class="px-4 py-3">
                   <p class="mb-1 text-[11.5px] font-semibold uppercase tracking-wide text-nf-text-dim">
                     {{ t("receipts.evaluations.violationsDetail") }}
                   </p>

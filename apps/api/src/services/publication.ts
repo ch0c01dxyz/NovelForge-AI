@@ -473,8 +473,13 @@ export function createPublicationServices({
           throw new ConflictError("cannot publish a chapter with no content");
         }
         // Invariant 3: the receipt is checked against the version being
-        // pinned (the 010 precedent reads it outside the tx).
-        await assertPublishReviewGate(db, chapter.currentVersionId);
+        // pinned. 050B: use the shared gate with tx (not outer db).
+        await assertPublishReviewGate(tx as never, {
+          workspaceId,
+          novelId,
+          chapterId,
+          chapterVersionId: chapter.currentVersionId,
+        });
         const id = existing?.id ?? publicationId;
         const advanced = await advanceForMutation(tx, {
           workspaceId,

@@ -466,16 +466,32 @@ export function createPlatformServices(deps: {
       // migration), so a novel carrying canon facts or workflow run history
       // refuses the cascade. The refusal must be legible, not a 500.
       // Generation rows carry novelId without an FK and orphan by design.
-      await db.novel.delete({ where: { id: novelId } }).catch((e: unknown) => {
-        const code = (e as { code?: string })?.code;
-        if (code === "P2003" || code === "P2039") {
-          throw new ConflictError(
-            "this novel still has canon facts or workflow run history that the " +
-              "delete cannot remove — delete those workflows without runs and " +
-              "the entities cited by canon facts first, or keep the novel",
-          );
-        }
-        throw e;
+      //
+      // NF-WF-050B: S2 decision history (scale_decision_proposals,
+      // scale_decision_outcomes) is OPERATIONAL — auditable, never rewound —
+      // but novel deletion must explicitly remove it in dependency order
+      // (outcomes → proposals → parent) inside one novel-scoped transaction.
+      // The chapter-version/actor/source Restrict FKs cannot be crossed by
+      // cascade; explicit ordered deletes make the intent visible. If the
+      // parent delete is refused (canon facts / workflow runs), the whole
+      // transaction rolls back — S2 history is never erased on a refused
+      // deletion.
+      await db.$transaction(async (tx) => {
+        // Lock the novel for the duration of the delete.
+        await tx.$queryRaw`SELECT id FROM novels WHERE id = ${novelId} FOR UPDATE`;
+        await tx.scaleDecisionOutcome.deleteMany({ where: { novelId } });
+        await tx.scaleDecisionProposal.deleteMany({ where: { novelId } });
+        await tx.novel.delete({ where: { id: novelId } }).catch((e: unknown) => {
+          const code = (e as { code?: string })?.code;
+          if (code === "P2003" || code === "P2039") {
+            throw new ConflictError(
+              "this novel still has canon facts or workflow run history that the " +
+                "delete cannot remove — delete those workflows without runs and " +
+                "the entities cited by canon facts first, or keep the novel",
+            );
+          }
+          throw e;
+        });
       });
       await audit.record({
         actorUserId,

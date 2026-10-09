@@ -206,4 +206,107 @@ describe("novels", () => {
     const listA = await services.listNovelsForUser(ownerA);
     expect(listA.map((n) => n.id)).toEqual([novelA]);
   }, 30_000);
+
+  it("deleteNovel removes S2 decision history in dependency order (050B)", async () => {
+    const owner = await makeUser();
+    const { id: wsId } = await services.createWorkspace({ actorUserId: owner, name: "W", slug: `w-s2-${Date.now()}` });
+    const { id: novelId } = await services.createNovel({
+      actorUserId: owner, workspaceId: wsId, title: "S2N", slug: `s2n-${Date.now()}`,
+    });
+    // Seed S2 rows directly (bypassing the service) to test cleanup ordering.
+    const chapter = await db.chapter.create({
+      data: { novelId, title: "Ch1", number: 1, createdById: owner },
+    });
+    const version = await db.chapterVersion.create({
+      data: { chapterId: chapter.id, number: 1, content: "<p>x</p>", wordCount: 1, authorId: owner },
+    });
+    const branch = await db.novelBranch.findFirst({ where: { novelId } });
+    const proposal = await db.scaleDecisionProposal.create({
+      data: {
+        workspaceId: wsId,
+        novelId,
+        chapterVersionId: version.id,
+        sourceBranchId: branch!.id,
+        policySnapshot: { absent: true },
+        policyFingerprint: "0".repeat(64),
+        sequence: 1,
+        kind: "CHAPTER_EXCEPTION",
+        payload: { claimIndices: [0] },
+        proposerUserId: owner,
+        reason: "s2 cleanup test",
+      },
+    });
+    await db.scaleDecisionOutcome.create({
+      data: {
+        proposalId: proposal.id,
+        workspaceId: wsId,
+        novelId,
+        chapterVersionId: version.id,
+        sourceBranchId: branch!.id,
+        sequence: 1,
+        action: "REJECT",
+        actorUserId: owner,
+        reason: "no",
+      },
+    });
+
+    await services.deleteNovel({ actorUserId: owner, workspaceId: wsId, novelId });
+
+    expect(await db.scaleDecisionOutcome.count({ where: { novelId } })).toBe(0);
+    expect(await db.scaleDecisionProposal.count({ where: { novelId } })).toBe(0);
+    expect(await db.novel.findUnique({ where: { id: novelId } })).toBeNull();
+  }, 30_000);
+
+  it("deleteNovel refused by canon facts preserves S2 history (rollback, 050B)", async () => {
+    const owner = await makeUser();
+    const { id: wsId } = await services.createWorkspace({ actorUserId: owner, name: "W", slug: `w-s2r-${Date.now()}` });
+    const { id: novelId } = await services.createNovel({
+      actorUserId: owner, workspaceId: wsId, title: "S2R", slug: `s2r-${Date.now()}`,
+    });
+    const chapter = await db.chapter.create({
+      data: { novelId, title: "Ch1", number: 1, createdById: owner },
+    });
+    const version = await db.chapterVersion.create({
+      data: { chapterId: chapter.id, number: 1, content: "<p>x</p>", wordCount: 1, authorId: owner },
+    });
+    const branch = await db.novelBranch.findFirst({ where: { novelId } });
+    const proposal = await db.scaleDecisionProposal.create({
+      data: {
+        workspaceId: wsId,
+        novelId,
+        chapterVersionId: version.id,
+        sourceBranchId: branch!.id,
+        policySnapshot: { absent: true },
+        policyFingerprint: "0".repeat(64),
+        sequence: 1,
+        kind: "CHAPTER_EXCEPTION",
+        payload: { claimIndices: [0] },
+        proposerUserId: owner,
+        reason: "s2 rollback test",
+      },
+    });
+    // Block the delete with a canon fact citing a story entity (Restrict FK).
+    const entity = await db.storyEntity.create({
+      data: { novelId, kind: "CHARACTER", key: "blocker", name: "Blocker", createdById: owner },
+    });
+    await db.canonFact.create({
+      data: {
+        workspaceId: wsId,
+        novelId,
+        entityId: entity.id,
+        predicate: "blocks",
+        objectText: "delete",
+        statement: "blocks delete",
+        createdById: owner,
+      },
+    });
+
+    await expect(
+      services.deleteNovel({ actorUserId: owner, workspaceId: wsId, novelId }),
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    // The whole transaction rolled back: novel AND S2 history preserved.
+    expect(await db.novel.findUnique({ where: { id: novelId } })).toBeTruthy();
+    expect(await db.scaleDecisionProposal.findUnique({ where: { id: proposal.id } })).toBeTruthy();
+  }, 30_000);
 });

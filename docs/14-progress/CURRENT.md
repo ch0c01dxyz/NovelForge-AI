@@ -1,5 +1,45 @@
 # Current Project State
 
+## 050B third repair dispatch — 2026-10-09
+
+The author authorized publishing the separately reviewed761ce1d rejection
+receipt and requested the next external prompt. Both technical actors request
+changes; review_mutations_034 APPROVE the scoped CURRENT/GAP-119 evidence
+record. Fetch this main update into work/nf-wf-050b-scale-review. Complete
+serial reviewed slices: transactional/backend correctness; real recovery/race
+proofs plus valid fixture repair; then coherent typed UI/API and async behavior.
+Address ALL latest GAP-119 findings, not merely the two failing tests. Preserve
+accepted repairs and frozen contracts, regularize scope amendments with actual
+separate review, and retain historical records with explicit corrections.
+No implementation merge/050C/release approval is granted. GAP-039/GAP-119 stay
+OPEN. Earlier no-commit/main70c3005 notes describe the review boundary. Engram
+attribution is unavailable (GAP-021); these published docs are the handoff.
+
+## External 050B second repair re-review — 2026-10-09, 761ce1d
+
+CHANGES REQUESTED by both separate reviewers; main remains70c3005, no merge.
+HIGH standing UUID and composed data transaction, stale quiet checks, decision
+current-version/exception validation, malformed route errors, branch history
+and claim/vocabulary repairs improved. GAP-119 now records remaining audit
+rollback escape, incomplete direct policy pins, proposal/route source scope,
+real evidence UI type mismatch, busy-state races, false-fresh context, shallow
+retained protocol validation, omitted receipt serialization and old response head.
+
+Fresh local selected checks:54/56 backend/domain/migration tests pass;2 fail
+before intended boundaries because fixtures have invalid source quote/span and
+sequence2 predecessor. Fix fixtures without weakening production validators.
+Successful HIGH standing/direct approval tests now pass. UI component/axe6/6,
+Prisma generate/validate and ai-services/API/worker typechecks pass; submitted
+diff whitespace passes. No skips; canvas warnings occurred in jsdom. No web
+typecheck/lint, real API/worker-race, saved UI flow or old STORY restore proof
+is claimed. Migration preservation is NOT application checkpoint restoration;
+the external old-snapshot claim must be corrected and the real test added.
+
+Own scratch databases cleaned and absence verified; working data and migration
+source preserved. Main/client restored. No source fix, merge, commit or push.
+GAP-039/GAP-119 remain OPEN; scope amendments and required acceptance proofs
+remain pending. Engram attribution unavailable (GAP-021); this is the fallback.
+
 ## 050B second repair dispatch — 2026-10-09
 
 The author authorized publishing the separately reviewed709ba66 rejection

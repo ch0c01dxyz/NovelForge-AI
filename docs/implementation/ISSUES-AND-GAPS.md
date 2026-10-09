@@ -3112,6 +3112,76 @@ or push. GAP-119/GAP-039 remain OPEN. Next: repair all findings with boundary
 regressions, then separately review the exact new revision. Engram attribution
 unavailable (GAP-021); CURRENT is the fallback handoff.
 
+### GAP-119 sixth repair re-review — 2026-10-09, 64168cd
+
+**Status:** OPEN; CHANGES REQUESTED on exact
+64168cdba61cbe5c72f57739c0bf458d6c492028; baseline/main829613d.
+**Owner:** NF-WF-050B implementer; separate exact-diff review required.
+review_mutations_034 requests changes. review_recovery_034 approves assigned
+recovery source pending fresh checks; those selected checks subsequently passed.
+
+Verified repairs: gate recomputes full expected deterministic protocol and
+compares pins/state/blocking/claims/missingData; context shares the completeness
+check. Normal successful review refreshes receipt/applicability/checklist through
+coherent context. Preserved tx audits/CAS, live-version locks, actual old-JSON
+restore and pre-change snapshot contents. New actual HTTP status/IN_REVIEW
+routes, save/status race and fireScheduledPublication refusal/audit tests improve
+caller evidence. Scope13–17 records hashes for the five added test files.
+
+Remaining source blocker:
+
+- **Retained exception payload/provenance is not strictly validated.**
+  final-text-review-gate.ts343–352 accepts any integer claimIndices array from
+  an approved retained proposal; final-text-review.ts415–421 uses the same
+  loose cast. An approved historical record with claimIndices:[0,0] can supply
+  coverage for claim0; producer and recomputation can agree on EXCEPTED despite
+  a malformed payload. This is source tracing of corrupted/historical database
+  records, not a normal service-produced approval or executed API exploit.
+  Reuse one strict applicable-exception resolver across producer, gate and
+  context. Validate exact payload keys, nonempty unique bounded indices, owned
+  proposal/outcome source provenance, current complete evidence/standing, and
+  coverage of actual violating claims. Malformed retained history must fail
+  closed, without destroying audit history. Add a corrupted-approved-exception
+  regression and valid full/partial coverage positives at real caller boundaries.
+
+Remaining receipt and acceptance requirements:
+
+- Worker test amendment hash does not match submitted bytes. The report
+  050B-scope-amendment-13-17-independent-review-2026-10-09.md records
+  99c1cc045674787a1f991f2060d80bcaedfbe5a79eb83715699068e8e9971047 for
+  apps/worker/src/scale-gate-fire.test.ts; actual submitted blob SHA-256 is
+  afea22ea5cedd3bd5391d6da18ab6e70707e2741481496eca5d596316c9fb516.
+  The other four hashes match. Preserve the historical receipt, annotate later
+  changed bytes and obtain exact-artifact re-review. review_recovery_034 inspected
+  current worker source with no new blocker; do not claim the older receipt's
+  hash identifies the current file. External generic actor identities remain
+  documentary claims rather than runtime-observed attribution here.
+- New API caller suite tests status transitions, not immediate publishNow or
+  its publication route. New worker suite directly invokes the real fire
+  function and verifies contradictory-proof refusal/UNPUBLISHED/audit, but its
+  success control is legacy/no-SCALE, not fresh configured SCALE. Add missing
+  immediate-publication and configured-SCALE worker success/refusal proofs;
+  preserve frozen acceptance for locks, author decisions, cleanup and UI.
+  Direct worker invocation is caller evidence, not BullMQ delivery proof.
+- UI evidence is component mocks/jsdom. No live author browser flow is claimed.
+  The explicit six-path ESLint command ignores ScaleReviewPanel.vue because
+  there is no matching configuration; no-error exit is not Vue lint proof.
+
+Fresh local evidence:13 selected backend/domain/migration suites123/123 pass;
+6 component/axe suites38/38 pass; no skips. ai-services/API/worker/web typechecks,
+Prisma generate/validate and submitted diff whitespace pass. ESLint on explicit
+production paths (gate, index, routes, panel and en/id) has zero errors and one
+ignored-Vue warning. Canvas warnings occur in jsdom. No immediate publication,
+live browser, configured-SCALE worker success or queue delivery was run here.
+
+Nine owned scratch database names were absent before use, disconnected/dropped
+after checks (proof-completeness suite self-cleans) and final absence verified.
+Tracked migrations unchanged; main/client restored. No implementation merge,
+commit or push. GAP-039/GAP-119 stay OPEN. Next: strict retained exception
+resolution, missing caller acceptance, corrected exact scope receipt and separate
+review of the next revision. Engram attribution unavailable (GAP-021); CURRENT
+is the fallback handoff.
+
 ### GAP-119 third repair re-review — 2026-10-09, e6b6305
 
 **Status:** OPEN; CHANGES REQUESTED by separate source reviewers

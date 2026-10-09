@@ -2907,3 +2907,61 @@ and stored proposal pins that cannot be silently rebound. HIGH standing approval
 and exceptions limited to complete identified violations are reviewed designs.
 No production code, migration, feature test or working data was changed.
 Status remains OPEN; closure requires the implementation proofs listed above.
+
+### GAP-119 external 050B review — 2026-10-09, 1ad5c47
+
+Verdict: CHANGES REQUESTED by both separate reviewers; do not merge. Exact
+submission: 1ad5c4770325045cd475af1126f097b705b18551, based on fed3cea.
+Source findings below are inspected defects, not live exploit/mutation receipts.
+
+- P1 tenant isolation: scale-decision-routes.ts197-208 authorizes only membership
+  in the supplied workspace, then queries supplied novel/version without scoped
+  ownership, chapter or checked-out branch. Resolve all tenant/source identities
+  before querying; prove foreign workspace/novel/version/branch negatives.
+- P1 recovery: scale-decisions.ts584-615 directly upserts standing, retains null
+  resultRevisionId and calls no advanceForMutation. HIGH scale.standing.approve is
+  absent from impact.ts. Implement atomic pre-change checkpoint/revision/policy/
+  outcome/rebuild intent; the comment claiming API integration is unsupported.
+- P1 proposal applicability: decideProposal compares client head with live source
+  branch, not stored proposal pins/current checkout/version/set/policy. Required
+  decision request fields and branch/chapter locks are missing. Re-read every
+  stored/client pin under the frozen lock order; never repin stale proposals.
+- P1 policy bypass: narrative.ts changes only access validation; existing SCALE
+  put/delete safeguards and all-policy checked-out branch revisions are absent.
+- Review: final-text-review.ts601 ignores SCALE blocking for overall verdict;
+  line437 ignores quiet declaration, and617-627 refuses a legitimate fresh
+  re-review after head change. Derive truthful verdict/findings and allow a
+  replacement pinned to the locked current snapshot. API incomplete refusal is
+  mapped to HARD_POLICY_VIOLATION instead of its distinct frozen error code.
+- Exceptions: gate validates only an APPROVE row's existence, not latest
+  applicable scoped outcome/null pin. Resolve kind/head/policy/set/version and
+  compare exact applicability in review and all gates; validate retained protocol.
+- UI: index.vue1353 passes version=null permanently; context endpoint omits
+  decision head/exception/receipt fields. Panel lacks 050A evidence authoring,
+  sends incompatible decision requests and omits alternative payload; late
+  mutation responses are not selection-bound. Wire the real saved context and
+  all required author actions, with request-generation/unmount guards.
+- Migration/recovery proof: the legacy receipt is inserted after upgrade, so it
+  does not prove pre-upgrade receipt preservation or old-snapshot restore. Seed
+  genuine baseline receipts/snapshots and prove actual restore/legacy handling.
+  TIMESTAMPTZ(3) differs from the frozen TIMESTAMP(3) choice: align or obtain a
+  reviewed amendment. Prove parent cleanup with alternative predecessor chains.
+
+Fresh local verification at exact submission: Prisma generate/validate pass;
+25/25 assessor/domain/classification tests pass, plus5/5 panel/component axe
+tests. ai-services and worker typechecks pass. API typecheck FAILS with TS2339
+at scale-decisions.test.ts554,555,558: alternativeProposal inferred as {}, so
+sequence/predecessorProposalId/id are unavailable. Submitted diff whitespace
+passes. Component tests emit jsdom canvas getContext warnings; they do not
+prove a usable saved-chapter author flow.
+
+No database-backed API/worker, migration, old-snapshot, full-release or web
+typecheck acceptance was performed. No scratch database was created, working
+data changed or source fix applied. The branch adds scale-review-types.ts and
+changes scale-evidence-migration.test.ts outside frozen allowed paths without
+a recorded amendment; regularize those bounded changes before redispatch.
+External CURRENT only records reviewers as to-be-dispatched, not independent
+implementation acceptance. Keep the frozen contract; repair implementation and
+add real failing boundary/race regressions before claiming closure.
+GAP-119/GAP-039 remain OPEN. Main remains fed3cea; no merge/commit/push accepted.
+Engram attribution unavailable (GAP-021); CURRENT is the fallback checkpoint.

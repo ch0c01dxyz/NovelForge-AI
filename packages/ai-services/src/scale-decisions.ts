@@ -16,7 +16,7 @@
  * INCOMPLETE never fabricates proved violations. hardViolations includes only
  * proved hard violations. Overall FAIL also includes blocking INCOMPLETE.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { NovelForgeDb } from "@novelforge/database";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 import {
@@ -98,47 +98,11 @@ export function assessScaleDeterministic(input: {
 
   const hardness = policy.hardness;
   const isHard = hardness === "HARD";
-
-  // Validate standing even for quiet chapters.
-  const standing = scaleStandingOf(policy.payload);
   const missingData: ScaleReviewProtocol["missingData"] = [];
 
-  if (!standing) {
-    // Malformed HARD payload → INCOMPLETE (fail closed).
-    // Malformed SOFT payload → INCOMPLETE but advisory only.
-    missingData.push({
-      code: "MALFORMED_STANDING",
-      field: "policy.payload.standing",
-      reason: "SCALE policy standing is malformed",
-      explanation:
-        "The stored SCALE policy payload does not validate as { scale, access, reputation } with valid narrative scales.",
-      example:
-        "Example (hypothetical): { scale: 'VILLAGE', access: [], reputation: 50 } is valid; { scale: 'UNKNOWN' } is not.",
-      nextAction:
-        "Re-save the SCALE policy through the policy write surface with a valid standing.",
-    });
-    return {
-      protocol: 1,
-      state: "INCOMPLETE",
-      blocking: isHard,
-      pins,
-      claims: [],
-      missingData,
-    };
-  }
-
-  // Explicit NO_OPERATIVE_CONFLICT with valid policy → quiet chapter.
-  if (noOperativeConflict && claims.length === 0) {
-    return {
-      protocol: 1,
-      state: "NO_OPERATIVE_CONFLICT",
-      blocking: false,
-      pins,
-      claims: [],
-      missingData: [],
-    };
-  }
-
+  // Provenance FIRST (GAP-119): the evidence set must exist and be fresh
+  // before any complete state. A stale quiet declaration must HOLD a HARD
+  // review — it must never silently gain a receipt pinned to a newer head.
   // Missing set → INCOMPLETE (HARD blocks; SOFT advisory).
   if (!latestSet) {
     missingData.push({
@@ -182,6 +146,46 @@ export function assessScaleDeterministic(input: {
       pins,
       claims: [],
       missingData,
+    };
+  }
+
+  // Validate standing even for quiet chapters (after provenance).
+  const standing = scaleStandingOf(policy.payload);
+
+  if (!standing) {
+    // Malformed HARD payload → INCOMPLETE (fail closed).
+    // Malformed SOFT payload → INCOMPLETE but advisory only.
+    missingData.push({
+      code: "MALFORMED_STANDING",
+      field: "policy.payload.standing",
+      reason: "SCALE policy standing is malformed",
+      explanation:
+        "The stored SCALE policy payload does not validate as { scale, access, reputation } with valid narrative scales.",
+      example:
+        "Example (hypothetical): { scale: 'VILLAGE', access: [], reputation: 50 } is valid; { scale: 'UNKNOWN' } is not.",
+      nextAction:
+        "Re-save the SCALE policy through the policy write surface with a valid standing.",
+    });
+    return {
+      protocol: 1,
+      state: "INCOMPLETE",
+      blocking: isHard,
+      pins,
+      claims: [],
+      missingData,
+    };
+  }
+
+  // Explicit NO_OPERATIVE_CONFLICT — reachable only with a fresh evidence
+  // set and valid standing (provenance checked above) → quiet chapter.
+  if (noOperativeConflict && claims.length === 0) {
+    return {
+      protocol: 1,
+      state: "NO_OPERATIVE_CONFLICT",
+      blocking: false,
+      pins,
+      claims: [],
+      missingData: [],
     };
   }
 
@@ -248,6 +252,83 @@ export function assessScaleDeterministic(input: {
   };
 }
 
+/**
+ * CURRENT violating claim indices for a CHAPTER_EXCEPTION prerequisite check
+ * (GAP-119: exception creation/approval must verify CURRENT complete
+ * evidence, valid standing and actual violating indices — not just
+ * claim-index shape).
+ *
+ * Runs the deterministic assessment with no exception coverage against the
+ * context's latest validated set. Returns the indices that are actual
+ * proved violations right now, or a failure describing why no exception
+ * can be warranted:
+ * - 409 when evidence is missing or stale (never 400: the author must
+ *   append fresh evidence, not fix a payload shape);
+ * - 400 when no SCALE policy is configured or the standing is invalid.
+ * A quiet chapter (NO_OPERATIVE_CONFLICT) or a within-reach assessment
+ * yields zero violations, which is a 400: there is nothing to except.
+ */
+function currentViolatingClaimIndices(
+  context: ScaleReviewContext,
+):
+  | { ok: true; violating: Set<number> }
+  | { ok: false; status: 400 | 409; reason: string } {
+  const latestSet = context.latestSet;
+  if (!latestSet) {
+    return {
+      ok: false,
+      status: 409,
+      reason: "no current complete evidence set for this branch/version",
+    };
+  }
+  if (latestSet.sourceRevisionId !== context.headRevisionId) {
+    return {
+      ok: false,
+      status: 409,
+      reason: "evidence set is stale relative to the branch head",
+    };
+  }
+  if (!context.policy) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "no SCALE policy configured",
+    };
+  }
+  if (!scaleStandingOf(context.policy.payload)) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "SCALE policy standing is invalid",
+    };
+  }
+  const claims: AssessmentClaimInput[] = (latestSet.conflicts ?? []).map(
+    (c, idx) => ({
+      index: idx,
+      scale: c.scale,
+      span: { start: c.source.start, end: c.source.end },
+      quote: c.source.quote,
+    }),
+  );
+  const assessed = assessScaleDeterministic({
+    context,
+    claims,
+    exceptionCoveredIndices: [],
+    noOperativeConflict: latestSet.declaration === "NO_OPERATIVE_CONFLICT",
+  });
+  const violating = new Set(
+    assessed.claims.filter((c) => !c.ok).map((c) => c.index),
+  );
+  if (violating.size === 0) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "no current violations to except",
+    };
+  }
+  return { ok: true, violating };
+}
+
 // ---------------------------------------------------------------------------
 // S2 decision service
 // ---------------------------------------------------------------------------
@@ -298,20 +379,58 @@ export interface ScaleDecisionDeps {
   audit: AuditService;
 }
 
+export interface CreateProposalInput {
+  actorUserId: string;
+  workspaceId: string;
+  novelId: string;
+  chapterId: string;
+  chapterVersionId: string;
+  expectedBranchId: string;
+  expectedHeadRevisionId: string | null;
+  expectedSetId: string | null;
+  expectedDecisionId: string | null;
+  expectedPolicyFingerprint: string;
+  kind: "STANDING_CHANGE" | "CHAPTER_EXCEPTION";
+  payload: unknown;
+  reason: string;
+  predecessorProposalId?: string | null;
+}
+
+export interface DecideProposalInput {
+  actorUserId: string;
+  workspaceId: string;
+  novelId: string;
+  proposalId: string;
+  action: "APPROVE" | "REJECT" | "ALTERNATIVE";
+  reason: string;
+  alternativePayload?: unknown;
+  expectedBranchId: string;
+  expectedHeadRevisionId: string | null;
+  expectedDecisionId: string | null;
+  expectedPolicyFingerprint: string;
+  expectedVersionId: string;
+  expectedSetId: string | null;
+}
+
+// Transaction client type for atomic composition.
+// Uses RevisionTx (Omit<NovelForgeDb, ...>) which matches Prisma's tx client.
+export type ScaleDecisionTx = import("./revisions.ts").RevisionTx;
+
 export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
   const { db, audit } = deps;
 
   async function checkCapability(
+    client: Pick<NovelForgeDb, "membership" | "novel">,
     actorUserId: string,
     workspaceId: string,
     novelId: string,
     capability: Capability,
   ): Promise<void> {
-    const membership = await db.membership.findUnique({
+    const membership = await client.membership.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: actorUserId } },
       select: { role: true },
     });
-    const novel = await db.novel.findFirst({
+    const novel = await client.novel.findFirst({
       where: { id: novelId, workspaceId },
       select: { id: true },
     });
@@ -319,28 +438,14 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
     requireCapability(membership.role, capability);
   }
 
-  return {
-    /**
-     * Create a SCALE decision proposal.
-     * Requires chapter:update AND canon:manage. All expectations must match
-     * current context (via readScaleContext). Returns 201 {proposal, decisionHeadId}.
-     */
-    async createProposal(input: {
-      actorUserId: string;
-      workspaceId: string;
-      novelId: string;
-      chapterId: string;
-      chapterVersionId: string;
-      expectedBranchId: string;
-      expectedHeadRevisionId: string | null;
-      expectedSetId: string | null;
-      expectedDecisionId: string | null;
-      expectedPolicyFingerprint: string;
-      kind: "STANDING_CHANGE" | "CHAPTER_EXCEPTION";
-      payload: unknown;
-      reason: string;
-      predecessorProposalId?: string | null;
-    }) {
+  /**
+   * Create a SCALE decision proposal (transaction-aware variant).
+   * Runs inside the caller's transaction; for standalone use, the public
+   * createProposal wraps this in db.$transaction.
+   * Requires chapter:update AND canon:manage. All expectations must match
+   * current context (via readScaleContext). Returns {proposal, decisionHeadId}.
+   */
+  async function createProposalTx(tx: ScaleDecisionTx, input: CreateProposalInput) {
       const {
         actorUserId,
         workspaceId,
@@ -357,8 +462,8 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         reason,
       } = input;
 
-      await checkCapability(actorUserId, workspaceId, novelId, "chapter:update" as Capability);
-      await checkCapability(actorUserId, workspaceId, novelId, "canon:manage" as Capability);
+      await checkCapability(tx, actorUserId, workspaceId, novelId, "chapter:update" as Capability);
+      await checkCapability(tx, actorUserId, workspaceId, novelId, "canon:manage" as Capability);
 
       // Validate reason
       const trimmedReason = reason.trim();
@@ -383,8 +488,8 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         throw new MemoryError(400, "INVALID_INPUT", "payload exceeds 64KiB");
       }
 
-      return await db.$transaction(async (tx) => {
-        // Lock order: novel -> branch -> chapter
+      // Lock order: novel -> branch -> chapter
+      {
         await tx.$queryRaw`SELECT id FROM novels WHERE id = ${novelId} FOR NO KEY UPDATE`;
         const context = await readScaleContext(tx as ScaleReviewContextTx, {
           workspaceId,
@@ -419,6 +524,35 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         });
         if ((latestOutcome?.id ?? null) !== expectedDecisionId) {
           throw new ConflictError("decision head expectation mismatch");
+        }
+
+        // CHAPTER_EXCEPTION prerequisites (GAP-119): a CURRENT complete
+        // evidence set, valid standing and actual violating claim indices —
+        // not just claim-index shape. Missing/stale evidence is 409 (the
+        // author must append fresh evidence); invalid standing or
+        // non-violating indices are 400.
+        if (kind === "CHAPTER_EXCEPTION") {
+          const prereq = currentViolatingClaimIndices(context);
+          if (!prereq.ok) {
+            if (prereq.status === 409) {
+              throw new ConflictError(`cannot create exception: ${prereq.reason}`);
+            }
+            throw new MemoryError(
+              400,
+              "INVALID_INPUT",
+              `cannot create exception: ${prereq.reason}`,
+            );
+          }
+          const requested = (payload as { claimIndices: number[] }).claimIndices;
+          for (const i of requested) {
+            if (!prereq.violating.has(i)) {
+              throw new MemoryError(
+                400,
+                "INVALID_INPUT",
+                `cannot create exception: claim index ${i} does not correspond to a current violating claim`,
+              );
+            }
+          }
         }
 
         // Allocate proposal sequence (monotonic per branch+version)
@@ -478,26 +612,16 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
           proposal,
           decisionHeadId: latestOutcome?.id ?? null,
         };
-      });
-    },
+      }
+  }
 
-    /**
-     * Decide on a proposal (APPROVE/REJECT/ALTERNATIVE).
-     * Requires chapter:update AND canon:manage AND canon:approve.
-     */
-    async decideProposal(input: {
-      actorUserId: string;
-      workspaceId: string;
-      novelId: string;
-      proposalId: string;
-      action: "APPROVE" | "REJECT" | "ALTERNATIVE";
-      reason: string;
-      alternativePayload?: unknown;
-      expectedBranchId: string;
-      expectedHeadRevisionId: string | null;
-      expectedDecisionId: string | null;
-      expectedPolicyFingerprint: string;
-    }) {
+  /**
+   * Decide on a proposal (transaction-aware variant).
+   * Runs inside the caller's transaction; for standalone use, the public
+   * decideProposal wraps this in db.$transaction.
+   * Requires chapter:update AND canon:manage AND canon:approve.
+   */
+  async function decideProposalTx(tx: ScaleDecisionTx, input: DecideProposalInput) {
       const {
         actorUserId,
         workspaceId,
@@ -510,11 +634,13 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         expectedHeadRevisionId,
         expectedDecisionId,
         expectedPolicyFingerprint,
+        expectedVersionId,
+        expectedSetId,
       } = input;
 
-      await checkCapability(actorUserId, workspaceId, novelId, "chapter:update" as Capability);
-      await checkCapability(actorUserId, workspaceId, novelId, "canon:manage" as Capability);
-      await checkCapability(actorUserId, workspaceId, novelId, "canon:approve" as Capability);
+      await checkCapability(tx, actorUserId, workspaceId, novelId, "chapter:update" as Capability);
+      await checkCapability(tx, actorUserId, workspaceId, novelId, "canon:manage" as Capability);
+      await checkCapability(tx, actorUserId, workspaceId, novelId, "canon:approve" as Capability);
 
       const trimmedReason = reason.trim();
       if (trimmedReason.length < 1 || trimmedReason.length > 4000) {
@@ -530,11 +656,11 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         throw new MemoryError(400, "INVALID_INPUT", "alternativePayload only for ALTERNATIVE");
       }
 
-      return await db.$transaction(async (tx) => {
-        // Frozen lock order (same as reviewFinalText and the shared gate):
-        // novel NO KEY UPDATE -> checked-out branch UPDATE -> chapter UPDATE.
-        // Every stored pin and every client expectation is re-read under
-        // these locks; a failed expectation aborts with zero writes.
+      // Frozen lock order (same as reviewFinalText and the shared gate):
+      // novel NO KEY UPDATE -> checked-out branch UPDATE -> chapter UPDATE.
+      // Every stored pin and every client expectation is re-read under
+      // these locks; a failed expectation aborts with zero writes.
+      {
         await tx.$queryRawUnsafe(
           `SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`,
           novelId,
@@ -607,10 +733,49 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
           chapterVersionId: proposal.chapterVersionId,
         });
 
+        // Obsolete-version guard: the stored proposal pins an immutable version,
+        // but the chapter's LIVE current pointer may have moved on. A proposal
+        // for an obsolete version can never be decided — the author must
+        // create a new proposal against the current version. Without this
+        // check the comparison below would compare the proposal to itself
+        // (context.chapterVersion is resolved FROM proposal.chapterVersionId).
+        // Zero writes on 409.
+        if (proposal.chapterVersionId !== context.currentVersionId) {
+          throw new ConflictError(
+            `proposal is for obsolete version ${proposal.chapterVersionId}; current version is ${context.currentVersionId}; create a new proposal`,
+          );
+        }
+
         // Validate the STORED proposal pins against CURRENT context. Stored
         // pins are immutable: any mismatch means the proposal is stale and
         // must NOT be repinned — the author creates a new proposal and the
         // old record is retained. Zero writes on 409.
+        //
+        // Exception: for APPROVE of a CHAPTER_EXCEPTION, the exception
+        // applicability check below runs FIRST so that a replaced evidence
+        // set (or otherwise inapplicable exception) reports the precise
+        // "exception no longer applicable" refusal instead of the generic
+        // stale-pin message.
+        if (action === "APPROVE" && proposal.kind === "CHAPTER_EXCEPTION") {
+          const prereq = currentViolatingClaimIndices(context);
+          if (!prereq.ok) {
+            throw new ConflictError(
+              `exception no longer applicable: ${prereq.reason}`,
+            );
+          }
+          const storedPayload = proposal.payload as { claimIndices?: unknown };
+          const storedIndices = Array.isArray(storedPayload.claimIndices)
+            ? (storedPayload.claimIndices as number[])
+            : [];
+          for (const i of storedIndices) {
+            if (!prereq.violating.has(i)) {
+              throw new ConflictError(
+                `exception no longer applicable: claim index ${i} is not a current violating claim`,
+              );
+            }
+          }
+        }
+
         const mismatchedPins: string[] = [];
         if (proposal.sourceBranchId !== context.branch.id) {
           mismatchedPins.push("branchId");
@@ -644,6 +809,12 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
         }
         if (expectedPolicyFingerprint !== context.policyFingerprint) {
           throw new ConflictError("policy fingerprint expectation mismatch");
+        }
+        if (expectedVersionId !== context.currentVersionId) {
+          throw new ConflictError("version expectation mismatch");
+        }
+        if (expectedSetId !== (context.latestSet?.id ?? null)) {
+          throw new ConflictError("evidence set expectation mismatch");
         }
 
         // Verify decision head (concurrent stale expectedDecisionId → 409)
@@ -687,6 +858,17 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
           // state. Creates revision + change set + checkpoint + rebuild intent
           // in this SAME transaction. A missing baseline or stale head refuses
           // here with zero writes.
+          //
+          // ChangeSetItem.entity_id is UUID NOT NULL at the DB level. For an
+          // existing policy use its actual row UUID; for initial creation
+          // preallocate a UUID and use it in BOTH the change-set item and the
+          // upsert's create clause so they match.
+          const existingPolicy = await tx.narrativePolicy.findUnique({
+            where: { novelId_kind: { novelId, kind: "SCALE" } },
+            select: { id: true },
+          });
+          const policyId = existingPolicy?.id ?? randomUUID();
+          const policyOp = existingPolicy ? "UPDATE" : "CREATE";
           const advance = await advanceForMutation(tx, {
             workspaceId,
             novelId,
@@ -699,8 +881,8 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
             items: [
               {
                 entityType: "NarrativePolicy",
-                entityId: `novel:${novelId}:SCALE`,
-                operation: "UPDATE",
+                entityId: policyId,
+                operation: policyOp,
               },
             ],
           });
@@ -715,6 +897,7 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
               payload: { standing: payload.standing },
             },
             create: {
+              id: policyId,
               novelId,
               kind: "SCALE",
               hardness: payload.hardness as "HARD" | "SOFT",
@@ -803,8 +986,30 @@ export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
           alternativeProposal,
           currentHeadRevisionId: context.headRevisionId,
         };
-      });
+      }
+  }
+
+  return {
+    /**
+     * Create a SCALE decision proposal (standalone).
+     * Wraps createProposalTx in its own transaction.
+     */
+    async createProposal(input: CreateProposalInput) {
+      return db.$transaction((tx) => createProposalTx(tx as ScaleDecisionTx, input));
     },
+
+    /**
+     * Decide on a proposal (standalone).
+     * Wraps decideProposalTx in its own transaction.
+     */
+    async decideProposal(input: DecideProposalInput) {
+      return db.$transaction((tx) => decideProposalTx(tx as ScaleDecisionTx, input));
+    },
+
+    // Transaction-aware variants for atomic composition
+    // (e.g., direct SCALE PUT in narrative.ts).
+    createProposalTx,
+    decideProposalTx,
   };
 }
 

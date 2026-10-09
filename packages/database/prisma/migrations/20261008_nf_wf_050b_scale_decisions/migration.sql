@@ -5,11 +5,14 @@
 -- Both decision tables are OPERATIONAL (never rewound by restore).
 --
 -- Timestamp note (GAP-119): created_at uses TIMESTAMPTZ(3), not the contract's
--- shorthand "TIMESTAMP(3)". This is deliberate: Prisma's native DateTime maps
--- to TIMESTAMPTZ in PostgreSQL, and the schema declares @db.Timestamptz(3).
--- The precision (3) matches the contract; the timezone-awareness aligns with
--- Prisma native types (same as 050A's TIMESTAMPTZ(6) pattern). Using plain
--- TIMESTAMP would create schema-vs-migration drift.
+-- shorthand "TIMESTAMP(3)". This is deliberate: the schema explicitly declares
+-- @db.Timestamptz(3), which selects TIMESTAMPTZ(3) — this is NOT Prisma's
+-- default mapping (Prisma's plain DateTime without an explicit @db annotation
+-- maps to TIMESTAMP). The precision (3) matches the contract's TIMESTAMP(3)
+-- precision; the timezone-awareness is additive and does not change the
+-- contract's semantics (same as 050A's explicit @db.Timestamptz(6) pattern).
+-- Using plain TIMESTAMP here would create schema-vs-migration drift against
+-- the explicit @db.Timestamptz(3) annotation.
 
 -- Decision-kind enum: STANDING_CHANGE alters the approved SCALE policy;
 -- CHAPTER_EXCEPTION grants a bounded per-claim exception.

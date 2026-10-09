@@ -581,41 +581,51 @@ export function createNarrativeServices(deps: {
           "a SCALE standing change or policy initialization requires authorDecision: \"APPROVE\"",
         );
       }
-      // Same caps as the approve service, checked BEFORE creating a proposal
+      // Same caps as the approve service, checked BEFORE the transaction
       // so a refused decision leaves no orphan pending proposal behind.
+      // canon:manage is also required (createProposal/decideProposal enforce it).
       await gate(actorUserId, workspaceId, novelId, "chapter:update");
+      await gate(actorUserId, workspaceId, novelId, "canon:manage");
       await gate(actorUserId, workspaceId, novelId, "canon:approve");
       // Lazy import: scale-decisions.ts imports isValidScalePayload from this
       // module; a dynamic import keeps module evaluation order out of the
       // picture entirely (usage is deferred to call time either way).
       const { createScaleDecisionServices } = await import("./scale-decisions.ts");
       const decisions = createScaleDecisionServices({ db, audit });
-      const created = await decisions.createProposal({
-        actorUserId,
-        workspaceId,
-        novelId,
-        chapterId: pins.chapterId,
-        chapterVersionId: pins.chapterVersionId,
-        expectedBranchId: pins.expectedBranchId,
-        expectedHeadRevisionId: pins.expectedHeadRevisionId,
-        expectedSetId: pins.expectedSetId,
-        expectedDecisionId: pins.expectedDecisionId,
-        expectedPolicyFingerprint: pins.expectedPolicyFingerprint,
-        kind: "STANDING_CHANGE",
-        payload: { standing: newStanding, hardness, hardReason },
-        reason,
-      });
-      await decisions.decideProposal({
-        actorUserId,
-        workspaceId,
-        novelId,
-        proposalId: created.proposal.id,
-        action: "APPROVE",
-        reason,
-        expectedBranchId: pins.expectedBranchId,
-        expectedHeadRevisionId: pins.expectedHeadRevisionId,
-        expectedDecisionId: pins.expectedDecisionId,
-        expectedPolicyFingerprint: pins.expectedPolicyFingerprint,
+      // ATOMIC: the entire explicit operation (proposal + approval + policy
+      // update + checkpoint + revision + outcome + rebuild intent) runs in a
+      // SINGLE transaction. If the approval fails (stale, checkpoint failure,
+      // etc.), the proposal is also rolled back — zero partial effects.
+      await db.$transaction(async (tx) => {
+        const created = await decisions.createProposalTx(tx as import("./scale-decisions.ts").ScaleDecisionTx, {
+          actorUserId,
+          workspaceId,
+          novelId,
+          chapterId: pins.chapterId,
+          chapterVersionId: pins.chapterVersionId,
+          expectedBranchId: pins.expectedBranchId,
+          expectedHeadRevisionId: pins.expectedHeadRevisionId,
+          expectedSetId: pins.expectedSetId,
+          expectedDecisionId: pins.expectedDecisionId,
+          expectedPolicyFingerprint: pins.expectedPolicyFingerprint,
+          kind: "STANDING_CHANGE",
+          payload: { standing: newStanding, hardness, hardReason },
+          reason,
+        });
+        await decisions.decideProposalTx(tx as import("./scale-decisions.ts").ScaleDecisionTx, {
+          actorUserId,
+          workspaceId,
+          novelId,
+          proposalId: created.proposal.id,
+          action: "APPROVE",
+          reason,
+          expectedBranchId: pins.expectedBranchId,
+          expectedHeadRevisionId: pins.expectedHeadRevisionId,
+          expectedDecisionId: pins.expectedDecisionId,
+          expectedPolicyFingerprint: pins.expectedPolicyFingerprint,
+          expectedVersionId: pins.chapterVersionId,
+          expectedSetId: pins.expectedSetId,
+        });
       });
       const row = await db.narrativePolicy.findUnique({
         where: { novelId_kind: { novelId, kind: "SCALE" } },
@@ -700,6 +710,44 @@ export function createNarrativeServices(deps: {
       const branch = await lockCheckedOutBranch(tx, workspaceId, novelId);
       if (pins.expectedBranchId !== branch.id) {
         throw new ConflictError("policy branch changed while this request was in flight");
+      }
+      // Validate chapter/version ownership (pins are required; do not ignore them).
+      const versionRow = await tx.chapterVersion.findFirst({
+        where: { id: pins.chapterVersionId },
+        select: {
+          id: true,
+          chapterId: true,
+          chapter: { select: { novelId: true } },
+        },
+      });
+      if (
+        !versionRow ||
+        versionRow.chapterId !== pins.chapterId ||
+        versionRow.chapter.novelId !== novelId
+      ) {
+        throw new NotFoundError("chapter version");
+      }
+      // Validate evidence-set and decision-head expectations against current
+      // context so a stale client view cannot delete under changed state.
+      const latestSet = await tx.scaleEvidenceSet.findFirst({
+        where: { novelId, sourceBranchId: branch.id },
+        orderBy: { sequence: "desc" },
+        select: { id: true },
+      });
+      if ((latestSet?.id ?? null) !== pins.expectedSetId) {
+        throw new ConflictError("evidence set changed while this request was in flight");
+      }
+      const latestOutcome = await tx.scaleDecisionOutcome.findFirst({
+        where: {
+          novelId,
+          sourceBranchId: branch.id,
+          chapterVersionId: pins.chapterVersionId,
+        },
+        orderBy: { sequence: "desc" },
+        select: { id: true },
+      });
+      if ((latestOutcome?.id ?? null) !== pins.expectedDecisionId) {
+        throw new ConflictError("decision head changed while this request was in flight");
       }
       const existing = await tx.narrativePolicy.findUnique({
         where: { novelId_kind: { novelId, kind: "SCALE" } },

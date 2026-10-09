@@ -24,6 +24,7 @@ function makeContext(overrides: Partial<ScaleReviewContext> = {}): ScaleReviewCo
   };
   return {
     chapterVersion: { id: "v1", content: "<p>test</p>" },
+    currentVersionId: "v1",
     branch: { id: "b1", headRevisionId: "r1" },
     headRevisionId: "r1",
     latestSet: {
@@ -159,6 +160,27 @@ describe("assessScaleDeterministic", () => {
     });
     expect(result.state).toBe("NO_OPERATIVE_CONFLICT");
     expect(result.blocking).toBe(false);
+  });
+
+  it("stale quiet evidence holds HARD review (never silent NO_OPERATIVE_CONFLICT)", () => {
+    // Regression (GAP-119): an old quiet declaration pinned to a previous head
+    // must HOLD a HARD review — it must never silently gain a receipt pinned
+    // to the newer head via NO_OPERATIVE_CONFLICT.
+    const staleSet = {
+      id: "set-stale",
+      sourceRevisionId: "r-old", // != head "r1": stale
+      declaration: "NO_OPERATIVE_CONFLICT",
+      claims: [],
+    } as never;
+    const result = assessScaleDeterministic({
+      context: makeContext({ latestSet: staleSet }),
+      claims: [],
+      exceptionCoveredIndices: [],
+      noOperativeConflict: true, // caller derived this from the stale set's declaration
+    });
+    expect(result.state).toBe("INCOMPLETE");
+    expect(result.blocking).toBe(true);
+    expect(result.missingData[0]!.code).toBe("STALE_EVIDENCE_SET");
   });
 
   it("INCOMPLETE when no evidence set (HARD blocks)", () => {

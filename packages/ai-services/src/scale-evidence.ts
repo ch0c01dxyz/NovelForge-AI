@@ -872,6 +872,14 @@ export function createScaleEvidenceServices(deps: {
 export interface ScaleReviewContext {
   /** Immutable chapter version the review pins to. */
   chapterVersion: { id: string; content: string };
+  /**
+   * LIVE current version pointer (`Chapter.currentVersionId`), read under the
+   * caller's chapter lock. Distinct from `chapterVersion.id` (the supplied,
+   * possibly obsolete, pinned version). Decision comparison uses this to
+   * detect obsolete-version proposals instead of comparing a proposal to
+   * itself. Null when the chapter has no saved version yet.
+   */
+  currentVersionId: string | null;
   /** Server-resolved checked-out branch (never client-supplied). */
   branch: { id: string; headRevisionId: string | null };
   /**
@@ -948,6 +956,16 @@ export async function readScaleContext(
   });
   if (!chapterVersion) throw new NotFoundError("chapter version");
 
+  // LIVE current version pointer, read here (the caller holds the chapter
+  // UPDATE lock, so this is the locked current value). Distinct from the
+  // supplied pinned version above, which may be obsolete.
+  const chapterRow = await tx.chapter.findFirst({
+    where: { id: chapterId, novelId, novel: { workspaceId } },
+    select: { currentVersionId: true },
+  });
+  if (!chapterRow) throw new NotFoundError("chapter");
+  const currentVersionId: string | null = chapterRow.currentVersionId;
+
   // Server-resolved checked-out branch (never client-supplied).
   const novel = await tx.novel.findFirst({
     where: { id: novelId, workspaceId },
@@ -993,6 +1011,7 @@ export async function readScaleContext(
 
   return {
     chapterVersion: { id: chapterVersion.id, content: chapterVersion.content },
+    currentVersionId,
     branch: { id: branch.id, headRevisionId: branch.headRevisionId },
     headRevisionId: branch.headRevisionId,
     latestSet: latestSetRecord,

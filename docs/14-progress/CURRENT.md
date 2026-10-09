@@ -1125,7 +1125,7 @@ GAP-039 remains OPEN; 050C separate. Engram unavailable (GAP-021); this file is 
 
 ## 050B repair scope amendments — 2026-10-09
 
-Bounded amendments to the frozen contract's allowed paths, reviewed and approved:
+Bounded amendments to the frozen contract's allowed paths:
 
 1. **`packages/ai-services/src/scale-review-types.ts`** (NEW): Contains the frozen protocol 1 types (`ScaleReviewPins`, `ScaleReviewClaim`, `ScaleReviewProtocol`) required by the contract's "freeze exported context/pin/gate shapes". Within the allowed `packages/ai-services/src/` package. No contract violation.
 
@@ -1133,6 +1133,17 @@ Bounded amendments to the frozen contract's allowed paths, reviewed and approved
 
 3. **`packages/ai-services/src/policy-errors.ts`** (MODIFIED): Added `SCALE_ASSESSMENT_INCOMPLETE` to `PolicyErrorCode` union. Required for the contract's distinct frozen error code (not mapping incomplete to HARD_POLICY_VIOLATION).
 
-4. **`packages/database/prisma/migrations/20261008_nf_wf_050b_scale_decisions/migration.sql`** (DOCUMENTED): Uses TIMESTAMPTZ(3) not TIMESTAMP(3). Rationale: Prisma native DateTime maps to TIMESTAMPTZ; schema declares `@db.Timestamptz(3)`; precision (3) matches contract; same as 050A's TIMESTAMPTZ(6) pattern. Documented in SQL header, no amendment needed.
+4. **`packages/database/prisma/migrations/20261008_nf_wf_050b_scale_decisions/migration.sql`** (DOCUMENTED): Uses TIMESTAMPTZ(3) not TIMESTAMP(3). The schema explicitly declares `@db.Timestamptz(3)`, which selects TIMESTAMPTZ(3) — this is NOT Prisma's default mapping (plain DateTime maps to TIMESTAMP). Precision (3) matches the contract; timezone-awareness is additive and does not change contract semantics. Same pattern as 050A's explicit `@db.Timestamptz(6)`.
+
+**Review status (honest record):** These 4 amendments have NOT received a standalone independent scope-amendment review with a separate recorded receipt. They were included in the repaired diff reviewed by the independent repair reviewer (verdict: APPROVE_WITH_FINDINGS, 2026-10-09), whose report noted them as "bounded, documented, do not weaken the contract" — but that was part of the overall diff review, not a dedicated scope-amendment approval. A separate recorded scope review is still owed per the contract's amendment procedure.
 
 All amendments are bounded, documented, and do not weaken the contract.
+
+## Old-snapshot restore proof — 2026-10-09
+
+`apps/api/src/scale-review-migration.test.ts` proves old-snapshot handling (OBSERVED 2/2 pass):
+
+- **What was tested:** A genuine `FinalTextReview` row (verdict, hardViolations, advisory, evaluatedPolicies — no `scale_review` column existing) is inserted into the BASELINE database BEFORE the 050B migration runs. This baseline represents an old snapshot / pre-upgrade database.
+- **After upgrade:** The receipt is re-read and verified field-by-field identical (verdict, hardViolations, advisory, evaluatedPolicies all preserved). The new `scale_review` column reads NULL for the legacy row — NULL denotes legacy receipt, never fabricated proof of SCALE completeness.
+- **What this proves:** Pre-upgrade data is preserved through the additive migration; legacy receipts are not rewritten or fabricated; the nullable column correctly defaults to NULL.
+- **What this does NOT prove:** An actual `pg_restore` of a production snapshot binary, or restore of a snapshot taken from a different Prisma version. The restore-scope classification (both tables OPERATIONAL, never rewound) is unit-tested in `restore-scope.test.ts` (8/8 pass), not via a live restore operation.

@@ -19,6 +19,7 @@ import type { NovelForgeDb } from "@novelforge/database";
 import {
   createScaleDecisionServices,
   readScaleContext,
+  parseScaleReviewProtocol,
   type ScaleDecisionServices,
 } from "@novelforge/ai-services";
 import { NotFoundError } from "@novelforge/ai-services";
@@ -115,8 +116,33 @@ const decideProposalBody = z
     expectedHeadRevisionId: uuid.nullable(),
     expectedDecisionId: uuid.nullable(),
     expectedPolicyFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+    expectedVersionId: uuid,
+    expectedSetId: uuid.nullable(),
   })
   .strict();
+
+/**
+ * Parse with Zod, returning a 400 INVALID_INPUT on failure instead of
+ * letting ZodError fall through to 500. Authenticate first, then validate.
+ */
+function parseOr400<T>(
+  schema: z.ZodType<T>,
+  data: unknown,
+  reply: FastifyReply,
+): { ok: true; value: T } | { ok: false } {
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    reply.code(400).send({
+      error: "INVALID_INPUT",
+      details: result.error.issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    });
+    return { ok: false };
+  }
+  return { ok: true, value: result.data };
+}
 
 async function getMembership(
   db: NovelForgeDb,
@@ -148,11 +174,15 @@ export function registerScaleDecisionRoutes(
   app.get(
     "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scale-review-context",
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const params = scaleDecisionParams.parse(req.params);
-      const query = scaleReviewContextQuery.parse(req.query);
       const token = req.cookies[SESSION_COOKIE];
       const session = token ? await auth.validateSession(token) : null;
       if (!session) return reply.code(401).send({ error: "UNAUTHORIZED" });
+      const parsedParams = parseOr400(scaleDecisionParams, req.params, reply);
+      if (!parsedParams.ok) return;
+      const parsedQuery = parseOr400(scaleReviewContextQuery, req.query, reply);
+      if (!parsedQuery.ok) return;
+      const params = parsedParams.value;
+      const query = parsedQuery.value;
       const membership = await getMembership(db, params.workspaceId, session.userId);
       requireCapability(membership.role, "chapter:read" as Capability);
       requireCapability(membership.role, "canon:read" as Capability);
@@ -230,11 +260,13 @@ export function registerScaleDecisionRoutes(
             createdAt: true,
           },
         });
+        // Strict retained protocol validation: malformed stored scaleReview
+        // is treated as legacy (null), never trusted.
         const receipt = receiptRow
           ? {
               id: receiptRow.id,
               verdict: receiptRow.verdict,
-              scaleReview: receiptRow.scaleReview,
+              scaleReview: parseScaleReviewProtocol(receiptRow.scaleReview),
               revisionId: receiptRow.revisionId,
               createdAt: receiptRow.createdAt,
             }
@@ -258,11 +290,15 @@ export function registerScaleDecisionRoutes(
   app.post(
     "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scale-decisions",
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const params = scaleDecisionParams.parse(req.params);
-      const body = createProposalBody.parse(req.body);
       const token = req.cookies[SESSION_COOKIE];
       const session = token ? await auth.validateSession(token) : null;
       if (!session) return reply.code(401).send({ error: "UNAUTHORIZED" });
+      const parsedParams = parseOr400(scaleDecisionParams, req.params, reply);
+      if (!parsedParams.ok) return;
+      const parsedBody = parseOr400(createProposalBody, req.body, reply);
+      if (!parsedBody.ok) return;
+      const params = parsedParams.value;
+      const body = parsedBody.value;
 
       // Service enforces chapter:update AND canon:manage.
       const result = await decisions.createProposal({
@@ -281,11 +317,15 @@ export function registerScaleDecisionRoutes(
   app.get(
     "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scale-decisions",
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const params = scaleDecisionParams.parse(req.params);
-      const query = decisionsQuery.parse(req.query);
       const token = req.cookies[SESSION_COOKIE];
       const session = token ? await auth.validateSession(token) : null;
       if (!session) return reply.code(401).send({ error: "UNAUTHORIZED" });
+      const parsedParams = parseOr400(scaleDecisionParams, req.params, reply);
+      if (!parsedParams.ok) return;
+      const parsedQuery = parseOr400(decisionsQuery, req.query, reply);
+      if (!parsedQuery.ok) return;
+      const params = parsedParams.value;
+      const query = parsedQuery.value;
       const membership = await getMembership(db, params.workspaceId, session.userId);
       requireCapability(membership.role, "chapter:read" as Capability);
       requireCapability(membership.role, "canon:read" as Capability);
@@ -309,10 +349,22 @@ export function registerScaleDecisionRoutes(
       });
       if (!version) return reply.code(404).send({ error: "NOT_FOUND" });
 
+      // Branch-scoped pagination: resolve the checked-out branch from the
+      // server (never client-supplied) and scope the sequence cursor to it.
+      const novelWithBranch = await db.novel.findFirst({
+        where: { id: params.novelId, workspaceId: params.workspaceId },
+        select: { currentBranchId: true },
+      });
+      const checkedOutBranchId = novelWithBranch?.currentBranchId ?? null;
+      if (!checkedOutBranchId) {
+        return reply.code(404).send({ error: "NOT_FOUND", message: "no checked-out branch" });
+      }
+
       const where = {
         workspaceId: params.workspaceId,
         novelId: params.novelId,
         chapterVersionId: query.chapterVersionId,
+        sourceBranchId: checkedOutBranchId,
         ...(query.beforeSequence ? { sequence: { lt: query.beforeSequence } } : {}),
       };
 
@@ -338,11 +390,15 @@ export function registerScaleDecisionRoutes(
   app.post(
     "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/scale-decisions/:proposalId/decision",
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const params = proposalIdParams.parse(req.params);
-      const body = decideProposalBody.parse(req.body);
       const token = req.cookies[SESSION_COOKIE];
       const session = token ? await auth.validateSession(token) : null;
       if (!session) return reply.code(401).send({ error: "UNAUTHORIZED" });
+      const parsedParams = parseOr400(proposalIdParams, req.params, reply);
+      if (!parsedParams.ok) return;
+      const parsedBody = parseOr400(decideProposalBody, req.body, reply);
+      if (!parsedBody.ok) return;
+      const params = parsedParams.value;
+      const body = parsedBody.value;
 
       // Service enforces chapter:update AND canon:manage AND canon:approve.
       const result = await decisions.decideProposal({

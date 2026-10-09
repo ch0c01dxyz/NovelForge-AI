@@ -137,6 +137,9 @@ export {
   type ScaleDecisionServices,
   type ScaleDecisionDeps,
   type AssessmentClaimInput,
+  type CreateProposalInput,
+  type DecideProposalInput,
+  type ScaleDecisionTx,
 } from "./src/scale-decisions.ts";
 export {
   checkFinalTextReviewGate,

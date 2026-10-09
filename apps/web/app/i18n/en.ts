@@ -766,6 +766,52 @@ export const en = {
             noAction: "No action needed.",
             nextAction: "Narrow the claim, add evidence, or request a CHAPTER_EXCEPTION.",
           },
+          // Server-derived checklist items (GAP-119 fifth repair): keyed by
+          // the stable server code; unknown codes fall back to server text.
+          items: {
+            RECEIPT_ABSENT: {
+              label: "No review receipt",
+              explanation: "No deterministic review receipt exists for the current chapter version.",
+              example: "Example: the author has never run a SCALE review for this saved version.",
+              nextAction: "Run the deterministic SCALE review for the current version.",
+            },
+            RECEIPT_STALE: {
+              label: "Review receipt is stale",
+              explanation: "The retained review receipt no longer matches the current context.",
+              example: "Example: evidence was appended after the review ran, so the receipt pins an older evidence set.",
+              nextAction: "Re-run the deterministic SCALE review against the current context.",
+            },
+            RECEIPT_LEGACY: {
+              label: "Legacy review receipt",
+              explanation: "A review receipt exists but carries no SCALE protocol; it is never trusted.",
+              example: "Example: a receipt written before the SCALE protocol was introduced.",
+              nextAction: "Re-run the deterministic SCALE review to produce a protocol receipt.",
+            },
+            STANDING_ABSENT: {
+              label: "No SCALE policy",
+              explanation: "No SCALE narrative policy is configured for this novel.",
+              example: "Example: a fresh novel with no standing policy yet.",
+              nextAction: "Ask an author with canon:manage to create the SCALE policy.",
+            },
+            STANDING_MALFORMED: {
+              label: "Standing is malformed",
+              explanation: "The SCALE policy payload does not contain a valid standing triple (scale, access, reputation).",
+              example: "Example: standing { scale: 'VILLAGE', access: [], reputation: 50 } is valid; { scale: 'UNKNOWN' } is not.",
+              nextAction: "Fix the standing payload through a STANDING_CHANGE proposal.",
+            },
+            EVIDENCE_ABSENT: {
+              label: "No evidence set",
+              explanation: "No SCALE evidence set exists for the current branch and chapter version.",
+              example: "Example: the author has not appended any evidence yet.",
+              nextAction: "Append a SCALE evidence set, or declare NO_OPERATIVE_CONFLICT.",
+            },
+            EVIDENCE_STALE: {
+              label: "Evidence set is stale",
+              explanation: "The latest evidence set was assessed against an older head revision.",
+              example: "Example: the chapter was saved after the evidence set was appended.",
+              nextAction: "Append a fresh SCALE evidence set for the current head revision.",
+            },
+          },
         },
         proposals: {
           title: "Author decisions",
@@ -813,7 +859,7 @@ export const en = {
           noClaims: "No evidence claims available — append an evidence set first.",
           reputationInvalid: "Reputation must be an integer 0–100.",
           claimsRequired: "Select at least one claim.",
-          accessRequired: "Select at least one access scale.",
+          hardReasonRequired: "A hard reason is required for HARD standing changes.",
         },
         evidence: {
           title: "SCALE evidence (050A)",

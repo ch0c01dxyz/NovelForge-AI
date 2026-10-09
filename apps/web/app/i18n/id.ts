@@ -766,6 +766,52 @@ export const id = {
             noAction: "Tidak perlu tindakan.",
             nextAction: "Persempit klaim, tambah bukti, atau minta CHAPTER_EXCEPTION.",
           },
+          // Item checklist turunan server (GAP-119 fifth repair): keyed by
+          // kode server yang stabil; kode tak dikenal fallback ke teks server.
+          items: {
+            RECEIPT_ABSENT: {
+              label: "Tidak ada receipt tinjauan",
+              explanation: "Tidak ada receipt tinjauan deterministik untuk versi chapter saat ini.",
+              example: "Contoh: penulis belum pernah menjalankan tinjauan SCALE untuk versi tersimpan ini.",
+              nextAction: "Jalankan tinjauan SCALE deterministik untuk versi saat ini.",
+            },
+            RECEIPT_STALE: {
+              label: "Receipt tinjauan basi",
+              explanation: "Receipt tinjauan yang tersimpan tidak lagi cocok dengan konteks saat ini.",
+              example: "Contoh: bukti ditambahkan setelah tinjauan berjalan, sehingga receipt menyematkan set bukti yang lebih lama.",
+              nextAction: "Jalankan ulang tinjauan SCALE deterministik terhadap konteks saat ini.",
+            },
+            RECEIPT_LEGACY: {
+              label: "Receipt tinjauan lawas",
+              explanation: "Receipt tinjauan ada tetapi tidak membawa protokol SCALE; tidak pernah dipercaya.",
+              example: "Contoh: receipt yang ditulis sebelum protokol SCALE diperkenalkan.",
+              nextAction: "Jalankan ulang tinjauan SCALE deterministik untuk menghasilkan receipt protokol.",
+            },
+            STANDING_ABSENT: {
+              label: "Tidak ada kebijakan SCALE",
+              explanation: "Tidak ada kebijakan naratif SCALE yang dikonfigurasi untuk novel ini.",
+              example: "Contoh: novel baru yang belum memiliki kebijakan standing.",
+              nextAction: "Minta penulis dengan canon:manage untuk membuat kebijakan SCALE.",
+            },
+            STANDING_MALFORMED: {
+              label: "Standing tidak valid",
+              explanation: "Payload kebijakan SCALE tidak memuat triple standing yang valid (scale, access, reputation).",
+              example: "Contoh: standing { scale: 'VILLAGE', access: [], reputation: 50 } valid; { scale: 'UNKNOWN' } tidak.",
+              nextAction: "Perbaiki payload standing melalui proposal STANDING_CHANGE.",
+            },
+            EVIDENCE_ABSENT: {
+              label: "Tidak ada set bukti",
+              explanation: "Tidak ada set bukti SCALE untuk branch dan versi chapter saat ini.",
+              example: "Contoh: penulis belum menambahkan bukti apa pun.",
+              nextAction: "Tambahkan set bukti SCALE, atau deklarasikan NO_OPERATIVE_CONFLICT.",
+            },
+            EVIDENCE_STALE: {
+              label: "Set bukti basi",
+              explanation: "Set bukti terakhir dinilai terhadap revisi head yang lebih lama.",
+              example: "Contoh: chapter disimpan setelah set bukti ditambahkan.",
+              nextAction: "Tambahkan set bukti SCALE yang baru untuk revisi head saat ini.",
+            },
+          },
         },
         proposals: {
           title: "Keputusan penulis",
@@ -813,7 +859,7 @@ export const id = {
           noClaims: "Tidak ada klaim bukti — tambahkan set bukti dulu.",
           reputationInvalid: "Reputasi harus bilangan bulat 0–100.",
           claimsRequired: "Pilih setidaknya satu klaim.",
-          accessRequired: "Pilih setidaknya satu skala akses.",
+          hardReasonRequired: "Alasan keras wajib diisi untuk perubahan standing HARD.",
         },
         evidence: {
           title: "Bukti SCALE (050A)",

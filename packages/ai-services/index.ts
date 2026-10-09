@@ -145,6 +145,7 @@ export {
   checkFinalTextReviewGate,
   parseScaleReviewProtocol,
   isProtocolLiveConsistent,
+  isProtocolLiveStateConsistent,
   type GateCode,
   type GateResult,
   type ReviewGateTx,

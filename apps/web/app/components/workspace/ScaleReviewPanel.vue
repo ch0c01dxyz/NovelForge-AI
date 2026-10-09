@@ -105,6 +105,15 @@ interface ScaleReviewContextResponse {
     revisionId: string;
     createdAt: string;
   } | null;
+  /** Server-derived deterministic checklist (GAP-119 fifth repair). */
+  checklist: Array<{
+    code: string;
+    severity: "fail" | "warn";
+    explanation: string;
+    example: string;
+    nextAction: string;
+    details: Record<string, string>;
+  }>;
 }
 
 interface ProposalRow {
@@ -133,6 +142,12 @@ const loadErrorStatus = ref<number | null>(null);
 const context = ref<ScaleReviewContext | null>(null);
 const review = ref<ScaleReviewProtocol | null>(null);
 const reviewStale = ref(false);
+/**
+ * Server-derived deterministic checklist for the current context
+ * (GAP-119 fifth repair, finding 4). Consumed verbatim — the UI never
+ * invents existence-based pass/warn labels.
+ */
+const serverChecklist = ref<ScaleReviewContextResponse["checklist"]>([]);
 const proposals = ref<ProposalRow[]>([]);
 const proposalsLoading = ref(false);
 const proposalsError = ref<string | null>(null);
@@ -227,6 +242,8 @@ async function loadContext(selSeq: number, opSeq: number): Promise<void> {
     if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     context.value = res.context;
     receipt.value = res.receipt;
+    // Server-derived deterministic checklist — consumed verbatim below.
+    serverChecklist.value = res.checklist ?? [];
     // Store the server-derived version ID for subsequent calls.
     effectiveVersionId.value = res.context.chapterVersion.id;
     // Sync the review display from the receipt's protocol (truthful).
@@ -253,6 +270,25 @@ async function retryLoad(): Promise<void> {
   const opSeq = ++operationSeq;
   await loadContext(selSeq, opSeq);
   // Abort the chain when superseded: a newer operation owns the refresh now.
+  if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+  await loadEvidence(selSeq, opSeq);
+}
+
+/**
+ * Reconcile the current selection after a successful mutation, even when the
+ * mutation's own operation was superseded by a newer operation (GAP-119 fifth
+ * repair, finding 3). Uses a FRESH read identity so the refresh is accepted;
+ * never touches busy flags owned by other operations (busy cleanup stays
+ * selection-guarded per the third-repair P1-1 fix).
+ *
+ * Without this, a review could finish against S1 while an older evidence
+ * POST later commits S2 — leaving the S1 review displayed as fresh.
+ */
+async function reconcileSelection(): Promise<void> {
+  if (isUnmounted) return;
+  const selSeq = selectionSeq;
+  const opSeq = ++operationSeq;
+  await loadContext(selSeq, opSeq);
   if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
   await loadEvidence(selSeq, opSeq);
 }
@@ -311,52 +347,42 @@ interface ChecklistItem {
   status: "pass" | "fail" | "warn" | "info";
 }
 
+/**
+ * Localize one field of a server-derived checklist item. Falls back to the
+ * server's English text when no translation exists for the code (English
+ * fallback for present and future codes alike).
+ */
+function checklistText(
+  code: string,
+  field: "label" | "explanation" | "example" | "nextAction",
+  fallback: string,
+): string {
+  const key = `workspace.scaleReview.checklist.items.${code}.${field}`;
+  const translated = t(key);
+  return translated === key ? fallback : translated;
+}
+
 const checklist = computed<ChecklistItem[]>(() => {
   const items: ChecklistItem[] = [];
   const ctx = context.value;
   const rv = review.value;
   if (!ctx) return items;
 
-  // 1. SCALE policy configured
-  items.push({
-    key: "policy",
-    label: t("workspace.scaleReview.checklist.policy.label"),
-    explanation: t("workspace.scaleReview.checklist.policy.explanation"),
-    example: t("workspace.scaleReview.checklist.policy.example"),
-    nextAction: t("workspace.scaleReview.checklist.policy.nextAction"),
-    status: ctx.policy ? "pass" : "warn",
-  });
-  // 2. Standing validated
-  const standing = (ctx.policy?.payload as { standing?: unknown } | undefined)?.standing;
-  items.push({
-    key: "standing",
-    label: t("workspace.scaleReview.checklist.standing.label"),
-    explanation: t("workspace.scaleReview.checklist.standing.explanation"),
-    example: t("workspace.scaleReview.checklist.standing.example"),
-    nextAction: t("workspace.scaleReview.checklist.standing.nextAction"),
-    status: standing ? "pass" : "fail",
-  });
-  // 3. Evidence set current
-  items.push({
-    key: "evidence",
-    label: t("workspace.scaleReview.checklist.evidence.label"),
-    explanation: t("workspace.scaleReview.checklist.evidence.explanation"),
-    example: t("workspace.scaleReview.checklist.evidence.example"),
-    nextAction: t("workspace.scaleReview.checklist.evidence.nextAction"),
-    status: ctx.latestSet ? "pass" : "warn",
-  });
-  // 4. Missing data (from protocol)
-  for (const m of rv?.missingData ?? []) {
+  // Server-derived deterministic checklist (GAP-119 fifth repair, finding 4):
+  // consume the server result verbatim. Existence alone is never "pass" —
+  // the server derives items for absent/stale receipts, malformed standing
+  // and stale evidence from the same validated context.
+  for (const entry of serverChecklist.value) {
     items.push({
-      key: `missing-${m.code}`,
-      label: m.code,
-      explanation: m.explanation,
-      example: m.example,
-      nextAction: m.nextAction,
-      status: "fail",
+      key: `server-${entry.code}`,
+      label: checklistText(entry.code, "label", entry.code),
+      explanation: checklistText(entry.code, "explanation", entry.explanation),
+      example: checklistText(entry.code, "example", entry.example),
+      nextAction: checklistText(entry.code, "nextAction", entry.nextAction),
+      status: entry.severity === "fail" ? "fail" : "warn",
     });
   }
-  // 5. Per-claim reach
+  // Per-claim reach (from the receipt protocol data).
   for (const c of rv?.claims ?? []) {
     items.push({
       key: `claim-${c.index}`,
@@ -396,8 +422,15 @@ async function rerunReview(): Promise<void> {
         body: JSON.stringify({ chapterVersionId: versionId }),
       },
     );
-    // Recheck scope after await: stale selection or superseded operation → drop.
-    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    // Recheck scope after await. If THIS operation was superseded by a newer
+    // operation, the review still committed server-side (receipt upsert):
+    // reconcile the current selection with a fresh read identity so the UI
+    // never displays pre-commit data as current.
+    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq) {
+      await reconcileSelection();
+      return;
+    }
     review.value = res.scaleReview;
     // Just computed against the current context: recompute applicability
     // from the returned protocol pins when context is available.
@@ -473,8 +506,15 @@ async function submitProposal(): Promise<void> {
         reason,
       }),
     });
-    // Recheck scope after await before subsequent refreshes.
-    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    // Recheck scope after await. If THIS operation was superseded by a newer
+    // operation, the proposal still committed server-side: reconcile the
+    // current selection with a fresh read identity so the UI never displays
+    // pre-commit data as current.
+    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq) {
+      await reconcileSelection();
+      return;
+    }
     proposalDone.value = true;
     await loadProposals(selSeq, opSeq);
     // Recheck scope again before the next refresh in the chain.
@@ -557,8 +597,15 @@ async function submitDecision(): Promise<void> {
       method: "POST",
       body: JSON.stringify(body),
     });
-    // Recheck scope after await before subsequent refreshes.
-    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    // Recheck scope after await. If THIS operation was superseded by a newer
+    // operation, the decision still committed server-side: reconcile the
+    // current selection with a fresh read identity so the UI never displays
+    // pre-commit data as current.
+    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq) {
+      await reconcileSelection();
+      return;
+    }
     decisionTarget.value = null;
     // Internal refresh — reuses this operation's identity (no new bump).
     await loadContext(selSeq, opSeq);
@@ -713,8 +760,15 @@ async function submitEvidence(): Promise<void> {
         conflicts: claims,
       }),
     });
-    // Recheck scope after await before subsequent refreshes.
-    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    // Recheck scope after await. If THIS operation was superseded by a newer
+    // operation, the evidence set still committed server-side: reconcile the
+    // current selection with a fresh read identity so the UI never displays
+    // pre-commit data (e.g. an S1 review) as current after S2 commits.
+    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq) {
+      await reconcileSelection();
+      return;
+    }
     evidenceDone.value = true;
     resetEvidenceForm();
     evidenceDone.value = true;
@@ -755,6 +809,7 @@ watch(
     receipt.value = null;
     review.value = null;
     reviewStale.value = false;
+    serverChecklist.value = [];
     proposals.value = [];
     evidenceSet.value = null;
     evidenceHistory.value = [];
@@ -882,6 +937,7 @@ function statusClass(status: ChecklistItem["status"]): string {
             </h3>
             <button
               type="button"
+              data-testid="rerun-review"
               :disabled="reviewRunning"
               class="rounded-lg bg-nf-accent px-3 py-1.5 text-[12.5px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
               @click="rerunReview"
@@ -980,7 +1036,11 @@ function statusClass(status: ChecklistItem["status"]): string {
             </details>
 
             <!-- New set form (structured, not raw JSON-only) -->
-            <form class="mt-3 flex flex-col gap-2 border-t border-nf-border pt-3" @submit.prevent="submitEvidence">
+            <form
+              data-testid="evidence-form"
+              class="mt-3 flex flex-col gap-2 border-t border-nf-border pt-3"
+              @submit.prevent="submitEvidence"
+            >
               <h4 class="text-[12.5px] font-semibold text-nf-text">
                 {{ t("workspace.scaleReview.evidence.newSet") }}
               </h4>
@@ -988,6 +1048,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                 {{ t("workspace.scaleReview.evidence.declarationLabel") }}
                 <select
                   v-model="evidenceDeclaration"
+                  data-testid="evidence-declaration"
                   class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
                 >
                   <option value="CONFLICTS">{{ t("workspace.scaleReview.evidence.declaration.CONFLICTS") }}</option>

@@ -21,6 +21,7 @@ import {
   readScaleContext,
   parseScaleReviewProtocol,
   isProtocolLiveConsistent,
+  isValidScalePayload,
   type ScaleDecisionServices,
   type ScaleReviewContext,
   type ScaleReviewProtocol,
@@ -201,6 +202,137 @@ export function deriveReceiptApplicability(
   return reasons.length === 0 ? { status: "FRESH", reasons } : { status: "STALE", reasons };
 }
 
+/**
+ * One deterministic checklist entry derived from the current context.
+ * Codes are stable machine-readable identifiers; the UI localizes them
+ * (en/id) and falls back to the server's English text for unknown codes.
+ */
+export interface ChecklistEntry {
+  /** Stable machine-readable code, e.g. "RECEIPT_ABSENT". */
+  code: string;
+  /** fail = blocks review; warn = advisory. */
+  severity: "fail" | "warn";
+  /** Deterministic English explanation derived from the context. */
+  explanation: string;
+  /** Concrete example derived from the context. */
+  example: string;
+  /** What the author should do next. */
+  nextAction: string;
+  /** Machine-readable details (e.g. mismatched pin names). */
+  details: Record<string, string>;
+}
+
+/**
+ * Derive the DETERMINISTIC missing-data checklist from the SAME validated
+ * current context the route just read (NF-WF-050B fifth repair, GAP-119
+ * finding 4).
+ *
+ * The fresh receipt's protocol missingData is the deterministic assessment's
+ * own checklist. When the receipt is absent/stale/legacy, derive items from
+ * the current context instead of returning an empty list: absent/stale
+ * receipts, malformed standing and stale evidence are all actionable
+ * missing data. Existence alone never means "pass".
+ */
+export function deriveChecklist(
+  context: ScaleReviewContext,
+  receipt: { scaleReview: ScaleReviewProtocol | null } | null,
+  applicability: { status: "ABSENT" | "LEGACY" | "STALE" | "FRESH"; reasons: string[] },
+): ChecklistEntry[] {
+  // FRESH: the deterministic assessment's own missing-data list is the checklist.
+  if (applicability.status === "FRESH" && receipt?.scaleReview) {
+    const protocol = receipt.scaleReview;
+    return protocol.missingData.map((m) => ({
+      code: m.code,
+      severity: (protocol.blocking ? "fail" : "warn") as "fail" | "warn",
+      explanation: m.explanation,
+      example: m.example,
+      nextAction: m.nextAction,
+      details: { field: m.field, reason: m.reason },
+    }));
+  }
+  const items: ChecklistEntry[] = [];
+  // Receipt state.
+  if (!receipt) {
+    items.push({
+      code: "RECEIPT_ABSENT",
+      severity: "fail",
+      explanation: "No deterministic review receipt exists for the current chapter version.",
+      example: "Example: the author has never run a SCALE review for this saved version.",
+      nextAction: "Run the deterministic SCALE review for the current version.",
+      details: {},
+    });
+  } else if (!receipt.scaleReview) {
+    items.push({
+      code: "RECEIPT_LEGACY",
+      severity: "warn",
+      explanation:
+        "A review receipt exists but carries no SCALE protocol (pre-050B format or malformed); it is never trusted.",
+      example: "Example: a receipt written before the SCALE protocol was introduced.",
+      nextAction: "Re-run the deterministic SCALE review to produce a protocol receipt.",
+      details: {},
+    });
+  } else {
+    items.push({
+      code: "RECEIPT_STALE",
+      severity: "fail",
+      explanation: `The retained review receipt no longer matches the current context (mismatched: ${applicability.reasons.join(", ") || "unknown"}).`,
+      example:
+        "Example: evidence was appended after the review ran, so the receipt pins an older evidence set.",
+      nextAction: "Re-run the deterministic SCALE review against the current context.",
+      details: { reasons: applicability.reasons.join(",") },
+    });
+  }
+  // Standing state: existence alone never means "pass".
+  if (!context.policy) {
+    items.push({
+      code: "STANDING_ABSENT",
+      severity: "warn",
+      explanation: "No SCALE narrative policy is configured for this novel.",
+      example: "Example: a fresh novel with no standing policy yet.",
+      nextAction: "Ask an author with canon:manage to create the SCALE policy.",
+      details: {},
+    });
+  } else {
+    const standing = (context.policy.payload as { standing?: unknown } | null | undefined)?.standing;
+    if (!isValidScalePayload({ standing })) {
+      items.push({
+        code: "STANDING_MALFORMED",
+        severity: "fail",
+        explanation:
+          "The SCALE policy payload does not contain a valid standing triple (scale, access, reputation).",
+        example:
+          "Example: standing { scale: 'VILLAGE', access: [], reputation: 50 } is valid; { scale: 'UNKNOWN' } is not.",
+        nextAction: "Fix the standing payload through a STANDING_CHANGE proposal.",
+        details: {},
+      });
+    }
+  }
+  // Evidence state.
+  if (!context.latestSet) {
+    items.push({
+      code: "EVIDENCE_ABSENT",
+      severity: "warn",
+      explanation: "No SCALE evidence set exists for the current branch and chapter version.",
+      example: "Example: the author has not appended any evidence yet.",
+      nextAction: "Append a SCALE evidence set, or declare NO_OPERATIVE_CONFLICT.",
+      details: {},
+    });
+  } else if (context.latestSet.sourceRevisionId !== context.headRevisionId) {
+    items.push({
+      code: "EVIDENCE_STALE",
+      severity: "warn",
+      explanation: "The latest evidence set was assessed against an older head revision.",
+      example: "Example: the chapter was saved after the evidence set was appended.",
+      nextAction: "Append a fresh SCALE evidence set for the current head revision.",
+      details: {
+        setSourceRevisionId: context.latestSet.sourceRevisionId ?? "null",
+        headRevisionId: context.headRevisionId ?? "null",
+      },
+    });
+  }
+  return items;
+}
+
 export function registerScaleDecisionRoutes(
   app: FastifyInstance,
   deps: { db: NovelForgeDb; auth: AuthService; audit: import("@novelforge/ai-services").AuditService },
@@ -338,10 +470,7 @@ export function registerScaleDecisionRoutes(
             context,
             applicableException,
           );
-          const checklist =
-            applicability.status === "FRESH" && receipt?.scaleReview
-              ? receipt.scaleReview.missingData
-              : [];
+          const checklist = deriveChecklist(context, receipt, applicability);
 
           return {
             context: {

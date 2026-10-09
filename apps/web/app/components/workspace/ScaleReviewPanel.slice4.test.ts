@@ -58,6 +58,7 @@ const enDict: Record<string, string> = {
   "workspace.scaleReview.payload.reputationInvalid": "Reputation must be an integer 0–100.",
   "workspace.scaleReview.payload.claimsRequired": "Select at least one claim.",
   "workspace.scaleReview.payload.accessRequired": "Select at least one access scale.",
+  "workspace.scaleReview.payload.hardReasonRequired": "A hard reason is required for HARD standing changes.",
 };
 const idDict: Record<string, string> = {
   "workspace.scaleReview.title": "Tinjauan SCALE",
@@ -89,6 +90,7 @@ const idDict: Record<string, string> = {
   "workspace.scaleReview.payload.reputationInvalid": "Reputasi harus bilangan bulat 0–100.",
   "workspace.scaleReview.payload.claimsRequired": "Pilih setidaknya satu klaim.",
   "workspace.scaleReview.payload.accessRequired": "Pilih setidaknya satu skala akses.",
+  "workspace.scaleReview.payload.hardReasonRequired": "Alasan keras wajib diisi untuk perubahan standing HARD.",
 };
 
 let currentLocale = "en";
@@ -481,6 +483,7 @@ describe("ScaleReviewPanel Slice 4", () => {
     await wrapper.find('[data-testid="decision-action"]').setValue("ALTERNATIVE");
     await wrapper.find('[data-testid="alt-scale"]').setValue("EMPIRE");
     await wrapper.find('[data-testid="alt-reputation"]').setValue("90");
+    await wrapper.find('[data-testid="alt-hard-reason"]').setValue("Empire needs a reason");
     await wrapper.find('[data-testid="decision-reason"]').setValue("Counter-proposal: empire scope.");
     const decisionForm = wrapper.find('[data-testid="decision-form"]');
     await decisionForm.trigger("submit");
@@ -492,6 +495,7 @@ describe("ScaleReviewPanel Slice 4", () => {
     const altPayload = postedBody!.alternativePayload as Record<string, unknown>;
     expect(altPayload.standing).toMatchObject({ scale: "EMPIRE", reputation: 90 });
     expect(altPayload.hardness).toBe("HARD");
+    expect(altPayload.hardReason).toBe("Empire needs a reason");
     wrapper.unmount();
   });
 
@@ -559,5 +563,230 @@ describe("ScaleReviewPanel Slice 4", () => {
     } finally {
       idDict["workspace.scaleReview.payload.hardReasonLabel"] = saved;
     }
+  });
+
+  it("permits empty access:[] in the proposal form (frozen contract valid)", async () => {
+    let postedBody: Record<string, unknown> | null = null;
+    apiImpl = async (url: string, opts?: unknown) => {
+      const method = (opts as { method?: string } | undefined)?.method;
+      if (url.includes("scale-decisions") && method === "POST") {
+        postedBody = JSON.parse((opts as { body: string }).body) as Record<string, unknown>;
+        return { id: "proposal-1" };
+      }
+      if (url.includes("scale-review-context")) {
+        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+      }
+      if (url.includes("scale-evidence")) {
+        return { assessment: null, status: "UNASSESSED", staleReasons: [] };
+      }
+      if (url.includes("scale-decisions")) {
+        return { items: [], nextBeforeSequence: null };
+      }
+      return {};
+    };
+    const wrapper = mount(ScaleReviewPanel, { props: { ...mountProps } });
+    await flushPromises();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="proposal-kind"]').setValue("STANDING_CHANGE");
+    // Uncheck the default VILLAGE access -> empty access.
+    await wrapper.find('[data-testid="proposal-access-VILLAGE"]').setValue(false);
+    await wrapper.find('[data-testid="proposal-hardness"]').setValue("HARD");
+    await wrapper.find('[data-testid="proposal-hard-reason"]').setValue("No access needed");
+
+    const proposalForm = wrapper.find('[data-testid="proposal-form"]');
+    await proposalForm.find('[data-testid="proposal-reason"]').setValue("Withdrawing all access.");
+    await proposalForm.trigger("submit");
+    await flushPromises();
+    await flushPromises();
+
+    expect(postedBody).not.toBeNull();
+    const payload = postedBody!.payload as Record<string, unknown>;
+    const standing = payload.standing as Record<string, unknown>;
+    expect(standing.access).toEqual([]);
+    wrapper.unmount();
+  });
+
+  it("permits empty access:[] in the ALTERNATIVE decision form", async () => {
+    const proposal = {
+      id: "proposal-9",
+      sequence: 3,
+      kind: "STANDING_CHANGE",
+      reason: "Original reason",
+      outcome: null,
+    };
+    let postedBody: Record<string, unknown> | null = null;
+    apiImpl = async (url: string, opts?: unknown) => {
+      const method = (opts as { method?: string } | undefined)?.method;
+      if (url.includes("/decision") && method === "POST") {
+        postedBody = JSON.parse((opts as { body: string }).body) as Record<string, unknown>;
+        return { id: "outcome-1" };
+      }
+      if (url.includes("scale-review-context")) {
+        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+      }
+      if (url.includes("scale-evidence")) {
+        return { assessment: null, status: "UNASSESSED", staleReasons: [] };
+      }
+      if (url.includes("scale-decisions")) {
+        return { items: [proposal], nextBeforeSequence: null };
+      }
+      return {};
+    };
+    const wrapper = mount(ScaleReviewPanel, { props: { ...mountProps } });
+    await flushPromises();
+    await flushPromises();
+
+    const decideBtn = wrapper.findAll("button").find((b) => b.text() === "Decide");
+    await decideBtn!.trigger("click");
+    await flushPromises();
+
+    await wrapper.find('[data-testid="decision-action"]').setValue("ALTERNATIVE");
+    // Uncheck the default VILLAGE access -> empty access.
+    await wrapper.find('[data-testid="alt-access-VILLAGE"]').setValue(false);
+    await wrapper.find('[data-testid="alt-hardness"]').setValue("HARD");
+    await wrapper.find('[data-testid="alt-hard-reason"]').setValue("No access needed");
+    await wrapper.find('[data-testid="decision-reason"]').setValue("Counter-proposal: no access.");
+    const decisionForm = wrapper.find('[data-testid="decision-form"]');
+    await decisionForm.trigger("submit");
+    await flushPromises();
+    await flushPromises();
+
+    expect(postedBody).not.toBeNull();
+    const altPayload = postedBody!.alternativePayload as Record<string, unknown>;
+    const standing = altPayload.standing as Record<string, unknown>;
+    expect(standing.access).toEqual([]);
+    wrapper.unmount();
+  });
+
+  it("rejects HARD with blank hardReason in the proposal form (localized error)", async () => {
+    let posted = false;
+    apiImpl = async (url: string, opts?: unknown) => {
+      const method = (opts as { method?: string } | undefined)?.method;
+      if (url.includes("scale-decisions") && method === "POST") {
+        posted = true;
+        return { id: "proposal-1" };
+      }
+      if (url.includes("scale-review-context")) {
+        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+      }
+      if (url.includes("scale-evidence")) {
+        return { assessment: null, status: "UNASSESSED", staleReasons: [] };
+      }
+      if (url.includes("scale-decisions")) {
+        return { items: [], nextBeforeSequence: null };
+      }
+      return {};
+    };
+    const wrapper = mount(ScaleReviewPanel, { props: { ...mountProps } });
+    await flushPromises();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="proposal-kind"]').setValue("STANDING_CHANGE");
+    await wrapper.find('[data-testid="proposal-hardness"]').setValue("HARD");
+    // Leave hard reason blank (whitespace only).
+    await wrapper.find('[data-testid="proposal-hard-reason"]').setValue("   ");
+
+    const proposalForm = wrapper.find('[data-testid="proposal-form"]');
+    await proposalForm.find('[data-testid="proposal-reason"]').setValue("Trying without a reason.");
+    await proposalForm.trigger("submit");
+    await flushPromises();
+    await flushPromises();
+
+    // No POST; localized error shown.
+    expect(posted).toBe(false);
+    expect(wrapper.text()).toContain("A hard reason is required for HARD standing changes.");
+    wrapper.unmount();
+  });
+
+  it("rejects HARD with blank hardReason in the ALTERNATIVE form (localized error)", async () => {
+    const proposal = {
+      id: "proposal-9",
+      sequence: 3,
+      kind: "STANDING_CHANGE",
+      reason: "Original reason",
+      outcome: null,
+    };
+    let posted = false;
+    apiImpl = async (url: string, opts?: unknown) => {
+      const method = (opts as { method?: string } | undefined)?.method;
+      if (url.includes("/decision") && method === "POST") {
+        posted = true;
+        return { id: "outcome-1" };
+      }
+      if (url.includes("scale-review-context")) {
+        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+      }
+      if (url.includes("scale-evidence")) {
+        return { assessment: null, status: "UNASSESSED", staleReasons: [] };
+      }
+      if (url.includes("scale-decisions")) {
+        return { items: [proposal], nextBeforeSequence: null };
+      }
+      return {};
+    };
+    const wrapper = mount(ScaleReviewPanel, { props: { ...mountProps } });
+    await flushPromises();
+    await flushPromises();
+
+    const decideBtn = wrapper.findAll("button").find((b) => b.text() === "Decide");
+    await decideBtn!.trigger("click");
+    await flushPromises();
+
+    await wrapper.find('[data-testid="decision-action"]').setValue("ALTERNATIVE");
+    await wrapper.find('[data-testid="alt-hardness"]').setValue("HARD");
+    // Leave hard reason blank.
+    await wrapper.find('[data-testid="alt-hard-reason"]').setValue("");
+
+    await wrapper.find('[data-testid="decision-reason"]').setValue("Counter without reason.");
+    const decisionForm = wrapper.find('[data-testid="decision-form"]');
+    await decisionForm.trigger("submit");
+    await flushPromises();
+    await flushPromises();
+
+    expect(posted).toBe(false);
+    expect(wrapper.text()).toContain("A hard reason is required for HARD standing changes.");
+    wrapper.unmount();
+  });
+
+  it("permits SOFT with blank hardReason (existing behavior preserved)", async () => {
+    let postedBody: Record<string, unknown> | null = null;
+    apiImpl = async (url: string, opts?: unknown) => {
+      const method = (opts as { method?: string } | undefined)?.method;
+      if (url.includes("scale-decisions") && method === "POST") {
+        postedBody = JSON.parse((opts as { body: string }).body) as Record<string, unknown>;
+        return { id: "proposal-1" };
+      }
+      if (url.includes("scale-review-context")) {
+        return { context: makeContext(V1, R1, "VILLAGE", null), receipt: null };
+      }
+      if (url.includes("scale-evidence")) {
+        return { assessment: null, status: "UNASSESSED", staleReasons: [] };
+      }
+      if (url.includes("scale-decisions")) {
+        return { items: [], nextBeforeSequence: null };
+      }
+      return {};
+    };
+    const wrapper = mount(ScaleReviewPanel, { props: { ...mountProps } });
+    await flushPromises();
+    await flushPromises();
+
+    await wrapper.find('[data-testid="proposal-kind"]').setValue("STANDING_CHANGE");
+    await wrapper.find('[data-testid="proposal-hardness"]').setValue("SOFT");
+    // Leave hard reason blank — allowed for SOFT.
+    await wrapper.find('[data-testid="proposal-hard-reason"]').setValue("");
+
+    const proposalForm = wrapper.find('[data-testid="proposal-form"]');
+    await proposalForm.find('[data-testid="proposal-reason"]').setValue("Soft change.");
+    await proposalForm.trigger("submit");
+    await flushPromises();
+    await flushPromises();
+
+    expect(postedBody).not.toBeNull();
+    const payload = postedBody!.payload as Record<string, unknown>;
+    expect(payload.hardness).toBe("SOFT");
+    expect(payload.hardReason).toBeNull();
+    wrapper.unmount();
   });
 });

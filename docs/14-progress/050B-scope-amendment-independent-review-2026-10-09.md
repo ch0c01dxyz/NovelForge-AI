@@ -134,4 +134,11 @@ reviewed amendment proposal.
 **Provenance:** Created 2026-10-09 as the DISTINCT independent scope-amendment
 review for the NF-WF-050B fourth repair, separate from the Slice 2 implementer's
 amendment record and the Slice 3 implementer. Does not modify
-`050B-scope-amendment-review-2026-10-09.md`. Not committed (per instructions).
+`050B-scope-amendment-review-2026-10-09.md`.
+
+**Correction (2026-10-09, fifth repair):** An earlier version of this record
+ended "Not committed (per instructions)." That was accurate at writing time
+(the review was delivered uncommitted per the implementer's instructions) but
+became stale when the file was committed in `8ccb504` ("fix(scale): fourth
+repair of NF-WF-050B against e6b6305 review findings"). The file IS committed.
+Historical provenance preserved; the amendments remain PROPOSED, not approved.

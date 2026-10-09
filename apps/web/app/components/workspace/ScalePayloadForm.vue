@@ -76,14 +76,17 @@ function buildPayload(): { payload: unknown; error: string | null } {
     if (!NARRATIVE_SCALES.includes(standingScale.value as (typeof NARRATIVE_SCALES)[number])) {
       return { payload: null, error: t("workspace.scaleReview.errors.invalid") };
     }
-    if (accessScales.value.length === 0) {
-      return { payload: null, error: t("workspace.scaleReview.payload.accessRequired") };
-    }
+    // The frozen contract permits access:[] (empty access is valid standing).
     const rep = Number(reputation.value);
     if (!Number.isInteger(rep) || rep < 0 || rep > 100) {
       return { payload: null, error: t("workspace.scaleReview.payload.reputationInvalid") };
     }
     const trimmedReason = hardReason.value.trim();
+    // HARD requires a nonblank reason (matches NarrativePolicy_hard_requires_reason).
+    // SOFT permits a blank reason.
+    if (hardness.value === "HARD" && trimmedReason.length === 0) {
+      return { payload: null, error: t("workspace.scaleReview.payload.hardReasonRequired") };
+    }
     return {
       payload: {
         standing: {

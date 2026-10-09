@@ -387,7 +387,7 @@ describe("scale-review-context coherence", () => {
     }
   });
 
-  it("returns server-derived applicability ABSENT and an empty checklist with no receipt", async () => {
+  it("returns server-derived applicability ABSENT and a derived checklist with no receipt", async () => {
     const f = await seedFixture();
     const app = await buildTestApp(f.userId);
     try {
@@ -399,7 +399,16 @@ describe("scale-review-context coherence", () => {
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body.applicability.status).toBe("ABSENT");
-      expect(body.checklist).toEqual([]);
+      // GAP-119 fifth repair: the checklist is derived from the current
+      // context even when the receipt is absent — never an empty list.
+      // Fixture has a valid policy but no evidence set.
+      const codes = body.checklist.map((i: { code: string }) => i.code);
+      expect(codes).toEqual(["RECEIPT_ABSENT", "EVIDENCE_ABSENT"]);
+      for (const item of body.checklist) {
+        expect(item.explanation.trim().length).toBeGreaterThan(0);
+        expect(item.example.trim().length).toBeGreaterThan(0);
+        expect(item.nextAction.trim().length).toBeGreaterThan(0);
+      }
     } finally {
       await app.close();
     }
@@ -510,7 +519,17 @@ describe("scale-review-context coherence", () => {
       const body = res.json();
       expect(body.applicability.status).toBe("STALE");
       expect(body.applicability.reasons).toContain("sourceRevisionId");
-      expect(body.checklist).toEqual([]);
+      // GAP-119 fifth repair: the checklist is derived from the current
+      // context even when the receipt is stale — never an empty list.
+      const codes = body.checklist.map((i: { code: string }) => i.code);
+      expect(codes).toContain("RECEIPT_STALE");
+      const stale = body.checklist.find((i: { code: string }) => i.code === "RECEIPT_STALE");
+      expect(stale.details.reasons).toContain("sourceRevisionId");
+      for (const item of body.checklist) {
+        expect(item.explanation.trim().length).toBeGreaterThan(0);
+        expect(item.example.trim().length).toBeGreaterThan(0);
+        expect(item.nextAction.trim().length).toBeGreaterThan(0);
+      }
     } finally {
       await app.close();
     }

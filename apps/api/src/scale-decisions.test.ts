@@ -599,6 +599,104 @@ describe("createProposal", () => {
 
     expect(await db.scaleDecisionProposal.count()).toBe(0);
   });
+
+  it("HARD standing change with null hardReason is refused with 400 and zero writes", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+
+    const proposalsBefore = await db.scaleDecisionProposal.count();
+    const policiesBefore = await db.narrativePolicy.count();
+    const revisionsBefore = await db.revision.count();
+    const checkpointsBefore = await db.checkpoint.count();
+    const auditsBefore = await db.auditLog.count();
+
+    await expect(
+      svc.createProposal({
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        chapterId: f.chapterId,
+        chapterVersionId: f.chapterVersionId,
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: f.headRevisionId,
+        expectedSetId: null,
+        expectedDecisionId: null,
+        expectedPolicyFingerprint: f.policyFingerprint,
+        kind: "STANDING_CHANGE",
+        payload: {
+          standing: { scale: "TOWN", access: ["VILLAGE"], reputation: 60 },
+          hardness: "HARD",
+          hardReason: null,
+        },
+        reason: "HARD without reason",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+
+    expect(await db.scaleDecisionProposal.count()).toBe(proposalsBefore);
+    expect(await db.narrativePolicy.count()).toBe(policiesBefore);
+    expect(await db.revision.count()).toBe(revisionsBefore);
+    expect(await db.checkpoint.count()).toBe(checkpointsBefore);
+    expect(await db.auditLog.count()).toBe(auditsBefore);
+  });
+
+  it("HARD standing change with blank hardReason is refused with 400 and zero writes", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+
+    const proposalsBefore = await db.scaleDecisionProposal.count();
+
+    await expect(
+      svc.createProposal({
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        chapterId: f.chapterId,
+        chapterVersionId: f.chapterVersionId,
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: f.headRevisionId,
+        expectedSetId: null,
+        expectedDecisionId: null,
+        expectedPolicyFingerprint: f.policyFingerprint,
+        kind: "STANDING_CHANGE",
+        payload: {
+          standing: { scale: "TOWN", access: [], reputation: 60 },
+          hardness: "HARD",
+          hardReason: "   ",
+        },
+        reason: "HARD with whitespace reason",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+
+    expect(await db.scaleDecisionProposal.count()).toBe(proposalsBefore);
+  });
+
+  it("SOFT standing change with null hardReason is accepted (existing behavior)", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+
+    const result = await svc.createProposal({
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      chapterId: f.chapterId,
+      chapterVersionId: f.chapterVersionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
+      kind: "STANDING_CHANGE",
+      payload: {
+        standing: { scale: "TOWN", access: [], reputation: 60 },
+        hardness: "SOFT",
+        hardReason: null,
+      },
+      reason: "soft change without reason",
+    });
+
+    expect(result.proposal.id).toBeDefined();
+    expect(await db.scaleDecisionProposal.count()).toBe(1);
+  });
 });
 
 describe("decideProposal", () => {
@@ -889,6 +987,57 @@ describe("decideProposal", () => {
     ).rejects.toMatchObject({ code: "INVALID_INPUT" });
 
     expect(await db.scaleDecisionOutcome.count()).toBe(0);
+  });
+
+  it("ALTERNATIVE with HARD blank hardReason is 400 with zero writes", async () => {
+    const f = await seedFixture();
+    const svc = createScaleDecisionServices({ db, audit: createAuditService(db) });
+    // Create a STANDING_CHANGE proposal (valid).
+    const proposalResult = await svc.createProposal({
+      actorUserId: f.userId,
+      workspaceId: f.workspaceId,
+      novelId: f.novelId,
+      chapterId: f.chapterId,
+      chapterVersionId: f.chapterVersionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      expectedDecisionId: null,
+      expectedPolicyFingerprint: f.policyFingerprint,
+      kind: "STANDING_CHANGE",
+      payload: validStandingChangePayload(),
+      reason: "standing change for alternative test",
+    });
+    const proposal = proposalResult.proposal;
+
+    const outcomesBefore = await db.scaleDecisionOutcome.count();
+    const proposalsBefore = await db.scaleDecisionProposal.count();
+
+    await expect(
+      svc.decideProposal({
+        chapterId: f.chapterId,
+        actorUserId: f.userId,
+        workspaceId: f.workspaceId,
+        novelId: f.novelId,
+        proposalId: proposal.id,
+        action: "ALTERNATIVE",
+        reason: "alternative without hard reason",
+        alternativePayload: {
+          standing: { scale: "CITY", access: [], reputation: 70 },
+          hardness: "HARD",
+          hardReason: null,
+        },
+        expectedBranchId: f.branchId,
+        expectedHeadRevisionId: f.headRevisionId,
+        expectedDecisionId: null,
+        expectedPolicyFingerprint: f.policyFingerprint,
+        expectedVersionId: f.chapterVersionId,
+        expectedSetId: null,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_INPUT" });
+
+    expect(await db.scaleDecisionOutcome.count()).toBe(outcomesBefore);
+    expect(await db.scaleDecisionProposal.count()).toBe(proposalsBefore);
   });
 
   it("decision on foreign proposal is 404", async () => {

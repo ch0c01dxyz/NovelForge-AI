@@ -3281,6 +3281,20 @@ authentication fails for all test-database connections. Redis is up (PONG).
 repo `.env` (`test_password_123`), via OS-peer auth as `postgres`.
 Working data unaffected (disposable test databases only).
 
+### GAP-108 recurrence (11th) — 2026-10-09 ~13:41 WIB
+
+VM rebooted (uptime 5 min at 13:41 WIB). PostgreSQL and Redis are
+completely absent from the filesystem: `pg_isready`/`psql`/`redis-cli`
+not found; `/usr/lib/postgresql/` absent; dpkg entries gone. This is a
+full package loss, not just a role loss (10th recurrence was role-only).
+
+**Impact:** No database-backed tests can run until PostgreSQL 16 +
+pgvector and Redis are reinstalled from scratch.
+**Recovery:** reinstall postgresql-16 + postgresql-16-pgvector + redis
+via apt (os-intent replay holds the apt lock; wait or use manual install),
+recreate `novelforge_test` SUPERUSER with repo `.env` password, start both
+services. Working data unaffected (disposable test databases only).
+
 ### GAP-119 fourth repair re-review — 2026-10-09, 8ccb504
 
 **Status:** OPEN; overall CHANGES REQUESTED. Exact submitted revision:
@@ -3360,3 +3374,13 @@ and generated client restored. No implementation merge, commit or push. GAP-039
 and GAP-119 remain OPEN. Next: repair all six boundaries, preserve accepted
 repairs and obtain separate review of the next exact submitted revision. Engram
 attributed writes remain unavailable (GAP-021); CURRENT is the fallback handoff.
+
+### /tmp full (100%) during fifth repair Slice 2 — 2026-10-09 ~13:20 WIB
+
+`/tmp` (512M tmpfs) reached 100% usage during parallel vitest runs of the
+ScaleReviewPanel suites. Symptom: `ENOENT` on Vite SFC transform temp files
+when multiple component test files run in one vitest invocation; each file
+passes in isolation. Root cause is environmental (tmpfs exhaustion), not a
+product defect. Workaround: run component suites with `TMPDIR` pointed at a
+directory on the main filesystem. Do not delete /tmp contents while sibling
+implementers may be running. Owner: NF-WF-050B Slice 2 (fifth repair).

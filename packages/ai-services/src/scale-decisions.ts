@@ -342,7 +342,13 @@ function isValidStandingChangePayload(payload: unknown): boolean {
   // Must contain complete standing + hardness/hardReason
   if (!isValidScalePayload({ standing: p.standing })) return false;
   if (p.hardness !== "HARD" && p.hardness !== "SOFT") return false;
-  if (p.hardReason !== null && typeof p.hardReason !== "string") return false;
+  if (p.hardness === "HARD") {
+    // HARD requires a nonblank reason (matches NarrativePolicy_hard_requires_reason).
+    // Reject here with 400 before persistence instead of hitting the DB CHECK.
+    if (typeof p.hardReason !== "string" || p.hardReason.trim().length === 0) return false;
+  } else if (p.hardReason !== null && typeof p.hardReason !== "string") {
+    return false;
+  }
   // Reject unknown fields
   const allowed = new Set(["standing", "hardness", "hardReason"]);
   for (const key of Object.keys(p)) {

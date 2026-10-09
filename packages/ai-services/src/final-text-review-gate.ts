@@ -246,6 +246,44 @@ export function isProtocolLiveConsistent(
 }
 
 /**
+ * Validate retained SCALE state against ACTUAL live policy/evidence semantics
+ * (fail closed).
+ *
+ * Internal schema validity and matching pins are insufficient: a retained
+ * protocol can be schema-valid with verbatim-matching pins yet claim a state
+ * the live context contradicts (stale or fabricated proof). The producer
+ * (`assessScaleDeterministic`) can only emit:
+ * - NOT_CONFIGURED when no SCALE policy is configured, and
+ * - NO_OPERATIVE_CONFLICT when the live evidence set declares
+ *   NO_OPERATIVE_CONFLICT.
+ * A retained proof contradicting either live fact is never trusted.
+ */
+export function isProtocolLiveStateConsistent(
+  protocol: ScaleReviewProtocol,
+  live: {
+    /** True when a SCALE policy row is currently configured. */
+    policyConfigured: boolean;
+    /** Declaration of the live latest evidence set; null when none exists. */
+    evidenceDeclaration: "CONFLICTS" | "NO_OPERATIVE_CONFLICT" | null;
+  },
+): boolean {
+  // NOT_CONFIGURED proof with a configured live policy: the proof no longer
+  // describes reality (policy configured after review, or fabricated).
+  if (protocol.state === "NOT_CONFIGURED" && live.policyConfigured) {
+    return false;
+  }
+  // NO_OPERATIVE_CONFLICT proof requires a live NO_OPERATIVE_CONFLICT
+  // declaration. A CONFLICTS (or absent) live set contradicts the proof.
+  if (
+    protocol.state === "NO_OPERATIVE_CONFLICT" &&
+    live.evidenceDeclaration !== "NO_OPERATIVE_CONFLICT"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Check the final-text review gate transactionally.
  *
  * The caller must hold: novel NO KEY UPDATE → branch UPDATE → chapter UPDATE.
@@ -367,6 +405,18 @@ export async function checkFinalTextReviewGate(
     ? (context.policy.hardness as "HARD" | "SOFT")
     : null;
   if (!isProtocolLiveConsistent(protocol, liveHardness)) {
+    return { ok: false, code: "REVIEW_STALE" };
+  }
+  // GAP-119: retained state vs live policy/evidence semantics (fail closed).
+  // A schema-valid, pin-matching NOT_CONFIGURED proof under a configured
+  // policy, or NO_OPERATIVE_CONFLICT proof against a CONFLICTS live
+  // declaration, is stale or fabricated — never pass.
+  if (
+    !isProtocolLiveStateConsistent(protocol, {
+      policyConfigured: context.policy !== null,
+      evidenceDeclaration: context.latestSet?.declaration ?? null,
+    })
+  ) {
     return { ok: false, code: "REVIEW_STALE" };
   }
   if (protocol.state === "INCOMPLETE" && protocol.blocking) {

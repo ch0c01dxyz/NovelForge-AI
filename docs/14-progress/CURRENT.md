@@ -1,5 +1,39 @@
 # Current Project State
 
+## External 050B ninth repair re-review — 2026-10-09, f0cd711
+
+Both independent reviewers APPROVE exact source
+f0cd71123dca62883fc4981b82fe9401cf0e2a69; no remaining source blocker found in
+the assigned paths. Malformed non-null proof now fails closed in gate/context;
+genuine historical-null handling stays separate. Amendments21/22 and worker20
+actual-byte receipts match submitted hashes. Main remainsb622607; no merge.
+
+Overall acceptance still requests changes: expanded required UI checks expose
+two stale NarrativePanel fixtures. The suite expects four tabs and selects
+Readouts at index3; SCALE adds a fifth tab and moves Readouts. Select Readouts
+by label, assert SCALE reachability and preserve drama payload/result checks.
+Update the stale four-tab/no-SCALE header comment too. These are already allowed
+paths. Reviewer verified unchanged drama handler/template against main; no
+production drama regression is claimed. GAP-119 records exact failure evidence.
+
+Fresh resumed verification:17 backend/domain/worker suites146/146 pass; isolated
+migration2/2 pass with120s timeout. Expanded UI9 suites: initial run selects no
+tests due nine fork-worker startup timeouts; --maxWorkers1 retry runs71 tests,
+69 pass and2 stale fixtures fail. All four package typechecks, Prisma
+generate/validate, explicit two-path production ESLint and submitted whitespace
+pass. UI remains mock/jsdom with canvas warnings. No all-green UI or full050B
+completion is claimed. Other broad DB regression targets already exist with
+unverified ownership; they were not reset. Browser/queue acceptance stays separate.
+
+Fourteen current owned scratch names were absent before resumed tests (the
+interrupted owned migration scratch was first dropped), and final absence
+verified after cleanup. Existing unrelated databases preserved; tracked migrations
+unchanged; main/client restored. Earlier EPERM did not recur; no harness repair
+claimed. GAP-039/GAP-119 stay OPEN pending fixture repair and frozen acceptance.
+Login interruption lost process handles; fresh runs supply this evidence.
+Engram attribution unavailable (GAP-021); this is the fallback handoff. No
+commit/push or implementation merge performed in this review.
+
 ## External 050B eighth repair re-review — 2026-10-09, 97da59c
 
 CHANGES REQUESTED by both separate reviewers on exact

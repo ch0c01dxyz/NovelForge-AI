@@ -1,5 +1,40 @@
 # Current Project State
 
+## External 050B sixth repair re-review — 2026-10-09, 64168cd
+
+CHANGES REQUESTED on64168cdba61cbe5c72f57739c0bf458d6c492028.
+review_mutations_034 verifies the three previous repairs but finds malformed
+retained exception coverage is still trusted. review_recovery_034 approves
+assigned recovery source pending fresh checks. Main remains829613d; no merge.
+Complete protocol recomputation is shared by gate/context, normal successful
+review now refreshes coherent context, and actual status routes/save race and
+scheduled worker function have new acceptance tests. Recovery/CAS remains intact.
+
+GAP-119 records one remaining source blocker: an approved historical exception
+with duplicate claimIndices:[0,0] can supply coverage because both writer and
+gate resolver only check integer arrays. Use one strictly validated resolver
+for producer/gate/context and reject malformed provenance/coverage. This is
+source tracing of corrupted retained data, not an observed normal API exploit.
+The worker-test amendment hash differs from the submitted blob; annotate and
+re-review actual bytes. Immediate publication and configured-SCALE worker
+positive acceptance remain unevidenced in these new suites.
+
+Fresh local checks:123/123 backend/domain/migration tests and38/38 component/axe
+tests pass without skips. ai-services/API/worker/web typechecks, Prisma
+generate/validate and submitted diff whitespace pass. Explicit six-path ESLint
+run has no errors, but ignores ScaleReviewPanel.vue with a configuration warning;
+this is not Vue lint proof. UI remains mock/jsdom with canvas warnings. Worker
+tests execute fireScheduledPublication directly, without Redis/BullMQ delivery.
+No live browser workflow or immediate publication proof is claimed.
+
+All nine scratch database names were absent before tests, disconnected and
+dropped (one suite self-cleans); final absence verified. Tracked migrations
+unchanged; main/client restored. GAP-039/GAP-119 remain OPEN. Next: validated
+retained exception resolver, caller positives/remaining frozen acceptance and
+correct exact scope receipt, followed by separate review. Engram attribution
+remains unavailable (GAP-021); this is the fallback handoff, not an Engram save.
+No commit/push or implementation merge performed in this review.
+
 ## External 050B fifth repair re-review — 2026-10-09, 33db685
 
 CHANGES REQUESTED on exact33db68512d786273c5ce6c368346162fe25d48b4.

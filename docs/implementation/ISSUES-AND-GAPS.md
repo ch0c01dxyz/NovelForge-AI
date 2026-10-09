@@ -3835,6 +3835,16 @@ unavailable (GAP-021); CURRENT is the fallback handoff.
 
 ### GAP-108 recurrence (12th) — 2026-10-09 ~15:50 WIB
 
+### GAP-108 recurrence (13th) — 2026-10-09 ~18:20 WIB
+
+VM rebooted (PG not responding, Redis connection refused at session start
+of the NF-WF-050B eleventh repair). PostgreSQL 16 package present in dpkg
+but cluster stopped; redis package absent. **Impact:** DB-backed checks
+(API suites, migration suites) and worker tests BLOCKED until recovered.
+**Recovery:** start PG cluster (or reinstall if data dir lost), reinstall
+redis via apt, recreate `novelforge_test` SUPERUSER with repo `.env`
+password, verify pg_isready + PONG. Recorded before workaround.
+
 VM rebooted (uptime 0.02 hours at 15:50 WIB — host replaced/reset during
 the NF-WF-050B eighth repair final checks). PostgreSQL 16 and Redis are
 completely absent from the filesystem: `psql`/`pg_isready`/`redis-cli`

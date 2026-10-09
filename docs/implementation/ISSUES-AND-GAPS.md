@@ -3399,6 +3399,72 @@ dropped after the run; `pg_database` verified to match the pre-run list
 no temp dirs left behind. The transient test-role password was wiped
 (`/tmp/nf_test_pw` removed).
 
+**Eleventh-repair annotations (2026-10-09) — corrections to this entry.
+Historical evidence above is preserved verbatim; these annotations
+supersede specific interpretations and correct factual claims:**
+
+- **SUPERSEDED — proposed nonempty-access enforcement:** the sentence
+  "Fixing either requires a bounded, separately reviewed change
+  (validator non-empty-access enforcement and/or
+  status-change/head-pinning semantics) — proposed for author decision,
+  not implemented" is retracted. `access:[]` is VALID under task119 and
+  ADR-0016; the fixture's malformed case was incorrectly classified and
+  is replaced (eleventh repair, Items 1–2) with genuinely invalid data
+  (unknown scale, non-array access). No production validator change is
+  needed or proposed. **Do NOT enforce nonempty access or weaken
+  production validators.**
+- **SUPERSEDED — escalated status/head semantics:** the framing of
+  failure 2 as "a product-semantics question for the author" is
+  retracted. task176–179 already requires fresh assessment/review after
+  head-changing status actions; no new author decision was needed. The
+  intended flow is review → IN_REVIEW → fresh review → PUBLISHED (and
+  unpublish → IN_REVIEW → fresh review → FAIL injection → republish →
+  HARD_POLICY_VIOLATION for the negative). The eleventh repair corrects
+  the fixtures accordingly without changing production semantics — no
+  repinning of old proof, no exemption of status changes from freshness.
+- **CORRECTION — narrative.ts did change during repairs 2–10:** the
+  claim "none of the involved files ... changed in repairs 2–10" is
+  incorrect for `packages/ai-services/src/narrative.ts`. Verified via
+  `git show --stat`: repair 2 (`761ce1d`) changed it (102 lines),
+  repair 3 (`e6b6305`) changed it (52 lines), repair 4 (`8ccb504`)
+  changed it (47 lines) — pin-threading refactors. Qualification:
+  `isValidScalePayload` and `putScalePolicy` are byte-identical between
+  `709ba66` and `f0cd711` (verified by extraction), so the failure-1
+  mechanism is pre-existing since `709ba66` as stated; only the
+  file-level claim was imprecise.
+- **CORRECTION — exception-strict count:** the entry records
+  "exception-strict 7", but `apps/api/src/scale-exception-strict.test.ts`
+  contains **8** active `it(` blocks (0 `it.skip`/`it.only`, verified;
+  the file is unchanged since `f0cd711`, so the count applies to the
+  acceptance run). Corrected per-file counts (reproduced from the
+  working tree): no-scale-receipt 5, exception-workspace 3,
+  exception-strict **8**, gate-publish 4, proof-completeness 5,
+  review-checklist 12, review-context 5, ctx-gate-agreement 2,
+  gate-callers 4, gate-live-semantics 4, policy-direct 4,
+  evidence-migration 2 → total **58**. The aggregate 58/58 stands.
+- **Exact commands:** the acceptance actor did not record the literal
+  command lines in this entry; they cannot be reproduced here and are
+  not invented. The per-file selected counts above are independently
+  reproduced from the working tree (byte-unchanged since `f0cd711`)
+  and reconcile with the recorded aggregate totals.
+- **CLARIFICATION — database recreation:** the "untouched" wording for
+  pre-existing scale-* DBs is corrected. The five regression DBs
+  (manuscript/phase9/publication/stateconsumers/publication_worker) did
+  not exist on this host, were created fresh (owned by
+  `novelforge_test`), and were dropped after the run — `pg_database`
+  matched the pre-run list exactly. The pre-existing scale-* DBs were
+  dropped and recreated by their own test suites during the run (their
+  `DROP IF EXISTS + CREATE` harness); they were NOT "untouched" — they
+  were recreated, and their contents were disposable scratch, so no
+  user data was affected.
+- **Host separation:** the DB-absence observation above applies to THIS
+  Ubuntu host only. Prior Windows-host observations (EPERM/timeouts,
+  harness behavior) are separate and are not conflated with this host's
+  results.
+
+Engram attribution unavailable (GAP-021); this annotation is the
+file-based handoff, no session ID invented.
+
 ### GAP-119 eighth repair re-review — 2026-10-09, 97da59c
 
 **Status:** OPEN; CHANGES REQUESTED by review_mutations_034 and

@@ -3112,6 +3112,67 @@ or push. GAP-119/GAP-039 remain OPEN. Next: repair all findings with boundary
 regressions, then separately review the exact new revision. Engram attribution
 unavailable (GAP-021); CURRENT is the fallback handoff.
 
+### GAP-119 ninth repair re-review — 2026-10-09, f0cd711
+
+**Source verdict:** APPROVE by review_mutations_034 and review_recovery_034 on
+f0cd71123dca62883fc4981b82fe9401cf0e2a69; baseline/mainb622607.
+**Acceptance status:** OPEN; required expanded UI regressions still fail.
+**Owner:** NF-WF-050B implementer; separate exact-diff verification after repair.
+
+Verified source repairs: malformed non-null proof returns REVIEW_STALE before
+legacy compatibility; context retains raw proof and reports STALE/failing
+checklist. The real-caller negative verifies matching-head/no-SCALE PASS cannot
+release malformed proof and corrupt history remains preserved. Actual historical
+null and pinned valid protocols retain intended behavior. Scope21/22 and worker20
+actual-byte receipts all match submitted Git blobs. No source blocker found in
+assigned paths; prior recovery/CAS/authorization/strict-workspace checks preserved.
+
+Remaining required UI regressions (already allowed paths):
+
+- workspace-research-narrative-health.test.ts455 expects four tabs; intentional
+  SCALE integration makes five. Lines456/466 click index3, now SCALE, rather
+  than Readouts; the drama test then accesses a nonexistent numeric input.
+  Actual retry failures: expected length4, received5; setValue on undefined.
+  Reviewer traced NarrativePanel drama handler/template unchanged against main.
+  Repair fixtures to select Readouts by accessible label instead of index; assert
+  all five expected tabs and SCALE reachability. Preserve existing drama request
+  payload/result assertions; do not merely remove failing checks.
+- NarrativePanel.vue header5–9 still describes four tabs/no SCALE assessment.
+  Update the comment to the actual integrated surface. No new source path or
+  scope amendment is necessary for these two allowed files. Rerun the required
+  combined UI suite and separately review the exact test/comment diff.
+
+Resumed host verification and evidence boundaries:
+
+- Login refresh invalidated old process handles; no unseen completion results
+  were inferred. Fresh17 selected backend/domain/worker suites146/146 pass;
+  isolated migration2/2 pass with --testTimeout120000. No skips.
+- Expanded nine-suite UI run initially selected no tests and reported nine
+  fork-worker response timeouts. That startup failure was recorded here before
+  the workaround. --maxWorkers1 retry completes71 tests:69 pass,2 stale fixtures
+  fail, with no startup errors. Worker-startup failure is not an assertion
+  regression; the subsequent actual failures are reported above. Do not claim
+  all-green UI acceptance or full050B completion.
+- ai-services/API/worker/web typechecks, Prisma generate/validate, ESLint on
+  changed gate/routes production paths and submitted diff whitespace pass.
+  Canvas warnings occur in jsdom. No live browser or BullMQ delivery performed.
+- Other required broad API/worker regression database names already existed:
+  novelforge_test_manuscript, novelforge_test_phase9, novelforge_test_publication,
+  novelforge_test_stateconsumers and novelforge_test_publication_worker. Their
+  current ownership was unverified; tests that drop/recreate them were not run.
+  Preserve those databases and establish safe disposable targets before full
+  frozen acceptance. This source approval does not waive required acceptance.
+
+The interrupted owned migration scratch had no connections/processes and was
+dropped before rerun; all fourteen current owned targets were otherwise absent
+before tests. They were disconnected/dropped after checks and final absence
+verified; unrelated existing databases preserved. Tracked migration tree
+unchanged; main/client restored. Prior EPERM did not recur; unchanged harness
+means no permanent Windows cleanup repair is claimed. No implementation merge,
+commit or push. GAP-039/GAP-119 remain OPEN. Next: repair the two stale fixtures
+and comment, complete safe frozen regression checks, and separately verify the
+exact diff. Engram attribution unavailable (GAP-021); CURRENT is fallback handoff.
+
 ### GAP-119 eighth repair re-review — 2026-10-09, 97da59c
 
 **Status:** OPEN; CHANGES REQUESTED by review_mutations_034 and

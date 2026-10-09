@@ -3196,6 +3196,63 @@ or push. GAP-119/GAP-039 remain OPEN. Next: repair all findings with boundary
 regressions, then separately review the exact new revision. Engram attribution
 unavailable (GAP-021); CURRENT is the fallback handoff.
 
+### GAP-119 eighth repair re-review — 2026-10-09, 97da59c
+
+**Status:** OPEN; CHANGES REQUESTED by review_mutations_034 and
+review_recovery_034 on97da59c1e4c5497f0329d4f9c22de837e54289d0.
+**Owner:** NF-WF-050B implementer; baseline/mainaf9450c.
+
+Verified repairs: new no-SCALE reviews emit pinned NOT_CONFIGURED instead of
+null, context-read errors propagate, and proposal/outcome workspace IDs match
+the authorized workspace in the shared exception resolver. New real-caller
+and retained-history regressions cover those findings. Genuine null legacy
+receipts also check head revision. Recovery locks/audits/CAS/restore proofs and
+previous producer/gate/context completeness repairs remain preserved.
+
+Remaining source blocker (P2):
+
+- final-text-review-gate.ts697–710 conflates invalid non-null JSON with a
+  genuinely null historical protocol. parseScaleReviewProtocol returns null
+  for malformed proof; with no SCALE rows and same-head PASS, legacy handling
+  approves it. This is source-traced corrupted retained-data behavior, not an
+  executed API exploit. Reserve legacy compatibility for receipt.scaleReview
+  === null; reject non-null parse failures as REVIEW_STALE before compatibility.
+  Add real-caller negatives for malformed non-null proof with no SCALE rows and
+  current matching head, plus valid pinned and genuine historical-null controls.
+  Preserve normal verdict, tenant, head and complete protocol checks.
+
+Scope/handoff requirements:
+
+- Add bounded exact-path amendments for scale-no-scale-receipt.test.ts and
+  scale-exception-workspace.test.ts; existing records stop at amendment20.
+  Obtain separate review with exact input hashes; do not introduce another
+  unregistered test file while fixing the boundary. Existing test paths may be
+  reused for the requested negative proof.
+- Amendment20's recorded hash in the18–20 report is
+  a009dd2c1d51d7ae4a57fd98d68fdb46df6c80a82b0b9044d60d25f5d82491ea;
+  actual submitted scale-gate-fire-scale.test.ts blob hash is
+  bdb4f5015a66cef857d07826cc4c47c491262e0e4dc8f6bc15ff320db7b90d9e.
+  Amendments18/19 match. Preserve/annotate the previous reviewed bytes and
+  separately review the actual changed worker artifact (workspace argument was
+  added); do not claim an old exact-artifact receipt covers changed bytes.
+
+Fresh local checks:17 backend/domain/worker suites144/144 pass; isolated
+migration suite2/2 pass using --testTimeout120000, no skips. UI38/38 across6
+component/axe suites pass. ai-services/API/worker/web typechecks, Prisma
+generate/validate, ESLint on gate/routes/final-review production paths and
+submitted diff whitespace pass. Prior EPERM/timeouts did not recur on this
+isolated run; harness source is unchanged, so no Windows portability repair is
+claimed. Canvas warnings occur in jsdom. No live browser, queue delivery or
+production deployment performed. Retain full frozen acceptance before closure.
+
+Fourteen scratch names were absent before tests; final absence verified after
+cleanup (proof-completeness/workspace suites self-clean). Tracked migrations
+unchanged; main/client restored. External Ubuntu service-loss claims remain
+GAP-108 and are not current Windows readiness evidence. No implementation merge,
+commit or push. GAP-039/GAP-119 stay OPEN. Next: one malformed-proof boundary fix,
+scope/hash regularization, fresh negative proof and exact-diff separate review.
+Engram attribution unavailable (GAP-021); CURRENT is the fallback handoff.
+
 ### GAP-119 seventh repair re-review — 2026-10-09, 88883c4
 
 **Status:** OPEN; CHANGES REQUESTED by review_mutations_034 and

@@ -1,5 +1,33 @@
 # Current Project State
 
+## External 050B eighth repair re-review — 2026-10-09, 97da59c
+
+CHANGES REQUESTED by both separate reviewers on exact
+97da59c1e4c5497f0329d4f9c22de837e54289d0. Main remainsaf9450c; no merge.
+New no-SCALE reviews now emit pinned NOT_CONFIGURED; context errors propagate.
+Both proposal/outcome workspace fields are validated. Historical null receipt
+head checks and recovery/CAS remain intact. Remaining source issue: malformed
+non-null proof parses to null and can enter legacy approval when no SCALE rows
+exist. Reserve legacy compatibility for actually null stored proof; reject
+non-null parse failure as REVIEW_STALE. GAP-119 records regression and scope
+requirements, including two new test paths and a changed worker review hash.
+
+Fresh local:17 selected backend/domain/worker suites144/144 pass; isolated
+migration2/2 pass with --testTimeout120000; UI38/38 pass. All four package
+typechecks, Prisma generate/validate, explicit three-path production ESLint and
+submitted diff whitespace pass. Prior Windows EPERM did not recur; the migration
+harness is unchanged, so this is a passing run, not proof of a portability fix.
+UI remains mock/jsdom with canvas warnings; workers use direct fire calls,
+without BullMQ delivery. No live browser workflow or deployment performed.
+
+Fourteen scratch database names were absent before tests and finally absent
+after cleanup (two suites self-clean). Tracked migrations unchanged; main/client
+restored. External Ubuntu service-loss evidence is GAP-108, not this host's
+readiness. GAP-039/GAP-119 remain OPEN. Next: malformed/non-null boundary fix,
+exact scope/hash regularization and separate review. Engram attributed writes
+remain unavailable (GAP-021); CURRENT is the fallback handoff. No commit/push
+or implementation merge performed in this review.
+
 ## External 050B seventh repair re-review — 2026-10-09, 88883c4
 
 CHANGES REQUESTED by both separate reviewers on exact

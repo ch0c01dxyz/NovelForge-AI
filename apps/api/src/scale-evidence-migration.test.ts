@@ -108,7 +108,7 @@ function prismaMigrateDeployAt(cwd: string): void {
  * Delete a temp Prisma home. Refuses paths outside os.tmpdir() or without
  * the expected prefix — cleanup is limited to verified owned temp paths.
  */
-function removeTempDir(dir: string): void {
+async function removeTempDir(dir: string): Promise<void> {
   const resolved = path.resolve(dir);
   const tmp = path.resolve(os.tmpdir());
   if (!resolved.startsWith(tmp + path.sep)) {
@@ -117,7 +117,39 @@ function removeTempDir(dir: string): void {
   if (!path.basename(resolved).startsWith("050a-mig-")) {
     throw new Error(`refusing to delete unexpected temp dir: ${dir}`);
   }
-  fs.rmSync(resolved, { recursive: true, force: true });
+  const nodeModulesLink = path.join(resolved, "node_modules");
+  const st = fs.lstatSync(nodeModulesLink, { throwIfNoEntry: false });
+  if (st) {
+    if (!st.isSymbolicLink()) {
+      throw new Error(`refusing cleanup: node_modules is not a symbolic link: ${nodeModulesLink}`);
+    }
+    const target = path.resolve(path.dirname(nodeModulesLink), fs.readlinkSync(nodeModulesLink));
+    if (target !== path.resolve(DB_PACKAGE_ROOT, "node_modules")) {
+      throw new Error(`refusing cleanup: node_modules link target is unexpected: ${target}`);
+    }
+    // Windows: remove the link explicitly first; the recursive rm below then
+    // never traverses it.
+    fs.unlinkSync(nodeModulesLink);
+  }
+  // Windows: the Prisma CLI child process's cwd handle on this directory can
+  // outlive execFileSync return by several hundred ms; deletion until then
+  // raises EPERM regardless of per-entry retries. Retry the whole rm on the
+  // transient lock codes. Measured release latency ~400-500ms (standalone
+  // repros; see GAP-119 scale-evidence-migration entry).
+  const transient = new Set(["EPERM", "EBUSY", "ENOTEMPTY", "EACCES"]);
+  let lastErr: NodeJS.ErrnoException | undefined;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      fs.rmSync(resolved, { recursive: true, force: true });
+      if (!fs.existsSync(resolved)) return;
+      lastErr = Object.assign(new Error(`temp dir still present after rm: ${resolved}`), { code: "EPERM" });
+    } catch (err) {
+      if (!transient.has((err as NodeJS.ErrnoException).code ?? "")) throw err;
+      lastErr = err as NodeJS.ErrnoException;
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw lastErr;
 }
 
 /** Fingerprint of the LIVE migrations tree (relative paths + file bytes). */
@@ -275,7 +307,7 @@ describe("migration: empty database", () => {
     expect(idxNames).toContain("scale_evidence_sets_history_idx");
     } finally {
       await client.end().catch(() => undefined);
-      removeTempDir(home.root);
+      await removeTempDir(home.root);
     }
 
     // The live repository migrations tree is untouched (paths and bytes).
@@ -307,6 +339,7 @@ describe("migration: populated baseline via Prisma ledger", () => {
 
     const client = new pg.Client({ connectionString: TEST_URL });
     await client.connect();
+    const cleanupErrors: unknown[] = [];
     try {
       // 1. Historical baseline through Prisma: writes genuine
       //    `_prisma_migrations` ledger rows (no raw SQL, no `migrate resolve`).
@@ -430,10 +463,21 @@ describe("migration: populated baseline via Prisma ledger", () => {
       expect(seenVersion?.content).toContain("Baseline prose");
     } finally {
       // Cleanup is limited to verified owned temp paths; the live repository
-      // tree was never modified, so nothing needs restoring there.
+      // tree was never modified, so nothing needs restoring there. Each home
+      // is attempted even if an earlier cleanup fails; errors rethrow after
+      // the finally block (no-unsafe-finally).
       await client.end().catch(() => undefined);
-      removeTempDir(baselineHome.root);
-      removeTempDir(upgradeHome.root);
+      for (const home of [baselineHome, upgradeHome]) {
+        try {
+          await removeTempDir(home.root);
+        } catch (err) {
+          cleanupErrors.push(err);
+        }
+      }
+    }
+    if (cleanupErrors.length === 1) throw cleanupErrors[0];
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(cleanupErrors, "temp Prisma home cleanup failed");
     }
     // The live repository migrations tree is untouched (paths and bytes),
     // after both success and any failure inside the private fixture.

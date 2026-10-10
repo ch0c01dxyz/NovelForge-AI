@@ -3397,6 +3397,90 @@ commit or push. GAP-039/GAP-119 remain OPEN. Next: repair the two stale fixtures
 and comment, complete safe frozen regression checks, and separately verify the
 exact diff. Engram attribution unavailable (GAP-021); CURRENT is fallback handoff.
 
+### GAP-119 twelfth repair — evidence-migration EPERM sibling fix — 2026-10-11, e40adc9 + working tree
+
+Fresh Windows-host acceptance run at exact e40adc9 (tree clean before the fix;
+reviewer result pending). Environment: Windows 11, Node v24.14.1, pnpm 12.5.1,
+PostgreSQL 16.15 at 127.0.0.1:5433 (repo .env DATABASE_URL overridden
+host/port only via shell env; .env never edited; credentials never printed).
+
+**Discovery — sibling-path EPERM recurrence.** At e40adc9,
+`apps/api/src/scale-evidence-migration.test.ts` failed deterministically
+(6/6 runs) with `Error: EPERM, Permission denied ...\Temp\050a-mig-*` thrown
+from its own one-shot `fs.rmSync` in `removeTempDir`. Standalone probes
+reproduced the mechanism exactly: the Prisma 7.10.0 CLI child process
+(`prisma migrate deploy` via `execFileSync`, cwd = temp Prisma home) holds its
+cwd directory handle ~400–500 ms after exit (7/7 probes: one-shot rm fails,
+retry at ~400–500 ms succeeds 100%; two-home cleanup order baseline→upgrade
+reproduces the failing one-shot on the upgrade home). This is the same
+mechanism class e40adc9's awaited-cleanup repair fixed in
+scale-review-migration.test.ts; the evidence-migration sibling predates that
+repair. This supports the Windows cwd-handle hypothesis with measured
+latency; it remains Windows-specific and does not prove absence elsewhere.
+Classification: test-harness defect; migrations themselves apply correctly
+and all assertions pass before cleanup. No production source touched.
+
+**Fix (test file only, +50/−6, uncommitted pending review).**
+`removeTempDir` is now async with the proven sibling pattern: symlink guard
+(unlink `node_modules` junction first, refusing non-symlink/unexpected
+targets), then whole-rm retry (10 attempts × 150 ms) on transient codes
+EPERM/EBUSY/ENOTEMPTY/EACCES, non-transient codes rethrown immediately.
+Both call sites await. The populated-baseline test collects each home's
+cleanup error independently and rethrows (single error unwrapped, multiple
+as AggregateError) after the finally block per `no-unsafe-finally`.
+
+**Post-fix evidence (observed, this session):** scale-evidence-migration
+2/2 green × 7 consecutive runs; zero new `050a-mig-*` temp homes across 5
+measured runs (pre-fix: one leftover per run). All 16 accumulated owned
+leftovers removed after cleanup completion was verified. ESLint exit 0;
+api typecheck exit 0.
+
+**Fresh acceptance matrix at e40adc9 (Windows, 5433):**
+- restore-scope 8/8 (pure); prisma generate + validate pass; api/worker/
+  ai-services/web typechecks exit 0; `git diff --check` clean.
+- scale-review(32) + scale-decisions(36) + scale-review-migration(8) = 76/76,
+  two consecutive runs.
+- scale-evidence + manuscript + narrative + publication + state-consumers =
+  170/170 (47/21/53/17/32; the eleventh-repair fixture failures no longer
+  reproduce).
+- Worker publication-jobs + scale-gate-fire + scale-gate-fire-scale = 28/28.
+- Remaining 12 scale API files = 58/58. Correction to the eleventh-repair
+  annotation: the file recorded as "ctx-gate-agreement" is
+  `apps/api/src/scale-context-gate-agreement.test.ts` (2 tests); per-file
+  counts otherwise confirmed (no-scale-receipt 5, exception-workspace 3,
+  exception-strict 8, gate-publish 4, proof-completeness 5,
+  review-checklist 12, review-context 5, gate-callers 4,
+  gate-live-semantics 4, policy-direct 4, evidence-migration 2).
+- UI ×5 (--maxWorkers 1): ScaleReviewPanel, ScaleReviewPanel.axe,
+  workspace-research-narrative-health, useReceipts, EvaluationReceipts =
+  39/39. Component/jsdom evidence only.
+- Changed-source ESLint exit 0: final-text-review-gate.ts (actual location
+  `packages/ai-services/src/`, correcting earlier apps/api path),
+  scale-decision-routes.ts, workspace-research-narrative-health.test.ts,
+  scale-evidence-migration.test.ts. NarrativePanel.vue/PolicyList.vue
+  ignored by config (0 errors; known scoping note).
+
+**Still not evidenced (unchanged gates):** live author/browser workflow in
+en/id with fallback; real isolated BullMQ queue delivery; these remain
+separate from mocked/component evidence. GAP-039 and umbrella GAP-119 stay
+OPEN; 050C and integrated author-workflow acceptance retained by GAP-039.
+Separate read-only review of the exact frozen diff (`.local-050b-evidmig-fix.diff`,
+verified byte-identical to the working tree by the reviewer) returned
+APPROVE_WITH_FINDINGS: faithful port of the committed sibling pattern, both
+call sites awaited, non-transient codes propagate immediately, `throw lastErr`
+cannot be undefined, both homes attempted, body error preserved when cleanup
+succeeds, only the test file touched. Two LOW findings, no action required:
+(1) if the body throws AND cleanup also fails, the cleanup error replaces the
+body error — the sibling's `BodyFailure`/AggregateError wrapper was not
+ported; (2) the first test's single-home finally has the same masking gap.
+Both are pre-existing-pattern gaps shared with the committed sibling, judged
+non-blocking by the reviewer. Fix commit authorized by this verdict. Leftover temp homes from
+failed pre-fix runs were owned run artifacts; they were removed only after
+post-fix cleanup behavior was verified across 5 runs.
+
+Engram attribution via runtime session binding (hook-registered); checkpoints
+saved per acceptance group.
+
 ### GAP-119 tenth repair acceptance run — 2026-10-09, f0cd711 + working tree
 
 **Acceptance actor:** separate actor (backends MODEL_UNVERIFIED per GAP-013).

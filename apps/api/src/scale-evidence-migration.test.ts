@@ -152,6 +152,50 @@ async function removeTempDir(dir: string): Promise<void> {
   throw lastErr;
 }
 
+/**
+ * Sentinel wrapper for a body that threw — including `throw undefined`.
+ * Distinguishes "body threw X" from "body completed" explicitly.
+ */
+interface BodyFailure {
+  thrown: true;
+  value: unknown;
+}
+
+/**
+ * Remove each owned temp home independently; every home is attempted even if
+ * an earlier cleanup fails. Cleanup failures fail the caller. If the body
+ * threw, the ORIGINAL thrown value is rethrown unchanged when cleanup
+ * succeeds, or kept as the first element of the AggregateError when cleanup
+ * also failed. The thrown value is never serialized or wrapped.
+ * `remove` is an internal seam for the regression tests below.
+ */
+async function cleanupTempHomes(
+  roots: string[],
+  bodyError?: BodyFailure,
+  remove: (dir: string) => Promise<void> = removeTempDir,
+): Promise<void> {
+  const cleanupErrors: unknown[] = [];
+  for (const root of roots) {
+    try {
+      await remove(root);
+    } catch (err) {
+      cleanupErrors.push(err);
+    }
+  }
+  if (cleanupErrors.length === 0) {
+    if (bodyError) throw bodyError.value;
+    return;
+  }
+  if (bodyError) {
+    throw new AggregateError(
+      [bodyError.value, ...cleanupErrors],
+      "test body failed and temp Prisma home cleanup also failed",
+    );
+  }
+  if (cleanupErrors.length === 1) throw cleanupErrors[0];
+  throw new AggregateError(cleanupErrors, "temp Prisma home cleanup failed");
+}
+
 /** Fingerprint of the LIVE migrations tree (relative paths + file bytes). */
 function liveMigrationsFingerprint(): string {
   const entries: string[] = [];
@@ -226,6 +270,7 @@ describe("migration: empty database", () => {
     const home = makeTempPrismaHome(true);
     const liveBefore = liveMigrationsFingerprint();
     const client = new pg.Client({ connectionString: TEST_URL });
+    let bodyFailure: BodyFailure | undefined;
     try {
       prismaMigrateDeployAt(home.root);
       await client.connect();
@@ -305,10 +350,11 @@ describe("migration: empty database", () => {
     const idxNames = idx.rows.map((r) => r.indexname as string);
     expect(idxNames).toContain("scale_evidence_sets_branch_version_sequence_key");
     expect(idxNames).toContain("scale_evidence_sets_history_idx");
-    } finally {
-      await client.end().catch(() => undefined);
-      await removeTempDir(home.root);
+    } catch (error) {
+      bodyFailure = { thrown: true, value: error };
     }
+    await client.end().catch(() => undefined);
+    await cleanupTempHomes([home.root], bodyFailure);
 
     // The live repository migrations tree is untouched (paths and bytes).
     expect(liveMigrationsFingerprint()).toBe(liveBefore);
@@ -338,8 +384,8 @@ describe("migration: populated baseline via Prisma ledger", () => {
     ).toBe(true);
 
     const client = new pg.Client({ connectionString: TEST_URL });
+    let bodyFailure: BodyFailure | undefined;
     await client.connect();
-    const cleanupErrors: unknown[] = [];
     try {
       // 1. Historical baseline through Prisma: writes genuine
       //    `_prisma_migrations` ledger rows (no raw SQL, no `migrate resolve`).
@@ -461,27 +507,102 @@ describe("migration: populated baseline via Prisma ledger", () => {
       expect(seenNovel?.title).toBe("Migration Novel");
       const seenVersion = await db.chapterVersion.findUnique({ where: { id: version.id } });
       expect(seenVersion?.content).toContain("Baseline prose");
-    } finally {
-      // Cleanup is limited to verified owned temp paths; the live repository
-      // tree was never modified, so nothing needs restoring there. Each home
-      // is attempted even if an earlier cleanup fails; errors rethrow after
-      // the finally block (no-unsafe-finally).
-      await client.end().catch(() => undefined);
-      for (const home of [baselineHome, upgradeHome]) {
-        try {
-          await removeTempDir(home.root);
-        } catch (err) {
-          cleanupErrors.push(err);
-        }
-      }
+    } catch (error) {
+      bodyFailure = { thrown: true, value: error };
     }
-    if (cleanupErrors.length === 1) throw cleanupErrors[0];
-    if (cleanupErrors.length > 1) {
-      throw new AggregateError(cleanupErrors, "temp Prisma home cleanup failed");
-    }
+    await client.end().catch(() => undefined);
+    // Every owned home is attempted even if an earlier cleanup fails; body
+    // and cleanup failures are reported together (AggregateError keeps the
+    // original body value first). No-unsafe-finally is avoided by doing all
+    // throwing here, after cleanup completed.
+    await cleanupTempHomes([baselineHome.root, upgradeHome.root], bodyFailure);
     // The live repository migrations tree is untouched (paths and bytes),
     // after both success and any failure inside the private fixture.
     expect(liveMigrationsFingerprint()).toBe(liveBefore);
     expect(fs.existsSync(path.join(MIGRATIONS_DIR, MIGRATION_050A))).toBe(true);
+  });
+});
+
+/**
+ * Focused regression evidence for cleanupTempHomes error-preservation and
+ * await semantics. Uses a fake removal seam — no real temp homes touched.
+ * The production call sites pass no `remove`, so these cover the real logic.
+ */
+describe("cleanupTempHomes regression", () => {
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+
+  function failAt(dirs: string[], err: unknown) {
+    return async (d: string): Promise<void> => {
+      if (dirs.includes(d)) throw err;
+    };
+  }
+
+  it("body-only failure: original thrown value rethrown unchanged, including undefined", async () => {
+    await expect(cleanupTempHomes(["/t/a"], { thrown: true, value: undefined }, async () => undefined)).rejects.toBe(
+      undefined,
+    );
+    const marker = new Error("body");
+    await expect(cleanupTempHomes(["/t/a"], { thrown: true, value: marker }, async () => undefined)).rejects.toBe(marker);
+  });
+
+  it("cleanup-only failure: fails the caller with the original error", async () => {
+    const boom = new Error("cleanup");
+    await expect(cleanupTempHomes(["/t/a"], undefined, failAt(["/t/a"], boom))).rejects.toBe(boom);
+  });
+
+  it("combined failure: AggregateError keeps the ORIGINAL body value first, cleanup errors after", async () => {
+    const body = circular; // arbitrary non-Error thrown value
+    const c1 = new Error("c1");
+    const err = await cleanupTempHomes(["/t/a", "/t/b"], { thrown: true, value: body }, failAt(["/t/a", "/t/b"], c1))
+      .then(
+        () => {
+          throw new Error("should have thrown");
+        },
+        (e) => e,
+      );
+    expect(err).toBeInstanceOf(AggregateError);
+    expect((err as AggregateError).errors[0]).toBe(body);
+    expect((err as AggregateError).errors[0]).toBe(circular);
+    expect((err as AggregateError).errors[1]).toBe(c1);
+  });
+
+  it("combined failure: every owned home's cleanup attempted even when one fails", async () => {
+    const attempted: string[] = [];
+    const remove = async (d: string): Promise<void> => {
+      attempted.push(d);
+      if (d === "/t/a") throw new Error("a fails");
+    };
+    await expect(cleanupTempHomes(["/t/a", "/t/b"], undefined, remove)).rejects.toThrow("a fails");
+    expect(attempted).toEqual(["/t/a", "/t/b"]);
+  });
+
+  it("combined failure: circular object and undefined body values preserved unserialized", async () => {
+    const cErr = await cleanupTempHomes(["/t/a"], { thrown: true, value: circular }, failAt(["/t/a"], new Error("c")))
+      .then(
+        () => null,
+        (e) => e as AggregateError,
+      );
+    expect(cErr).toBeInstanceOf(AggregateError);
+    expect((cErr as AggregateError).errors[0]).toBe(circular);
+    expect((cErr as AggregateError).errors[0].self).toBe(circular);
+
+    const uErr = await cleanupTempHomes(["/t/a"], { thrown: true, value: undefined }, failAt(["/t/a"], new Error("c")))
+      .then(
+        () => null,
+        (e) => e as AggregateError,
+      );
+    expect(uErr).toBeInstanceOf(AggregateError);
+    expect((uErr as AggregateError).errors[0]).toBeUndefined();
+  });
+
+  it("cleanup completion awaited: caller resolves only after removal finished", async () => {
+    let done = false;
+    const remove = async (): Promise<void> => {
+      await new Promise((r) => setTimeout(r, 20));
+      done = true;
+    };
+    await cleanupTempHomes(["/t/a"], undefined, remove);
+    expect(done).toBe(true);
   });
 });

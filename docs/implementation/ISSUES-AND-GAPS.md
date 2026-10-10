@@ -3478,6 +3478,54 @@ non-blocking by the reviewer. Fix commit authorized by this verdict. Leftover te
 failed pre-fix runs were owned run artifacts; they were removed only after
 post-fix cleanup behavior was verified across 5 runs.
 
+**GAP-119 thirteenth repair finding record — 2026-10-11 (ba03752, before
+editing).** The twelfth-repair record's claim that the two masking findings
+are "pre-existing-pattern gaps shared with the committed sibling" is
+INCORRECT: the committed `scale-review-migration.test.ts` already has
+`BodyFailure` + `cleanupTempHomes` error-preservation (AggregateError keeps
+the original body value first, `throw undefined` preserved, every home
+attempted, all awaited), proven by its regression block
+(cleanupTempHomes regression, 6 tests). Only
+`scale-evidence-migration.test.ts` retains both gaps: (1) the empty-database
+test's `finally { await removeTempDir(home.root) }` lets a cleanup throw mask
+a body error; (2) the populated test's `cleanupErrors` checks sit after the
+try/finally, so a body throw skips them and cleanup errors are lost, and a
+cleanup failure replaces the body error. Correction is ported below; the
+twelfth repair's fix itself (awaited retried removal) is unaffected.
+
+**GAP-119 thirteenth repair evidence and review — 2026-10-11 (ba03752 +
+working tree).** Applied the port described above (working tree on ba03752,
+uncommitted): `BodyFailure` sentinel + `cleanupTempHomes` helper + 6-test
+`cleanupTempHomes regression` block ported from the committed
+scale-review-migration sibling; both test bodies restructured to
+catch → `bodyFailure`, then `client.end` + `await cleanupTempHomes` after
+the try/catch. Verification (observed, this host): ESLint exit 0; api
+`tsc --noEmit` exit 0; `git diff --check` clean; suite on 5433 (nf-pg-5433,
+fresh auth check, child-only DATABASE_URL override @127.0.0.1:5433, .env
+untouched) **8/8 EXIT=0** (2 migration + 6 regression tests); post-run:
+zero `050a-mig-*` temp homes, scratch DB
+`novelforge_test_scale_evidence_migration` dropped only after 0-session
+check. One run limitation: `--reporter=basic` failed to load in this repo
+(vitest custom-reporter module error, exit 1 before tests ran); default
+reporter used instead — tooling quirk, not a test failure. Independent
+read-only exact-diff review: frozen diff md5
+`ea8e4c36e6c29b466033c66e93100cd1`, reviewer re-verified the working tree
+matches byte-for-byte. **Verdict: APPROVE** — all six checks PASS
+(byte-faithful port; both call sites with no cleanup-in-finally; no
+assertion/path-guard weakened; no dead cleanupErrors code; all 6 regression
+scenarios present; two-file scope), ESLint exit 0 re-confirmed by reviewer.
+One INFO finding, no action: populated test's `client.connect()` sits
+outside the try — a connect throw leaks the two temp homes; identical
+structure in the committed sibling, faithful port, out of diff scope.
+Live author-workflow acceptance prerequisites inspected (read-only):
+9Router gateway answers `/v1/models` at localhost:20127 but repo .env
+`OMNIROUTE_BASE_URL` points at 20128 (nothing listens) — acceptance will
+override child-only to 20127; compose Postgres publishes no host port
+(host 5432 is an unrelated native server), so the acceptance environment
+uses owned nf-pg-5433 with a fresh `novelforge_acceptance_050b` database
+(migrations fully applied via `prisma migrate deploy`). Live browser/BullMQ
+gates unchanged; GAP-039 and umbrella GAP-119 remain OPEN.
+
 Engram attribution via runtime session binding (hook-registered); checkpoints
 saved per acceptance group.
 

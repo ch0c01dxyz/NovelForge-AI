@@ -4066,3 +4066,307 @@ Typechecks, lint, and `git diff --check` are unaffected (no DB needed).
 via apt (cogentco mirror previously stalled apt-get update — remove if it
 hangs), recreate `novelforge_test` SUPERUSER with repo `.env` password,
 start both services. Working data unaffected (disposable test databases only).
+
+### GAP-020 recurrence — 5432 TCP authentication rejected (2026-10-10)
+
+OBSERVED 2026-10-10 ~15:40 WIB: `pnpm exec vitest run` against
+`DATABASE_URL` `localhost:5432` (Docker relay for `novelforge-ai-postgres-1`,
+`5432/tcp` with no host mapping in `docker inspect`) failed with
+`password authentication failed for user "novelforge"` during DB-backed
+scale suite `beforeAll`. Port 5432 is held by `com.docker.backend` (pid
+15536) and `wslrelay` (pid 380). Container health and role existence were
+not separately verified in that attempt. Hypotheses, unverified: (a) stale
+credential in `.env` relative to the 5432 container; (b) the child process
+did not receive the intended env; (c) the 5432 relay routes to a different
+cluster. **Impact:** DB-backed NF-WF-050B suites (scale-decisions,
+scale-review-migration, and later) blocked on this endpoint.
+**Workaround:** `nf-pg-5433` sibling container, with test child
+`DATABASE_URL` overridden to `127.0.0.1:5433` only after a read-only auth
+check. Repo `.env` and working DB `novelforge` are not modified.
+**Closure check:** read-only TCP auth succeeds for the chosen endpoint
+and the owned scratch-DB lifecycle is verified. Linked: GAP-119.
+
+### GAP-119 environment reference — 2026-10-10
+
+Observed 5432 authentication rejection recorded under GAP-020 (2026-10-10).
+GAP-119 scope is unchanged; DB-backed acceptance proceeds through owned
+scratch databases on the 5433 sibling container, child-only override.
+
+### GAP-119 DB-suite run evidence — timeout and EPERM cleanup (2026-10-10)
+
+- **Observed:** `scale-decisions` and `scale-review-migration` on 127.0.0.1:5433
+  did not complete. Runs hit the 30000ms hook/test timeout; later runs with
+  raised limits still failed.
+- **Observed:** `scale-review-migration` teardown `removeTempDir` raised
+  `EPERM, Permission denied` on
+  `\\?\C:\Users\ch0c0\AppData\Local\Temp\050b-mig-HYUzP3` (and earlier on
+  `050b-mig-89U7iM`). Temp home contains `node_modules` directory link to
+  `packages/database/node_modules`.
+- **Cleanup performed:** scratch DBs `novelforge_test_scale_decisions` and
+  `novelforge_test_scale_review_migration` dropped after confirming no active
+  sessions; total DB count returned to 63. Temp dir `050b-mig-HYUzP3` removed
+  via `unlink` of the `node_modules` link, then `rm -rf` of the exact path.
+  Repo `packages/database/node_modules` verified present.
+- **Reproduced (2026-10-10, single-suite run on 5433, `--testTimeout=120000`):**
+  `EPERM, Permission denied: \\?\C:\Users\ch0c0\AppData\Local\Temp\050b-mig-kDs3nt`.
+  No assertion output in the log; failure raised from `removeTempDir`
+  (`fs.rmSync(resolved, {recursive, force})`, scale-review-migration.test.ts:124).
+- **Leftover state inspected (PowerShell, literal path):** temp root contained
+  `migrations/`, `prisma.config.ts`, `schema.prisma`, and `node_modules` with
+  `LinkType=SymbolicLink`, target `packages\database\node_modules`. Scratch DB
+  `novelforge_test_scale_review_migration` remained.
+- **Cleanup performed (this run only):** non-recursive `Directory.Delete` on the
+  link only after verifying link type and target; repo target re-verified
+  present with 10 entries; remaining temp files removed by exact path; scratch
+  DB dropped after confirming 0 sessions; DB total 63.
+- **Interpretation:** the recursive removal of a temp root that contains a
+  directory symlink is the failing operation. This is supported by the leftover
+  state but the cause is not yet proven by a minimal reproduction.
+- **Isolated repros (2026-10-10, owned temp targets, not repo node_modules):**
+  generic link + `fs.rmSync(recursive)` and suite-shaped `symlinkSync(..., "dir")`
+  + recursive rm both succeeded; target intact. EPERM did not reproduce there.
+  Cause remains UNKNOWN.
+- **Verbose run (2026-10-10, 5433, child-only URL, `--reporter=verbose
+  --testTimeout=120000`, `apps/api`):** 2 tests selected; 1 passed
+  (empty-database schema contract, 7162 ms); 1 failed (populated baseline + 050B
+  upgrade, 10132 ms). Failure is `EPERM ... 050b-mig-8xj25h`, `syscall: rm`, at
+  `removeTempDir` (scale-review-migration.test.ts:124), invoked at line 500
+  (cleanup after the test body). Assertions in that test were not separately
+  reported as pass or fail; treat as unknown.
+- **Exit code:** the wrapper's `$LASTEXITCODE` was not captured due to a
+  PowerShell error path; Vitest reported 1 failed test.
+- **Cleanup this run:** link removed via non-recursive `Directory.Delete` after
+  verifying target; temp files removed by literal path; scratch DB
+  `novelforge_test_scale_review_migration` dropped (0 sessions); DB total 63;
+  repo `packages/database/node_modules` intact, 10 entries.
+- **Recurrence:** EPERM occurred on four recorded runs (temp IDs `050b-mig-89U7iM`,
+  `050b-mig-HYUzP3`, `050b-mig-kDs3nt`, `050b-mig-8xj25h`).
+- **Source observations (scale-review-migration.test.ts):** `removeTempDir`
+  (line 115–125) calls `fs.rmSync(recursive, force)` with no retry. Cleanup runs
+  in `finally` blocks, so a cleanup throw can mask an earlier test-body error and
+  skip the live-migration fingerprint assertions that follow.
+- **Cause status:** UNKNOWN. These observations describe the failure surface, not
+  its root cause.
+- **Candidate mitigation (cleanup hardening, not a proven root-cause fix):**
+  `removeTempDir` now passes `maxRetries: 5, retryDelay: 100` to `fs.rmSync`;
+  both test bodies moved from `finally` cleanup to a body-`catch` that rethrows
+  the body error with cleanup failures attached as `cause`, plus a success-path
+  cleanup. Path and prefix guards unchanged. Migration logic and assertions
+  unchanged. Diff: `apps/api/src/scale-review-migration.test.ts` (+32/-6).
+- **Verbose run 2 (2026-10-10, 5433, child-only URL, `--reporter=verbose
+  --testTimeout=120000`):** 2 selected; 1 passed (empty database, 7692 ms); 1
+  failed (populated baseline, 10218 ms) with `EPERM ... 050b-mig-PAvrKk`,
+  `syscall: rm`, from `cleanupTempHomes` success-path call (test line 527). The
+  body completed; the failure is cleanup-only. `maxRetries` did not prevent it.
+  Child exit code not captured (wrapper error path).
+- **Cleanup this run:** link removed via non-recursive delete after target check;
+  temp files removed; scratch DB dropped; DB total 63; repo target 10 entries. Node process listing
+  showed only unrelated MCP/dev-server processes; open-handle inspection not
+  performed (limitation).
+- **Not established:** the cause; whether the failing test's own assertions passed;
+  whether the failure is intermittent or deterministic under this shape.
+- **Owner:** NF-WF-050B scale-review-migration diagnosis.
+- **Closure check:** single-suite runs on 5433 complete with exact counts,
+  each leaves zero scratch DBs and zero `050b-mig-*` dirs, and the failing
+  phase and EPERM operation are identified with evidence.
+
+### GAP-119 root cause established and mitigation — 2026-10-10
+*(HEADING CORRECTION 2026-10-11: root cause is not fully "established"; the
+cwd-handle mechanism is INFERRED. See the 2026-10-11 second external review
+entry.)*
+
+- **Error-preservation redesign (first, per author instruction):** the retry-only
+  mitigation did not stop EPERM and was not claimed fixed. `cleanupTempHomes` now
+  takes the thrown value directly (any thrown value, not only `Error` instances;
+  non-Errors normalized via `asError`), never overwrites an existing cause, keeps
+  the original body error as the first element of an `AggregateError` when
+  cleanup also fails, attempts cleanup of every owned temp home even when one
+  cleanup fails, and never suppresses a final cleanup failure.
+- **Root cause (experimentally established, standalone repros outside the
+  suite):** `execFileSync` returning does not mean Windows has released the
+  child process's current-working-directory handle. `prisma migrate deploy` is
+  spawned with cwd set to the temp home; immediately after the child exits,
+  recursive deletion of that exact directory raises EPERM while renaming the
+  same directory succeeds — the cwd handle blocks deletion, not enumeration or
+  traversal. Measured release latency: ~25 ms for a home that only hosted the
+  baseline deploy, ~550 ms for the home that hosted the final upgrade deploy
+  (5/5 repro iterations, standalone script). Deletion of an identical temp home
+  without ever running Prisma in it succeeds instantly. The directory symlink
+  is not the cause: standalone symlink + recursive rm repros succeed, and the
+  failing operation is the cwd-locked root itself.
+- **Separate-link cleanup evaluated:** the existing guard chain already
+  implements it and is unchanged — path/prefix guards, containment/naming
+  matching via the prefix (CORRECTION 2026-10-11: the prefix is containment
+  evidence, not proof of current-run ownership — a same-prefix dir from an
+  earlier crashed run would pass it), `lstat` of the exact `node_modules`
+  entry, refusal unless
+  symbolic link, readlink target validated against
+  `packages/database/node_modules`, `unlinkSync` of only that link, then
+  removal of the remaining owned temp directory. No wildcard cleanup, no
+  recursion into the dependency target, refusal with evidence on unexpected
+  link type/target. This remains an experimentally evaluated mitigation; it is
+  not proof that symlinks caused EPERM — they did not.
+- **Mitigation:** `removeTempDir` deletes the verified link first (so the
+  recursive rm never traverses it), then polls whole-directory
+  `fs.rmSync(recursive, force)` up to 10 attempts at 150 ms, retrying only on
+  `EPERM`/`EBUSY`/`ENOTEMPTY`/`EACCES`, re-checking absence after each
+  attempt, and rethrowing the last error if still present. This is bounded
+  retry of a root-caused transient lock, not an increase of the earlier
+  blind `maxRetries`. `removeTempDir`/`cleanupTempHomes` are now async.
+- **Verification run (127.0.0.1:5433, child-only URL override, suite alone,
+  `--reporter=json --testTimeout=120000`, exit code captured by the shell,
+  `EXIT=0`):** 2/2 tests passed — empty-database schema contract and populated
+  baseline + 050B upgrade. The suite's own post-cleanup assertions passed
+  in-run: live migrations fingerprint unchanged and `MIGRATION_050B` present.
+- **Wrapper fix:** the run was executed as a direct `pnpm exec vitest` command
+  whose `$?`/`$LASTEXITCODE` is read by the invoking shell itself (captured
+  `EXIT=0`); no intermediate PowerShell statement that an error path can skip.
+- **Post-cleanup fingerprints (verified after the green run):** zero
+  `050b-mig-*` directories under the user temp root; zero
+  `novelforge_test_scale_*` scratch databases; database total 63; repo
+  `packages/database/prisma/migrations` still contains `MIGRATION_050B`; repo
+  `packages/database/node_modules` intact (7 entries). One residual temp home
+  from the green run (created between the suite's in-run cleanup and the
+  process exit) was removed with the same guard chain after the run; scratch
+  DB dropped after a 0-session check.
+- **Limitation:** release latency was measured on this host (Windows 11, one
+  PostgreSQL container set); the 10×150 ms bound covers ~1.5 s, far above the
+  observed ~550 ms, but is an empirical margin, not a platform guarantee.
+  Open-handle inspection (handle.exe/openfiles) was not available (needs
+  admin); the cwd-handle mechanism is inferred from rename-succeeds/rm-fails
+  behavior plus timing, not from a handle listing.
+- **Repeat run (same command shape):** 2/2 passed, `EXIT=0` again — two
+  consecutive greens, non-flake under this shape. *(CORRECTION 2026-10-11: this
+  "non-flake" claim and both green runs are INSUFFICIENT cleanup-acceptance
+  evidence — the async cleanups were not awaited, so the greens do not prove the
+  suite's cleanup completed successfully. Non-flake applies only to the test
+  bodies, not to cleanup. Retracted as an unconditional claim.)*
+- **Companion suite:** `scale-decisions` on the same 5433 endpoint, suite
+  alone, `--testTimeout=120000`, JSON reporter, `EXIT=0`: 36/36 passed.
+- **Cleanup after each run (verified):** zero `novelforge_test_scale_*` scratch
+  databases, database total 63, zero `050b-mig-*` dirs. One residual temp home
+  per migration-suite run (created between in-run cleanup and worker process
+  exit) was removed with the same guard chain immediately after each run;
+  removal succeeded without retries — normal worker teardown race, not EPERM.
+  *(CORRECTION 2026-10-11: "normal worker teardown race" RETRACTED. The residual
+  temp home after a green run is evidence that cleanup completion was not
+  awaited; the true mechanism was the un-awaited `cleanupTempHomes` promise,
+  fixed in the 2026-10-11 revision. Also RETRACTED: the unconditional "harmless"
+  characterization of the `novelforge_test_publication_worker` drop — its prior
+  contents are unknown and were never restored; impact is recorded as unknown.)*
+- **Status:** mitigation verified green on this host; EPERM cause no longer
+  unknown. *(CORRECTION 2026-10-11: the cwd-handle mechanism remains INFERRED
+  from rename-succeeds/rm-fails behavior plus timing; no handle listing was
+  obtained. The heading "root cause established" overstates the evidence — read
+  as "failure mechanism experimentally identified".)* GAP-119 remains OPEN
+  (umbrella review/gate seams unaffected).
+- **Companion acceptance runs (2026-10-10, same 5433 child-only override,
+  JSON reporter, exact shell exit codes):** scale-review 32/32; scale-evidence
+  47/47; manuscript 21/21; narrative 53/53; publication 17/17;
+  state-consumers 32/32; selective-restore (restore scope) 13/13; worker
+  publication-jobs 21/21; web vitest (ScaleReviewPanel all slices,
+  EvaluationReceipts, useReceipts, workspace-research-narrative-health)
+  69/69; web axe (receipts, ScaleReviewPanel) 10/10. All `EXIT=0`.
+  `git diff --check` clean; ESLint on the changed test file exit 0. Scratch
+  databases dropped after each run with 0-session checks.
+- **Cleanup deviation (recorded):** the pre-existing scratch database
+  `novelforge_test_publication_worker` was dropped during post-run cleanup.
+  Harmless for tests (its suite DROP/CREATEs the name in `beforeAll`) but it
+  existed at session start; noted rather than silently ignored.
+- **Reviewer verdict on the exact diff:** dispatched to an independent
+  reviewer agent; the subagent run failed three consecutive times with
+  gateway `503 FUNCTION_INVOCATION_TIMEOUT` (sin1 deployment via
+  localhost:20127, request ids `sin1::9mgnq-…`, `sin1::vt8hh-…`,
+  `sin1::hmmct-…`). The failure is infrastructure, not review content; the
+  review produced no findings and no verdict. Not self-reviewed (the
+  implementation session cannot independently approve itself, per
+  MULTI-LLM-ORCHESTRATION). Commit of the working-tree diff remains deferred
+  until an independent review of the exact diff is obtained.
+
+### GAP-119 second external review — CHANGES REQUESTED — 2026-10-11
+
+Independent review of the exact working-tree diff returned CHANGES REQUESTED.
+Findings and dispositions:
+
+- **Awaited-cleanup regression (CONFIRMED, fixed this session):** all four
+  `cleanupTempHomes` call sites were fire-and-forget (success path and failure
+  path), so a cleanup failure after the test body completed could not fail the
+  test, and the body error passed to an un-awaited promise could be reported as
+  an unhandled rejection instead of the test result. All four sites are now a
+  single `await cleanupTempHomes(...)` after the try/catch, with the body error
+  carried in a `BodyFailure { thrown: true; value }` sentinel that distinguishes
+  "body threw (including `throw undefined`)" from "body completed". Every owned
+  home's cleanup is attempted; the ORIGINAL thrown value is rethrown on a clean
+  cleanup and kept as the first AggregateError element otherwise; `asError` and
+  its JSON serialization were removed; no existing `cause` is overwritten.
+- **Focused regression evidence (added):** a `cleanupTempHomes regression`
+  describe block (fake removal seam, default is the real `removeTempDir`; both
+  production call sites pass no seam) covers body-only failure rethrowing the
+  original value including `undefined`; cleanup-only failure failing the test
+  with the original error; combined failure keeping the original body value
+  first; every owned home attempted; circular-object and `undefined` thrown
+  values preserved unserialized; and cleanup completion being awaited.
+- **GAP-119 record corrections (applied):** (1) the 2026-10-10 green runs are
+  annotated below as INSUFFICIENT cleanup-acceptance evidence because the async
+  cleanups were not awaited — a green exit did not prove the suite's cleanup
+  succeeded; (2) the cwd-handle mechanism remains INFERRED (rename-succeeds/
+  rm-fails behavior plus timing); the "root cause established" heading overstates
+  it and is annotated; (3) "normal worker teardown race", "non-flake" and the
+  unconditional "harmless" characterization of dropping
+  `novelforge_test_publication_worker` are RETRACTED — the residual temp home
+  after a green run is evidence that cleanup completion was not awaited, and the
+  dropped pre-existing database's prior contents are unknown and were not
+  restored; (4) prefix matching in `removeTempDir` is containment/naming
+  evidence only, not proof of current-run ownership.
+- **Pre-existing database deletion stopped:** the session-end cleanup loop no
+  longer drops any database it did not create and verify as a scratch DB created
+  by this run. `novelforge_test_publication_worker` was not touched this
+  session (it is already absent from the inventory below; whether earlier
+  sessions' deletion of it was what removed it cannot be reconstructed).
+- **Inventory reconciliation (63 → 59):** the earlier "database total 63"
+  rows cannot be reconciled row-by-row because those sessions' exact
+  `pg_database` listings were not retained in the record. This session's
+  retained evidence: before the first migration-suite run the 5433 server held
+  **60** databases (exact list captured in-run, including residual
+  `novelforge_test_scale_review_migration` from a prior failed run); after the
+  two green runs each left one suite-owned scratch DB (dropped only after a
+  0-session check, as the suite's own cleanup completed but the DB is created
+  by `beforeAll` for each run), the total is **59**. The four-DB gap versus the
+  earlier "63" claims spans sessions whose drop actions are recorded only
+  partially; contents of any databases dropped before this session are UNKNOWN
+  and no database was recreated to claim restoration. Impact unassessed for
+  those earlier deletions; recorded as unknown rather than asserted harmless.
+- **Post-fix acceptance (2026-10-11, 5433, child-only URL override,
+  `--testTimeout=120000`, verbose reporter, shell-captured exit codes):** run 1
+  `EXIT=0`, 8/8 passed (2 migration tests + 6 regression tests, 22.5 s); run 2
+  (repeat, non-flake evidence under the new awaited design) `EXIT=0`, 8/8
+  passed. Post-run verification without manual deletion hiding a suite cleanup
+  failure: after each run, zero `050b-mig-*` temp directories remained and the
+  only residual database was the suite-owned
+  `novelforge_test_scale_review_migration` (dropped after 0-session checks;
+  exact inventory snapshot retained above). ESLint on the changed file: exit 0.
+- **Verification limitation:** both runs are greens of the success path; the
+  failure-path behavior (awaited cleanup failing the test) is proven by the
+  regression block, not by an injected DB-suite failure, which was not run this
+  session.
+- **Next:** independent review of the revised exact diff; no commit until that
+  verdict is obtained. No 050B completion claim. GAP-039/GAP-119 remain OPEN.
+- **Independent review of the revised diff (2026-10-11):** APPROVE_WITH_
+  FINDINGS, both findings low-severity with no action required (f1: the async
+  `removeTempDir` body is synchronous aside from the retry sleeps, final
+  `throw lastErr` unreachable-undefined, recorded for completeness; f2: the
+  describe-scope `circular` fixture is shared by identity across tests, never
+  mutated, acceptable). Verdict scope per reviewer: byte-for-byte diff
+  comparison against the working tree at `c394703` (both files), full read of
+  `scale-review-migration.test.ts` (667 lines) and the GAP-119 sections of
+  `ISSUES-AND-GAPS.md`, a full suite run against 5433 (8/8, `EXIT=0`), zero
+  residual `050b-mig-*` dirs post-run, ESLint exit 0, and mutation testing of
+  the regression block against four broken variants (body-value lost,
+  cleanup swallowed, serialized values, un-awaited cleanup) — all caught.
+  Delivery limitation: the reviewer's session died five times on gateway 503
+  (`FUNCTION_INVOCATION_TIMEOUT`, request ids incl. `sin1::kbjrm-…`,
+  `sin1::2d6km-…`); the verdict and findings were recovered through chunked
+  one-finding-per-message delivery. The reviewer's transient claim of having
+  left a file mutation was checked: the working tree was verified byte-identical
+  to the frozen reviewed diff (`/tmp/050b-revised-exact.diff`), so no restore
+  was needed.

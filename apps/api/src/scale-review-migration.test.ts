@@ -112,7 +112,7 @@ function prismaMigrateDeployAt(cwd: string): void {
  * Delete a temp Prisma home. Refuses paths outside os.tmpdir() or without
  * the expected prefix — cleanup is limited to verified owned temp paths.
  */
-function removeTempDir(dir: string): void {
+async function removeTempDir(dir: string): Promise<void> {
   const resolved = path.resolve(dir);
   const tmp = path.resolve(os.tmpdir());
   if (!resolved.startsWith(tmp + path.sep)) {
@@ -121,7 +121,79 @@ function removeTempDir(dir: string): void {
   if (!path.basename(resolved).startsWith("050b-mig-")) {
     throw new Error(`refusing to delete unexpected temp dir: ${dir}`);
   }
-  fs.rmSync(resolved, { recursive: true, force: true });
+  const nodeModulesLink = path.join(resolved, "node_modules");
+  const st = fs.lstatSync(nodeModulesLink, { throwIfNoEntry: false });
+  if (st) {
+    if (!st.isSymbolicLink()) {
+      throw new Error(`refusing cleanup: node_modules is not a symbolic link: ${nodeModulesLink}`);
+    }
+    const target = path.resolve(path.dirname(nodeModulesLink), fs.readlinkSync(nodeModulesLink));
+    if (target !== path.resolve(DB_PACKAGE_ROOT, "node_modules")) {
+      throw new Error(`refusing cleanup: node_modules link target is unexpected: ${target}`);
+    }
+    // Windows: remove the link explicitly first; the recursive rm below then
+    // never traverses it.
+    fs.unlinkSync(nodeModulesLink);
+  }
+  // Windows: the Prisma CLI child process's cwd handle on this directory can
+  // outlive execFileSync return by several hundred ms; deletion until then
+  // raises EPERM regardless of per-entry retries. Retry the whole rm on the
+  // transient lock codes. Measured release latency ~550ms (5/5 repros).
+  const transient = new Set(["EPERM", "EBUSY", "ENOTEMPTY", "EACCES"]);
+  let lastErr: NodeJS.ErrnoException | undefined;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      fs.rmSync(resolved, { recursive: true, force: true });
+      if (!fs.existsSync(resolved)) return;
+      lastErr = Object.assign(new Error(`temp dir still present after rm: ${resolved}`), { code: "EPERM" });
+    } catch (err) {
+      if (!transient.has((err as NodeJS.ErrnoException).code ?? "")) throw err;
+      lastErr = err as NodeJS.ErrnoException;
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  throw lastErr;
+}
+
+/**
+ * Sentinel wrapper for a body that threw — including `throw undefined`.
+ * Distinguishes "body threw X" from "body completed" explicitly.
+ */
+interface BodyFailure {
+  thrown: true;
+  value: unknown;
+}
+
+/**
+ * Remove each owned temp home independently; every home is attempted even if
+ * an earlier cleanup fails. Cleanup failures fail the caller. If the body
+ * threw, the ORIGINAL thrown value is rethrown unchanged when cleanup
+ * succeeds, or kept as the first element of the AggregateError when cleanup
+ * also failed. The thrown value is never serialized or wrapped.
+ * `remove` is an internal seam for the regression tests below.
+ */
+async function cleanupTempHomes(
+  roots: string[],
+  bodyError?: BodyFailure,
+  remove: (dir: string) => Promise<void> = removeTempDir,
+): Promise<void> {
+  const cleanupErrors: unknown[] = [];
+  for (const root of roots) {
+    try {
+      await remove(root);
+    } catch (err) {
+      cleanupErrors.push(err);
+    }
+  }
+  if (cleanupErrors.length === 0) {
+    if (bodyError) throw bodyError.value;
+    return;
+  }
+  if (bodyError) {
+    throw new AggregateError([bodyError.value, ...cleanupErrors], "test body failed and temp Prisma home cleanup also failed");
+  }
+  if (cleanupErrors.length === 1) throw cleanupErrors[0];
+  throw new AggregateError(cleanupErrors, "temp Prisma home cleanup failed");
 }
 
 /** Fingerprint of the LIVE migrations tree (relative paths + file bytes). */
@@ -196,6 +268,7 @@ describe("migration: empty database", () => {
     const home = makeTempPrismaHome(true);
     const liveBefore = liveMigrationsFingerprint();
     const client = new pg.Client({ connectionString: TEST_URL });
+    let bodyFailure: BodyFailure | undefined;
     try {
       prismaMigrateDeployAt(home.root);
       await client.connect();
@@ -312,10 +385,11 @@ describe("migration: empty database", () => {
       expect(srCol.rowCount).toBe(1);
       expect(srCol.rows[0].is_nullable).toBe("YES");
       expect(srCol.rows[0].data_type).toBe("jsonb");
-    } finally {
-      await client.end().catch(() => undefined);
-      removeTempDir(home.root);
+    } catch (error) {
+      bodyFailure = { thrown: true, value: error };
     }
+    await client.end().catch(() => undefined);
+    await cleanupTempHomes([home.root], bodyFailure);
 
     // The live repository migrations tree is untouched (paths and bytes).
     expect(liveMigrationsFingerprint()).toBe(liveBefore);
@@ -344,6 +418,7 @@ describe("migration: populated baseline via Prisma ledger", () => {
     expect(fs.existsSync(path.join(baselineHome.migrationsDir, "20261008_nf_wf_050a_scale_evidence"))).toBe(true);
 
     const client = new pg.Client({ connectionString: TEST_URL });
+    let bodyFailure: BodyFailure | undefined;
     await client.connect();
     try {
       // 1. Historical baseline through Prisma (includes 050A).
@@ -494,14 +569,98 @@ describe("migration: populated baseline via Prisma ledger", () => {
       // 9. The baseline novel remains fully usable.
       const seenNovel = await db.novel.findUnique({ where: { id: novel.id } });
       expect(seenNovel?.title).toBe("050B Migration Novel");
-    } finally {
-      await client.end().catch(() => undefined);
-      removeTempDir(baselineHome.root);
-      removeTempDir(upgradeHome.root);
+    } catch (error) {
+      bodyFailure = { thrown: true, value: error };
     }
+    await client.end().catch(() => undefined);
+    await cleanupTempHomes([baselineHome.root, upgradeHome.root], bodyFailure);
     // The live repository migrations tree is untouched (paths and bytes),
     // after both success and any failure inside the private fixture.
     expect(liveMigrationsFingerprint()).toBe(liveBefore);
     expect(fs.existsSync(path.join(MIGRATIONS_DIR, MIGRATION_050B))).toBe(true);
+  });
+});
+
+/**
+ * Focused regression evidence for cleanupTempHomes error-preservation and
+ * await semantics. Uses a fake removal seam — no real temp homes touched.
+ * The production call sites pass no `remove`, so these cover the real logic.
+ */
+describe("cleanupTempHomes regression", () => {
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+
+  function failAt(dirs: string[], err: unknown) {
+    return async (d: string): Promise<void> => {
+      if (dirs.includes(d)) throw err;
+    };
+  }
+
+  it("body-only failure: original thrown value rethrown unchanged, including undefined", async () => {
+    await expect(cleanupTempHomes(["/t/a"], { thrown: true, value: undefined }, async () => undefined)).rejects.toBe(
+      undefined,
+    );
+    const marker = new Error("body");
+    await expect(cleanupTempHomes(["/t/a"], { thrown: true, value: marker }, async () => undefined)).rejects.toBe(marker);
+  });
+
+  it("cleanup-only failure: fails the caller with the original error", async () => {
+    const boom = new Error("cleanup");
+    await expect(cleanupTempHomes(["/t/a"], undefined, failAt(["/t/a"], boom))).rejects.toBe(boom);
+  });
+
+  it("combined failure: AggregateError keeps the ORIGINAL body value first, cleanup errors after", async () => {
+    const body = circular; // arbitrary non-Error thrown value
+    const c1 = new Error("c1");
+    const err = await cleanupTempHomes(["/t/a", "/t/b"], { thrown: true, value: body }, failAt(["/t/a", "/t/b"], c1))
+      .then(
+        () => {
+          throw new Error("should have thrown");
+        },
+        (e) => e,
+      );
+    expect(err).toBeInstanceOf(AggregateError);
+    expect((err as AggregateError).errors[0]).toBe(body);
+    expect((err as AggregateError).errors[0]).toBe(circular);
+    expect((err as AggregateError).errors[1]).toBe(c1);
+  });
+
+  it("combined failure: every owned home's cleanup attempted even when one fails", async () => {
+    const attempted: string[] = [];
+    const remove = async (d: string): Promise<void> => {
+      attempted.push(d);
+      if (d === "/t/a") throw new Error("a fails");
+    };
+    await expect(cleanupTempHomes(["/t/a", "/t/b"], undefined, remove)).rejects.toThrow("a fails");
+    expect(attempted).toEqual(["/t/a", "/t/b"]);
+  });
+
+  it("combined failure: circular object and undefined body values preserved unserialized", async () => {
+    const cErr = await cleanupTempHomes(["/t/a"], { thrown: true, value: circular }, failAt(["/t/a"], new Error("c")))
+      .then(
+        () => null,
+        (e) => e as AggregateError,
+      );
+    expect(cErr).toBeInstanceOf(AggregateError);
+    expect((cErr as AggregateError).errors[0]).toBe(circular);
+    expect((cErr as AggregateError).errors[0].self).toBe(circular);
+
+    const uErr = await cleanupTempHomes(["/t/a"], { thrown: true, value: undefined }, failAt(["/t/a"], new Error("c")))
+      .then(
+        () => null,
+        (e) => e as AggregateError,
+      );
+    expect(uErr).toBeInstanceOf(AggregateError);
+    expect((uErr as AggregateError).errors[0]).toBeUndefined();
+  });
+
+  it("cleanup completion awaited: caller resolves only after removal finished", async () => {
+    let done = false;
+    const remove = async (): Promise<void> => {
+      await new Promise((r) => setTimeout(r, 20));
+      done = true;
+    };
+    await cleanupTempHomes(["/t/a"], undefined, remove);
+    expect(done).toBe(true);
   });
 });

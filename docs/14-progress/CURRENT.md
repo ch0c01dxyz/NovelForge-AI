@@ -1,5 +1,39 @@
 # Current Project State
 
+## GAP-119 twelfth repair + fresh Windows acceptance — 2026-10-11, 858dafb
+
+At exact e40adc9, the Windows-host acceptance rerun surfaced a deterministic
+EPERM in `apps/api/src/scale-evidence-migration.test.ts` — the unrepaired
+sibling of the awaited-cleanup fix committed in e40adc9. Standalone probes
+measured the Prisma CLI child's ~400–500 ms cwd-handle release latency and
+reproduced the failure mode exactly; the fix ports the proven sibling
+pattern (awaited, symlink-guarded, transient-code retry; per-home error
+collection). A separate read-only reviewer verified the frozen diff
+byte-identical to the working tree and returned APPROVE_WITH_FINDINGS with
+two non-blocking low findings (recorded in GAP-119). Committed as 858dafb
+on main (parent e40adc9). Not pushed.
+
+Fresh acceptance evidence at 858dafb content (= e40adc9 + this test-file
+fix), Windows 11 / Node v24.14.1 / pnpm 12.5.1 / PostgreSQL 16.15 at
+127.0.0.1:5433 (host/port overridden from repo .env via shell env; .env
+untouched): restore-scope 8/8; SCALE core 76/76 ×2 (32+36+8); API
+regression 170/170 (scale-evidence 47, manuscript 21, narrative 53,
+publication 17, state-consumers 32 — the eleventh-repair fixture failures
+no longer reproduce); worker trio 28/28; remaining 12 scale API files
+58/58 (filename correction: `scale-context-gate-agreement.test.ts`, not
+"ctx-gate-agreement"); UI ×5 39/39 (--maxWorkers 1, jsdom evidence only);
+prisma generate+validate pass; all four typechecks exit 0; changed-source
+ESLint exit 0 (`final-text-review-gate.ts` lives under
+`packages/ai-services/src/`, correcting the earlier apps/api path);
+`git diff --check` clean. Pre-fix failed runs left one temp home each; all
+owned leftovers were removed only after post-fix cleanup was verified
+across 5 runs with zero new leftovers.
+
+Not yet evidenced (separate gates, unchanged): live author/browser workflow
+in en/id with fallback; real isolated BullMQ queue delivery. GAP-039 and
+GAP-119 remain OPEN; GAP-039 additionally retains 050C and integrated
+author-workflow acceptance.
+
 ## Author-authorized 050B integration — 2026-10-09
 
 The author authorized merging work/nf-wf-050b-scale-review through exact
@@ -18,7 +52,8 @@ application deployment was performed. Prisma validation and corrected scoped
 lint pass. Lint's first invocation failed on a nonexistent old API gate path;
 GAP-119 records that command error and the successful shared-package retry.
 
-Next work, in dependency order:
+Historical next-work list from the integration entry (superseded for item 1 by
+the fresh evidence above; items 2–6 remain in dependency order):
 
 1. Complete 050B's frozen merged-revision API/domain/worker/migration regressions
    on owned disposable targets. Record exact commands, counts and revision;

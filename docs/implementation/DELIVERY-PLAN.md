@@ -1,7 +1,8 @@
 # NovelForge Workflow Delivery Plan
 
-Current integration (2026-10-11): 050C (optional S3 assistance) is
-implemented and separately reviewed on b7969de + working tree; contract,
+Current integration (2026-10-12): 050C (optional S3 assistance) is
+implemented, separately reviewed and committed as `7589388` on main
+(not pushed); contract,
 reviews, checks and the remaining live-gateway gate are recorded in
 CURRENT ("NF-WF-050C implemented, separately reviewed"). GAP-039 stays
 OPEN: integrated author-workflow acceptance (S3 off/on) and the

@@ -22,7 +22,8 @@ gateway (Atria-Dawn-Preview) cannot complete the extraction prompt within
 180 s (TRANSIENT upstream), so the live happy-path receipt awaits a fit
 model; the live failure path (gateway timeout → 502, no row, FAILED
 generation with null usage) was witnessed on the owned acceptance stack.
-Commit/push/deploy remain author-gated.
+Commit/push/deploy: COMMITTED as `7589388` (author-authorized 2026-10-12;
+push and deployment remain author-gated).
 Milestone / capability IDs: M3/M8; CAP-06; parent NF-WF-050; issue GAP-039 (parent gap); GAP-021 (Engram binding, fallback handoff if unavailable).
 Implementer role: the dispatching controller session (one writer per file; worktree-local).
 Reviewer role: separate read-only reviewer actor per slice (never the implementer session).

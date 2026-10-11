@@ -1,11 +1,10 @@
 # Current Project State
 
-## NF-WF-050C implemented, separately reviewed; live-gateway gate recorded — 2026-10-11, b7969de + working tree
+## NF-WF-050C implemented, separately reviewed, committed 7589388 — 2026-10-12
 
-050C (optional S3 SCALE proposal assistance) is implemented on top of b7969de
-as uncommitted working-tree changes (commit/push remain author-gated; no
-working-database reset; unrelated work, `output.txt` and the applied-history
-stash `nf050b-acceptance-wip` untouched). Contract
+050C (optional S3 SCALE proposal assistance) is implemented on top of
+b7969de and committed as `7589388` on main (author-authorized; parent
+b7969de; not pushed; no deployment). Contract
 `tasks/NF-WF-050C-scale-s3-assistance.md` frozen after three review rounds;
 slices separately reviewed (backend 7 findings fixed, web 1 finding fixed);
 final exact-diff review of freeze `.git/nf-050c-final-freeze-20261011.patch`

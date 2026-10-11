@@ -59,6 +59,7 @@ export {
   PublicationError,
   RateLimitError,
 } from "./src/policy-errors.ts";
+export { ScaleS3Error, type ScaleS3ErrorCode } from "./src/scale-s3-errors.ts";
 export {
   type EvidenceFinding,
   type FindingEvidence,
@@ -141,6 +142,17 @@ export {
   type DecideProposalInput,
   type ScaleDecisionTx,
 } from "./src/scale-decisions.ts";
+
+// NF-WF-050C: optional S3 SCALE proposal assistance
+export {
+  createScaleS3Services,
+  readScaleS3Setting,
+  type ScaleS3Services,
+  type ScaleS3Deps,
+  type ScaleS3Expectations,
+  type ScaleS3ProposalView,
+  type ScaleS3SettingView,
+} from "./src/scale-s3.ts";
 export {
   checkFinalTextReviewGate,
   parseScaleReviewProtocol,

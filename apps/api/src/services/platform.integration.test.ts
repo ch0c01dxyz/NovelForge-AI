@@ -383,4 +383,59 @@ describe("novels", () => {
     expect(await db.novel.findUnique({ where: { id: novelId } })).toBeTruthy();
     expect(await db.scaleDecisionProposal.findUnique({ where: { id: proposal.id } })).toBeTruthy();
   }, 30_000);
+
+  it("deleteNovel removes S3 proposals via cascade; refusal preserves them (050C)", async () => {
+    const owner = await makeUser();
+    const { id: wsId } = await services.createWorkspace({ actorUserId: owner, name: "W", slug: `w-s3-${Date.now()}` });
+    const { id: novelId } = await services.createNovel({
+      actorUserId: owner, workspaceId: wsId, title: "S3N", slug: `s3n-${Date.now()}`,
+    });
+    const chapter = await db.chapter.create({
+      data: { novelId, title: "Ch1", number: 1, createdById: owner },
+    });
+    const version = await db.chapterVersion.create({
+      data: { chapterId: chapter.id, number: 1, content: "<p>x</p>", wordCount: 1, authorId: owner },
+    });
+    const branch = await db.novelBranch.findFirst({ where: { novelId } });
+    const s3row = await db.scaleS3Proposal.create({
+      data: {
+        workspaceId: wsId,
+        novelId,
+        chapterId: chapter.id,
+        chapterVersionId: version.id,
+        sourceBranchId: branch!.id,
+        policyFingerprint: "0".repeat(64),
+        payload: { claims: [] },
+        requestedByUserId: owner,
+      },
+    });
+
+    // Refusal path first: canon-fact Restrict rolls back BEFORE any cascade,
+    // so the S3 row survives a refused deletion.
+    const entity = await db.storyEntity.create({
+      data: { novelId, kind: "CHARACTER", key: "blocker-s3", name: "Blocker", createdById: owner },
+    });
+    await db.canonFact.create({
+      data: {
+        workspaceId: wsId,
+        novelId,
+        entityId: entity.id,
+        predicate: "blocks",
+        objectText: "delete",
+        statement: "blocks delete",
+        createdById: owner,
+      },
+    });
+    await expect(
+      services.deleteNovel({ actorUserId: owner, workspaceId: wsId, novelId }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(await db.scaleS3Proposal.findUnique({ where: { id: s3row.id } })).toBeTruthy();
+
+    // Remove the blocker; the successful delete cascades the inert S3 row
+    // with its novel — no explicit platform.deleteNovel change needed.
+    await db.canonFact.deleteMany({ where: { novelId } });
+    await services.deleteNovel({ actorUserId: owner, workspaceId: wsId, novelId });
+    expect(await db.novel.findUnique({ where: { id: novelId } })).toBeNull();
+    expect(await db.scaleS3Proposal.count({ where: { novelId } })).toBe(0);
+  }, 30_000);
 });

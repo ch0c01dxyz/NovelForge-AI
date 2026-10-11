@@ -1022,6 +1022,26 @@ contract text to describe the head-derived staleness + manual-trigger
 model actually shipped. Do NOT silently edit the frozen contract —
 amend with the review record.
 
+## Note — NF-WF-050C implementation record and deleteNovel amendment (2026-10-11)
+
+050C (optional S3 SCALE proposal assistance) is implemented and separately
+reviewed on b7969de + working tree; see
+docs/14-progress/CURRENT.md "NF-WF-050C implemented, separately reviewed"
+for the full evidence, checks and the remaining live-gateway gate. Scope
+amendment note (recorded per the amendment rule): the frozen contract's
+"platform.deleteNovel gains explicit S3-row deletion" was satisfied by FK
+CASCADE instead — `scale_s3_proposals` anchors (novel/chapter/version/
+branch) are ON DELETE CASCADE because an untrusted suggestion must never
+block deletion (unlike S2's Restrict chains); `platform.ts` is therefore
+unchanged, a canon/workflow refusal rolls back before any cascade fires
+(rows preserved), and both paths are asserted in
+`apps/api/src/services/platform.integration.test.ts` ("deleteNovel removes
+S3 proposals via cascade; refusal preserves them (050C)", 12/12 suite).
+Final review of the submitted diff: all prior findings resolved, 2
+non-blocking P3 notes applied; remaining live-gateway gate recorded in
+CURRENT. GAP-039 stays OPEN (integrated acceptance + human screen-reader
+pass remain author-owned).
+
 ## GAP-038 — NF-WF-010 IMPOSSIBLE_PREREQUISITE could never fire: the requiring fact self-established (2026-10-05)
 
 Status: FIXED during implementer verification (test-exposed).
@@ -2887,7 +2907,11 @@ the fallback integration checkpoint.
 
 ## GAP-119 — 050B review/gate and standing contract seams
 
-Status: OPEN / P1; observed by source inspection at `a0010c2`, 2026-10-09.
+Status: CLOSED — 2026-10-11 (implementation proofs, live author-flow
+acceptance, scheduled queue delivery and separate exact-diff review complete;
+committed b7969de; see
+docs/14-progress/050B-acceptance-reconciliation-2026-10-11.md). Historical
+status: OPEN / P1; observed by source inspection at `a0010c2`, 2026-10-09.
 Owner: NF-WF-050B; separate reviewers: review_mutations_034 and
 review_recovery_034. This is a planned contract repair, not a reproduced runtime
 failure or implemented fix. GAP-039 remains the parent capability gap.
@@ -4538,6 +4562,9 @@ policy.
 
 ## GAP-120 — Novel workspace page 500s in live browser: 12 template components never resolved — 2026-10-11
 
+**Status: CLOSED 2026-10-11** — closure check observed (novel page 200,
+end-to-end author journey completed; fix committed in b7969de).
+
 **Symptom.** First live NF-WF-050B browser acceptance at `dcb2f49`
 (acceptance stack, web `:3001`, authenticated author): navigating to
 `/workspaces/:workspaceId/novels/:novelId` returns HTTP 500 (Nuxt SSR
@@ -4617,6 +4644,9 @@ end-to-end.
 
 ## GAP-121 — SCALE review tab label + panel render raw i18n keys: dict path vs call-site path mismatch — 2026-10-11
 
+**Status: CLOSED 2026-10-11** — closure check observed (localized panel in
+live browser, parity guard suite green; fix committed in b7969de).
+
 **Symptom.** Same live journey, after the GAP-120 fix made the novel page
 render: the narrative panel's SCALE tab label and the ScaleReviewPanel
 body render the literal key `workspace.scaleReview.title` instead of
@@ -4681,6 +4711,9 @@ check, 2026-10-11): 86 distinct call-site keys, 0 missing in either dict;
 panel strings; ID locale shows Indonesian via the same dict.
 
 ## GAP-122 — Public chapter reader never renders: `/read/:slug` swallows nested `/read/:slug/:number` route — 2026-10-11
+
+**Status: CLOSED 2026-10-11** — closure check OBSERVED (browser closure
+evidence below; fix committed in b7969de).
 
 **Symptom.** 050B live journey scenario 9 (reader visibility): opening
 `/read/050b-scale-acceptance-novel-c/1` in a real browser shows only the
@@ -4755,6 +4788,10 @@ free of NUXT_E4016 and NotificationBell warnings. — OBSERVED 2026-10-11
 commit; GAP-123 records the separately-owned hydration defect.
 
 ## GAP-123 — Reader SSR/locale hydration mismatch: en server HTML vs localStorage-selected id — 2026-10-11
+
+**Status: CLOSED 2026-10-11** — repair + follow-up repair applied, browser
+re-verified, two-round follow-up review APPROVE (committed b7969de; see
+entries below).
 
 **Symptom.** During GAP-122 browser verification with locale `id`, every
 SSR'd reader page hydrates with a Vue warning: `Hydration text content

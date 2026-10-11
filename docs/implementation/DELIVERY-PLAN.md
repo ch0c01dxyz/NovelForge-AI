@@ -1,13 +1,13 @@
 # NovelForge Workflow Delivery Plan
 
-Current integration (2026-10-09): the author authorized merging reviewed
-[050B](../../tasks/NF-WF-050B-scale-review-and-author-decisions.md) through
-`800cf37` with corrected documentary provenance. Implementation is accepted
-for integration; complete frozen acceptance is still pending. Next execute
-safe merged-revision regressions and the live localized author/publication
-journey, then draft and separately review 050C's optional S3 contract.
-GAP-039/GAP-119 stay open. Do not repeat integrated 050A/050B implementation
-or closed NF048/049 work. Earlier dispatch paragraphs are historical.
+Current integration (2026-10-11): 050C (optional S3 assistance) is
+implemented and separately reviewed on b7969de + working tree; contract,
+reviews, checks and the remaining live-gateway gate are recorded in
+CURRENT ("NF-WF-050C implemented, separately reviewed"). GAP-039 stays
+OPEN: integrated author-workflow acceptance (S3 off/on) and the
+author-owned human screen-reader pass remain, plus the live extraction
+receipt through a structured-capable model profile. Do not redispatch
+050A/050B/050C implementation.
 
 
 Current execution (2026-10-09): NF-WF-050A S1 API/storage foundation is

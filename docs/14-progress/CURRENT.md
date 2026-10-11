@@ -1,5 +1,88 @@
 # Current Project State
 
+## NF-WF-050C implemented, separately reviewed; live-gateway gate recorded — 2026-10-11, b7969de + working tree
+
+050C (optional S3 SCALE proposal assistance) is implemented on top of b7969de
+as uncommitted working-tree changes (commit/push remain author-gated; no
+working-database reset; unrelated work, `output.txt` and the applied-history
+stash `nf050b-acceptance-wip` untouched). Contract
+`tasks/NF-WF-050C-scale-s3-assistance.md` frozen after three review rounds;
+slices separately reviewed (backend 7 findings fixed, web 1 finding fixed);
+final exact-diff review of freeze `.git/nf-050c-final-freeze-20261011.patch`
+sha256 `c02349c5a9e561bddd88726713b7ac4c9f54cda8b7976fa12c0290196f9918cf`
+verified all findings resolved (2 non-blocking P3 notes applied: advice-item
+cap; payload comment corrected to write-time validation + consumption-time
+050A re-validation).
+
+Scope delivered: per-novel off-by-default S3 setting in `NovelSettings`
+(`PUT/GET /scale-s3-setting`, canon:manage setter, audit
+`novel.scale-s3-settings-changed`); inert untrusted extraction proposals
+(`scale_s3_proposals`, single additive migration `20261011_nf_wf_050c_…`,
+OPERATIONAL restore class 96→97); two-phase pin validation under the 050A
+lock order with zero model calls on every pre-model refusal; fail-closed
+claim validation (span/quote byte-exact vs pinned content); reportedModel
+from the attempt ledger only (never request-model fallback); transient
+never-persisted advice gated on INCOMPLETE; recorded dismissal
+(CAS-guarded, idempotent); panel section with zero affordances when
+disabled, prefills-only "Add as evidence" through the existing 050A form;
+en/id keys + parity guard.
+
+Checks executed this session (Windows, 5433): scale-s3 API suite 24/24;
+platform.integration 12/12 (new S3 cascade/refusal deleteNovel test);
+scale-evidence/review/decisions + restore-scope 123/123; S3 panel 11/11 +
+parity 4/4; adjacent web 48/48; ai-services/api/web typechecks exit 0;
+eslint on all changed files exit 0; prisma validate/generate pass; live
+additive migration applied to `novelforge_acceptance_050b` (fixture
+preserved; seeded gateway/model/mapping rows and diagnostic artifacts
+removed after evidence; audit trail kept).
+
+Live browser journey (owned acceptance stack, chrome-devtools, author
+session; API-assisted fixture steps labeled): disabled default → section
+absent, GET setting `{enabled:false}`; API-assisted enable → section
+renders (id locale "Saran AI", en locale "AI suggestions"); extract click
+→ real 9Router gateway → **502 BAD_GATEWAY**, deterministic checklist
+intact, no proposal row, `Generation` row FAILED/TRANSIENT latency 180057
+ms with NULL token counts (unknown usage recorded verbatim — NF049);
+disabled again → section gone, zero affordances. **REMAINING LIVE GATE**:
+the host's real gateway model (Atria-Dawn-Preview) cannot complete the
+extraction prompt within 180 s (upstream TRANSIENT), so the live happy-path
+extraction receipt awaits a structured-extraction-capable model profile;
+deterministic coverage of the happy path is complete (fake-gateway suite).
+GAP-039 remains OPEN (retains integrated acceptance + author-owned human
+screen-reader pass); 050B/GAP-119/GAP-120–123 closed earlier today (see the
+entry below). Engram attributed writes unavailable (GAP-021): no runtime
+session identity; this entry is the fallback handoff.
+
+## NF-WF-050B acceptance CLOSED; 050B/050C continuation — 2026-10-11, b7969de
+
+The reviewed 050B acceptance-repair set (GAP-120/121/122/123 fixes, evidence
+excerpt, scope amendments 23–25, GAP-122/123 contracts) was committed as
+`b7969de` on main (parent `dcb2f49`). Verification at the committed revision:
+9 affected web suites 85/85 passed (the routing regression test requires
+`apps/web` as cwd — repo-root invocation misreads its path anchors, a runner
+artifact, not a code defect); `vue-tsc --noEmit` exit 0; freeze patch
+`.git/nf-050b-final-freeze-20261011.patch` sha256 re-verified
+`66f1a3b0…f54`; GAP-123 follow-up patch `03f3f964…87d6` re-verified and its
+committed blobs (`279ada86` useLocale.ts, `4ada15b0` useLocale.test.ts) match
+the reviewed working-tree blobs. Backend byte-identical from `858dafb` through
+`b7969de`, so the retained backend/worker/migration receipts apply unchanged.
+
+Acceptance reconciliation complete: criterion-to-evidence matrix for the
+frozen 050B contract in
+[050B-acceptance-reconciliation-2026-10-11.md](050B-acceptance-reconciliation-2026-10-11.md)
+— all criteria satisfied, none missing/contradictory. Disposition: **050B
+child CLOSED** (implementation + live acceptance + separate reviews complete).
+**GAP-120/121/122/123 CLOSED** (closure checks observed; UI surfaces close
+with reviewed commit b7969de). **GAP-119 CLOSED** (its closure criteria —
+real API/worker race/negative proofs, S2 recovery/migration checks, localized
+author-flow acceptance, separate exact-diff review — are satisfied; umbrella
+seams implemented through 050B). **GAP-039 remains OPEN** (retains 050C,
+integrated author-workflow acceptance with S3, and the author-owned human
+screen-reader pass). Commit is done; push/deployment remain author-gated and
+were not performed.
+
+Supersedes the "Still open: commit" note in the acceptance entry below.
+
 ## NF-WF-050B live author-workflow acceptance — 2026-10-11, dcb2f49 + uncommitted acceptance WIP
 
 Live browser acceptance of the 050B author workflow executed on Windows 11

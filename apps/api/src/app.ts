@@ -24,6 +24,7 @@ import { registerPlatformRoutes } from "./platform-routes.ts";
 import { registerManuscriptRoutes } from "./manuscript-routes.ts";
 import { registerScaleEvidenceRoutes } from "./scale-evidence-routes.ts";
 import { registerScaleDecisionRoutes } from "./scale-decision-routes.ts";
+import { registerScaleS3Routes } from "./scale-s3-routes.ts";
 import { registerAiRoutes } from "./ai-routes.ts";
 import { registerDefinitionRoutes } from "./definition-routes.ts";
 import { registerRetrievalRoutes } from "./retrieval-routes.ts";
@@ -341,6 +342,16 @@ export async function buildApp(
       ...(options.createGateway ? { createGateway: options.createGateway } : {}),
     });
     registerAiRoutes(app, { auth, services: aiServices, platformRoleOf });
+
+    // NF-WF-050C: optional S3 SCALE proposal assistance. Registered after
+    // aiServices exists so the extraction path reuses the ONE sanctioned
+    // generate seam (gateway registry, routing, NF049 attribution).
+    registerScaleS3Routes(app, {
+      auth,
+      db: options.db,
+      audit,
+      ai: aiServices,
+    });
 
     // One retrieval service shared by the routes and the workflow executor:
     // a RETRIEVAL step must search exactly the index a direct search reads,

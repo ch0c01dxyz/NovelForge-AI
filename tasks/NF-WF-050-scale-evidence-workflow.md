@@ -1,13 +1,24 @@
 # NF-WF-050: SCALE Evidence Workflow Implementation Plan
 
-050B integration update (2026-10-09): the author authorized merging reviewed
+050B integration update (2026-10-11): 050B is CLOSED/ACCEPTED — live
+author-workflow acceptance complete, acceptance repairs committed as `b7969de`,
+criterion-to-evidence reconciliation in
+docs/14-progress/050B-acceptance-reconciliation-2026-10-11.md; GAP-119 closed
+with the child. Next: freeze and separately review the 050C optional-S3
+contract, then implement. GAP-039 stays open until 050C, integrated
+acceptance and the author-owned screen-reader pass complete.
+050C integration update (2026-10-11): the optional-S3 contract
+(tasks/NF-WF-050C-scale-s3-assistance.md) is frozen, implemented and
+separately reviewed on b7969de + working tree; deterministic gates green;
+the remaining gate is a live extraction receipt through a
+structured-extraction-capable model profile (see CURRENT 2026-10-11).
+GAP-039 stays open through integrated acceptance and the author-owned
+screen-reader pass.
+Historical (2026-10-09): the author authorized merging reviewed
 [050B](NF-WF-050B-scale-review-and-author-decisions.md) through `800cf37`.
 S1 consumption/S2 source is implemented and separately reviewed; complete
-merged-revision acceptance remains pending. Verify the frozen regression and
-live author/publication boundaries before closing the child. Next draft and
-separately review 050C for off-by-default optional S3 assistance. No 050C
-contract or implementation is delivered here. GAP-039 stays open until all
-retained stages and integrated acceptance pass. Earlier unchecked stage lists
+merged-revision acceptance was pending and is now superseded by the closure
+above. No 050C contract or implementation is delivered here yet. Earlier unchecked stage lists
 and implementation-not-started statements preserve historical planning only.
 
 

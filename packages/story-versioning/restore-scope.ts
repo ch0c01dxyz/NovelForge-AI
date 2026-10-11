@@ -115,6 +115,7 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   scale_evidence_sets: "OPERATIONAL", // SCALE evidence history — auditable, never rewound (050A).
   scale_decision_proposals: "OPERATIONAL", // S2 author decision proposals — auditable history, never rewound (050B).
   scale_decision_outcomes: "OPERATIONAL", // S2 author decision outcomes — auditable history, never rewound (050B).
+  scale_s3_proposals: "OPERATIONAL", // S3 untrusted AI suggestion proposals — inert auditable history, never rewound (050C).
   snapshots: "OPERATIONAL",
   checkpoints: "OPERATIONAL",
   reading_progress: "OPERATIONAL", // Per-user state, never story state.

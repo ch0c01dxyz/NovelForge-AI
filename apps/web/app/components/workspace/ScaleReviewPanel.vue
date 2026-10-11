@@ -767,6 +767,208 @@ async function submitEvidence(): Promise<void> {
   }
 }
 
+// --- S3 (NF-WF-050C): untrusted AI suggestions ---
+// Per-novel, off by default. The panel fetches the setting once per
+// selection; any 403/404 is treated as disabled absence (zero AI
+// affordances, never an error banner). Proposals are inert server rows;
+// "Add as evidence" only PREFILLS the existing 050A form (the author
+// reviews and submits through the validated surface). Dismissal is the
+// recorded author rejection.
+interface S3Claim {
+  scale: string;
+  relevance: "ACTION" | "STAKES" | "CONSEQUENCE";
+  explanation: string;
+  source: { start: number; end: number; quote: string };
+}
+interface S3ProposalRow {
+  id: string;
+  claims: S3Claim[];
+  reportedModel: string | null;
+  dismissedByUserId: string | null;
+  createdAt: string;
+  stale: boolean;
+}
+interface S3AdviceItem {
+  code: string;
+  field: string;
+  reason: string;
+  explanation: string;
+  example: string;
+  nextAction: string;
+}
+
+const s3Enabled = ref(false);
+const s3Proposals = ref<S3ProposalRow[]>([]);
+const s3Loading = ref(false);
+const s3Busy = ref(false);
+const s3Error = ref<string | null>(null);
+const s3Advice = ref<S3AdviceItem[] | null>(null);
+const s3AdviceBusy = ref(false);
+
+function s3Reset(): void {
+  s3Enabled.value = false;
+  s3Proposals.value = [];
+  s3Loading.value = false;
+  s3Busy.value = false;
+  s3Error.value = null;
+  s3Advice.value = null;
+  s3AdviceBusy.value = false;
+}
+
+async function loadS3Setting(): Promise<void> {
+  s3Enabled.value = false;
+  s3Advice.value = null;
+  s3Error.value = null;
+  try {
+    // Novel-scoped setting (not chapter-scoped): the enablement is
+    // configured per novel (050C contract).
+    const res = await api<{ enabled: boolean }>(
+      `/workspaces/${props.workspaceId}/novels/${props.novelId}/scale-s3-setting`,
+    );
+    if (isUnmounted) return;
+    s3Enabled.value = res.enabled === true;
+  } catch (e) {
+    if (isUnmounted) return;
+    // 403/404 = clean absence per the 050C contract; anything else is a
+    // section-level error affordance (never silently swallowed).
+    if (e instanceof ApiError && (e.status === 403 || e.status === 404)) {
+      s3Enabled.value = false;
+      return;
+    }
+    if (e instanceof ApiError && e.status === 409) {
+      s3Enabled.value = false;
+      return;
+    }
+    s3Error.value = statusErrorKey(e);
+  }
+}
+
+async function loadS3Proposals(selSeq: number, opSeq: number): Promise<void> {
+  const versionId = effectiveVersionId.value;
+  if (!versionId || !s3Enabled.value) return;
+  s3Loading.value = true;
+  try {
+    const res = await api<{ items: S3ProposalRow[] }>(
+      `${base()}/scale-s3?chapterVersionId=${encodeURIComponent(versionId)}&limit=20`,
+    );
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    s3Proposals.value = res.items;
+  } catch (e) {
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    if (e instanceof ApiError && e.status === 409) return; // S3 disabled mid-flight
+    s3Error.value = statusErrorKey(e);
+  } finally {
+    if (selSeq === selectionSeq && !isUnmounted) s3Loading.value = false;
+  }
+}
+
+async function requestS3Extraction(): Promise<void> {
+  const versionId = effectiveVersionId.value;
+  if (!context.value || !versionId || s3Busy.value) return;
+  s3Busy.value = true;
+  s3Error.value = null;
+  try {
+    await api(`${base()}/scale-s3/extract`, {
+      method: "POST",
+      body: JSON.stringify({
+        chapterVersionId: versionId,
+        expectedBranchId: context.value.branch.id,
+        expectedHeadRevisionId: context.value.headRevisionId,
+        expectedSetId: context.value.latestSet?.id ?? null,
+        expectedPolicyFingerprint: context.value.policyFingerprint,
+      }),
+    });
+    const selSeq = selectionSeq;
+    const opSeq = operationSeq;
+    if (selSeq !== selectionSeq || isUnmounted) return;
+    await loadS3Proposals(selSeq, opSeq);
+  } catch (e) {
+    if (isUnmounted) return;
+    if (e instanceof ApiError && e.status === 422) {
+      s3Error.value = t("workspace.narrative.scaleReview.s3.errors.invalid");
+    } else {
+      s3Error.value = statusErrorKey(e);
+    }
+  } finally {
+    if (!isUnmounted) s3Busy.value = false;
+  }
+}
+
+async function dismissS3Proposal(id: string): Promise<void> {
+  if (s3Busy.value) return;
+  s3Busy.value = true;
+  s3Error.value = null;
+  try {
+    await api(`${base()}/scale-s3/${encodeURIComponent(id)}/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({
+        reason: t("workspace.narrative.scaleReview.s3.dismissReason"),
+      }),
+    });
+    const selSeq = selectionSeq;
+    const opSeq = operationSeq;
+    if (selSeq !== selectionSeq || isUnmounted) return;
+    await loadS3Proposals(selSeq, opSeq);
+  } catch (e) {
+    if (!isUnmounted) s3Error.value = statusErrorKey(e);
+  } finally {
+    if (!isUnmounted) s3Busy.value = false;
+  }
+}
+
+function addS3ClaimAsEvidence(claim: S3Claim): void {
+  // Prefill ONLY: the author reviews and submits through the existing
+  // validated 050A form; the server re-validates with fresh pins.
+  evidenceDeclaration.value = "CONFLICTS";
+  claimScale.value = claim.scale;
+  claimRelevance.value = claim.relevance;
+  claimExplanation.value = claim.explanation;
+  claimSpanStart.value = String(claim.source.start);
+  claimSpanEnd.value = String(claim.source.end);
+  claimQuote.value = claim.source.quote;
+}
+
+async function requestS3Advice(): Promise<void> {
+  const versionId = effectiveVersionId.value;
+  if (!context.value || !versionId || s3AdviceBusy.value) return;
+  // Selection/operation identity: the advice response belongs to THIS
+  // selection only; a later selection must never receive it.
+  const selSeq = selectionSeq;
+  const opSeq = operationSeq;
+  s3AdviceBusy.value = true;
+  s3Error.value = null;
+  try {
+    const items = (receipt.value?.scaleReview?.missingData ?? []) as Array<
+      Record<string, unknown>
+    >;
+    if (items.length === 0) {
+      s3Error.value = t("workspace.narrative.scaleReview.s3.errors.notIncomplete");
+      return;
+    }
+    const res = await api<{ items: S3AdviceItem[] }>(`${base()}/scale-s3/advice`, {
+      method: "POST",
+      body: JSON.stringify({
+        chapterVersionId: versionId,
+        expectedBranchId: context.value.branch.id,
+        expectedHeadRevisionId: context.value.headRevisionId,
+        expectedSetId: context.value.latestSet?.id ?? null,
+        expectedPolicyFingerprint: context.value.policyFingerprint,
+      }),
+    });
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    s3Advice.value = res.items;
+  } catch (e) {
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    if (e instanceof ApiError && e.status === 422) {
+      s3Error.value = t("workspace.narrative.scaleReview.s3.errors.invalid");
+    } else {
+      s3Error.value = statusErrorKey(e);
+    }
+  } finally {
+    if (selSeq === selectionSeq && !isUnmounted) s3AdviceBusy.value = false;
+  }
+}
+
 // --- Watchers: invalidate on selection/version/save-state change ---
 watch(
   () => [props.workspaceId, props.novelId, props.chapterId, props.chapterVersionId, props.hasSavedVersion],
@@ -781,6 +983,7 @@ watch(
     proposalRunning.value = false;
     decisionRunning.value = false;
     evidenceRunning.value = false;
+    s3Reset();
     context.value = null;
     receipt.value = null;
     review.value = null;
@@ -793,6 +996,12 @@ watch(
     resetProposalForm();
     resetEvidenceForm();
     decisionTarget.value = null;
+    // S3 setting is per-novel; fetch it on every selection change. Its
+    // result gates the S3 section (zero affordances when absent/disabled).
+    void loadS3Setting().then(() => {
+      if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+      return loadS3Proposals(selSeq, opSeq);
+    });
     loadContext(selSeq, opSeq).then(() => {
       // Abort the chained evidence load when superseded: a newer operation
       // owns the refresh now.
@@ -1156,6 +1365,154 @@ function statusClass(status: ChecklistItem["status"]): string {
               </details>
             </li>
           </ul>
+        </div>
+
+        <!-- S3 AI suggestions (NF-WF-050C): rendered ONLY when the novel
+             has S3 enabled. Disabled/absent → zero AI affordances. -->
+        <div
+          v-if="s3Enabled"
+          class="rounded-lg border border-nf-border bg-nf-bg-2 p-3"
+        >
+          <h3 class="text-[13px] font-semibold text-nf-text">
+            {{ t("workspace.narrative.scaleReview.s3.title") }}
+          </h3>
+          <p class="mt-1 text-[12px] leading-relaxed text-nf-text-dim">
+            {{ t("workspace.narrative.scaleReview.s3.hint") }}
+          </p>
+
+          <p
+            v-if="s3Error"
+            role="alert"
+            class="mt-2 text-[12.5px] text-nf-danger"
+          >
+            {{ s3Error }}
+          </p>
+
+          <p
+            v-if="s3Loading"
+            role="status"
+            class="mt-2 text-[12.5px] text-nf-text-dim"
+          >
+            {{ t("workspace.narrative.scaleReview.loading") }}
+          </p>
+
+          <template v-else>
+            <p
+              v-if="s3Proposals.length === 0"
+              class="mt-2 text-[12.5px] text-nf-text-dim"
+            >
+              {{ t("workspace.narrative.scaleReview.s3.empty") }}
+            </p>
+            <ul class="mt-2 flex flex-col gap-2">
+              <li
+                v-for="p in s3Proposals"
+                :key="p.id"
+                class="rounded-md border p-2.5"
+                :class="p.stale
+                  ? 'border-nf-warn/40 bg-nf-warn/10'
+                  : 'border-nf-border bg-nf-bg'"
+              >
+                <p
+                  v-if="p.stale"
+                  class="text-[12px] font-medium text-nf-warn"
+                >
+                  {{ t("workspace.narrative.scaleReview.s3.stale") }}
+                </p>
+                <p
+                  v-else-if="p.dismissedByUserId"
+                  class="text-[12px] text-nf-text-dim"
+                >
+                  {{ t("workspace.narrative.scaleReview.s3.dismissed") }}
+                </p>
+                <p
+                  v-if="p.reportedModel"
+                  class="text-[12px] text-nf-text-dim"
+                >
+                  {{ t("workspace.narrative.scaleReview.s3.modelLabel") }}: {{ p.reportedModel }}
+                </p>
+                <ul class="mt-1 flex flex-col gap-1.5">
+                  <li
+                    v-for="(c, ci) in p.claims"
+                    :key="ci"
+                    class="text-[12.5px] leading-relaxed"
+                  >
+                    <span class="font-medium">{{ c.scale }} · {{ c.relevance }}</span>
+                    — {{ c.explanation }}
+                    <blockquote class="mt-0.5 border-l-2 border-nf-border pl-2 text-[12px] italic text-nf-text-dim">
+                      {{ c.source.quote }}
+                    </blockquote>
+                    <button
+                      v-if="!p.stale && !p.dismissedByUserId"
+                      type="button"
+                      class="mt-1 rounded-md border border-nf-border px-2 py-1 text-[12px] hover:nf-hover focus-visible:nf-focus"
+                      :disabled="s3Busy"
+                      @click="addS3ClaimAsEvidence(c)"
+                    >
+                      {{ t("workspace.narrative.scaleReview.s3.addAsEvidence") }}
+                    </button>
+                  </li>
+                </ul>
+                <button
+                  v-if="!p.stale && !p.dismissedByUserId"
+                  type="button"
+                  class="mt-1.5 rounded-md border border-nf-border px-2 py-1 text-[12px] hover:nf-hover focus-visible:nf-focus"
+                  :disabled="s3Busy"
+                  @click="dismissS3Proposal(p.id)"
+                >
+                  {{ t("workspace.narrative.scaleReview.s3.dismiss") }}
+                </button>
+              </li>
+            </ul>
+
+            <button
+              type="button"
+              class="mt-2 rounded-md border border-nf-border px-2.5 py-1.5 text-[12.5px] hover:nf-hover focus-visible:nf-focus disabled:opacity-50"
+              :disabled="s3Busy"
+              @click="requestS3Extraction"
+            >
+              {{ s3Busy
+                ? t("workspace.narrative.scaleReview.s3.requestBusy")
+                : t("workspace.narrative.scaleReview.s3.request") }}
+            </button>
+
+            <!-- Transient missing-data advice; never replaces the checklist -->
+            <div
+              v-if="receipt?.scaleReview?.state === 'INCOMPLETE'"
+              class="mt-3 border-t border-nf-border pt-2"
+            >
+              <button
+                type="button"
+                class="rounded-md border border-nf-border px-2.5 py-1.5 text-[12.5px] hover:nf-hover focus-visible:nf-focus disabled:opacity-50"
+                :disabled="s3AdviceBusy"
+                @click="requestS3Advice"
+              >
+                {{ s3AdviceBusy
+                  ? t("workspace.narrative.scaleReview.s3.adviceBusy")
+                  : t("workspace.narrative.scaleReview.s3.adviceRequest") }}
+              </button>
+              <ul
+                v-if="s3Advice"
+                class="mt-2 flex flex-col gap-2"
+              >
+                <li
+                  v-for="(a, ai2) in s3Advice"
+                  :key="ai2"
+                  class="rounded-md border border-nf-border bg-nf-bg p-2.5 text-[12.5px] leading-relaxed"
+                >
+                  <p class="font-medium">{{ a.code }}</p>
+                  <p class="mt-1">{{ a.explanation }}</p>
+                  <p class="mt-1 text-nf-text-dim">
+                    <span class="font-medium">{{ t("workspace.narrative.scaleReview.checklist.exampleLabel") }}:</span>
+                    {{ a.example }}
+                  </p>
+                  <p class="mt-1 text-nf-text-dim">
+                    <span class="font-medium">{{ t("workspace.narrative.scaleReview.checklist.nextActionLabel") }}:</span>
+                    {{ a.nextAction }}
+                  </p>
+                </li>
+              </ul>
+            </div>
+          </template>
         </div>
 
         <!-- S2 proposals -->

@@ -1,6 +1,12 @@
 # NF-WF-050B: SCALE review, author decisions and usable author workflow
 
-Status: IMPLEMENTED / SOURCE_REVIEWED / ACCEPTANCE_PENDING.
+Status: CLOSED / ACCEPTED — 2026-10-11. Live author-workflow acceptance
+(scenarios 1–11) completed at dcb2f49 + reviewed repairs; repair set committed
+as b7969de; criterion-to-evidence reconciliation in
+docs/14-progress/050B-acceptance-reconciliation-2026-10-11.md shows all frozen
+acceptance criteria satisfied. GAP-119 closed with the child; GAP-039 remains
+OPEN (retains 050C + integrated acceptance + human screen-reader pass).
+Historical status: IMPLEMENTED / SOURCE_REVIEWED / ACCEPTANCE_PENDING.
 Integration update (2026-10-09): the author authorized merging external
 `800cf3707d488f88cbc2447d1d992f3aeb6d89bf`. Separate technical/recovery
 actors approve the submitted source; CURRENT and GAP-119 own exact local

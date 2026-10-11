@@ -73,6 +73,10 @@ model User {
   authoredScaleDecisionProposals ScaleDecisionProposal[] @relation("ScaleDecisionProposer")
   /// NF-WF-050B: decision outcomes recorded by this user (author).
   recordedScaleDecisionOutcomes  ScaleDecisionOutcome[]  @relation("ScaleDecisionActor")
+  /// NF-WF-050C: S3 extraction requests by this user.
+  requestedScaleS3Proposals ScaleS3Proposal[] @relation("ScaleS3Requester")
+  /// NF-WF-050C: S3 proposals dismissed by this user.
+  dismissedScaleS3Proposals ScaleS3Proposal[] @relation("ScaleS3DismissedBy")
   proposedCanon       CanonProposal[]  @relation("CanonProposalAuthor")
   decidedCanon        CanonProposal[]  @relation("CanonProposalDecider")
   /// NF-WF-021B: simulation proposals decided by this user.
@@ -158,6 +162,8 @@ model Workspace {
   scaleDecisionProposals ScaleDecisionProposal[]
   /// NF-WF-050B: author decision outcomes in this workspace.
   scaleDecisionOutcomes  ScaleDecisionOutcome[]
+  /// NF-WF-050C: S3 proposals in this workspace.
+  scaleS3Proposals ScaleS3Proposal[]
   auditEntries AuditLog[]
   agents       Agent[]
   skills       Skill[]
@@ -246,6 +252,8 @@ model Novel {
   scaleDecisionProposals ScaleDecisionProposal[]
   /// NF-WF-050B: author decision outcomes in this novel.
   scaleDecisionOutcomes  ScaleDecisionOutcome[]
+  /// NF-WF-050C: S3 proposals in this novel.
+  scaleS3Proposals ScaleS3Proposal[]
   workflows   Workflow[]
   references  Reference[]
   retrievals  RetrievalAudit[]
@@ -415,6 +423,8 @@ model Chapter {
   storyEvents      StoryEvent[]
   /// NF-WF-012: the version-pinned release record (one row per chapter).
   publication      Publication?
+  /// NF-WF-050C: S3 proposals anchored to this chapter.
+  scaleS3Proposals ScaleS3Proposal[]
 
   @@unique([novelId, number])
   @@index([novelId, status])
@@ -446,6 +456,8 @@ model ChapterVersion {
   scaleDecisionProposals ScaleDecisionProposal[]
   /// NF-WF-050B: decision outcomes pinned to this chapter version.
   scaleDecisionOutcomes  ScaleDecisionOutcome[]
+  /// NF-WF-050C: S3 proposals pinned to this chapter version.
+  scaleS3Proposals ScaleS3Proposal[]
   /// NF-WF-010: the (replaced-on-rereview) final-text review receipt for
   /// this immutable version. Null until reviewed.
   finalTextReview   FinalTextReview?
@@ -2649,6 +2661,8 @@ model NovelBranch {
   scaleDecisionProposals ScaleDecisionProposal[]
   /// NF-WF-050B: decision outcomes sourced from this branch.
   scaleDecisionOutcomes  ScaleDecisionOutcome[]
+  /// NF-WF-050C: S3 proposals sourced from this branch.
+  scaleS3Proposals ScaleS3Proposal[]
   /// NF-WF-021A: simulation runs on this branch (SetNull; a run records
   /// whether its branch is simulation-dedicated).
   simulationRuns SimulationRun[]
@@ -3822,4 +3836,56 @@ model ScaleDecisionOutcome {
   @@unique([sourceBranchId, chapterVersionId, sequence], map: "scale_decision_outcomes_branch_version_sequence_key")
   @@index([novelId, sourceBranchId, chapterVersionId], map: "scale_decision_outcomes_novel_branch_version_idx")
   @@map("scale_decision_outcomes")
+}
+
+/// NF-WF-050C: untrusted AI-extracted SCALE claim proposals (S3).
+/// Append-only OPERATIONAL audit history, like the 050B S2 rows: never canon,
+/// never a story-head participant, never snapshot-covered. Inert data —
+/// consumption is an explicit author decision through the existing 050A/050B
+/// boundaries. Unlike S2, source anchors (chapter/version/branch/novel) are
+/// ON DELETE CASCADE: an S3 suggestion is not a decision record and must not
+/// block chapter or branch deletion; only the requester/dismissed actor FKs
+/// are Restrict.
+model ScaleS3Proposal {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Denormalised tenant boundary (ADR-0007).
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId           String   @map("novel_id") @db.Uuid
+  novel             Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  chapterId         String   @map("chapter_id") @db.Uuid
+  chapter           Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  chapterVersionId  String   @map("chapter_version_id") @db.Uuid
+  chapterVersion    ChapterVersion @relation(fields: [chapterVersionId], references: [id], onDelete: Cascade)
+  sourceBranchId    String   @map("source_branch_id") @db.Uuid
+  sourceBranch      NovelBranch @relation(fields: [sourceBranchId], references: [id], onDelete: Cascade)
+  sourceRevisionId  String?  @map("source_revision_id") @db.Uuid
+  evidenceSetId     String?  @map("evidence_set_id") @db.Uuid
+  /// SHA-256 hex of the canonical policy representation (explicit absence
+  /// included), matching the 050B receipt pin semantics.
+  policyFingerprint String   @map("policy_fingerprint")
+  /// Single stored kind: EXTRACT_CLAIM. Advice is transient and never
+  /// persisted as a row.
+  kind              String   @default("EXTRACT_CLAIM")
+  /// Fail-closed validated on WRITE (050A claim schema + provenance). On
+  /// read, rows are served as stored — consumption re-validates through
+  /// the mandatory 050A appendSet path before any approved-state write.
+  payload           Json
+  /// NF049 linkage; null when usage is unknown. Never a quota input.
+  generationId      String?  @map("generation_id") @db.Uuid
+  /// Serving-model evidence read from GenerationAttempt.reportedModelId,
+  /// verbatim or null; never the requested-model fallback.
+  reportedModel     String?  @map("reported_model")
+  requestedByUserId String   @map("requested_by_user_id") @db.Uuid
+  requester         User     @relation("ScaleS3Requester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  /// Recorded author rejection (ADR-0016 decision recording; approval is the
+  /// author-applied 050A evidence set). Null = pending/unused.
+  dismissedByUserId String?  @map("dismissed_by_user_id") @db.Uuid
+  dismissedBy       User?    @relation("ScaleS3DismissedBy", fields: [dismissedByUserId], references: [id], onDelete: Restrict)
+  dismissedReason   String?  @map("dismissed_reason") @db.VarChar(4000)
+  dismissedAt       DateTime? @map("dismissed_at") @db.Timestamptz(3)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([novelId, chapterId, createdAt], map: "scale_s3_proposals_novel_chapter_created_idx")
+  @@map("scale_s3_proposals")
 }

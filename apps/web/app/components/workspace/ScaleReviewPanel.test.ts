@@ -51,7 +51,7 @@ describe("ScaleReviewPanel", () => {
         chapterVersionId: null,
       },
     });
-    expect(wrapper.text()).toContain("workspace.scaleReview.noSelection");
+    expect(wrapper.text()).toContain("workspace.narrative.scaleReview.noSelection");
   });
 
   it("shows unsaved-edits warning when chapter has no saved version", () => {
@@ -64,7 +64,7 @@ describe("ScaleReviewPanel", () => {
         hasSavedVersion: false,
       },
     });
-    expect(wrapper.text()).toContain("workspace.scaleReview.unsavedEdits");
+    expect(wrapper.text()).toContain("workspace.narrative.scaleReview.unsavedEdits");
   });
 
   it("does not show unsaved warning when saved but version ID is null (server derives)", () => {
@@ -78,8 +78,8 @@ describe("ScaleReviewPanel", () => {
       },
     });
     // Server derives the version; the panel should attempt loading, not warn.
-    expect(wrapper.text()).not.toContain("workspace.scaleReview.unsavedEdits");
-    expect(wrapper.text()).not.toContain("workspace.scaleReview.noSelection");
+    expect(wrapper.text()).not.toContain("workspace.narrative.scaleReview.unsavedEdits");
+    expect(wrapper.text()).not.toContain("workspace.narrative.scaleReview.noSelection");
   });
 
   it("renders title", () => {
@@ -91,7 +91,7 @@ describe("ScaleReviewPanel", () => {
         chapterVersionId: null,
       },
     });
-    expect(wrapper.find("h2").text()).toBe("workspace.scaleReview.title");
+    expect(wrapper.find("h2").text()).toBe("workspace.narrative.scaleReview.title");
   });
 
 

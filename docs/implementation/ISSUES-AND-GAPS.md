@@ -580,6 +580,21 @@ this one, so it must be re-observed at each boundary rather than assumed. A
 later boundary that reports no identity re-opens this observation for that
 boundary; it does not invalidate this one.
 
+**Re-observed 2026-10-11 (GAP-123 follow-up boundary).** The runtime hook
+supplied no authoritative session identity at this boundary, so no attributed
+Engram write was made for the follow-up repair; only read-only Engram access
+was used (context recovery). Correction of the earlier attribution record,
+without deleting history: some 2026-10-11 boundaries DID hold a runtime
+binding and wrote attributed checkpoints (e.g. the GAP-122/GAP-123 APPROVE
+checkpoint and "Claude end handoff" saves with runtime session IDs) — those
+writes stand as attributed; the immediately preceding session explicitly did
+NOT write its checkpoint (identity unconfirmed), and neither does this
+boundary. The 2026-10-09 CURRENT phrasing that the binding "still" prevents
+attributed saves was stale after the restored 2026-10-11 saves and is
+corrected there to per-boundary wording. Fallback handoff for this boundary:
+CURRENT.md. No historical session ID was reused or invented; re-observe at
+the next boundary.
+
 ## GAP-025 detail — contract corrections, not implementation
 
 Source inspection: `services/revisions.ts` throws head conflicts inside
@@ -4502,3 +4517,391 @@ Findings and dispositions:
   left a file mutation was checked: the working tree was verified byte-identical
   to the frozen reviewed diff (`/tmp/050b-revised-exact.diff`), so no restore
   was needed.
+
+### GAP-119 scope amendments 23–25 recorded — 2026-10-11 (retrospective)
+
+Three live-acceptance tree paths sit outside the frozen 050B allowlist:
+`apps/web/app/components/import-export/ExportPicker.vue` (Amendment 23) and
+`apps/web/app/components/import-export/ImportDialog.vue` (Amendment 24) —
+SSR guards required once GAP-120's runtime imports made both dialogs'
+`immediate` watches execute server-side — and NEW
+`apps/web/app/components/workspace/scale-review-i18n-parity.test.ts`
+(Amendment 25, GAP-121's real-dictionary parity guard). Per the contract
+amendment rule these are recorded here and amended exactly in
+`docs/14-progress/050B-scope-amendment-23-25-import-export-ssr-guards-2026-10-11.md`;
+a bounded independent re-review returned APPROVE 2026-10-11. RETROSPECTIVE:
+the edits were applied during the GAP-120/121 repairs before this record
+was drafted; the record does not precede the edits. The contract's
+amendment process requires no separate author approval (none is claimed or
+invented); commit authorization remains per the repository authorization
+policy.
+
+## GAP-120 — Novel workspace page 500s in live browser: 12 template components never resolved — 2026-10-11
+
+**Symptom.** First live NF-WF-050B browser acceptance at `dcb2f49`
+(acceptance stack, web `:3001`, authenticated author): navigating to
+`/workspaces/:workspaceId/novels/:novelId` returns HTTP 500 (Nuxt SSR
+error page). The API itself is healthy; registration/login and the
+novels list page work through the real UI.
+
+**Root cause (observed, reproducible).**
+`apps/web/app/pages/workspaces/[workspaceId]/novels/[novelId]/index.vue`
+renders 12 components that have no runtime binding in that file:
+`AiSuggestionCard`, `ApplyBar`, `ApprovalDialog`, `ConflictBanner`,
+`DraftDiffView`, `FindingsPanel`, `OutlineMovedNotice`, `ProposalsPanel`,
+`RichEditor`, `RunStatusPanel`, `SceneNav`, `SelectionAiMenu`
+(`RunStatusPanel`/`GenerationPanel` have `import type` only — erased at
+runtime; `GenerationPanel` still resolves only because its auto-import
+name happens to match). Nuxt registers subdirectory components with
+directory-prefixed names (`EditorRichEditor`,
+`GenerationApprovalDialog`, … — see `.nuxt/components.d.ts`), so the
+bare template names cannot resolve; Vue warns
+"Failed to resolve component" 11× and the page SSR-renders as a 500.
+`RunStatusPanel`/`GenerationPanel` rely on the type-only imports for
+`InstanceType<typeof>` refs, which is why the pattern is not just
+missing lines — the file needs runtime imports added alongside.
+
+**Predates NF-WF-050B.** The same bare-name usage is present at
+`8a6ff26` (NF-WF-019, 2026-10-06); the live browser journey had simply
+never been run against this page before (CURRENT.md explicitly recorded
+"no live browser workflow" — this defect is what that gate existed to
+catch).
+
+**Why tests did not catch it.** UI suites (39/39, "jsdom evidence only"
+per CURRENT.md) mount components in vitest with explicit imports and
+stubs; none exercises the page's own resolution in a real Nuxt render.
+
+**Fix applied (2026-10-11, uncommitted working tree).** `index.vue` gained
+14 runtime imports: the 12 unresolved names plus explicit
+`GenerationPanel`/`RunStatusPanel` runtime imports REPLACING the two
+`import type` lines — this entry's original instruction "keep existing
+type-only imports" is superseded by the strictly better conversion
+(`InstanceType<typeof …>` refs typecheck identically; independent review
+check 3). Once the components resolved, their `immediate: true` watches ran
+during SSR and needed first-statement browser guards: `ExportPicker.vue`
+(`typeof window === "undefined"`), `ImportDialog.vue` (`typeof document ===
+"undefined"`). Independent exact-diff review 2026-10-11: checks 1–6 all
+pass (every bare template component bound; all import targets exist; no
+collisions; guards behavior-preserving); sole blocker was process — the two
+import-export files are outside the frozen 050B allowlist. Resolved by
+scope amendment proposal
+`docs/14-progress/050B-scope-amendment-23-25-import-export-ssr-guards-2026-10-11.md`
+(Amendments 23–24; bounded independent re-review APPROVE 2026-10-11;
+retrospective record — see the GAP-119 amendments entry). Tree
+verification: 6 affected suites 60/60, `vue-tsc`
+exit 0, novel page 200 and scenarios 2–11 completed in the real browser.
+
+**Evidence.** Live browser: registration via UI 201→200, session cookie
+works (`/api/novels` 200 authenticated), root page 200, novel page 500
+(cua-computer-use isolated Chromium, session `nf050b`, 2026-10-11).
+Server log `%TEMP%\nf-050b-logs\web.log` records the 11
+"Failed to resolve component" warnings for exactly the names above.
+`.nuxt/components.d.ts` shows the registered (prefixed) names.
+
+**Impact.** The entire writer workspace (editor, generation loop,
+NF-WF-050B SCALE review panel host `NarrativePanel`) is unreachable in
+a real browser; 050B live acceptance is blocked at scenario 2 (evidence
+entry through the UI).
+
+**Owner task.** NF-WF-050B live acceptance (GAP-119 retained closure).
+
+**Next action.** Commit per the repository authorization policy; the diff
+stays uncommitted until then. (Amendments 23–24 are recorded, retrospective
+and separately reviewed; see the GAP-119 amendments entry.)
+
+**Closure check.** Novel page renders 200 in a real browser, SCALE
+evidence entry works through the UI, and a live author journey completes
+end-to-end.
+
+---
+
+## GAP-121 — SCALE review tab label + panel render raw i18n keys: dict path vs call-site path mismatch — 2026-10-11
+
+**Symptom.** Same live journey, after the GAP-120 fix made the novel page
+render: the narrative panel's SCALE tab label and the ScaleReviewPanel
+body render the literal key `workspace.scaleReview.title` instead of
+"SCALE review". Every key in the panel is affected (~100 call sites).
+
+**Root cause.** The i18n dictionaries define the SCALE review strings at
+`workspace.narrative.scaleReview.*` (`app/i18n/en.ts:703`, nested inside
+`workspace.narrative`, matching the sibling convention
+`workspace.narrative.antagonists.*` used by `Antagonists.vue`). All
+SCALE-review components call `t()` with the flat path
+`workspace.scaleReview.*`. `useLocale.getPath` resolves dot-paths against
+the nested dict, finds `undefined`, and per contract returns the key
+itself. `useLocale.t` cannot distinguish "missing" from "wrong path", and
+no test asserted real-dict resolution — `ScaleReviewPanel.slice3.test.ts`
+(and slices 4–6, `ScaleReviewPanel.test.ts`,
+`workspace-research-narrative-health.test.ts`) each ship their own flat
+mock dictionary, so they verified the call sites against a copy of the
+same wrong assumption, not against `en.ts`/`id.ts` (memory:
+a-test-encodes-the-bug).
+
+**Predates NF-WF-050B.** Same flat call sites present before this task;
+invisible in jsdom-only evidence, surfaced by the first real render
+(GAP-120's fix enabled the page to reach the panel at all).
+
+**Fix applied.** Rewrote the 100 call-site paths
+(`workspace.scaleReview.` → `workspace.narrative.scaleReview.`) in
+`NarrativePanel.vue` (1), `ScaleReviewPanel.vue` (86), and
+`ScalePayloadForm.vue` (13), plus the 5 test mock dictionaries, rather
+than re-rooting the dictionaries — sibling components already use
+`workspace.narrative.<component>.*` and moving the dict would have
+diverged it again. Verified: zero remaining flat-path references in
+`app/`; 60/60 tests pass across the 6 affected suites.
+
+**Impact.** SCALE review surface — the core NF-WF-050B acceptance
+subject — was unusable in the real browser (every label a raw key).
+
+**Review (2026-10-11).** Independent exact-diff review: **APPROVE**. Every
+rewritten key verified exhaustively against BOTH real dictionaries
+(en/id sets identical, zero missing); no weakened assertions; the `en`/`id`
+dict files themselves untouched by the fix. Two accepted minors: (a) the
+five test mocks remain hand-written mirrors — `slice4.test.ts` even carries
+an unused `workspace.narrative.scaleReview.payload.accessRequired` key that
+exists in neither real dict (harmless t-superset; concrete proof of the
+drift class this entry describes); (b) no test resolved keys against the
+real dicts. (b) is closed by a new permanent guard,
+`apps/web/app/components/workspace/scale-review-i18n-parity.test.ts`
+(4 tests: every static call-site key plus the runtime-interpolated
+`state.*` and `checklist.items.*` families resolves in en AND id; the flat
+`workspace.scaleReview.*` path is forbidden in the three components).
+Fresh real-dictionary rerun evidence (throwaway `node --experimental-strip-types`
+check, 2026-10-11): 86 distinct call-site keys, 0 missing in either dict;
+`review.showFullHash` en-fallback probe en=true/id=false reconfirmed.
+
+**Owner task.** NF-WF-050B live acceptance (same as GAP-120).
+
+**Next action.** Live-browser localization already re-verified during the
+050B journey (localized workspace + SCALE strings in en and id, scenario
+10). Remaining: commit per the repository authorization policy
+(Amendments 23–25 recorded, retrospective and separately reviewed).
+
+**Closure check.** Live browser shows the localized SCALE tab label and
+panel strings; ID locale shows Indonesian via the same dict.
+
+## GAP-122 — Public chapter reader never renders: `/read/:slug` swallows nested `/read/:slug/:number` route — 2026-10-11
+
+**Symptom.** 050B live journey scenario 9 (reader visibility): opening
+`/read/050b-scale-acceptance-novel-c/1` in a real browser shows only the
+novel overview (header + chapter list); the published chapter body never
+appears. Console logs `NUXT_E4016`: the route matches nested page
+`/read/:slug()/:number()`, but parent `/read/:slug()` does not render
+`<NuxtPage />`, so the child page cannot be displayed. Vue hydration
+also warns `Failed to resolve component: NotificationBell` on the same
+tree.
+
+**Evidence.** dcb2f49 + applied 050B acceptance WIP (GAP-120/121 fixes;
+`apps/web/app/pages/read/*` untouched by that WIP, so pre-existing).
+Anonymous `GET /api/public/novels/<slug>/chapters/1` (via :3001 Nitro
+proxy) returns HTTP 200 with the pinned published content
+(`publishedVersionNumber: 1`), while draft chapter 2 returns 404 — the
+server-side publication gate is correct; only the reader UI surface is
+broken.
+
+**Impact.** Authors cannot verify reader-visible output through the UI;
+scenario 9 UI evidence is blocked. Public API behavior is correct and
+was used as the server-side evidence.
+
+**Owner task.** NF-WF-050B live acceptance (scenario 9), fix owned by a
+separate reader-IA repair task: restructure `apps/web/app/pages/read/`
+so `[slug]/[number].vue` is a sibling route (or render `<NuxtPage />` in
+`[slug].vue` with a layout that keeps the novel chrome), plus resolve the
+`NotificationBell` resolution failure; exact-diff review required.
+
+**Fix applied (2026-10-11, uncommitted; contract `tasks/GAP-122-reader-routing-repair.md`).**
+Contract frozen, separately reviewed (first review actor found the
+relative-import-depth defect and failed on gateway errors; corrected; a
+bounded independent re-review returned APPROVE on both contract and the
+companion scope-amendment proposal). Repair, per the contract:
+`[slug].vue` MOVED to `[slug]/index.vue` (sibling of `[number].vue` →
+independent routes, same URLs; the file's 7 two-level relative imports
+rewritten to three levels), explicit runtime imports for
+`NotificationBell` (both pages) and `CommentThread` (chapter page — same
+unresolved-bare-name class, would have warned as soon as the child
+rendered), `reader.test.ts` import path updated, new
+`app/pages/read/routing.test.ts` structure regression (parent file must
+not reappear; both runtime imports pinned). `<NuxtPage />`-in-parent and
+route-rules alternatives were rejected in the contract (stacked duplicate
+chrome; config indirection).
+
+**Browser closure evidence (2026-10-11, chrome-devtools on :3001, live
+acceptance stack).** `/read/<slug>` renders the overview (title, byline,
+chapter list); `/read/<slug>/1` renders the pinned published body
+("Version 1", 66 words); NEXT CHAPTER client navigation → chapter 2
+(pinned "Version 2"), PREVIOUS/NEXT links correct; direct load + reload
+works on chapter URLs; "Kembali ke novel" returns to the overview;
+`/read/<slug>/4` (never published) shows the localized not-found surface
+("Tidak ditemukan", API 404) with no content leak; id locale renders
+localized chrome end-to-end (Notifikasi, BAB, kata, Versi, KOMENTAR,
+Kirim) with canonical content untranslated; console free of `NUXT_E4016`
+and of NotificationBell/CommentThread resolution warnings. Suites:
+reader/notifications/axe/library/routing/parity all green; `vue-tsc`
+exit 0. Server authorization/publication boundaries untouched (no API
+diff). One newly observable pre-existing defect recorded separately as
+GAP-123 (locale hydration mismatch), intentionally not repaired here.
+
+**Next action.** Final exact-final-diff review of the full tree
+(freeze sha256 `66f1a3b091a80f382284b30978933cbaf3011b44d8b2f0776cd3c115a4eefb54`)
+returned **APPROVE** 2026-10-11 (freeze_verified; 3 info findings, no
+blockers). Remaining: commit per the repository authorization policy
+(Amendments 23–25 recorded, retrospective and separately reviewed). No
+workaround inside 050B acceptance.
+
+**Closure check.** `/read/<slug>/<n>` renders the published chapter body
+in a real browser for a published chapter and 404s for a draft; console
+free of NUXT_E4016 and NotificationBell warnings. — OBSERVED 2026-10-11
+(browser closure evidence above); UI surface closes with the reviewed
+commit; GAP-123 records the separately-owned hydration defect.
+
+## GAP-123 — Reader SSR/locale hydration mismatch: en server HTML vs localStorage-selected id — 2026-10-11
+
+**Symptom.** During GAP-122 browser verification with locale `id`, every
+SSR'd reader page hydrates with a Vue warning: `Hydration text content
+mismatch` — server rendered the `en` string (`Loading…`), the client
+swaps to the `id` string (`Memuat…`), followed by `Hydration completed
+but contains mismatches`.
+
+**Root cause.** `useLocale` persists the selection in `localStorage`
+(`novelforge-locale`), which the server cannot read; SSR therefore always
+renders `en`. This is a pre-existing mechanism class on all locale-aware
+pages, observable on the chapter reader only since GAP-122 made that page
+render at all.
+
+**Evidence.** chrome-devtools console on `:3001`,
+`/read/050b-scale-acceptance-novel-c/2`, 2026-10-11. Rendered output is
+functionally correct (id strings after hydration; en default for
+anonymous first paint).
+
+**Impact.** Console warnings plus a visible en→id flash during hydration
+for `id` readers; no functional or a11y break observed.
+
+**Owner task.** Separate SSR-safe locale repair (cookie-based locale for
+SSR or explicit hydration boundaries). Explicitly OUT of the GAP-122
+routing contract; not repaired in this tree.
+
+**Fix applied (2026-10-11, uncommitted; contract `tasks/GAP-123-ssr-safe-locale-repair.md`).**
+Contract frozen and separately reviewed (first review CHANGES_REQUESTED on a
+contradictory migration-timing paragraph; corrected; bounded re-review
+APPROVE). Repair, per the contract: `useLocale.ts` rewritten — locale moved
+from the module-level ref (cross-request-leakage-prone server-wide state,
+invisible to SSR) into Nuxt `useState("locale")` (request-scoped on the
+server, payload-hydrated on the client); the `nf-locale` cookie
+(`sameSite=lax`, path `/`, 1-year maxAge, validated to `en|id`) makes the
+selection visible to SSR; legacy `novelforge-locale` localStorage users are
+migrated once per page load AFTER hydration (`onNuxtReady`) — cookie wins,
+localStorage consulted only when the cookie is absent, never overwritten
+outside `setLocale`; all cookie/storage access try/catch-guarded; public
+shape `{ locale: readonly, t, setLocale }` unchanged across all 117 call
+sites; the single switcher (`setLocale`) now writes state + cookie +
+localStorage. Client guard is `typeof window !== "undefined"` (Nuxt build
+replaces `import.meta.client`; plain vitest does not define it). No page,
+dict, config or dependency changes; no ClientOnly; no SSR disabling.
+
+**Verification (2026-10-11, live acceptance stack :3001 + vitest).**
+Suites: `useLocale.test.ts` rewritten with Nuxt-agnostic stubs
+(`useState`/`useCookie`/`onNuxtReady` via `vi.stubGlobal`) — 17/17 green
+(hydration init from cookie, persistence, invalid values, unavailable AND
+throwing storage, en fallback, request isolation, once-per-load migration,
+divergent-store precedence, readonly shape); six GAP-121 suites 40/40;
+reader/routing/notifications/library/comments/axe suites 43/43;
+`vue-tsc --noEmit` exit 0. SSR isolation: 15 alternating curl requests with
+`nf-locale=en|id` — id requests always render `Memuat…`, en always
+`Loading…`, no cross-request bleed. Browser (chrome-devtools on :3001):
+reader ch1 direct load + refresh and client navigation ch1→ch2→back in en
+and id with localized chrome and NO `Hydration text content mismatch` /
+`Hydration completed but contains mismatches` warnings (console clean
+except pre-existing Vite dev-externalization noise); `/4` shows the
+localized not-found surface with no content leak; legacy-only localStorage
+`id` user: adopted post-hydration, cookie written, no mismatch warnings;
+invalid `xx` cookie: en fallback, no crash; workspace novel page in id:
+full id chrome, no hydration warnings (one pre-existing unrelated
+form-field a11y console notice); real missing-key fallback witnessed in
+the UI — id locale SCALE panel renders `Show full hash` in English (the
+key is intentionally missing in `id`); switcher en→id round-trip persists
+across reload via the cookie.
+
+**Follow-up findings (2026-10-11, external re-review of the applied repair;
+recorded before any workaround).** Four defects in the applied GAP-123 repair:
+1. ESLint fails on `useLocale.ts`: `ref` is imported from "vue" but unused
+   (locale state now comes from `useState`).
+2. Incomplete migration for legacy `en`: with no `nf-locale` cookie and
+   `localStorage["novelforge-locale"] = "en"`, the migration callback returns on
+   `legacy === state.value` and never writes the cookie, so the migration
+   condition re-arms on every load instead of completing once for both supported
+   legacy values.
+3. Every `useLocale()` consumer registers its own `onNuxtReady` callback, and in
+   that legacy-`en` case each callback independently reads storage. The
+   once-per-load claim was not established by the implementation.
+4. The test harness stub invoked the `onNuxtReady` callback synchronously, so the
+   suite never verified that legacy adoption is deferred until after hydration
+   (the pre-flush hydration state was never asserted), nor once-per-load by call
+   count.
+
+Status: recorded; bounded follow-up repair contracted as an amendment to
+`tasks/GAP-123-ssr-safe-locale-repair.md` (see its review trail). The earlier
+exact-diff **APPROVE** (frozen diff `926b5f5f…`) covered only that earlier diff
+and does not cover this follow-up.
+
+**Follow-up repair applied (2026-10-11, uncommitted; amended contract,
+separate contract-amendment review APPROVE — see the contract review
+trail).** All four findings fixed in `useLocale.ts`: unused `ref` import
+deleted; the migration callback now completes for BOTH supported legacy
+values — state changes only when the legacy value differs, and the
+`nf-locale` cookie is ALWAYS written for a valid legacy value (legacy
+`en` no longer leaves the cookie unset and re-arms the migration on
+every load); migration initialization is gated by a request/app-scoped
+once-flag `useState("locale-migrated", () => false)` resolved inside the
+client guard, so only the first consumer per load flips the flag and
+registers the single `onNuxtReady` callback (no module-level or
+server-wide mutable state; the server never enters the guard).
+`useLocale.test.ts` harness: the `onNuxtReady` stub now QUEUES callbacks
+and tests flush them explicitly (`flushReady()`); the `useState` stub is
+keyed by name (locale state and once-flag are distinct keys); pre-flush
+assertions prove legacy storage does not change the hydration state;
+once-per-load is proven by call counts (one registration and one legacy
+storage read per cookie-less load; a fresh load registers again); a new
+legacy-`en` completion case covers the value-equals-locale path;
+throwing/unavailable-storage cases assert no adoption and no crash.
+
+**Follow-up verification (2026-10-11).** `useLocale.test.ts` 18/18 green;
+ESLint exit 0 on both changed TypeScript files; `vue-tsc --noEmit`
+exit 0; directly affected suites (reader, reader routing, six GAP-121
+suites) 53/53. Browser on the live acceptance stack (:3001; process
+ownership verified before use — node PIDs 27732/24536/26616 plus Docker
+Redis 6399; acceptance database untouched): legacy localStorage-only
+`id` user — hydration paints `en`, adoption flips to `id` post-hydration,
+cookie `nf-locale=id` written, id reader chrome rendered, console free of
+`Hydration text content mismatch` / `Hydration completed but contains
+mismatches`; the next reload renders `id` directly from the cookie; raw
+SSR HTML with `Cookie: nf-locale=id` contains `Memuat…` and without the
+cookie contains `Loading…`; legacy `en` user — cookie `nf-locale=en`
+written post-hydration (migration completes), en chrome rendered, storage
+untouched, console clean. Browser locale state restored to the acceptance
+`id` setup afterwards.
+
+**Next action.** Follow-up exact-diff review COMPLETE (2026-10-11, two
+separate read-only rounds — see the contract review trail): round 1
+**CHANGES_REQUESTED** (its HIGH "test cannot pass" mechanism claim was
+empirically disproven — `vi.resetModules()` in vitest 5.0.3 does clear
+module-scope `vi.fn` history, reproduced by two probe specs and two
+18/18 runs — but the hidden dependence was real fragility, so the
+suggested explicit `onNuxtReadyMock.mockClear()` was applied anyway, plus
+a zero-legacy-reads assertion for the cookie-present path per the LOW
+finding); round 2 **APPROVE** on the re-frozen diff
+`.git/gap123-followup-diff-20261011.patch` (sha256
+`03f3f964b6cf50d0a36ec4445464b069c199280940c82c5b8bf36eeefef387d6`;
+patch applied to the approved base `c09a716d`/`70aba02` reproduces the
+working-tree blobs `279ada86`/`4ada15b0`; reviewer independently
+reproduced the probe, 2 INFO findings recorded in the trail). Remaining:
+commit per the repository authorization policy together with the 050B
+acceptance tree. The earlier exact-diff **APPROVE** (frozen diff
+`926b5f5f…`) covers only the earlier repair and does not extend to this
+follow-up; the GAP-123 diff sits on top of the frozen 050B review
+artifact and does not extend that artifact's approval.
+
+**Closure check.** Locale-aware pages hydrate without text-content
+mismatch warnings in both en and id. — RE-OBSERVED 2026-10-11 after the
+follow-up repair (browser evidence above); once-per-load migration is now
+established by the implementation (single once-flag-gated callback) and
+by test call counts. UI surface closes with the reviewed commit.

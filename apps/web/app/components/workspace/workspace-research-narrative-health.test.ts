@@ -458,13 +458,13 @@ describe("NarrativePanel", () => {
       "workspace.narrative.panel.tabDna",
       "workspace.narrative.panel.tabPolicies",
       "workspace.narrative.panel.tabAntagonists",
-      "workspace.scaleReview.title",
+      "workspace.narrative.scaleReview.title",
       "workspace.narrative.panel.tabReadouts",
     ]);
     // SCALE tab is reachable and renders the SCALE review surface.
     await tabs[3]!.trigger("click");
     await tick();
-    expect(w.text()).toContain("workspace.scaleReview.title");
+    expect(w.text()).toContain("workspace.narrative.scaleReview.title");
     // Readouts selected by accessible label, not numeric tab index.
     await tabs
       .find((t) => t.text() === "workspace.narrative.panel.tabReadouts")!

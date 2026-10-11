@@ -29,8 +29,24 @@ import {
   applySuggestion,
 } from "../../../../../utils/selectionResolve";
 import { countWords as countWordsStripped, stripHtmlTags } from "../../../../../utils/htmlText";
-import type RunStatusPanel from "../../../../../components/generation/RunStatusPanel.vue";
-import type GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
+// GAP-120: runtime component imports. Nuxt registers components/ subdirectory
+// files with directory-prefixed names (GenerationApprovalDialog,
+// EditorRichEditor, …), so bare template names here need explicit imports.
+// Type-only imports are erased at runtime and do not register a component.
+import ApprovalDialog from "../../../../../components/generation/ApprovalDialog.vue";
+import GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
+import RunStatusPanel from "../../../../../components/generation/RunStatusPanel.vue";
+import OutlineMovedNotice from "../../../../../components/generation/OutlineMovedNotice.vue";
+import DraftDiffView from "../../../../../components/generation/DraftDiffView.vue";
+import FindingsPanel from "../../../../../components/generation/FindingsPanel.vue";
+import ProposalsPanel from "../../../../../components/generation/ProposalsPanel.vue";
+import ApplyBar from "../../../../../components/generation/ApplyBar.vue";
+import RichEditor from "../../../../../components/editor/RichEditor.vue";
+import EditorToolbar from "../../../../../components/editor/EditorToolbar.vue";
+import SceneNav from "../../../../../components/editor/SceneNav.vue";
+import ConflictBanner from "../../../../../components/editor/ConflictBanner.vue";
+import SelectionAiMenu from "../../../../../components/editor/SelectionAiMenu.vue";
+import AiSuggestionCard from "../../../../../components/editor/AiSuggestionCard.vue";
 // ---------- NF-WF-018A: AI Studio ----------
 import { useAiStudio, type WorkspaceRole } from "../../../../../composables/useAiStudio";
 import { usePlatformAdmin } from "../../../../../composables/usePlatformAdmin";

@@ -74,18 +74,18 @@ function toggleClaim(index: number): void {
 function buildPayload(): { payload: unknown; error: string | null } {
   if (props.kind === "STANDING_CHANGE") {
     if (!NARRATIVE_SCALES.includes(standingScale.value as (typeof NARRATIVE_SCALES)[number])) {
-      return { payload: null, error: t("workspace.scaleReview.errors.invalid") };
+      return { payload: null, error: t("workspace.narrative.scaleReview.errors.invalid") };
     }
     // The frozen contract permits access:[] (empty access is valid standing).
     const rep = Number(reputation.value);
     if (!Number.isInteger(rep) || rep < 0 || rep > 100) {
-      return { payload: null, error: t("workspace.scaleReview.payload.reputationInvalid") };
+      return { payload: null, error: t("workspace.narrative.scaleReview.payload.reputationInvalid") };
     }
     const trimmedReason = hardReason.value.trim();
     // HARD requires a nonblank reason (matches NarrativePolicy_hard_requires_reason).
     // SOFT permits a blank reason.
     if (hardness.value === "HARD" && trimmedReason.length === 0) {
-      return { payload: null, error: t("workspace.scaleReview.payload.hardReasonRequired") };
+      return { payload: null, error: t("workspace.narrative.scaleReview.payload.hardReasonRequired") };
     }
     return {
       payload: {
@@ -102,7 +102,7 @@ function buildPayload(): { payload: unknown; error: string | null } {
   }
   // CHAPTER_EXCEPTION
   if (claimIndices.value.length === 0) {
-    return { payload: null, error: t("workspace.scaleReview.payload.claimsRequired") };
+    return { payload: null, error: t("workspace.narrative.scaleReview.payload.claimsRequired") };
   }
   const sorted = [...claimIndices.value].sort((a, b) => a - b);
   return { payload: { claimIndices: sorted }, error: null };
@@ -127,7 +127,7 @@ const testid = (name: string) => `${props.testidPrefix}-${name}`;
     <!-- STANDING_CHANGE controls -->
     <template v-if="kind === 'STANDING_CHANGE'">
       <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-        {{ t("workspace.scaleReview.payload.standingScaleLabel") }}
+        {{ t("workspace.narrative.scaleReview.payload.standingScaleLabel") }}
         <select
           :data-testid="testid('scale')"
           v-model="standingScale"
@@ -140,7 +140,7 @@ const testid = (name: string) => `${props.testidPrefix}-${name}`;
       </label>
       <fieldset class="flex flex-col gap-1">
         <legend class="text-[12px] text-nf-text-dim">
-          {{ t("workspace.scaleReview.payload.accessLabel") }}
+          {{ t("workspace.narrative.scaleReview.payload.accessLabel") }}
         </legend>
         <div class="flex flex-wrap gap-x-3 gap-y-1">
           <label
@@ -160,7 +160,7 @@ const testid = (name: string) => `${props.testidPrefix}-${name}`;
         </div>
       </fieldset>
       <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-        {{ t("workspace.scaleReview.payload.reputationLabel") }}
+        {{ t("workspace.narrative.scaleReview.payload.reputationLabel") }}
         <input
           :data-testid="testid('reputation')"
           v-model="reputation"
@@ -172,18 +172,18 @@ const testid = (name: string) => `${props.testidPrefix}-${name}`;
         />
       </label>
       <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-        {{ t("workspace.scaleReview.payload.hardnessLabel") }}
+        {{ t("workspace.narrative.scaleReview.payload.hardnessLabel") }}
         <select
           :data-testid="testid('hardness')"
           v-model="hardness"
           class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
         >
-          <option value="HARD">{{ t("workspace.scaleReview.payload.hardness.HARD") }}</option>
-          <option value="SOFT">{{ t("workspace.scaleReview.payload.hardness.SOFT") }}</option>
+          <option value="HARD">{{ t("workspace.narrative.scaleReview.payload.hardness.HARD") }}</option>
+          <option value="SOFT">{{ t("workspace.narrative.scaleReview.payload.hardness.SOFT") }}</option>
         </select>
       </label>
       <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-        {{ t("workspace.scaleReview.payload.hardReasonLabel") }}
+        {{ t("workspace.narrative.scaleReview.payload.hardReasonLabel") }}
         <input
           :data-testid="testid('hard-reason')"
           v-model="hardReason"
@@ -198,7 +198,7 @@ const testid = (name: string) => `${props.testidPrefix}-${name}`;
     <template v-else>
       <fieldset class="flex flex-col gap-1">
         <legend class="text-[12px] text-nf-text-dim">
-          {{ t("workspace.scaleReview.payload.claimsLabel") }}
+          {{ t("workspace.narrative.scaleReview.payload.claimsLabel") }}
         </legend>
         <div v-if="conflicts.length > 0" class="flex flex-col gap-1.5">
           <label
@@ -220,7 +220,7 @@ const testid = (name: string) => `${props.testidPrefix}-${name}`;
           </label>
         </div>
         <p v-else class="text-[12px] text-nf-text-dim">
-          {{ t("workspace.scaleReview.payload.noClaims") }}
+          {{ t("workspace.narrative.scaleReview.payload.noClaims") }}
         </p>
       </fieldset>
     </template>

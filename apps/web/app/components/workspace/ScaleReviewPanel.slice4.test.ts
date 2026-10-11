@@ -20,77 +20,77 @@ import ScaleReviewPanel from "./ScaleReviewPanel.vue";
 
 // --- Locale mock with en/id dictionaries and English fallback ---
 const enDict: Record<string, string> = {
-  "workspace.scaleReview.title": "SCALE review",
-  "workspace.scaleReview.noSelection": "Select a chapter in the workspace to review its SCALE assessment.",
-  "workspace.scaleReview.unsavedEdits": "Save the chapter first — SCALE review runs against a saved version, not unsaved edits.",
-  "workspace.scaleReview.loading": "Loading…",
-  "workspace.scaleReview.retry": "Retry",
-  "workspace.scaleReview.review.title": "Deterministic review",
-  "workspace.scaleReview.review.rerun": "Rerun review",
-  "workspace.scaleReview.review.none": "No review has been run for this version yet.",
-  "workspace.scaleReview.review.stale": "Stale — the underlying data changed since this review.",
-  "workspace.scaleReview.evidence.title": "SCALE evidence (050A)",
-  "workspace.scaleReview.evidence.noSet": "No evidence set yet for this version.",
-  "workspace.scaleReview.evidence.currentSet": "Set #{sequence}",
-  "workspace.scaleReview.evidence.declaration.CONFLICTS": "Conflicts declared",
-  "workspace.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "No operative conflict",
-  "workspace.scaleReview.evidence.history": "History ({count})",
-  "workspace.scaleReview.evidence.claims": "claims",
-  "workspace.scaleReview.errors.unauthorized": "Sign in to review SCALE (401).",
-  "workspace.scaleReview.errors.forbidden": "You don't have permission to do that here (403).",
-  "workspace.scaleReview.errors.notFound": "Not found (404). It may have been deleted or belong to another workspace.",
-  "workspace.scaleReview.errors.conflict": "Stale data (409). Refresh and try again with current expectations.",
-  "workspace.scaleReview.errors.invalid": "Invalid input (400). Check the form and try again.",
-  "workspace.scaleReview.errors.network": "Something went wrong. Please try again.",
-  "workspace.scaleReview.proposals.decide": "Decide",
-  "workspace.scaleReview.proposals.kind.STANDING_CHANGE": "Standing change",
-  "workspace.scaleReview.proposals.kind.CHAPTER_EXCEPTION": "Chapter exception",
+  "workspace.narrative.scaleReview.title": "SCALE review",
+  "workspace.narrative.scaleReview.noSelection": "Select a chapter in the workspace to review its SCALE assessment.",
+  "workspace.narrative.scaleReview.unsavedEdits": "Save the chapter first — SCALE review runs against a saved version, not unsaved edits.",
+  "workspace.narrative.scaleReview.loading": "Loading…",
+  "workspace.narrative.scaleReview.retry": "Retry",
+  "workspace.narrative.scaleReview.review.title": "Deterministic review",
+  "workspace.narrative.scaleReview.review.rerun": "Rerun review",
+  "workspace.narrative.scaleReview.review.none": "No review has been run for this version yet.",
+  "workspace.narrative.scaleReview.review.stale": "Stale — the underlying data changed since this review.",
+  "workspace.narrative.scaleReview.evidence.title": "SCALE evidence (050A)",
+  "workspace.narrative.scaleReview.evidence.noSet": "No evidence set yet for this version.",
+  "workspace.narrative.scaleReview.evidence.currentSet": "Set #{sequence}",
+  "workspace.narrative.scaleReview.evidence.declaration.CONFLICTS": "Conflicts declared",
+  "workspace.narrative.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "No operative conflict",
+  "workspace.narrative.scaleReview.evidence.history": "History ({count})",
+  "workspace.narrative.scaleReview.evidence.claims": "claims",
+  "workspace.narrative.scaleReview.errors.unauthorized": "Sign in to review SCALE (401).",
+  "workspace.narrative.scaleReview.errors.forbidden": "You don't have permission to do that here (403).",
+  "workspace.narrative.scaleReview.errors.notFound": "Not found (404). It may have been deleted or belong to another workspace.",
+  "workspace.narrative.scaleReview.errors.conflict": "Stale data (409). Refresh and try again with current expectations.",
+  "workspace.narrative.scaleReview.errors.invalid": "Invalid input (400). Check the form and try again.",
+  "workspace.narrative.scaleReview.errors.network": "Something went wrong. Please try again.",
+  "workspace.narrative.scaleReview.proposals.decide": "Decide",
+  "workspace.narrative.scaleReview.proposals.kind.STANDING_CHANGE": "Standing change",
+  "workspace.narrative.scaleReview.proposals.kind.CHAPTER_EXCEPTION": "Chapter exception",
   // New typed-control keys (slice 4)
-  "workspace.scaleReview.payload.standingScaleLabel": "Standing scale",
-  "workspace.scaleReview.payload.accessLabel": "Access scales",
-  "workspace.scaleReview.payload.reputationLabel": "Reputation (0–100)",
-  "workspace.scaleReview.payload.hardnessLabel": "Hardness",
-  "workspace.scaleReview.payload.hardness.HARD": "Hard",
-  "workspace.scaleReview.payload.hardness.SOFT": "Soft",
-  "workspace.scaleReview.payload.hardReasonLabel": "Hard reason (optional)",
-  "workspace.scaleReview.payload.claimsLabel": "Covered claims",
-  "workspace.scaleReview.payload.noClaims": "No evidence claims available — append an evidence set first.",
-  "workspace.scaleReview.payload.reputationInvalid": "Reputation must be an integer 0–100.",
-  "workspace.scaleReview.payload.claimsRequired": "Select at least one claim.",
-  "workspace.scaleReview.payload.accessRequired": "Select at least one access scale.",
-  "workspace.scaleReview.payload.hardReasonRequired": "A hard reason is required for HARD standing changes.",
+  "workspace.narrative.scaleReview.payload.standingScaleLabel": "Standing scale",
+  "workspace.narrative.scaleReview.payload.accessLabel": "Access scales",
+  "workspace.narrative.scaleReview.payload.reputationLabel": "Reputation (0–100)",
+  "workspace.narrative.scaleReview.payload.hardnessLabel": "Hardness",
+  "workspace.narrative.scaleReview.payload.hardness.HARD": "Hard",
+  "workspace.narrative.scaleReview.payload.hardness.SOFT": "Soft",
+  "workspace.narrative.scaleReview.payload.hardReasonLabel": "Hard reason (optional)",
+  "workspace.narrative.scaleReview.payload.claimsLabel": "Covered claims",
+  "workspace.narrative.scaleReview.payload.noClaims": "No evidence claims available — append an evidence set first.",
+  "workspace.narrative.scaleReview.payload.reputationInvalid": "Reputation must be an integer 0–100.",
+  "workspace.narrative.scaleReview.payload.claimsRequired": "Select at least one claim.",
+  "workspace.narrative.scaleReview.payload.accessRequired": "Select at least one access scale.",
+  "workspace.narrative.scaleReview.payload.hardReasonRequired": "A hard reason is required for HARD standing changes.",
 };
 const idDict: Record<string, string> = {
-  "workspace.scaleReview.title": "Tinjauan SCALE",
-  "workspace.scaleReview.noSelection": "Pilih bab di ruang kerja untuk meninjau penilaian SCALE-nya.",
-  "workspace.scaleReview.unsavedEdits": "Simpan bab dulu — tinjauan SCALE berjalan terhadap versi tersimpan, bukan suntingan yang belum disimpan.",
-  "workspace.scaleReview.loading": "Memuat…",
-  "workspace.scaleReview.retry": "Coba lagi",
-  "workspace.scaleReview.review.title": "Tinjauan deterministik",
-  "workspace.scaleReview.review.rerun": "Jalankan ulang tinjauan",
-  "workspace.scaleReview.review.none": "Belum ada tinjauan yang dijalankan untuk versi ini.",
-  "workspace.scaleReview.review.stale": "Basi — data dasar berubah sejak tinjauan ini.",
-  "workspace.scaleReview.evidence.title": "Bukti SCALE (050A)",
-  "workspace.scaleReview.evidence.noSet": "Belum ada set bukti untuk versi ini.",
-  "workspace.scaleReview.evidence.currentSet": "Set #{sequence}",
-  "workspace.scaleReview.evidence.declaration.CONFLICTS": "Konflik dinyatakan",
-  "workspace.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "Tidak ada konflik operatif",
-  "workspace.scaleReview.evidence.history": "Riwayat ({count})",
-  "workspace.scaleReview.evidence.claims": "klaim",
+  "workspace.narrative.scaleReview.title": "Tinjauan SCALE",
+  "workspace.narrative.scaleReview.noSelection": "Pilih bab di ruang kerja untuk meninjau penilaian SCALE-nya.",
+  "workspace.narrative.scaleReview.unsavedEdits": "Simpan bab dulu — tinjauan SCALE berjalan terhadap versi tersimpan, bukan suntingan yang belum disimpan.",
+  "workspace.narrative.scaleReview.loading": "Memuat…",
+  "workspace.narrative.scaleReview.retry": "Coba lagi",
+  "workspace.narrative.scaleReview.review.title": "Tinjauan deterministik",
+  "workspace.narrative.scaleReview.review.rerun": "Jalankan ulang tinjauan",
+  "workspace.narrative.scaleReview.review.none": "Belum ada tinjauan yang dijalankan untuk versi ini.",
+  "workspace.narrative.scaleReview.review.stale": "Basi — data dasar berubah sejak tinjauan ini.",
+  "workspace.narrative.scaleReview.evidence.title": "Bukti SCALE (050A)",
+  "workspace.narrative.scaleReview.evidence.noSet": "Belum ada set bukti untuk versi ini.",
+  "workspace.narrative.scaleReview.evidence.currentSet": "Set #{sequence}",
+  "workspace.narrative.scaleReview.evidence.declaration.CONFLICTS": "Konflik dinyatakan",
+  "workspace.narrative.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "Tidak ada konflik operatif",
+  "workspace.narrative.scaleReview.evidence.history": "Riwayat ({count})",
+  "workspace.narrative.scaleReview.evidence.claims": "klaim",
   // New typed-control keys (slice 4) — Indonesian
-  "workspace.scaleReview.payload.standingScaleLabel": "Skala standing",
-  "workspace.scaleReview.payload.accessLabel": "Skala akses",
-  "workspace.scaleReview.payload.reputationLabel": "Reputasi (0–100)",
-  "workspace.scaleReview.payload.hardnessLabel": "Kekerasan",
-  "workspace.scaleReview.payload.hardness.HARD": "Keras",
-  "workspace.scaleReview.payload.hardness.SOFT": "Lunak",
-  "workspace.scaleReview.payload.hardReasonLabel": "Alasan keras (opsional)",
-  "workspace.scaleReview.payload.claimsLabel": "Klaim yang dicakup",
-  "workspace.scaleReview.payload.noClaims": "Tidak ada klaim bukti — tambahkan set bukti dulu.",
-  "workspace.scaleReview.payload.reputationInvalid": "Reputasi harus bilangan bulat 0–100.",
-  "workspace.scaleReview.payload.claimsRequired": "Pilih setidaknya satu klaim.",
-  "workspace.scaleReview.payload.accessRequired": "Pilih setidaknya satu skala akses.",
-  "workspace.scaleReview.payload.hardReasonRequired": "Alasan keras wajib diisi untuk perubahan standing HARD.",
+  "workspace.narrative.scaleReview.payload.standingScaleLabel": "Skala standing",
+  "workspace.narrative.scaleReview.payload.accessLabel": "Skala akses",
+  "workspace.narrative.scaleReview.payload.reputationLabel": "Reputasi (0–100)",
+  "workspace.narrative.scaleReview.payload.hardnessLabel": "Kekerasan",
+  "workspace.narrative.scaleReview.payload.hardness.HARD": "Keras",
+  "workspace.narrative.scaleReview.payload.hardness.SOFT": "Lunak",
+  "workspace.narrative.scaleReview.payload.hardReasonLabel": "Alasan keras (opsional)",
+  "workspace.narrative.scaleReview.payload.claimsLabel": "Klaim yang dicakup",
+  "workspace.narrative.scaleReview.payload.noClaims": "Tidak ada klaim bukti — tambahkan set bukti dulu.",
+  "workspace.narrative.scaleReview.payload.reputationInvalid": "Reputasi harus bilangan bulat 0–100.",
+  "workspace.narrative.scaleReview.payload.claimsRequired": "Pilih setidaknya satu klaim.",
+  "workspace.narrative.scaleReview.payload.accessRequired": "Pilih setidaknya satu skala akses.",
+  "workspace.narrative.scaleReview.payload.hardReasonRequired": "Alasan keras wajib diisi untuk perubahan standing HARD.",
 };
 
 let currentLocale = "en";
@@ -535,8 +535,8 @@ describe("ScaleReviewPanel Slice 4", () => {
     // The component must render the English string, never the raw key.
     currentLocale = "id";
     // Intentionally remove one key from the Indonesian dict for this test.
-    const saved: string = idDict["workspace.scaleReview.payload.hardReasonLabel"] as string;
-    delete idDict["workspace.scaleReview.payload.hardReasonLabel"];
+    const saved: string = idDict["workspace.narrative.scaleReview.payload.hardReasonLabel"] as string;
+    delete idDict["workspace.narrative.scaleReview.payload.hardReasonLabel"];
     try {
       apiImpl = async (url: string) => {
         if (url.includes("scale-review-context")) {
@@ -558,10 +558,10 @@ describe("ScaleReviewPanel Slice 4", () => {
       const text = wrapper.text();
       // English fallback rendered, raw key never shown.
       expect(text).toContain("Hard reason (optional)");
-      expect(text).not.toContain("workspace.scaleReview.payload.hardReasonLabel");
+      expect(text).not.toContain("workspace.narrative.scaleReview.payload.hardReasonLabel");
       wrapper.unmount();
     } finally {
-      idDict["workspace.scaleReview.payload.hardReasonLabel"] = saved;
+      idDict["workspace.narrative.scaleReview.payload.hardReasonLabel"] = saved;
     }
   });
 

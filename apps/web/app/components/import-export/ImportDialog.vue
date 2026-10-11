@@ -328,6 +328,9 @@ function onKeydown(e: KeyboardEvent) {
 watch(
   () => props.open,
   (open) => {
+    // GAP-120: `immediate: true` runs this on the server during SSR, where
+    // `document` is undefined — guard both branches before touching it.
+    if (typeof document === "undefined") return;
     if (open) {
       opener.value = (document.activeElement as HTMLElement | null) ?? null;
       nextTick(() => dialogRef.value?.focus());

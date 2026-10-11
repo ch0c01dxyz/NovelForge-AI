@@ -60,7 +60,7 @@ function onTabKeydown(e: KeyboardEvent) {
 }
 
 function tabLabel(tabId: Tab): string {
-  if (tabId === "scale") return t("workspace.scaleReview.title");
+  if (tabId === "scale") return t("workspace.narrative.scaleReview.title");
   return t(
     `workspace.narrative.panel.tab${tabId === "dna" ? "Dna" : tabId === "policies" ? "Policies" : tabId === "antagonists" ? "Antagonists" : "Readouts"}`,
   );

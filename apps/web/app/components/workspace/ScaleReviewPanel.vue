@@ -188,13 +188,13 @@ const receipt = ref<ScaleReviewContextResponse["receipt"]>(null);
 
 function statusErrorKey(e: unknown): string {
   if (e instanceof ApiError) {
-    if (e.status === 401) return t("workspace.scaleReview.errors.unauthorized");
-    if (e.status === 403) return t("workspace.scaleReview.errors.forbidden");
-    if (e.status === 404) return t("workspace.scaleReview.errors.notFound");
-    if (e.status === 409) return t("workspace.scaleReview.errors.conflict");
-    if (e.status === 400) return t("workspace.scaleReview.errors.invalid");
+    if (e.status === 401) return t("workspace.narrative.scaleReview.errors.unauthorized");
+    if (e.status === 403) return t("workspace.narrative.scaleReview.errors.forbidden");
+    if (e.status === 404) return t("workspace.narrative.scaleReview.errors.notFound");
+    if (e.status === 409) return t("workspace.narrative.scaleReview.errors.conflict");
+    if (e.status === 400) return t("workspace.narrative.scaleReview.errors.invalid");
   }
-  return t("workspace.scaleReview.errors.network");
+  return t("workspace.narrative.scaleReview.errors.network");
 }
 
 async function loadContext(selSeq: number, opSeq: number): Promise<void> {
@@ -301,7 +301,7 @@ async function loadProposals(selSeq: number, opSeq: number): Promise<void> {
 
 // --- Review state display ---
 const stateKey = computed(() =>
-  review.value ? `workspace.scaleReview.state.${review.value.state}` : "",
+  review.value ? `workspace.narrative.scaleReview.state.${review.value.state}` : "",
 );
 const stateLabel = computed(() =>
   review.value ? t(stateKey.value) : "",
@@ -342,7 +342,7 @@ function checklistText(
   field: "label" | "explanation" | "example" | "nextAction",
   fallback: string,
 ): string {
-  const key = `workspace.scaleReview.checklist.items.${code}.${field}`;
+  const key = `workspace.narrative.scaleReview.checklist.items.${code}.${field}`;
   const translated = t(key);
   return translated === key ? fallback : translated;
 }
@@ -371,12 +371,12 @@ const checklist = computed<ChecklistItem[]>(() => {
   for (const c of rv?.claims ?? []) {
     items.push({
       key: `claim-${c.index}`,
-      label: t("workspace.scaleReview.checklist.claim.label", { index: String(c.index) }),
-      explanation: c.gap || t("workspace.scaleReview.checklist.claim.withinReach"),
+      label: t("workspace.narrative.scaleReview.checklist.claim.label", { index: String(c.index) }),
+      explanation: c.gap || t("workspace.narrative.scaleReview.checklist.claim.withinReach"),
       example: c.quote,
       nextAction: c.ok
-        ? t("workspace.scaleReview.checklist.claim.noAction")
-        : t("workspace.scaleReview.checklist.claim.nextAction"),
+        ? t("workspace.narrative.scaleReview.checklist.claim.noAction")
+        : t("workspace.narrative.scaleReview.checklist.claim.nextAction"),
       status: c.ok ? "pass" : c.coveredByException ? "warn" : "fail",
     });
   }
@@ -452,13 +452,13 @@ async function submitProposal(): Promise<void> {
   if (!context.value || proposalRunning.value || !versionId) return;
   const reason = proposalReason.value.trim();
   if (reason.length < 1 || reason.length > 4000) {
-    proposalError.value = t("workspace.scaleReview.proposal.reasonInvalid");
+    proposalError.value = t("workspace.narrative.scaleReview.proposal.reasonInvalid");
     return;
   }
   // Build the typed payload from the structured form controls (no raw JSON).
   const built = proposalPayloadForm.value?.buildPayload();
   if (!built || built.error) {
-    proposalError.value = built?.error ?? t("workspace.scaleReview.errors.invalid");
+    proposalError.value = built?.error ?? t("workspace.narrative.scaleReview.errors.invalid");
     return;
   }
   const payload = built.payload;
@@ -534,7 +534,7 @@ async function submitDecision(): Promise<void> {
   if (!context.value || !target || decisionRunning.value || !versionId) return;
   const reason = decisionReason.value.trim();
   if (reason.length < 1 || reason.length > 4000) {
-    decisionError.value = t("workspace.scaleReview.decision.reasonInvalid");
+    decisionError.value = t("workspace.narrative.scaleReview.decision.reasonInvalid");
     return;
   }
   // ALTERNATIVE requires a new strictly validated payload of the same kind,
@@ -543,7 +543,7 @@ async function submitDecision(): Promise<void> {
   if (decisionAction.value === "ALTERNATIVE") {
     const built = altPayloadForm.value?.buildPayload();
     if (!built || built.error) {
-      decisionError.value = built?.error ?? t("workspace.scaleReview.errors.invalid");
+      decisionError.value = built?.error ?? t("workspace.narrative.scaleReview.errors.invalid");
       return;
     }
     alternativePayload = built.payload;
@@ -699,15 +699,15 @@ async function submitEvidence(): Promise<void> {
     const start = parseInt(claimSpanStart.value, 10);
     const end = parseInt(claimSpanEnd.value, 10);
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start) {
-      evidenceFormError.value = t("workspace.scaleReview.evidence.spanInvalid");
+      evidenceFormError.value = t("workspace.narrative.scaleReview.evidence.spanInvalid");
       return;
     }
     if (!claimQuote.value.trim()) {
-      evidenceFormError.value = t("workspace.scaleReview.evidence.quoteRequired");
+      evidenceFormError.value = t("workspace.narrative.scaleReview.evidence.quoteRequired");
       return;
     }
     if (!claimExplanation.value.trim()) {
-      evidenceFormError.value = t("workspace.scaleReview.evidence.explanationRequired");
+      evidenceFormError.value = t("workspace.narrative.scaleReview.evidence.explanationRequired");
       return;
     }
     claims.push({
@@ -819,11 +819,11 @@ function statusClass(status: ChecklistItem["status"]): string {
 
 <template>
   <section
-    :aria-label="t('workspace.scaleReview.title')"
+    :aria-label="t('workspace.narrative.scaleReview.title')"
     class="flex flex-col gap-3"
   >
     <h2 class="text-[14px] font-semibold text-nf-text">
-      {{ t("workspace.scaleReview.title") }}
+      {{ t("workspace.narrative.scaleReview.title") }}
     </h2>
 
     <!-- No selection -->
@@ -831,7 +831,7 @@ function statusClass(status: ChecklistItem["status"]): string {
       v-if="!hasSelection"
       class="rounded-lg border border-nf-border bg-nf-bg-2 p-3 text-[12.5px] leading-relaxed text-nf-text-dim"
     >
-      {{ t("workspace.scaleReview.noSelection") }}
+      {{ t("workspace.narrative.scaleReview.noSelection") }}
     </p>
 
     <!-- Unsaved edits / no version -->
@@ -839,7 +839,7 @@ function statusClass(status: ChecklistItem["status"]): string {
       v-else-if="!hasSavedVersion"
       class="rounded-lg border border-nf-warn/40 bg-nf-warn/10 p-3 text-[12.5px] leading-relaxed text-nf-warn"
     >
-      {{ t("workspace.scaleReview.unsavedEdits") }}
+      {{ t("workspace.narrative.scaleReview.unsavedEdits") }}
     </p>
 
     <template v-else>
@@ -849,7 +849,7 @@ function statusClass(status: ChecklistItem["status"]): string {
         role="status"
         class="text-[12.5px] text-nf-text-dim"
       >
-        {{ t("workspace.scaleReview.loading") }}
+        {{ t("workspace.narrative.scaleReview.loading") }}
       </p>
 
       <!-- Error -->
@@ -864,7 +864,7 @@ function statusClass(status: ChecklistItem["status"]): string {
           class="mt-2 rounded-lg border border-nf-border-strong px-3 py-1.5 text-[12.5px] font-medium text-nf-text hover:bg-nf-bg-2 focus-visible:nf-focus"
           @click="retryLoad"
         >
-          {{ t("workspace.scaleReview.retry") }}
+          {{ t("workspace.narrative.scaleReview.retry") }}
         </button>
       </div>
 
@@ -873,29 +873,29 @@ function statusClass(status: ChecklistItem["status"]): string {
         <!-- Standing summary -->
         <div class="rounded-lg border border-nf-border bg-nf-bg-2 p-3">
           <h3 class="text-[13px] font-semibold text-nf-text">
-            {{ t("workspace.scaleReview.standing.title") }}
+            {{ t("workspace.narrative.scaleReview.standing.title") }}
           </h3>
           <dl
             v-if="context.policy"
             class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px]"
           >
-            <dt class="text-nf-text-dim">{{ t("workspace.scaleReview.standing.scale") }}</dt>
+            <dt class="text-nf-text-dim">{{ t("workspace.narrative.scaleReview.standing.scale") }}</dt>
             <dd class="font-mono text-nf-text">
               {{ standingScale }}
             </dd>
-            <dt class="text-nf-text-dim">{{ t("workspace.scaleReview.standing.access") }}</dt>
+            <dt class="text-nf-text-dim">{{ t("workspace.narrative.scaleReview.standing.access") }}</dt>
             <dd class="font-mono text-nf-text">
               {{ standingAccess }}
             </dd>
-            <dt class="text-nf-text-dim">{{ t("workspace.scaleReview.standing.reputation") }}</dt>
+            <dt class="text-nf-text-dim">{{ t("workspace.narrative.scaleReview.standing.reputation") }}</dt>
             <dd class="font-mono text-nf-text">
               {{ standingReputation }}
             </dd>
-            <dt class="text-nf-text-dim">{{ t("workspace.scaleReview.standing.hardness") }}</dt>
+            <dt class="text-nf-text-dim">{{ t("workspace.narrative.scaleReview.standing.hardness") }}</dt>
             <dd class="font-mono text-nf-text">{{ context.policy.hardness }}</dd>
           </dl>
           <p v-else class="mt-2 text-[12.5px] text-nf-text-dim">
-            {{ t("workspace.scaleReview.standing.none") }}
+            {{ t("workspace.narrative.scaleReview.standing.none") }}
           </p>
           <p
             v-if="context.policy?.hardReason"
@@ -909,7 +909,7 @@ function statusClass(status: ChecklistItem["status"]): string {
         <div class="rounded-lg border border-nf-border bg-nf-bg-2 p-3">
           <div class="flex items-center justify-between gap-2">
             <h3 class="text-[13px] font-semibold text-nf-text">
-              {{ t("workspace.scaleReview.review.title") }}
+              {{ t("workspace.narrative.scaleReview.review.title") }}
             </h3>
             <button
               type="button"
@@ -918,7 +918,7 @@ function statusClass(status: ChecklistItem["status"]): string {
               class="rounded-lg bg-nf-accent px-3 py-1.5 text-[12.5px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
               @click="rerunReview"
             >
-              {{ t("workspace.scaleReview.review.rerun") }}
+              {{ t("workspace.narrative.scaleReview.review.rerun") }}
             </button>
           </div>
           <p v-if="review" class="mt-2 text-[12.5px]">
@@ -929,11 +929,11 @@ function statusClass(status: ChecklistItem["status"]): string {
               {{ stateLabel }}
             </span>
             <span v-if="reviewStale" class="ml-2 text-nf-warn">
-              {{ t("workspace.scaleReview.review.stale") }}
+              {{ t("workspace.narrative.scaleReview.review.stale") }}
             </span>
           </p>
           <p v-else class="mt-2 text-[12.5px] text-nf-text-dim">
-            {{ t("workspace.scaleReview.review.none") }}
+            {{ t("workspace.narrative.scaleReview.review.none") }}
           </p>
           <p
             v-if="reviewError"
@@ -943,14 +943,14 @@ function statusClass(status: ChecklistItem["status"]): string {
             {{ reviewError }}
           </p>
           <p class="mt-2 text-[11.5px] leading-relaxed text-nf-text-faint">
-            {{ t("workspace.scaleReview.review.backendEnforces") }}
+            {{ t("workspace.narrative.scaleReview.review.backendEnforces") }}
           </p>
         </div>
 
         <!-- 050A evidence authoring -->
         <div class="rounded-lg border border-nf-border bg-nf-bg-2 p-3">
           <h3 class="text-[13px] font-semibold text-nf-text">
-            {{ t("workspace.scaleReview.evidence.title") }}
+            {{ t("workspace.narrative.scaleReview.evidence.title") }}
           </h3>
 
           <p
@@ -958,7 +958,7 @@ function statusClass(status: ChecklistItem["status"]): string {
             role="status"
             class="mt-2 text-[12.5px] text-nf-text-dim"
           >
-            {{ t("workspace.scaleReview.loading") }}
+            {{ t("workspace.narrative.scaleReview.loading") }}
           </p>
           <p
             v-else-if="evidenceError"
@@ -971,9 +971,9 @@ function statusClass(status: ChecklistItem["status"]): string {
             <!-- Current set -->
             <div v-if="evidenceSet" class="mt-2 rounded-md border border-nf-border bg-nf-bg-0 p-2.5">
               <p class="text-[12.5px] font-semibold text-nf-text">
-                {{ t("workspace.scaleReview.evidence.currentSet", { sequence: String(evidenceSet.sequence) }) }}
+                {{ t("workspace.narrative.scaleReview.evidence.currentSet", { sequence: String(evidenceSet.sequence) }) }}
                 ·
-                {{ t(`workspace.scaleReview.evidence.declaration.${evidenceSet.declaration}`) }}
+                {{ t(`workspace.narrative.scaleReview.evidence.declaration.${evidenceSet.declaration}`) }}
               </p>
               <p class="mt-1 text-[12px] leading-relaxed text-nf-text-dim">{{ evidenceSet.explanation }}</p>
               <ul v-if="evidenceSet.conflicts.length > 0" class="mt-2 flex flex-col gap-1.5">
@@ -991,13 +991,13 @@ function statusClass(status: ChecklistItem["status"]): string {
               </ul>
             </div>
             <p v-else class="mt-2 text-[12.5px] text-nf-text-dim">
-              {{ t("workspace.scaleReview.evidence.noSet") }}
+              {{ t("workspace.narrative.scaleReview.evidence.noSet") }}
             </p>
 
             <!-- History -->
             <details v-if="evidenceHistory.length > 0" class="mt-2 text-[12.5px]">
               <summary class="cursor-pointer font-medium text-nf-text focus-visible:nf-focus">
-                {{ t("workspace.scaleReview.evidence.history", { count: String(evidenceHistory.length) }) }}
+                {{ t("workspace.narrative.scaleReview.evidence.history", { count: String(evidenceHistory.length) }) }}
               </summary>
               <ul class="mt-1.5 flex flex-col gap-1.5">
                 <li
@@ -1005,8 +1005,8 @@ function statusClass(status: ChecklistItem["status"]): string {
                   :key="h.id"
                   class="rounded border border-nf-border px-2 py-1.5 text-[12px] text-nf-text-dim"
                 >
-                  #{{ h.sequence }} · {{ t(`workspace.scaleReview.evidence.declaration.${h.declaration}`) }} ·
-                  {{ h.conflicts.length }} {{ t("workspace.scaleReview.evidence.claims") }}
+                  #{{ h.sequence }} · {{ t(`workspace.narrative.scaleReview.evidence.declaration.${h.declaration}`) }} ·
+                  {{ h.conflicts.length }} {{ t("workspace.narrative.scaleReview.evidence.claims") }}
                 </li>
               </ul>
             </details>
@@ -1018,22 +1018,22 @@ function statusClass(status: ChecklistItem["status"]): string {
               @submit.prevent="submitEvidence"
             >
               <h4 class="text-[12.5px] font-semibold text-nf-text">
-                {{ t("workspace.scaleReview.evidence.newSet") }}
+                {{ t("workspace.narrative.scaleReview.evidence.newSet") }}
               </h4>
               <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-                {{ t("workspace.scaleReview.evidence.declarationLabel") }}
+                {{ t("workspace.narrative.scaleReview.evidence.declarationLabel") }}
                 <select
                   v-model="evidenceDeclaration"
                   data-testid="evidence-declaration"
                   class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
                 >
-                  <option value="CONFLICTS">{{ t("workspace.scaleReview.evidence.declaration.CONFLICTS") }}</option>
-                  <option value="NO_OPERATIVE_CONFLICT">{{ t("workspace.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT") }}</option>
+                  <option value="CONFLICTS">{{ t("workspace.narrative.scaleReview.evidence.declaration.CONFLICTS") }}</option>
+                  <option value="NO_OPERATIVE_CONFLICT">{{ t("workspace.narrative.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT") }}</option>
                 </select>
               </label>
               <template v-if="evidenceDeclaration === 'CONFLICTS'">
                 <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-                  {{ t("workspace.scaleReview.evidence.scaleLabel") }}
+                  {{ t("workspace.narrative.scaleReview.evidence.scaleLabel") }}
                   <select
                     v-model="claimScale"
                     class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[13px] text-nf-text focus-visible:nf-focus"
@@ -1042,7 +1042,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                   </select>
                 </label>
                 <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-                  {{ t("workspace.scaleReview.evidence.relevanceLabel") }}
+                  {{ t("workspace.narrative.scaleReview.evidence.relevanceLabel") }}
                   <select
                     v-model="claimRelevance"
                     class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[13px] text-nf-text focus-visible:nf-focus"
@@ -1053,7 +1053,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                   </select>
                 </label>
                 <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-                  {{ t("workspace.scaleReview.evidence.claimExplanationLabel") }}
+                  {{ t("workspace.narrative.scaleReview.evidence.claimExplanationLabel") }}
                   <input
                     v-model="claimExplanation"
                     type="text"
@@ -1062,7 +1062,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                 </label>
                 <div class="grid grid-cols-2 gap-2">
                   <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-                    {{ t("workspace.scaleReview.evidence.spanStartLabel") }}
+                    {{ t("workspace.narrative.scaleReview.evidence.spanStartLabel") }}
                     <input
                       v-model="claimSpanStart"
                       type="number"
@@ -1071,7 +1071,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                     />
                   </label>
                   <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-                    {{ t("workspace.scaleReview.evidence.spanEndLabel") }}
+                    {{ t("workspace.narrative.scaleReview.evidence.spanEndLabel") }}
                     <input
                       v-model="claimSpanEnd"
                       type="number"
@@ -1081,19 +1081,19 @@ function statusClass(status: ChecklistItem["status"]): string {
                   </label>
                 </div>
                 <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-                  {{ t("workspace.scaleReview.evidence.quoteLabel") }}
+                  {{ t("workspace.narrative.scaleReview.evidence.quoteLabel") }}
                   <textarea
                     v-model="claimQuote"
                     rows="2"
                     class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[12.5px] text-nf-text focus-visible:nf-focus"
                   />
                   <span class="text-[11.5px] text-nf-text-faint">
-                    {{ t("workspace.scaleReview.evidence.quoteHint") }}
+                    {{ t("workspace.narrative.scaleReview.evidence.quoteHint") }}
                   </span>
                 </label>
               </template>
               <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-                {{ t("workspace.scaleReview.evidence.explanationLabel") }}
+                {{ t("workspace.narrative.scaleReview.evidence.explanationLabel") }}
                 <textarea
                   v-model="evidenceExplanation"
                   rows="2"
@@ -1106,7 +1106,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                   :disabled="evidenceRunning"
                   class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
                 >
-                  {{ t("workspace.scaleReview.evidence.submit") }}
+                  {{ t("workspace.narrative.scaleReview.evidence.submit") }}
                 </button>
               </div>
               <p
@@ -1121,7 +1121,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                 role="status"
                 class="rounded-md border border-nf-ok/40 bg-nf-ok/10 px-2.5 py-1.5 text-[12px] text-nf-ok"
               >
-                {{ t("workspace.scaleReview.evidence.submitted") }}
+                {{ t("workspace.narrative.scaleReview.evidence.submitted") }}
               </p>
             </form>
           </template>
@@ -1130,7 +1130,7 @@ function statusClass(status: ChecklistItem["status"]): string {
         <!-- Deterministic checklist -->
         <div class="rounded-lg border border-nf-border bg-nf-bg-2 p-3">
           <h3 class="text-[13px] font-semibold text-nf-text">
-            {{ t("workspace.scaleReview.checklist.title") }}
+            {{ t("workspace.narrative.scaleReview.checklist.title") }}
           </h3>
           <ul class="mt-2 flex flex-col gap-2">
             <li
@@ -1143,14 +1143,14 @@ function statusClass(status: ChecklistItem["status"]): string {
               <p class="mt-1 text-[12px] leading-relaxed opacity-90">{{ item.explanation }}</p>
               <details class="mt-1 text-[12px]">
                 <summary class="cursor-pointer font-medium focus-visible:nf-focus">
-                  {{ t("workspace.scaleReview.checklist.details") }}
+                  {{ t("workspace.narrative.scaleReview.checklist.details") }}
                 </summary>
                 <p class="mt-1 leading-relaxed">
-                  <span class="font-medium">{{ t("workspace.scaleReview.checklist.exampleLabel") }}:</span>
+                  <span class="font-medium">{{ t("workspace.narrative.scaleReview.checklist.exampleLabel") }}:</span>
                   {{ item.example }}
                 </p>
                 <p class="mt-1 leading-relaxed">
-                  <span class="font-medium">{{ t("workspace.scaleReview.checklist.nextActionLabel") }}:</span>
+                  <span class="font-medium">{{ t("workspace.narrative.scaleReview.checklist.nextActionLabel") }}:</span>
                   {{ item.nextAction }}
                 </p>
               </details>
@@ -1161,7 +1161,7 @@ function statusClass(status: ChecklistItem["status"]): string {
         <!-- S2 proposals -->
         <div class="rounded-lg border border-nf-border bg-nf-bg-2 p-3">
           <h3 class="text-[13px] font-semibold text-nf-text">
-            {{ t("workspace.scaleReview.proposals.title") }}
+            {{ t("workspace.narrative.scaleReview.proposals.title") }}
           </h3>
 
           <p
@@ -1169,7 +1169,7 @@ function statusClass(status: ChecklistItem["status"]): string {
             role="status"
             class="mt-2 text-[12.5px] text-nf-text-dim"
           >
-            {{ t("workspace.scaleReview.loading") }}
+            {{ t("workspace.narrative.scaleReview.loading") }}
           </p>
           <p
             v-else-if="proposalsError"
@@ -1186,7 +1186,7 @@ function statusClass(status: ChecklistItem["status"]): string {
             >
               <div class="flex items-center justify-between gap-2">
                 <p class="text-[12.5px] font-semibold text-nf-text">
-                  #{{ p.sequence }} · {{ t(`workspace.scaleReview.proposals.kind.${p.kind}`) }}
+                  #{{ p.sequence }} · {{ t(`workspace.narrative.scaleReview.proposals.kind.${p.kind}`) }}
                 </p>
                 <span
                   v-if="p.outcome"
@@ -1197,13 +1197,13 @@ function statusClass(status: ChecklistItem["status"]): string {
                       ? 'border-nf-danger/40 bg-nf-danger/10 text-nf-danger'
                       : 'border-nf-warn/40 bg-nf-warn/10 text-nf-warn'"
                 >
-                  {{ t(`workspace.scaleReview.proposals.action.${p.outcome.action}`) }}
+                  {{ t(`workspace.narrative.scaleReview.proposals.action.${p.outcome.action}`) }}
                 </span>
                 <span
                   v-else
                   class="rounded-full border border-nf-border-strong px-2 py-0.5 text-[11.5px] font-medium text-nf-text-dim"
                 >
-                  {{ t("workspace.scaleReview.proposals.pending") }}
+                  {{ t("workspace.narrative.scaleReview.proposals.pending") }}
                 </span>
               </div>
               <p class="mt-1 text-[12px] leading-relaxed text-nf-text-dim">{{ p.reason }}</p>
@@ -1213,12 +1213,12 @@ function statusClass(status: ChecklistItem["status"]): string {
                 class="mt-2 rounded-lg border border-nf-border-strong px-3 py-1 text-[12px] font-medium text-nf-text hover:bg-nf-bg-2 focus-visible:nf-focus"
                 @click="openDecision(p)"
               >
-                {{ t("workspace.scaleReview.proposals.decide") }}
+                {{ t("workspace.narrative.scaleReview.proposals.decide") }}
               </button>
             </li>
           </ul>
           <p v-else class="mt-2 text-[12.5px] text-nf-text-dim">
-            {{ t("workspace.scaleReview.proposals.empty") }}
+            {{ t("workspace.narrative.scaleReview.proposals.empty") }}
           </p>
 
           <!-- New proposal form -->
@@ -1228,20 +1228,20 @@ function statusClass(status: ChecklistItem["status"]): string {
             @submit.prevent="submitProposal"
           >
             <h4 class="text-[12.5px] font-semibold text-nf-text">
-              {{ t("workspace.scaleReview.proposal.title") }}
+              {{ t("workspace.narrative.scaleReview.proposal.title") }}
             </h4>
             <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-              {{ t("workspace.scaleReview.proposal.kindLabel") }}
+              {{ t("workspace.narrative.scaleReview.proposal.kindLabel") }}
               <select
                 data-testid="proposal-kind"
                 v-model="proposalKind"
                 class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
               >
                 <option value="CHAPTER_EXCEPTION">
-                  {{ t("workspace.scaleReview.proposals.kind.CHAPTER_EXCEPTION") }}
+                  {{ t("workspace.narrative.scaleReview.proposals.kind.CHAPTER_EXCEPTION") }}
                 </option>
                 <option value="STANDING_CHANGE">
-                  {{ t("workspace.scaleReview.proposals.kind.STANDING_CHANGE") }}
+                  {{ t("workspace.narrative.scaleReview.proposals.kind.STANDING_CHANGE") }}
                 </option>
               </select>
             </label>
@@ -1254,7 +1254,7 @@ function statusClass(status: ChecklistItem["status"]): string {
               testid-prefix="proposal"
             />
             <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-              {{ t("workspace.scaleReview.proposal.reasonLabel") }}
+              {{ t("workspace.narrative.scaleReview.proposal.reasonLabel") }}
               <textarea
                 data-testid="proposal-reason"
                 v-model="proposalReason"
@@ -1269,7 +1269,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                 :disabled="proposalRunning"
                 class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
               >
-                {{ t("workspace.scaleReview.proposal.submit") }}
+                {{ t("workspace.narrative.scaleReview.proposal.submit") }}
               </button>
             </div>
             <p
@@ -1284,7 +1284,7 @@ function statusClass(status: ChecklistItem["status"]): string {
               role="status"
               class="rounded-md border border-nf-ok/40 bg-nf-ok/10 px-2.5 py-1.5 text-[12px] text-nf-ok"
             >
-              {{ t("workspace.scaleReview.proposal.submitted") }}
+              {{ t("workspace.narrative.scaleReview.proposal.submitted") }}
             </p>
           </form>
         </div>
@@ -1294,11 +1294,11 @@ function statusClass(status: ChecklistItem["status"]): string {
           v-if="decisionTarget"
           role="dialog"
           aria-modal="true"
-          :aria-label="t('workspace.scaleReview.decision.title')"
+          :aria-label="t('workspace.narrative.scaleReview.decision.title')"
           class="rounded-lg border border-nf-accent/40 bg-nf-bg-2 p-3"
         >
           <h3 class="text-[13px] font-semibold text-nf-text">
-            {{ t("workspace.scaleReview.decision.title") }} — #{{ decisionTarget.sequence }}
+            {{ t("workspace.narrative.scaleReview.decision.title") }} — #{{ decisionTarget.sequence }}
           </h3>
           <form
             data-testid="decision-form"
@@ -1306,19 +1306,19 @@ function statusClass(status: ChecklistItem["status"]): string {
             @submit.prevent="submitDecision"
           >
             <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-              {{ t("workspace.scaleReview.decision.actionLabel") }}
+              {{ t("workspace.narrative.scaleReview.decision.actionLabel") }}
               <select
                 data-testid="decision-action"
                 v-model="decisionAction"
                 class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
               >
-                <option value="APPROVE">{{ t("workspace.scaleReview.proposals.action.APPROVE") }}</option>
-                <option value="REJECT">{{ t("workspace.scaleReview.proposals.action.REJECT") }}</option>
-                <option value="ALTERNATIVE">{{ t("workspace.scaleReview.proposals.action.ALTERNATIVE") }}</option>
+                <option value="APPROVE">{{ t("workspace.narrative.scaleReview.proposals.action.APPROVE") }}</option>
+                <option value="REJECT">{{ t("workspace.narrative.scaleReview.proposals.action.REJECT") }}</option>
+                <option value="ALTERNATIVE">{{ t("workspace.narrative.scaleReview.proposals.action.ALTERNATIVE") }}</option>
               </select>
             </label>
             <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
-              {{ t("workspace.scaleReview.decision.reasonLabel") }}
+              {{ t("workspace.narrative.scaleReview.decision.reasonLabel") }}
               <textarea
                 data-testid="decision-reason"
                 v-model="decisionReason"
@@ -1333,7 +1333,7 @@ function statusClass(status: ChecklistItem["status"]): string {
               class="flex flex-col gap-1"
             >
               <p class="text-[12px] text-nf-text-dim">
-                {{ t("workspace.scaleReview.decision.alternativePayloadLabel") }}
+                {{ t("workspace.narrative.scaleReview.decision.alternativePayloadLabel") }}
               </p>
               <!-- Typed alternative controls: same kind as the proposal,
                    no raw JSON. Remounts per proposal via :key. -->
@@ -1351,14 +1351,14 @@ function statusClass(status: ChecklistItem["status"]): string {
                 :disabled="decisionRunning"
                 class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
               >
-                {{ t("workspace.scaleReview.decision.submit") }}
+                {{ t("workspace.narrative.scaleReview.decision.submit") }}
               </button>
               <button
                 type="button"
                 class="rounded-lg border border-nf-border-strong px-4 py-2 text-[13px] font-medium text-nf-text hover:bg-nf-bg-0 focus-visible:nf-focus"
                 @click="decisionTarget = null"
               >
-                {{ t("workspace.scaleReview.decision.cancel") }}
+                {{ t("workspace.narrative.scaleReview.decision.cancel") }}
               </button>
             </div>
             <p

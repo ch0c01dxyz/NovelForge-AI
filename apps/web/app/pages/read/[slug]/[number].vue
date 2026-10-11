@@ -17,6 +17,10 @@ import { useSyncedReadingProgress } from "../../../composables/useSyncedReadingP
 import { useSession } from "../../../composables/useSession";
 import { useEngagement } from "../../../composables/useEngagement";
 import LikeButton from "../../../components/social/LikeButton.vue";
+// GAP-122: bare <NotificationBell /> / <CommentThread /> do not resolve —
+// Nuxt registers these reader components with the Reader* prefix.
+import NotificationBell from "../../../components/reader/NotificationBell.vue";
+import CommentThread from "../../../components/reader/CommentThread.vue";
 import sanitizeHtml from "sanitize-html";
 import { looksLikeHtml } from "../../../utils/htmlText";
 

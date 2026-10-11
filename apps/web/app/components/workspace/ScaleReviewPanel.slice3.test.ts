@@ -20,46 +20,46 @@ import ScaleReviewPanel from "./ScaleReviewPanel.vue";
 
 // --- Locale mock with en/id dictionaries and English fallback ---
 const enDict: Record<string, string> = {
-  "workspace.scaleReview.title": "SCALE review",
-  "workspace.scaleReview.noSelection": "Select a chapter in the workspace to review its SCALE assessment.",
-  "workspace.scaleReview.unsavedEdits": "Save the chapter first — SCALE review runs against a saved version, not unsaved edits.",
-  "workspace.scaleReview.loading": "Loading…",
-  "workspace.scaleReview.retry": "Retry",
-  "workspace.scaleReview.review.title": "Deterministic review",
-  "workspace.scaleReview.review.rerun": "Rerun review",
-  "workspace.scaleReview.review.none": "No review has been run for this version yet.",
-  "workspace.scaleReview.review.stale": "Stale — the underlying data changed since this review.",
-  "workspace.scaleReview.evidence.title": "SCALE evidence (050A)",
-  "workspace.scaleReview.evidence.noSet": "No evidence set yet for this version.",
-  "workspace.scaleReview.evidence.currentSet": "Set #{sequence}",
-  "workspace.scaleReview.evidence.declaration.CONFLICTS": "Conflicts declared",
-  "workspace.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "No operative conflict",
-  "workspace.scaleReview.evidence.history": "History ({count})",
-  "workspace.scaleReview.evidence.claims": "claims",
-  "workspace.scaleReview.errors.unauthorized": "Sign in to review SCALE (401).",
-  "workspace.scaleReview.errors.forbidden": "You don't have permission to do that here (403).",
-  "workspace.scaleReview.errors.notFound": "Not found (404). It may have been deleted or belong to another workspace.",
-  "workspace.scaleReview.errors.conflict": "Stale data (409). Refresh and try again with current expectations.",
-  "workspace.scaleReview.errors.invalid": "Invalid input (400). Check the form and try again.",
-  "workspace.scaleReview.errors.network": "Something went wrong. Please try again.",
+  "workspace.narrative.scaleReview.title": "SCALE review",
+  "workspace.narrative.scaleReview.noSelection": "Select a chapter in the workspace to review its SCALE assessment.",
+  "workspace.narrative.scaleReview.unsavedEdits": "Save the chapter first — SCALE review runs against a saved version, not unsaved edits.",
+  "workspace.narrative.scaleReview.loading": "Loading…",
+  "workspace.narrative.scaleReview.retry": "Retry",
+  "workspace.narrative.scaleReview.review.title": "Deterministic review",
+  "workspace.narrative.scaleReview.review.rerun": "Rerun review",
+  "workspace.narrative.scaleReview.review.none": "No review has been run for this version yet.",
+  "workspace.narrative.scaleReview.review.stale": "Stale — the underlying data changed since this review.",
+  "workspace.narrative.scaleReview.evidence.title": "SCALE evidence (050A)",
+  "workspace.narrative.scaleReview.evidence.noSet": "No evidence set yet for this version.",
+  "workspace.narrative.scaleReview.evidence.currentSet": "Set #{sequence}",
+  "workspace.narrative.scaleReview.evidence.declaration.CONFLICTS": "Conflicts declared",
+  "workspace.narrative.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "No operative conflict",
+  "workspace.narrative.scaleReview.evidence.history": "History ({count})",
+  "workspace.narrative.scaleReview.evidence.claims": "claims",
+  "workspace.narrative.scaleReview.errors.unauthorized": "Sign in to review SCALE (401).",
+  "workspace.narrative.scaleReview.errors.forbidden": "You don't have permission to do that here (403).",
+  "workspace.narrative.scaleReview.errors.notFound": "Not found (404). It may have been deleted or belong to another workspace.",
+  "workspace.narrative.scaleReview.errors.conflict": "Stale data (409). Refresh and try again with current expectations.",
+  "workspace.narrative.scaleReview.errors.invalid": "Invalid input (400). Check the form and try again.",
+  "workspace.narrative.scaleReview.errors.network": "Something went wrong. Please try again.",
 };
 const idDict: Record<string, string> = {
-  "workspace.scaleReview.title": "Tinjauan SCALE",
-  "workspace.scaleReview.noSelection": "Pilih bab di ruang kerja untuk meninjau penilaian SCALE-nya.",
-  "workspace.scaleReview.unsavedEdits": "Simpan bab dulu — tinjauan SCALE berjalan terhadap versi tersimpan, bukan suntingan yang belum disimpan.",
-  "workspace.scaleReview.loading": "Memuat…",
-  "workspace.scaleReview.retry": "Coba lagi",
-  "workspace.scaleReview.review.title": "Tinjauan deterministik",
-  "workspace.scaleReview.review.rerun": "Jalankan ulang tinjauan",
-  "workspace.scaleReview.review.none": "Belum ada tinjauan yang dijalankan untuk versi ini.",
-  "workspace.scaleReview.review.stale": "Basi — data dasar berubah sejak tinjauan ini.",
-  "workspace.scaleReview.evidence.title": "Bukti SCALE (050A)",
-  "workspace.scaleReview.evidence.noSet": "Belum ada set bukti untuk versi ini.",
-  "workspace.scaleReview.evidence.currentSet": "Set #{sequence}",
-  "workspace.scaleReview.evidence.declaration.CONFLICTS": "Konflik dinyatakan",
-  "workspace.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "Tidak ada konflik operatif",
-  "workspace.scaleReview.evidence.history": "Riwayat ({count})",
-  "workspace.scaleReview.evidence.claims": "klaim",
+  "workspace.narrative.scaleReview.title": "Tinjauan SCALE",
+  "workspace.narrative.scaleReview.noSelection": "Pilih bab di ruang kerja untuk meninjau penilaian SCALE-nya.",
+  "workspace.narrative.scaleReview.unsavedEdits": "Simpan bab dulu — tinjauan SCALE berjalan terhadap versi tersimpan, bukan suntingan yang belum disimpan.",
+  "workspace.narrative.scaleReview.loading": "Memuat…",
+  "workspace.narrative.scaleReview.retry": "Coba lagi",
+  "workspace.narrative.scaleReview.review.title": "Tinjauan deterministik",
+  "workspace.narrative.scaleReview.review.rerun": "Jalankan ulang tinjauan",
+  "workspace.narrative.scaleReview.review.none": "Belum ada tinjauan yang dijalankan untuk versi ini.",
+  "workspace.narrative.scaleReview.review.stale": "Basi — data dasar berubah sejak tinjauan ini.",
+  "workspace.narrative.scaleReview.evidence.title": "Bukti SCALE (050A)",
+  "workspace.narrative.scaleReview.evidence.noSet": "Belum ada set bukti untuk versi ini.",
+  "workspace.narrative.scaleReview.evidence.currentSet": "Set #{sequence}",
+  "workspace.narrative.scaleReview.evidence.declaration.CONFLICTS": "Konflik dinyatakan",
+  "workspace.narrative.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "Tidak ada konflik operatif",
+  "workspace.narrative.scaleReview.evidence.history": "Riwayat ({count})",
+  "workspace.narrative.scaleReview.evidence.claims": "klaim",
 };
 
 let currentLocale = "en";
@@ -419,7 +419,7 @@ describe("ScaleReviewPanel Slice 3", () => {
   it("falls back to English for missing locale keys", async () => {
     currentLocale = "id";
     // Delete an id key to force fallback.
-    delete idDict["workspace.scaleReview.review.title"];
+    delete idDict["workspace.narrative.scaleReview.review.title"];
     apiImpl = async () => ({});
     const wrapper = mount(ScaleReviewPanel, {
       props: {
@@ -431,7 +431,7 @@ describe("ScaleReviewPanel Slice 3", () => {
     });
     // Title key exists in id, but if it were missing, en would be used.
     // Restore for other tests.
-    idDict["workspace.scaleReview.review.title"] = "Tinjauan deterministik";
+    idDict["workspace.narrative.scaleReview.review.title"] = "Tinjauan deterministik";
     expect(wrapper.text()).toContain("Tinjauan SCALE");
   });
 

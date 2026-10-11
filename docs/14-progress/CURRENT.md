@@ -1,5 +1,143 @@
 # Current Project State
 
+## NF-WF-050B live author-workflow acceptance — 2026-10-11, dcb2f49 + uncommitted acceptance WIP
+
+Live browser acceptance of the 050B author workflow executed on Windows 11
+against the owned disposable stack (API :3000, web :3001 Nuxt dev, worker with
+workflow-runs/memory-rebuild/publication/notifications queues on Redis
+`nf-redis-acceptance` :6399, PostgreSQL `nf-pg-5433`/`novelforge_acceptance_050b`,
+9Router gateway :20127). Baseline revision dcb2f49 (GAP-119 thirteenth repair,
+committed with recorded 8/8 verification and separate APPROVE review). The
+working tree additionally carries the applied stash `nf050b-acceptance-wip`:
+GAP-120 (novel workspace page 500 — 12 unresolved template components) and
+GAP-121 (SCALE review i18n key-path mismatch, ~100 call sites) fixes with
+updated suites (web vitest green), plus a GAP-122 record and its reviewed
+reader-routing repair. These changes are uncommitted. Separate exact-diff
+reviews (2026-10-11): GAP-121 portion APPROVE (real-dictionary parity guard
+added); GAP-120 portion CHANGES_REQUESTED on process only — the two
+import-export guard files are outside the frozen allowlist and are covered
+by scope-amendment proposal 23–25 (bounded re-review APPROVE; retrospective
+record in GAP-119 — the amendment process requires no separate author
+approval). Commit awaits the author's existing authorization
+policy.
+
+Scenario disposition (correction 2026-10-11, separate outcomes per contract;
+evidence kind in parentheses — browser UI, API, worker log, runtime dictionary;
+API-assisted fixture/policy setup is identified as such and is not UI
+evidence; raw worker-log excerpts keep their source timestamps and are
+persisted excerpts, not independently re-run checks):
+1. Registration + session (fresh disposable author) — VERIFIED (browser UI).
+2. Version-bound SCALE evidence entry through the SCALE review panel
+   (server-validated UTF-16 span + exact saved-HTML quote) — VERIFIED
+   (browser UI).
+3. HARD policy init — VERIFIED (API setup: pinned API PUT with
+   `authorDecision: APPROVE`, recorded as an approved standing-change
+   proposal).
+4. Incomplete HARD assessment renders INCOMPLETE with STALE_EVIDENCE_SET
+   guidance (explanation, hypothetical example, next action) and blocks
+   publication (HTTP 409 `SCALE_ASSESSMENT_INCOMPLETE`, chapter stays DRAFT)
+   — VERIFIED (browser UI + API).
+5. SOFT flip via full-pin CAS makes the same input advisory and publication
+   succeeds — VERIFIED (browser UI + API).
+6. Author decisions: approved a standing change (TOWN/55 applied), rejected
+   one (no state change), recorded ALTERNATIVE (successor proposal created,
+   original preserved) — VERIFIED (browser UI).
+7. Exception proposal on a stale set refused 409 with no writes — VERIFIED
+   (API).
+8. Published chapters refuse text edits (immutable); chapter-version-scoped
+   evidence/receipt recovery verified on a draft's v2 (clean slate, no stale
+   inheritance, fresh NO_OPERATIVE_CONFLICT) — VERIFIED (browser UI + API).
+9. Reader visibility — VERIFIED (API + browser UI; corrected 2026-10-11).
+   Public API: anonymous
+   `GET /api/public/novels/<slug>/chapters/N` → 200 with pinned published
+   content for chapters 1–3 and 404 for unpublished/draft (API,
+   independently re-runnable). Reader UI was BLOCKED at evidence time by
+   GAP-122 (`NUXT_E4016`; `/read/:slug` rendered only the novel overview).
+   After the contract-reviewed GAP-122 repair, scenario 9 was re-run in
+   the real browser against the live acceptance stack: overview renders,
+   pinned chapter bodies render (v1/v2), direct load and refresh work,
+   previous/next and back navigation work, unpublished chapters show the
+   localized not-found surface with no content leak, id locale renders
+   localized reader chrome, console free of `NUXT_E4016` and
+   component-resolution warnings. The re-run surfaced a pre-existing,
+   separately-owned hydration defect, recorded as GAP-123 (out of the
+   GAP-122 contract scope).
+10. en/id locale switch renders localized workspace and SCALE strings with
+    canonical machine values untranslated — VERIFIED (browser UI). English
+    per-key fallback verified at the runtime dictionary and `t()` mechanism
+    level only (`review.showFullHash` missing in `id`, resolved from `en`) —
+    this is NOT a complete browser fallback journey and must not be cited as
+    one. (2026-10-11 follow-up: one real browser fallback case — the id
+    workspace SCALE panel rendering `Show full hash` from `en` — was later
+    witnessed during the GAP-123 verification; this acceptance-time caveat
+    otherwise stands.)
+11. Scheduled publication through the real BullMQ worker — VERIFIED (worker
+    log; the verbatim excerpt in `050B-live-acceptance-evidence-2026-10-11.md`
+    is a persisted excerpt with source timestamps, not an independently
+    re-run check): scheduling conservatively stales 050A data (two
+    deterministic refusals `outcome:refused code:REVIEW_STALE`, no public
+    flip, audit retained), then a post-schedule fresh review let the same
+    publicationId publish at due time (`outcome:published` 113 ms after
+    `scheduledFor`; public API serves the pinned content anonymously; draft
+    chapters 404 — API checks).
+
+Defects found during the journey: GAP-122 (recorded at evidence time as
+not-repaired: `/read/:slug` did not render `<NuxtPage />`, so the nested
+chapter reader route never displayed chapter bodies, `NUXT_E4016`) has
+since been fixed by the separately contracted and reviewed reader-routing
+repair described under scenario 9; its entry carries the browser closure
+evidence. Still recorded but since REPAIRED (2026-10-11, separately contracted under
+`tasks/GAP-123-ssr-safe-locale-repair.md`; final exact-diff review
+**APPROVE** — frozen diff sha256 `926b5f5fb59e8b4edc9effeba77974ac7fe5198d2c011bfa5ae3e862f48e84e4`,
+4 info findings, no blockers): GAP-123 — locale hydration mismatch (en server HTML vs
+localStorage-selected id; `useLocale` kept the locale in localStorage,
+invisible to SSR). Fix: Nuxt `useState` request-scoped locale + `nf-locale`
+cookie + post-hydration localStorage migration; browser re-verified in en
+and id on the reader and workspace with no hydration warnings, storage
+failure hardening and the real `Show full hash` en-fallback witnessed in
+the id UI. **Follow-up (2026-10-11, post-APPROVE):** an external re-review
+found four defects in the applied repair (unused `ref` import failing
+ESLint; legacy-`en` migration never completing because the callback
+returned on `legacy === state.value`; per-consumer `onNuxtReady`
+registration defeating once-per-load; a synchronous test stub masking the
+hydration deferral) — recorded under GAP-123 before the workaround. The
+bounded amended-contract repair is applied: once-flag
+`useState("locale-migrated")` registers exactly one migration callback per
+load; migration completes for both legacy values (cookie written even when
+the value equals the locale); the test harness queues and explicitly
+flushes `onNuxtReady` with pre-flush hydration assertions and call-count
+proof. useLocale suite 18/18; ESLint exit 0 on both changed files; web
+typecheck exit 0; affected reader/routing/GAP-121 suites 53/53; browser
+legacy-migration path re-verified in en and id on the live stack (console
+clean, cookie written for both legacy values, SSR HTML follows the
+cookie). The earlier **APPROVE** covers only the earlier diff; the
+follow-up got its own two-round separate review — round 1
+CHANGES_REQUESTED (HIGH mechanism claim empirically disproven, fragility
+accepted and fixed with an explicit `mockClear()`; LOW fixed with a
+zero-legacy-reads assertion on the cookie-present path), round 2
+**APPROVE** on the re-frozen diff `.git/gap123-followup-diff-20261011.patch`
+(sha256 `03f3f964…387d6`, working-tree blobs `279ada86`/`4ada15b0` —
+see the GAP-123 entry and contract trail); commit remains author-gated.
+Raw scenario-11 worker-log excerpt and
+reader-visibility
+negatives persisted in
+`docs/14-progress/050B-live-acceptance-evidence-2026-10-11.md` (disposition
+review APPROVE; two minor findings, both addressed).
+
+Still open: commit per
+the repository authorization policy (scope
+amendments 23–25 are recorded, retrospective and separately reviewed —
+no amendment-level author approval applies; the GAP-123 repair carries
+its own APPROVE exact-diff review). Final exact-diff review of
+the frozen tree
+(22 files, sha256 `66f1a3b091a80f382284b30978933cbaf3011b44d8b2f0776cd3c115a4eefb54`,
+`.git/nf-050b-final-freeze-20261011.patch`): **APPROVE** (2026-10-11,
+freeze_verified true; 3 info findings, no blockers); edits made after that
+freeze are limited to status lines recording this verdict. GAP-119 and
+GAP-039 remain OPEN with their retained closure criteria (050C, integrated
+author-workflow acceptance, human screen-reader pass). Not pushed; no
+production deployment.
+
 ## GAP-119 twelfth repair + fresh Windows acceptance — 2026-10-11, 858dafb
 
 At exact e40adc9, the Windows-host acceptance rerun surfaced a deterministic
@@ -79,9 +217,13 @@ the fresh evidence above; items 2–6 remain in dependency order):
 Separate maintenance remains:GAP-029 resolver duplication/synchronization,
 GAP-014 chronology attribution, GAP-013 serving-model evidence where required,
 and per-host GAP-027/GAP-108 readiness/recovery. GAP-023/NF002E stays blocked on
-a real consumer design; do not build a speculative event outbox. GAP-021's
-missing runtime binding still prevents attributed Engram saves; this is the
-fallback checkpoint. Do not redispatch integrated NF048/049 or050A/050B code.
+a real consumer design; do not build a speculative event outbox. GAP-021 is
+per-boundary, correcting the earlier blanket claim here: 2026-10-09
+boundaries had no runtime binding (file fallbacks); 2026-10-11 boundaries
+restored it and wrote attributed Engram checkpoints (GAP-122/GAP-123
+APPROVE); the current GAP-123 follow-up boundary again reports no identity,
+so no attributed save is claimed for it and CURRENT is its fallback
+handoff. Do not redispatch integrated NF048/049 or050A/050B code.
 GAP-018/GAP-117/GAP-063 retain their bounded CLOSED receipts; GAP-039/GAP-119
 remain OPEN pending the retained acceptance scope. Older dispatch notes below
 are historical and superseded by this integration update.

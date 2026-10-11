@@ -8,13 +8,17 @@
  * Visual language follows docs/design/writer-workspace: literary serif
  * title, tabular chapter numbers, stone-surface cards.
  */
-import { useLocale } from "../../composables/useLocale";
-import { useApi, ApiError } from "../../composables/useApi";
-import { useReadingProgress } from "../../composables/useReadingProgress";
-import { useSession } from "../../composables/useSession";
-import { useEngagement } from "../../composables/useEngagement";
-import BookmarkButton from "../../components/social/BookmarkButton.vue";
-import FollowButton from "../../components/social/FollowButton.vue";
+import { useLocale } from "../../../composables/useLocale";
+import { useApi, ApiError } from "../../../composables/useApi";
+import { useReadingProgress } from "../../../composables/useReadingProgress";
+import { useSession } from "../../../composables/useSession";
+import { useEngagement } from "../../../composables/useEngagement";
+import BookmarkButton from "../../../components/social/BookmarkButton.vue";
+import FollowButton from "../../../components/social/FollowButton.vue";
+// GAP-122: Nuxt registers components/reader/NotificationBell.vue as
+// ReaderNotificationBell (pathPrefix), so the bare template name needs an
+// explicit runtime import.
+import NotificationBell from "../../../components/reader/NotificationBell.vue";
 
 interface PublicNovel {
   id: string;

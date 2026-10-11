@@ -19,53 +19,53 @@ import ScaleReviewPanel from "./ScaleReviewPanel.vue";
 
 // --- Locale mock with en/id dictionaries and English fallback ---
 const enDict: Record<string, string> = {
-  "workspace.scaleReview.title": "SCALE review",
-  "workspace.scaleReview.noSelection": "Select a chapter in the workspace to review its SCALE assessment.",
-  "workspace.scaleReview.unsavedEdits": "Save the chapter first — SCALE review runs against a saved version, not unsaved edits.",
-  "workspace.scaleReview.loading": "Loading…",
-  "workspace.scaleReview.retry": "Retry",
-  "workspace.scaleReview.review.title": "Deterministic review",
-  "workspace.scaleReview.review.rerun": "Rerun review",
-  "workspace.scaleReview.review.none": "No review has been run for this version yet.",
-  "workspace.scaleReview.review.stale": "Stale — the underlying data changed since this review.",
-  "workspace.scaleReview.evidence.title": "SCALE evidence (050A)",
-  "workspace.scaleReview.evidence.noSet": "No evidence set yet for this version.",
-  "workspace.scaleReview.evidence.currentSet": "Set #{sequence}",
-  "workspace.scaleReview.evidence.declaration.CONFLICTS": "Conflicts declared",
-  "workspace.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "No operative conflict",
-  "workspace.scaleReview.evidence.history": "History ({count})",
-  "workspace.scaleReview.evidence.claims": "claims",
-  "workspace.scaleReview.evidence.submit": "Append evidence set",
-  "workspace.scaleReview.evidence.submitted": "Evidence set appended.",
-  "workspace.scaleReview.evidence.declarationLabel": "Declaration",
-  "workspace.scaleReview.evidence.newSet": "New evidence set",
-  "workspace.scaleReview.errors.network": "Something went wrong. Please try again.",
-  "workspace.scaleReview.checklist.title": "Checklist",
-  "workspace.scaleReview.checklist.details": "Details",
-  "workspace.scaleReview.checklist.exampleLabel": "Example",
-  "workspace.scaleReview.checklist.nextActionLabel": "Next action",
+  "workspace.narrative.scaleReview.title": "SCALE review",
+  "workspace.narrative.scaleReview.noSelection": "Select a chapter in the workspace to review its SCALE assessment.",
+  "workspace.narrative.scaleReview.unsavedEdits": "Save the chapter first — SCALE review runs against a saved version, not unsaved edits.",
+  "workspace.narrative.scaleReview.loading": "Loading…",
+  "workspace.narrative.scaleReview.retry": "Retry",
+  "workspace.narrative.scaleReview.review.title": "Deterministic review",
+  "workspace.narrative.scaleReview.review.rerun": "Rerun review",
+  "workspace.narrative.scaleReview.review.none": "No review has been run for this version yet.",
+  "workspace.narrative.scaleReview.review.stale": "Stale — the underlying data changed since this review.",
+  "workspace.narrative.scaleReview.evidence.title": "SCALE evidence (050A)",
+  "workspace.narrative.scaleReview.evidence.noSet": "No evidence set yet for this version.",
+  "workspace.narrative.scaleReview.evidence.currentSet": "Set #{sequence}",
+  "workspace.narrative.scaleReview.evidence.declaration.CONFLICTS": "Conflicts declared",
+  "workspace.narrative.scaleReview.evidence.declaration.NO_OPERATIVE_CONFLICT": "No operative conflict",
+  "workspace.narrative.scaleReview.evidence.history": "History ({count})",
+  "workspace.narrative.scaleReview.evidence.claims": "claims",
+  "workspace.narrative.scaleReview.evidence.submit": "Append evidence set",
+  "workspace.narrative.scaleReview.evidence.submitted": "Evidence set appended.",
+  "workspace.narrative.scaleReview.evidence.declarationLabel": "Declaration",
+  "workspace.narrative.scaleReview.evidence.newSet": "New evidence set",
+  "workspace.narrative.scaleReview.errors.network": "Something went wrong. Please try again.",
+  "workspace.narrative.scaleReview.checklist.title": "Checklist",
+  "workspace.narrative.scaleReview.checklist.details": "Details",
+  "workspace.narrative.scaleReview.checklist.exampleLabel": "Example",
+  "workspace.narrative.scaleReview.checklist.nextActionLabel": "Next action",
   // Server-derived checklist item keys (slice 5)
-  "workspace.scaleReview.checklist.items.RECEIPT_ABSENT.label": "No review receipt",
-  "workspace.scaleReview.checklist.items.RECEIPT_ABSENT.explanation": "EN explanation for absent receipt.",
-  "workspace.scaleReview.checklist.items.RECEIPT_ABSENT.example": "EN example for absent receipt.",
-  "workspace.scaleReview.checklist.items.RECEIPT_ABSENT.nextAction": "EN next action for absent receipt.",
-  "workspace.scaleReview.checklist.items.RECEIPT_STALE.label": "Review receipt is stale",
-  "workspace.scaleReview.checklist.items.RECEIPT_STALE.explanation": "EN explanation for stale receipt.",
-  "workspace.scaleReview.checklist.items.RECEIPT_STALE.example": "EN example for stale receipt.",
-  "workspace.scaleReview.checklist.items.RECEIPT_STALE.nextAction": "EN next action for stale receipt.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_ABSENT.label": "No review receipt",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_ABSENT.explanation": "EN explanation for absent receipt.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_ABSENT.example": "EN example for absent receipt.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_ABSENT.nextAction": "EN next action for absent receipt.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_STALE.label": "Review receipt is stale",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_STALE.explanation": "EN explanation for stale receipt.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_STALE.example": "EN example for stale receipt.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_STALE.nextAction": "EN next action for stale receipt.",
 };
 const idDict: Record<string, string> = {
-  "workspace.scaleReview.title": "Tinjauan SCALE",
-  "workspace.scaleReview.review.stale": "Basi — data berubah sejak tinjauan ini.",
-  "workspace.scaleReview.checklist.title": "Daftar periksa",
-  "workspace.scaleReview.checklist.details": "Detail",
-  "workspace.scaleReview.checklist.exampleLabel": "Contoh",
-  "workspace.scaleReview.checklist.nextActionLabel": "Tindakan",
+  "workspace.narrative.scaleReview.title": "Tinjauan SCALE",
+  "workspace.narrative.scaleReview.review.stale": "Basi — data berubah sejak tinjauan ini.",
+  "workspace.narrative.scaleReview.checklist.title": "Daftar periksa",
+  "workspace.narrative.scaleReview.checklist.details": "Detail",
+  "workspace.narrative.scaleReview.checklist.exampleLabel": "Contoh",
+  "workspace.narrative.scaleReview.checklist.nextActionLabel": "Tindakan",
   // Server-derived checklist item keys (slice 5) — Indonesian
-  "workspace.scaleReview.checklist.items.RECEIPT_ABSENT.label": "Tidak ada receipt tinjauan",
-  "workspace.scaleReview.checklist.items.RECEIPT_ABSENT.explanation": "Penjelasan ID untuk receipt yang hilang.",
-  "workspace.scaleReview.checklist.items.RECEIPT_ABSENT.example": "Contoh ID untuk receipt yang hilang.",
-  "workspace.scaleReview.checklist.items.RECEIPT_ABSENT.nextAction": "Tindakan ID untuk receipt yang hilang.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_ABSENT.label": "Tidak ada receipt tinjauan",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_ABSENT.explanation": "Penjelasan ID untuk receipt yang hilang.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_ABSENT.example": "Contoh ID untuk receipt yang hilang.",
+  "workspace.narrative.scaleReview.checklist.items.RECEIPT_ABSENT.nextAction": "Tindakan ID untuk receipt yang hilang.",
 };
 
 let currentLocale = "en";
@@ -245,7 +245,7 @@ describe("ScaleReviewPanel Slice 5", () => {
     await rerunButton.trigger("click");
     await flushPromises();
     // Review displayed and NOT stale: receipt pins S1, context latestSet S1.
-    expect(wrapper.text()).not.toContain(enDict["workspace.scaleReview.review.stale"]);
+    expect(wrapper.text()).not.toContain(enDict["workspace.narrative.scaleReview.review.stale"]);
 
     // 3. The older POST now commits S2 server-side.
     resolvePost!({ id: SET2 });
@@ -253,7 +253,7 @@ describe("ScaleReviewPanel Slice 5", () => {
     await flushPromises();
 
     // 4. The UI must reconcile: the S1 review is now stale, never fresh.
-    expect(wrapper.text()).toContain(enDict["workspace.scaleReview.review.stale"]);
+    expect(wrapper.text()).toContain(enDict["workspace.narrative.scaleReview.review.stale"]);
     wrapper.unmount();
   });
 

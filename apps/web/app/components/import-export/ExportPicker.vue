@@ -182,6 +182,9 @@ function onKeydown(e: KeyboardEvent) {
 watch(
   () => props.open,
   async (open) => {
+    // GAP-120: `immediate: true` runs on the server during SSR where
+    // window/document are undefined — skip browser-only wiring.
+    if (typeof window === "undefined") return;
     if (open) {
       opener.value = document.activeElement as HTMLElement | null;
       status.value = "idle";

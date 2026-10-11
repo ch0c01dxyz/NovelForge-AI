@@ -7,7 +7,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { ref, computed, onMounted } from "vue";
-import NovelPage from "../../pages/read/[slug].vue";
+import NovelPage from "../../pages/read/[slug]/index.vue";
 import ChapterPage from "../../pages/read/[slug]/[number].vue";
 import AuthorPage from "../../pages/read/authors/[authorId].vue";
 import ReaderChapterNav from "./ReaderChapterNav.vue";

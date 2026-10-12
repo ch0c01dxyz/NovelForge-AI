@@ -2,13 +2,29 @@
 
 Purpose: reconcile the frozen 050B contract acceptance criteria against retained
 evidence, after the reviewed acceptance-repair set was committed as `b7969de`
-(parent `dcb2f49`, main, not pushed). Historical acceptance ran at content
+(parent `dcb2f49`, main). Push-state correction (2026-10-12, OBSERVED):
+`origin/main` is `b7969de` — the commit has been pushed since this record was
+first written; the earlier "not pushed" wording here described only the state
+at recording time and is superseded by this annotation. Historical acceptance
+ran at content
 `dcb2f49 + applied stash nf050b-acceptance-wip`; that working-tree content is
 byte-identical to the `b7969de` source files for all 19 `apps/web` paths
 (retained freeze patch `.git/nf-050b-final-freeze-20261011.patch`
 sha256 `66f1a3b0…f54`, freeze-verified, final exact-diff review **APPROVE**).
 Evidence kind abbreviations: B = real browser UI, A = API, W = worker log,
 D = runtime dictionary/静态 check, R = rerun this session.
+
+Scope correction for the backend-identity claim (2026-10-12, OBSERVED):
+`git diff dcb2f49 b7969de -- packages apps/api apps/worker` being empty
+establishes equality only ACROSS THAT RANGE. The 858dafb→dcb2f49 leg is NOT
+empty: `apps/api/src/scale-evidence-migration.test.ts` changed (+142/−21).
+Production source (excluding `*.test.ts`) IS byte-identical across
+858dafb→dcb2f49→b7969de (verified `git diff 858dafb dcb2f49` and
+`git diff dcb2f49 b7969de` with `:!*.test.ts`: both empty). Therefore the
+retained receipts attributed below apply as follows: production-code receipts
+from 858dafb apply unchanged through b7969de; the retained
+scale-evidence-migration TEST receipt applies to its own recorded revision
+(dcb2f49, GAP-119 thirteenth repair, 8/8) and not to 858dafb.
 
 ## Criterion-to-evidence matrix
 
@@ -34,9 +50,12 @@ D = runtime dictionary/静态 check, R = rerun this session.
 Backend/migration/worker regression battery: retained evidence at 858dafb and
 dcb2f49 (restore 8/8, SCALE core 76/76, API regression 170/170, worker trio
 28/28, remaining scale API files 58/58, UI 39/39, typechecks ×4 exit 0,
-prisma generate+validate pass). Backend source is byte-identical from 858dafb
-through b7969de (`git diff dcb2f49 b7969de -- packages apps/api apps/worker`
-is empty), so those receipts apply unchanged to the committed tree; not rerun.
+prisma generate+validate pass). Production source (excluding tests) is
+byte-identical across 858dafb→dcb2f49→b7969de (see the scope correction
+above); the one differing file between 858dafb and dcb2f49 is the TEST file
+`apps/api/src/scale-evidence-migration.test.ts`, whose own receipt (8/8,
+GAP-119 thirteenth repair) is recorded at dcb2f49 — those receipts apply
+unchanged to the committed tree for their recorded scopes; not rerun.
 
 ## Status summary and disposition
 
@@ -52,8 +71,11 @@ is empty), so those receipts apply unchanged to the committed tree; not rerun.
   flow, scheduled queue delivery, review of exact diff) are satisfied; GAP-119
   closes with 050B. GAP-039 stays OPEN (retains 050C + integrated acceptance +
   human screen-reader pass).
-- Commit/push remain author-gated per the repository authorization policy
-  (b7969de committed; push/deploy not authorized by this prompt).
+- Commit/push were author-gated at recording time (b7969de committed;
+  push/deploy not authorized by that prompt). Correction 2026-10-12: b7969de
+  is now on origin/main (pushed at some later author-authorized point); this
+  record's closure evidence is unchanged. 050C's `7589388`/`23d4a1a` remain
+  local-only (not pushed).
 
 ## Focused checks run this session (R)
 
@@ -66,5 +88,6 @@ is empty), so those receipts apply unchanged to the committed tree; not rerun.
   committed blob ids `279ada868ebb2fb2da40d90de622422f44a956be` (useLocale.ts)
   and `4ada15b0fdd2f55381acdc8144a45856b2f6d81a` (useLocale.test.ts) match the
   reviewed working-tree blobs.
-- `git diff dcb2f49 b7969de -- packages apps/api apps/worker`: empty (backend
-  byte-identical; retained backend receipts apply).
+- `git diff dcb2f49 b7969de -- packages apps/api apps/worker`: empty (equality
+  established ACROSS THAT RANGE ONLY — see the scope correction at the top of
+  this file for what this does and does not prove about 858dafb).

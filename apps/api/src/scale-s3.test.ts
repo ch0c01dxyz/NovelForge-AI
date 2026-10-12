@@ -353,6 +353,53 @@ describe("S3 setting enablement", () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it("Amendment D2: concurrent PUTs with different sibling keys preserve BOTH keys; one audit row per PUT", async () => {
+    const f = await seedFixture({ withPolicy: false });
+    await db.novelSettings.create({
+      data: { novelId: f.novelId, settings: {} },
+    });
+    const app = await buildTestApp(f.userId, makeGenerateSpy({ content: "{}" }).generate);
+
+    // Seed a sibling key that must survive both PUTs.
+    await db.novelSettings.update({
+      where: { novelId: f.novelId },
+      data: { settings: { customA: { v: 1 } } },
+    });
+
+    // Two concurrent PUTs: each preserves the sibling and writes its own
+    // scaleS3 value. Serialized by the novel row lock, both must land.
+    const [p1, p2] = await Promise.all([
+      app.inject({
+        cookies: { [SESSION_COOKIE]: "test-session" },
+        method: "PUT",
+        url: `${novelBase(f)}/scale-s3-setting`,
+        payload: { enabled: true, reason: "first" },
+      }),
+      app.inject({
+        cookies: { [SESSION_COOKIE]: "test-session" },
+        method: "PUT",
+        url: `${novelBase(f)}/scale-s3-setting`,
+        payload: { enabled: false, reason: "second" },
+      }),
+    ]);
+    expect(p1.statusCode, p1.body).toBe(200);
+    expect(p2.statusCode, p2.body).toBe(200);
+
+    const row = await db.novelSettings.findUniqueOrThrow({ where: { novelId: f.novelId } });
+    const settings = row.settings as Record<string, unknown>;
+    // The sibling key written before the race survives both writers.
+    expect(settings.customA).toEqual({ v: 1 });
+    // scaleS3 holds whichever PUT committed last — a defined boolean value.
+    expect([true, false]).toContain(
+      ((settings.scaleS3 as Record<string, unknown>) ?? {}).enabled,
+    );
+    // One audit entry per committed PUT.
+    const auditRows = await db.auditLog.findMany({
+      where: { action: "novel.scale-s3-settings-changed" },
+    });
+    expect(auditRows).toHaveLength(2);
+  });
 });
 
 describe("extraction — zero-call and gating invariants", () => {
@@ -868,6 +915,35 @@ describe("advice — transient, gated on INCOMPLETE", () => {
       payload: pins(f),
     });
     expect(bad.statusCode).toBe(422);
+    expect(await db.scaleS3Proposal.count()).toBe(0);
+
+    // Amendment C: valid code paired with a WRONG field → 422 (the pair
+    // must match the server-derived checklist mapping exactly).
+    const wrongFieldApp = await buildTestApp(
+      f.userId,
+      makeGenerateSpy({
+        content: JSON.stringify({
+          items: [
+            {
+              code: "MISSING_EVIDENCE_SET",
+              field: "standingScale",
+              reason: "r",
+              explanation: "e",
+              example: "hypothetical",
+              nextAction: "n",
+            },
+          ],
+        }),
+      }).generate,
+    );
+    const wrongField = await wrongFieldApp.inject({
+      method: "POST",
+      url: `${chapterBase(f)}/scale-s3/advice`,
+      cookies: { [SESSION_COOKIE]: "test-session" },
+      payload: pins(f),
+    });
+    expect(wrongField.statusCode).toBe(422);
+    expect(wrongField.json().error).toBe("S3_INVALID_PROPOSAL");
     expect(await db.scaleS3Proposal.count()).toBe(0);
   });
 });

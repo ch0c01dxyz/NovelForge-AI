@@ -46,6 +46,7 @@ function makeContext(overrides: Partial<ScaleReviewContext> = {}): ScaleReviewCo
       conflicts: [],
       previousSetId: null,
       actorUserId: "u1",
+      sourceProposalId: null,
       createdAt: new Date(),
     },
     policy: {
@@ -231,6 +232,7 @@ describe("deriveChecklist", () => {
         conflicts: [],
         previousSetId: null,
         actorUserId: "u1",
+        sourceProposalId: null,
         createdAt: new Date(),
       },
     });

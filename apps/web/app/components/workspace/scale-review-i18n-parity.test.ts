@@ -18,6 +18,11 @@ const COMPONENTS = [
   "./NarrativePanel.vue",
   "./ScalePayloadForm.vue",
   "./ScaleReviewPanel.vue",
+  // 050C amendment 1 (finding A): the toggle references the
+  // workspace.narrative.scaleReview.s3.setting.* family through dynamic
+  // t(errorKey) calls, so both its static keys and its two dynamic error
+  // keys are pinned against the real dictionaries here.
+  "./ScaleS3SettingToggle.vue",
 ] as const;
 
 const PREFIX = "workspace.narrative.scaleReview.";
@@ -61,6 +66,12 @@ function dynamicKeys(): string[] {
   for (const code of CHECKLIST_ITEM_CODES) {
     for (const field of CHECKLIST_FIELDS) keys.push(`${PREFIX}checklist.items.${code}.${field}`);
   }
+  // ScaleS3SettingToggle assigns these to errorKey and renders t(errorKey).
+  keys.push(
+    `${PREFIX}s3.setting.reasonInvalid`,
+    `${PREFIX}s3.setting.forbidden`,
+    `${PREFIX}s3.setting.saveFailed`,
+  );
   return keys;
 }
 

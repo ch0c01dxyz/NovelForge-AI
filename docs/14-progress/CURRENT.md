@@ -1,5 +1,92 @@
 # Current Project State
 
+## NF-WF-050C findings A–D repaired; LIVE integrated S3 acceptance witnessed — 2026-10-12
+
+Findings A–D (recorded in ISSUES-AND-GAPS under the GAP-039 umbrella) were
+repaired under frozen amendment `tasks/NF-WF-050C-amendment-1-findings-abcd.md`
+(two read-only review rounds: round 1 CHANGES_REQUESTED on C+D — fixed;
+round 2 APPROVE both). Repairs at working tree on top of `23d4a1a`:
+
+- **A**: new `ScaleS3SettingToggle.vue` in the NarrativePanel Policies tab
+  (discoverable per-novel enablement, reason recorded, saving/error states,
+  capability mirror OWNER/ADMIN/AUTHOR, server still enforces canon:manage);
+  en/id keys + toggle suite 6/6.
+- **B**: `scale_evidence_sets.source_s3_proposal_id` (new additive migration
+  `20261012_nf_wf_050c_evidence_s3_provenance`, bare UUID, no FK — generationId
+  precedent); optional `appendSet` `sourceProposalId` validated in-transaction
+  (tenant/chapter/version binding + branch/head/policy freshness; the
+  proposal's `evidenceSetId` pin deliberately NOT compared to the tip —
+  correction recorded after the live 409 witness); provenance select +
+  add-as-evidence prefill link in the panel; scale-evidence suite 51/51.
+- **C**: advice `code`+`field` PAIR validation against the server-derived
+  checklist (combined-key Set.has); negative regressions in service+route
+  suites (valid code + wrong field → 422).
+- **D**: `list()` stale-marking transaction runs at RepeatableRead
+  (read-only, verified lock-free); lock-taking transactions stay at READ
+  COMMITTED (P2034 abort analysis — contract wording corrected to "same lock
+  order + revalidation protocol as 050A/050B"); stale docstring fixed;
+  `putSetting` takes the novel row lock (FOR NO KEY UPDATE) and writes its
+  audit entry INSIDE the transaction (exactly one audit row per committed
+  PUT; concurrent sibling-key preservation regression test).
+
+Live defects found and fixed during acceptance (all deterministic tests had
+missed them): (1) scale-s3 re-declared a WRONG scale vocabulary
+(OBJECT/PERSON/GROUP/SETTLEMENT/REGION) instead of the canonical
+@novelforge/narrative-rhythm enum (PERSONAL/FAMILY/VILLAGE/TOWN/CITY/
+PROVINCE/KINGDOM/EMPIRE) — fixed by importing the canonical constant, prompt
+enumeration corrected; the wrong-enum proposal row remains stored as inert
+history; (2) extraction prompt did not enumerate the scale values (models
+emit lowercase) — fixed; (3) the evidenceSetId pin comparison above — fixed.
+
+Checks executed this session: scale-s3 API 25/25; scale-evidence 51/51;
+scale-review/decisions/checklist/proof 85/85; platform.integration 12/12;
+restore-scope 8/8; web workspace suites 178/178; toggle 6/6; parity 4/4;
+api+ai-services+web typechecks exit 0; eslint exit 0; `git diff --check`
+clean; new migration deployed to an owned scratch copy of the acceptance DB
+(column verified, scratch dropped), then to `novelforge_acceptance_050b`
+(fixture preserved).
+
+**Post-fix independent review verdict (2026-10-12, later session):** the
+re-frozen artifact `.git/nf-050c-amendment1-final-r2-20261012.patch`
+(sha256 `98b2515001863913459ac9c669cff2bdbe8e4ba36aa7958beb8c98fa453ad45a`,
+base `23d4a1a`) received a separate read-only review
+(`agent://FinalDiffReview-r2`; not the implementer session): **APPROVE**,
+zero findings — both round-1 P2s (parity guard extension; contract
+isolation wording) and the round-2 P3 (duplicate-submit test) verified
+fixed in actual source; toggle 7/7 + parity 4/4 rerun OBSERVED 11/11.
+Technical review is therefore COMPLETE; this is distinct from author
+acceptance (see Not done below). Amendment working tree still uncommitted.
+Engram attributed writes remain unavailable this session (no
+hook-confirmed runtime binding; GAP-021) — this paragraph is part of the
+fallback handoff.
+
+**LIVE integrated acceptance witnessed on the owned stack** (API :3000
+restarted under this session's supervision to load fixes; web :3001 Nuxt dev;
+real 9Router gateway :20127 serving `fable5`→`claude-fable-5-1`; labeled
+API-assisted fixture prep: platform-admin registration + gateway/model/
+STRUCTURED_EXTRACTOR mapping seed, authorc fixture password argon2 reset;
+none printed): browser journey (id + en locales) — Policies tab toggle
+renders Off → enable through UI (reason recorded, audit row) → live extract:
+2× fail-closed 422 (quote mismatch; then wrong-enum proposals pre-fix) with
+Generation rows SUCCEEDED (972/2708 tokens real usage, reportedModel from
+attempt ledger, NO proposal row) → 201 happy path, 6 canonical claims
+rendered with `Model: claude-fable-5-1` → advice 422→200, validated item
+rendered alongside the deterministic checklist → accept through the 050A form
+(Set #2 `source_s3_proposal_id` set) → manual alternative linked to the same
+proposal (Set #3) → dismiss records actor/reason/identity → disable through
+UI → AI section gone, checklist intact, proposal history preserved → stale
+extract (old expectedSetId) refused 409 with zero rows. The host's previous
+180 s gateway timeout model (Atria-Dawn-Preview) is gone from the gateway's
+catalog; the live happy-path receipt now exists.
+
+Not done: commit/push (author-gated); GAP-039 stays OPEN until the author
+accepts integrated acceptance + human screen-reader pass; platform-admin user
+and seeded gateway/model/mapping rows left in place for the author's own
+re-run (removal would delete the only live-acceptance reproduction setup;
+author may purge). Engram attributed writes unavailable (GAP-021): no
+hook-confirmed runtime session identity this session; this entry is the
+fallback handoff.
+
 ## NF-WF-050C implemented, separately reviewed, committed 7589388 — 2026-10-12
 
 050C (optional S3 SCALE proposal assistance) is implemented on top of
@@ -63,8 +150,15 @@ artifact, not a code defect); `vue-tsc --noEmit` exit 0; freeze patch
 `.git/nf-050b-final-freeze-20261011.patch` sha256 re-verified
 `66f1a3b0…f54`; GAP-123 follow-up patch `03f3f964…87d6` re-verified and its
 committed blobs (`279ada86` useLocale.ts, `4ada15b0` useLocale.test.ts) match
-the reviewed working-tree blobs. Backend byte-identical from `858dafb` through
-`b7969de`, so the retained backend/worker/migration receipts apply unchanged.
+the reviewed working-tree blobs. Backend PRODUCTION source (excluding tests)
+is byte-identical from `858dafb` through `b7969de`, so the retained
+backend/worker/migration receipts apply unchanged for their recorded scopes;
+correction 2026-10-12: the 858dafb→dcb2f49 leg is not fully identical —
+`apps/api/src/scale-evidence-migration.test.ts` changed there (+142/−21), and
+that test file's own receipt is recorded at dcb2f49 (GAP-119 thirteenth
+repair, 8/8). The blanket "backend byte-identical" wording originally written
+here was too broad; see the scope correction in
+050B-acceptance-reconciliation-2026-10-11.md.
 
 Acceptance reconciliation complete: criterion-to-evidence matrix for the
 frozen 050B contract in

@@ -3723,6 +3723,12 @@ model ScaleEvidenceSet {
   /// Authenticated user, server-resolved, never client-supplied.
   actorUserId      String   @map("actor_user_id") @db.Uuid
   actor            User     @relation("ScaleEvidenceActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  /// NF-WF-050C amendment 1 (finding B): source S3 proposal this set was
+  /// authored from (accept or author-alternative provenance). Bare UUID, NO
+  /// FK — same policy as ScaleS3Proposal.generationId; integrity is
+  /// validated at write time against the pinned proposal, never by a
+  /// cross-table constraint. Null = plain S1 authoring.
+  sourceProposalId String?  @map("source_s3_proposal_id") @db.Uuid
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([sourceBranchId, chapterVersionId, sequence], map: "scale_evidence_sets_branch_version_sequence_key")

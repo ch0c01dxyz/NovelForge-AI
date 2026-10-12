@@ -4942,3 +4942,152 @@ mismatch warnings in both en and id. — RE-OBSERVED 2026-10-11 after the
 follow-up repair (browser evidence above); once-per-load migration is now
 established by the implementation (single once-flag-gated callback) and
 by test call counts. UI surface closes with the reviewed commit.
+
+## NF-WF-050C remaining findings record — 2026-10-12 (HEAD 23d4a1a, before repairs)
+
+Findings confirmed by source inspection this session (OBSERVED unless labeled);
+recorded under the GAP-039 umbrella before any repair. Contract:
+`tasks/NF-WF-050C-scale-s3-assistance.md` (frozen). Baseline preserved:
+stash `nf050b-acceptance-wip` untouched, `output.txt` untracked, 050C migration
+`20261011_nf_wf_050c_scale_s3_assistance` verified applied to
+`novelforge_acceptance_050b` (`_prisma_migrations` finished=TRUE; table
+`scale_s3_proposals` exists, 0 rows; Docker `nf-pg-5433` up).
+
+**Finding A — missing author-facing S3 enablement (CONFIRMED).**
+`packages/ai-services/src/scale-s3.ts` `getSetting`/`putSetting` and
+`apps/api/src/scale-s3-routes.ts` (GET/PUT `/scale-s3-setting`, `canon:manage`
+setter, audit `novel.scale-s3-settings-changed`) implement the backend setting.
+`apps/web` reads it only inside `ScaleReviewPanel.vue` (line ~825, one GET per
+chapter selection to toggle the AI section). No UI surface anywhere
+(`apps/web/app/pages/workspaces/[workspaceId]/novels/[novelId]/index.vue`,
+`NarrativePanel.vue`, `PolicyList.vue`) issues PUT — enable/disable is currently
+API-only (`curl`/setup). ADR-0016 requires author-facing optional enablement in
+settings. Server-side capability enforcement (`canon:manage`, deliberately
+stricter than `novel:update`; holders OWNER/ADMIN/AUTHOR per
+`packages/auth/authorization.ts` lines ~154-198) is correct and must be
+preserved. Roles holding `canon:read`: all non-VIEWER (OBSERVED in the same
+ledger). UNKNOWN until runtime check: none blocking design.
+
+**Finding B — author alternatives and proposal provenance (PARTLY CONFIRMED,
+partly INFERRED).**
+OBSERVED: accept path exists (author clicks "Add as evidence" → existing 050A
+`appendSet` with fresh pins, audited, server-validated — the 050A set row is
+the approved-evidence record). Reject path exists: `ScaleS3Proposal`
+`dismissedByUserId`/`dismissedReason`/`dismissedAt` + CAS `updateMany` guard +
+audit `novel.scale-s3-dismissed` (actor, reason, proposal identity recorded;
+idempotent). The frozen contract NARROWS S3 alternatives: "an author who wants
+a different claim authors it directly through S1; this narrowing is stated, not
+silent". ADR-0016 (author decision, 2026-10-08) states: "the author may
+approve, reject, or supply an alternative proposal" and "An alternative is
+separately recorded and assessed; never silently rewrite the AI proposal."
+The author's current dispatch explicitly re-requests approve/reject/alternative.
+INFERRED gap: the AI-proposal→author-evidence relationship is not recorded —
+`ScaleEvidenceSet`/claims carry no `proposalId` link, and `appendSet` has no
+provenance parameter, so an accepted (or S1-re-authored-as-alternative) claim
+cannot be traced back to its source proposal. The existing S2 infrastructure
+(`scale-decisions.ts` `action: APPROVE|REJECT|ALTERNATIVE` with
+`alternativeProposalId` linkage, sequences, CAS) has exactly the needed
+semantics but for S2 proposal rows, not S3. Pending/rejected AI proposals do
+not invalidate complete S1 evidence (contract invariant; inert rows) —
+consistent with ADR-0016.
+
+**Finding C — advice code/field validation (CONFIRMED, with boundary).**
+`scale-s3.ts` `advise()` (lines ~583-627): validates `code` against the
+server-derived checklist codes (`allowedCodes` from `input.missingData`,
+which the route derives server-side from the pinned receipt — never
+client-supplied), and `field` only as "nonempty string ≤4000". A fabricated or
+mismatched `field` for a valid `code` is accepted. NEGATIVE regression for
+valid-code+wrong-field: absent from `packages/ai-services/src/scale-s3.test.ts`
+and `apps/api/src/scale-s3.test.ts` (OBSERVED by grep: no wrong-field case).
+Stale-while-advising: `advise()` pins are validated in ONE transaction before
+the model call; the response is transient and never persisted, and the UI
+re-renders the checklist fresh after each op, so advice cannot become a stale
+persisted artifact. INFERRED residual: advice computed against pre-call pins
+can be returned after a concurrent pin change (last-response-wins in the UI);
+contract treats advice as transient guidance, so no re-validation gate is
+required by the frozen contract — the panel's late-response guard ignores
+stale selections (OBSERVED `opSeq`/`selectionSeq` checks at line ~854).
+
+**Finding D — transaction isolation and concurrency claims (CONFIRMED).**
+The contract (§Staleness/concurrency) claims "the same RepeatableRead
+isolation as 050B review". OBSERVED: `scale-s3.ts` uses plain
+`db.$transaction(...)` at lines 373 (putSetting), 409 (extract phase 1), 461
+(extract phase 2), 523 (gateAdvice), 540 (advise), 657 (list stale-marking) —
+NO `isolationLevel` argument anywhere in scale-s3.ts. The database default is
+`read committed` (OBSERVED: `SHOW default_transaction_isolation` on
+nf-pg-5433). Contrast: `scale-evidence.ts:606` and
+`scale-decision-routes.ts:535` DO pass
+`{ isolationLevel: "RepeatableRead" }`. Correctness analysis (INFERRED, to be
+reviewed): the extract two-phase protocol is protected by the explicit row
+locks (`FOR NO KEY UPDATE`/`FOR UPDATE` under the appendSet order) plus
+byte-identical pin re-check in phase 2 — under READ COMMITTED each statement
+sees the latest committed rows, and the re-check makes torn pin combinations
+un-storable, so the safety property "a pin combination that never coexisted is
+never stored" holds. Residual differences vs RepeatableRead: (1) phase-1
+pin reads are not one snapshot (each statement re-reads latest), but the
+locks serialize concurrent manuscript writers so interleaving is bounded;
+(2) `putSetting` read-modify-upsert of the settings JSON bag is not
+serialized against concurrent settings writers (no lock, no RR snapshot) —
+two concurrent PUTs with different sibling keys can lose one sibling-key
+update (last-committer-wins on the whole JSON bag). The contract requires
+"unknown keys preserved untouched" (single-writer satisfied) but the
+concurrent-writer case is not handled. Repair options to be contract-amended:
+explicitly align isolation (add `isolationLevel: "RepeatableRead"` where the
+contract claims it, plus a settings-bag row lock or retry) OR amend the
+contract to state the actual READ COMMITTED + locks + re-check protocol and
+accept/serialize the settings-bag write. Model calls stay outside transactions
+in all cases (OBSERVED).
+
+**Finding B contract constraint (frozen, restated):** any repair must reuse
+existing infrastructure where semantics fit; a new provenance column on the
+existing `scale_s3_proposals` consumption path (linking author-applied set →
+source proposal) is the smallest candidate; do not assume a new table without
+review. Status: findings recorded; contract amendments pending separate
+read-only review before implementation.
+
+**Repair and live acceptance disposition — 2026-10-12.** All four findings
+repaired under frozen amendment `tasks/NF-WF-050C-amendment-1-findings-abcd.md`
+(separate read-only review, two rounds: round 1 CHANGES_REQUESTED on C/D —
+both fixed; round 2 APPROVE). Three further defects were found LIVE and fixed
+(deterministic suites had missed all three): scale-s3 re-declared a wrong
+scale vocabulary instead of the canonical @novelforge/narrative-rhythm enum;
+the extraction prompt did not enumerate allowed scale values; the amendment's
+original provenance pin check compared the proposal's evidenceSetId to the
+current tip, making a second accept or alternative impossible after the
+author's own first accept (correction recorded in the amendment). LIVE
+integrated acceptance witnessed through the real author UI (id + en) on the
+owned stack with gateway model `fable5`→`claude-fable-5-1`: enable via new UI
+toggle, extraction 201 after two fail-closed 422s (real tokens recorded,
+no rows), advice 200 rendered alongside checklist, accept (Set #2) and
+alternative (Set #3) both carrying `source_s3_proposal_id`, dismissal recorded,
+disable preserves history, stale extract refused 409 with zero rows. The
+earlier REMAINING GATE (no structured-extraction-capable model) is closed:
+the gateway catalog no longer serves Atria-Dawn-Preview. GAP-039 remains
+OPEN only for the author's integrated-acceptance sign-off and the human
+screen-reader pass. Amendment working tree NOT committed (author-gated).
+
+**Post-fix review verdict — 2026-10-12 (later session).** The re-frozen
+artifact `.git/nf-050c-amendment1-final-r2-20261012.patch`
+(sha256 `98b2515001863913459ac9c669cff2bdbe8e4ba36aa7958beb8c98fa453ad45a`,
+base `23d4a1a`) received a separate read-only review
+(`agent://FinalDiffReview-r2`; not the implementer session): **APPROVE**,
+zero findings. Both round-1 P2s (parity guard extension; contract
+isolation wording) and the round-2 P3 (duplicate-submit test) verified
+fixed in actual source; toggle 7/7 + parity 4/4 rerun OBSERVED 11/11;
+historical CHANGES_REQUESTED receipt (`agent://FinalDiffReview-2`,
+`4bf15d51…`) preserved above. Technical review of amendment 1 is COMPLETE;
+this does not equal author acceptance: GAP-039 remains OPEN for the
+author's integrated-acceptance sign-off and the human screen-reader pass.
+No additional approval requirements created. Engram attributed writes
+unavailable this session (GAP-021; no hook-confirmed binding) — CURRENT.md
+is the fallback handoff.
+
+## GAP-021 recurrence — 2026-10-12 (050C findings-repair session)
+
+No hook-confirmed runtime session identity was available this session
+(`mem_context` listed no session binding for the current session; the only
+prior attributed save used the author-directed manual-save fallback). Per the
+task's Engram protocol, NO attributed memory writes were performed this
+session; the durable fallback handoff lives in
+`docs/14-progress/CURRENT.md` ("NF-WF-050C findings A–D repaired; LIVE
+integrated S3 acceptance witnessed — 2026-10-12"). GAP-021 remains OPEN.

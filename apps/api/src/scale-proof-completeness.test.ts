@@ -495,6 +495,7 @@ describe("complete proof consistency (P1)", () => {
           conflicts: set.conflictsJson as never,
           previousSetId: null,
           actorUserId: f.userId,
+          sourceProposalId: null,
           createdAt: new Date(),
         },
         policy: {

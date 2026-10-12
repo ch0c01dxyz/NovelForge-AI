@@ -5,25 +5,28 @@ locale keys with English fallback.
 Model selection: author-selected at runtime; runtime model identity recorded
 only from actual gateway responses (`reportedModel`), never asserted.
 
-Status: IMPLEMENTED / SEPARATELY REVIEWED — 2026-10-11. Contract frozen
-after three review rounds (round-1 CHANGES_REQUESTED 1 P1 + 3 P2 + 5 P3;
-round-2 CHANGES_REQUESTED 1 P1 + 3 P3; round-3 all_addressed, two named
-scenarios added per its minor note). Slices implemented at b7969de + working
-tree; backend slice review (7 findings, all fixed), web slice review (1
-finding, fixed), final exact-diff review of freeze
+Status: IMPLEMENTED / SEPARATELY REVIEWED / LIVE ACCEPTANCE WITNESSED —
+2026-10-12. Contract frozen after three review rounds (round-1
+CHANGES_REQUESTED 1 P1 + 3 P2 + 5 P3; round-2 CHANGES_REQUESTED 1 P1 + 3 P3;
+round-3 all_addressed, two named scenarios added per its minor note). Slices
+implemented at b7969de + working tree; backend slice review (7 findings, all
+fixed), web slice review (1 finding, fixed), final exact-diff review of freeze
 `.git/nf-050c-final-freeze-20261011.patch`
 sha256 c02349c5a9e561bddd88726713b7ac4c9f54cda8b7976fa12c0290196f9918cf:
 all prior findings verified resolved, two non-blocking P3 notes applied
 (advice-item cap; payload comment corrected to write-time validation +
-consumption-time 050A re-validation). Deterministic gates green (see
-CURRENT 2026-10-11 050C section). REMAINING GATE: live extraction through a
-structured-extraction-capable model profile — the host's real 9Router
-gateway (Atria-Dawn-Preview) cannot complete the extraction prompt within
-180 s (TRANSIENT upstream), so the live happy-path receipt awaits a fit
-model; the live failure path (gateway timeout → 502, no row, FAILED
-generation with null usage) was witnessed on the owned acceptance stack.
-Commit/push/deploy: COMMITTED as `7589388` (author-authorized 2026-10-12;
-push and deployment remain author-gated).
+consumption-time 050A re-validation). COMMITTED as `7589388`
+(author-authorized 2026-10-12; push and deployment remain author-gated).
+2026-10-12 amendment 1 (findings A–D, separately reviewed, two rounds) repaired
+the remaining findings at working tree; the earlier REMAINING GATE (live
+extraction through a structured-extraction-capable model profile) is now
+CLOSED: the 9Router catalog replaced Atria-Dawn-Preview with capable models
+(`fable5`→`claude-fable-5-1`), and the live happy-path receipt was witnessed
+through the real author UI on the owned acceptance stack (extraction 201,
+advice 200, accept/alternative provenance, dismiss, disable, en/id). See
+CURRENT 2026-10-12 and the amendment file for the exact evidence and the two
+further live-found defects fixed (scale vocabulary; prompt enumeration).
+Commit/push/deploy of the amendment working tree: not committed (author-gated).
 Milestone / capability IDs: M3/M8; CAP-06; parent NF-WF-050; issue GAP-039 (parent gap); GAP-021 (Engram binding, fallback handoff if unavailable).
 Implementer role: the dispatching controller session (one writer per file; worktree-local).
 Reviewer role: separate read-only reviewer actor per slice (never the implementer session).
@@ -167,7 +170,7 @@ pattern as 050B S2 cleanup. Not in COVERED_TABLES; restore/rebuild ignores it.
 ### Staleness, idempotency, concurrency
 - Stored proposals carry the full pin set; list/read responses mark `stale: true` when any pin mismatches the live context (computed at read via `readScaleContext`; no silent repinning). UI shows stale proposals read-only with explanation.
 - No deduplication claim is made: repeated extract calls may produce repeated proposals (bounded by rate of author action); listing is descending, paginated `?before=<createdAt>&beforeId=<id>&limit<=50` — cursor is `(createdAt, id)` lexicographic descending so equal-millisecond rows are never skipped.
-- Concurrent PUT setting + extract call: extract reads settings and ALL pins inside ONE transaction at the same RepeatableRead isolation as 050B review and the `appendSet` lock order (novel NO KEY UPDATE → branch UPDATE → chapter UPDATE — locks held only for the pin read, then released before the model call; no lock is ever held across the model call). The model call runs outside any transaction; a short second transaction then re-reads the SAME pin set under the same lock order/isolation and stores the row ONLY if every pin is byte-identical to the first snapshot (pin combination that never coexisted can never be stored); mismatch → row discarded, 409 stale returned. A disable racing an in-flight generation leaves a completed row (harmless inert data); a post-disable response is refused before the model call.
+- Concurrent PUT setting + extract call: extract reads settings and ALL pins inside ONE transaction under the `appendSet` lock order (novel NO KEY UPDATE → branch UPDATE → chapter UPDATE — locks held only for the pin read, then released before the model call; no lock is ever held across the model call). Amendment D1 correction (2026-10-12, reviewed round 2): the lock-taking transactions run at the database default READ COMMITTED — the safety property comes from the explicit row locks plus the byte-identical phase-2 re-check (the same lock order + revalidation protocol as the 050A/050B services), NOT from snapshot isolation; RepeatableRead on the locked reads would turn a concurrent head advance into an unmapped serialization abort (SQLSTATE 40001 / P2034) instead of the intended 409. Only the read-only `list()` stale-marking transaction runs at RepeatableRead. Amendment D2: `putSetting` takes the novel row lock (FOR NO KEY UPDATE) inside its transaction and writes its audit entry with the transaction client, so concurrent PUTs never lose sibling JSON keys and exactly one audit row exists per committed PUT. The model call runs outside any transaction; a short second transaction then re-reads the SAME pin set under the same lock order/isolation and stores the row ONLY if every pin is byte-identical to the first snapshot (pin combination that never coexisted can never be stored); mismatch → row discarded, 409 stale returned. A disable racing an in-flight generation leaves a completed row (harmless inert data); a post-disable response is refused before the model call.
 - `reportedModel` is stored verbatim as observed or null; missing usage metadata (`generationId` null path never occurs for `AiServices.generate` — it always creates the row — but `inputTokens/outputTokens` may be null) is recorded as unknown by NF049 as-is; no double counting, no fabrication, no quota computation.
 
 ### UI (ScaleReviewPanel)

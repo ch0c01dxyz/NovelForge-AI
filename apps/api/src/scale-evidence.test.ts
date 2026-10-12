@@ -29,6 +29,7 @@ import { createAuditService } from "@novelforge/ai-services";
 import {
   createPlatformServices,
   createScaleEvidenceServices,
+  fingerprintScalePolicy,
   ScaleEvidenceValidationError,
   NotFoundError,
   ConflictError,
@@ -2326,5 +2327,163 @@ describe("evidence: predecessor chain validation", () => {
       where: { sourceBranchId: branchId, chapterVersionId: versionId, sequence: 3 },
     });
     expect(seq3).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NF-WF-050C amendment 1 (finding B): S3 proposal provenance on appendSet.
+// ---------------------------------------------------------------------------
+
+describe("evidence: S3 proposal provenance (050C amendment 1)", () => {
+  /** Seed a pinned S3 proposal row matching the current context pins. */
+  async function seedProposal(
+    f: Awaited<ReturnType<typeof seedChapterWithVersion>> & {
+      ids: { workspaceId: string; novelId: string };
+    },
+    overrides?: {
+      branchId?: string;
+      headRevisionId?: string | null;
+      evidenceSetId?: string | null;
+      policyFingerprint?: string;
+      chapterId?: string;
+      chapterVersionId?: string;
+    },
+  ) {
+    return db.scaleS3Proposal.create({
+      data: {
+        workspaceId: f.ids.workspaceId,
+        novelId: f.ids.novelId,
+        chapterId: overrides?.chapterId ?? f.chapterId,
+        chapterVersionId: overrides?.chapterVersionId ?? f.versionId,
+        sourceBranchId: overrides?.branchId ?? f.branchId,
+        sourceRevisionId:
+          overrides?.headRevisionId !== undefined
+            ? overrides.headRevisionId
+            : f.headRevisionId,
+        evidenceSetId: overrides?.evidenceSetId ?? null,
+        policyFingerprint:
+          overrides?.policyFingerprint ?? fingerprintScalePolicy(null),
+        kind: "EXTRACT_CLAIM",
+        payload: { claims: [CLAIM_A] },
+        requestedByUserId: (await db.novel.findUniqueOrThrow({
+          where: { id: f.ids.novelId },
+          select: { createdById: true },
+        })).createdById,
+      },
+    });
+  }
+
+  it("appendSet with sourceProposalId stores provenance; record exposes it; absent path stays null", async () => {
+    const owner = await seedUser("se-prov1@t.io");
+    const ids = await seedNovel(owner.userId, "se-prov-ws1");
+    const f = { ids, ...(await seedChapterWithVersion(owner.cookie, ids)) };
+    const proposal = await seedProposal(f);
+
+    const linked = await postSet(owner.cookie, ids, f.chapterId, {
+      chapterVersionId: f.versionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "Accepted from AI proposal.",
+      conflicts: [CLAIM_A],
+      sourceProposalId: proposal.id,
+    });
+    expect(linked.statusCode, linked.body).toBe(201);
+    const linkedBody = linked.json() as { id: string; sourceProposalId: string | null };
+    expect(linkedBody.sourceProposalId).toBe(proposal.id);
+
+    // The plain path (no sourceProposalId) still stores null.
+    const plain = await postSet(owner.cookie, ids, f.chapterId, {
+      chapterVersionId: f.versionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: linkedBody.id,
+      declaration: "CONFLICTS",
+      explanation: "Plain S1 authoring.",
+      conflicts: [CLAIM_B],
+    });
+    expect(plain.statusCode, plain.body).toBe(201);
+    expect((plain.json() as { sourceProposalId: string | null }).sourceProposalId).toBeNull();
+
+    // The proposal row itself is untouched (inert data).
+    const after = await db.scaleS3Proposal.findUniqueOrThrow({ where: { id: proposal.id } });
+    expect(after.dismissedByUserId).toBeNull();
+  });
+
+  it("appendSet refuses a proposal from another chapter (404) and a stale-pinned proposal (409)", async () => {
+    const owner = await seedUser("se-prov2@t.io");
+    const ids = await seedNovel(owner.userId, "se-prov-ws2");
+    const f = { ids, ...(await seedChapterWithVersion(owner.cookie, ids)) };
+
+    // Unknown proposal id (valid UUID shape, no such row): the service 404s.
+    const wrongChapter = await postSet(owner.cookie, ids, f.chapterId, {
+      chapterVersionId: f.versionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "phantom proposal reference",
+      conflicts: [CLAIM_A],
+      sourceProposalId: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(wrongChapter.statusCode).toBe(404);
+    expect((wrongChapter.json() as { error: string }).error).toBe("NOT_FOUND");
+
+    // Stale pins: proposal captured a different head revision.
+    const stale = await seedProposal(f, { headRevisionId: null });
+    const staleRes = await postSet(owner.cookie, ids, f.chapterId, {
+      chapterVersionId: f.versionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "stale proposal provenance",
+      conflicts: [CLAIM_A],
+      sourceProposalId: stale.id,
+    });
+    expect(staleRes.statusCode).toBe(409);
+    expect((staleRes.json() as { error: string }).error).toBe("CONFLICT");
+    // Refusal created no set row.
+    expect(
+      await db.scaleEvidenceSet.count({ where: { novelId: ids.novelId } }),
+    ).toBe(0);
+  });
+
+  it("appendSet refuses a proposal whose policy fingerprint no longer matches (409)", async () => {
+    const owner = await seedUser("se-prov3@t.io");
+    const ids = await seedNovel(owner.userId, "se-prov-ws3");
+    const f = { ids, ...(await seedChapterWithVersion(owner.cookie, ids)) };
+    const stalePolicy = await seedProposal(f, {
+      policyFingerprint: "0".repeat(64),
+    });
+    const res = await postSet(owner.cookie, ids, f.chapterId, {
+      chapterVersionId: f.versionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "policy drifted since extract",
+      conflicts: [CLAIM_A],
+      sourceProposalId: stalePolicy.id,
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it("appendSet refuses an unknown sourceProposalId (404)", async () => {
+    const owner = await seedUser("se-prov4@t.io");
+    const ids = await seedNovel(owner.userId, "se-prov-ws4");
+    const f = { ids, ...(await seedChapterWithVersion(owner.cookie, ids)) };
+    const res = await postSet(owner.cookie, ids, f.chapterId, {
+      chapterVersionId: f.versionId,
+      expectedBranchId: f.branchId,
+      expectedHeadRevisionId: f.headRevisionId,
+      expectedSetId: null,
+      declaration: "CONFLICTS",
+      explanation: "phantom proposal",
+      conflicts: [CLAIM_A],
+      sourceProposalId: "00000000-0000-4000-8000-000000000000",
+    });
+    expect(res.statusCode).toBe(404);
   });
 });

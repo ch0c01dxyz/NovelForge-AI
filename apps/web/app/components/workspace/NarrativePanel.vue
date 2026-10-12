@@ -15,6 +15,7 @@ import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
 import DnaEditor from "./DnaEditor.vue";
 import PolicyList from "./PolicyList.vue";
+import ScaleS3SettingToggle from "./ScaleS3SettingToggle.vue";
 import Antagonists from "./Antagonists.vue";
 import ScaleReviewPanel from "./ScaleReviewPanel.vue";
 
@@ -229,8 +230,11 @@ async function runPatterns() {
       <DnaEditor :workspace-id="workspaceId" :novel-id="novelId" />
     </div>
 
-    <div v-else-if="active === 'policies'" role="tabpanel">
+    <div v-else-if="active === 'policies'" role="tabpanel" class="flex flex-col gap-4">
       <PolicyList :workspace-id="workspaceId" :novel-id="novelId" />
+      <!-- NF-WF-050C amendment 1 (finding A): discoverable per-novel S3
+           enablement beside the policy configuration it serves. -->
+      <ScaleS3SettingToggle :workspace-id="workspaceId" :novel-id="novelId" />
     </div>
 
     <div v-else-if="active === 'antagonists'" role="tabpanel">

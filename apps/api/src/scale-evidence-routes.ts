@@ -47,6 +47,9 @@ const appendSetBody = z
     declaration: z.enum(["CONFLICTS", "NO_OPERATIVE_CONFLICT"]),
     explanation: z.string(),
     conflicts: z.array(z.unknown()),
+    // 050C amendment 1: optional S3 proposal provenance. Bare UUID — the
+    // service validates existence/pins under the append locks.
+    sourceProposalId: uuid.optional(),
   })
   .strict();
 
@@ -178,6 +181,7 @@ export function registerScaleEvidenceRoutes(
         declaration: body.data.declaration,
         explanation: body.data.explanation,
         conflicts: body.data.conflicts,
+        sourceProposalId: body.data.sourceProposalId,
       });
       return reply.code(201).send(set);
     } catch (error) {

@@ -46,17 +46,11 @@ import type {
   ScaleS3PinSnapshot,
 } from "./scale-s3-types.ts";
 
-// Re-declared locally to avoid importing private enums; same frozen values.
-const NARRATIVE_SCALES = [
-  "OBJECT",
-  "PERSON",
-  "FAMILY",
-  "GROUP",
-  "SETTLEMENT",
-  "REGION",
-  "KINGDOM",
-  "EMPIRE",
-] as const;
+import { NARRATIVE_SCALES } from "@novelforge/narrative-rhythm";
+
+// Canonical scale vocabulary — imported, never re-declared. A previous local
+// list here (OBJECT/PERSON/GROUP/SETTLEMENT/REGION) was WRONG and broke the
+// live accept flow (2026-10-12); see scale-s3-types.ts.
 const CLAIM_RELEVANCE = ["ACTION", "STAKES", "CONSEQUENCE"] as const;
 const MAX_CLAIMS = 100;
 const MAX_EXPLANATION_LENGTH = 4000;
@@ -77,6 +71,7 @@ export interface ScaleS3Tx {
   narrativePolicy: NovelForgeDb["narrativePolicy"];
   novelSettings: NovelForgeDb["novelSettings"];
   scaleS3Proposal: NovelForgeDb["scaleS3Proposal"];
+  auditLog: NovelForgeDb["auditLog"];
 }
 
 export interface ScaleS3Deps {
@@ -219,7 +214,10 @@ function parseModelClaims(content: string, pinnedContent: string): ScaleEvidence
 /**
  * Read + lock the full pin set under the appendSet lock order. Returns the
  * post-lock authoritative pin snapshot. Caller must run inside a
- * RepeatableRead transaction; locks are held only for this read.
+ * READ COMMITTED transaction (the database default); the explicit row
+ * locks — not snapshot isolation — serialize concurrent manuscript writers,
+ * and every pin read happens AFTER all locks are held. Locks are held only
+ * for this read.
  */
 async function readPinsUnderLock(
   tx: ScaleS3Tx,
@@ -371,6 +369,13 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
       if (reason.length === 0 || reason.length > 4000)
         throw new ConflictError("reason must be 1..4000 characters");
       await db.$transaction(async (tx) => {
+        // Amendment D2: serialize settings-bag writes under the same novel
+        // row lock the extract path uses, so two concurrent PUTs cannot lose
+        // each other's sibling JSON keys (whole-bag read-modify-upsert).
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`,
+          input.novelId,
+        );
         const existing = await tx.novelSettings.findUnique({
           where: { novelId: input.novelId },
           select: { settings: true },
@@ -382,14 +387,19 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
           create: { novelId: input.novelId, settings: next },
           update: { settings: next },
         });
-      });
-      await audit.record({
-        actorUserId: input.actorUserId,
-        workspaceId: input.workspaceId,
-        action: "novel.scale-s3-settings-changed",
-        entityType: "Novel",
-        entityId: input.novelId,
-        payload: { enabled: input.enabled, reason },
+        // Audit inside the transaction: exactly one entry per committed PUT,
+        // never an entry for an aborted settings write. Uses the transaction
+        // client directly — AuditService.record is bound to the root db.
+        await tx.auditLog.create({
+          data: {
+            actorUserId: input.actorUserId,
+            workspaceId: input.workspaceId,
+            action: "novel.scale-s3-settings-changed",
+            entityType: "Novel",
+            entityId: input.novelId,
+            payload: { enabled: input.enabled, reason },
+          },
+        });
       });
       return { enabled: input.enabled };
     },
@@ -435,6 +445,7 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
             content:
               "You extract structured narrative-scale conflict claims from a chapter. " +
               'Reply with ONLY minified JSON: {"claims":[{"scale":string,"relevance":"ACTION"|"STAKES"|"CONSEQUENCE","explanation":string,"source":{"start":int,"end":int,"quote":string}}]}. ' +
+              "scale MUST be exactly one of the uppercase values: PERSONAL, FAMILY, VILLAGE, TOWN, CITY, PROVINCE, KINGDOM, EMPIRE. " +
               "start/end are UTF-16 code-unit offsets into the exact provided text; quote must be the exact text between them. " +
               "Do not invent text that is not in the chapter. Do not add commentary.",
           },
@@ -587,6 +598,12 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
       if (parsed.items.length > MAX_CLAIMS)
         throw new ScaleS3Error("S3_INVALID_PROPOSAL", `advice output exceeds ${MAX_CLAIMS} items`);
       const allowedCodes = new Set(input.missingData.map((m) => String(m.code)));
+      // Amendment C (NF-WF-050C amendment 1): each returned item must map its
+      // code to the SAME field the server-derived checklist carries — a valid
+      // code paired with a fabricated/mismatched field is refused.
+      const allowedPairs = new Set(
+        input.missingData.map((m) => `${String(m.code)}\u0000${String(m.field)}`),
+      );
       const allowedAdviceKeys = new Set(["code", "field", "reason", "explanation", "example", "nextAction"]);
       const requiredAdviceKeys = ["code", "field", "reason", "explanation", "example", "nextAction"] as const;
       const MAX_ADVICE_FIELD = 4000;
@@ -594,6 +611,10 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
         if (!isRecord(raw)) throw new ScaleS3Error("S3_INVALID_PROPOSAL", "advice item must be an object");
         if (!allowedCodes.has(String(raw.code)))
           throw new ScaleS3Error("S3_INVALID_PROPOSAL", "advice item fabricates a checklist code");
+        // Combined-key membership (never a two-argument Set.has, which would
+        // silently ignore the field and reproduce the code-only check).
+        if (!allowedPairs.has(`${String(raw.code)}\u0000${String(raw.field)}`))
+          throw new ScaleS3Error("S3_INVALID_PROPOSAL", "advice item maps code to a field outside the server checklist");
         for (const key of Object.keys(raw)) {
           if (!allowedAdviceKeys.has(key))
             throw new ScaleS3Error("S3_INVALID_PROPOSAL", `advice item has unknown field: ${key}`);
@@ -654,6 +675,9 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
       // Stale marking: recompute the live pin set once (read-only context,
       // no locks needed for advisory marking). ALL stored pins participate:
       // branch, head revision, version, evidence set and policy fingerprint.
+      // Amendment D1: RepeatableRead here is safe — read-only snapshot of
+      // committed data, no locks taken, cannot abort with a serialization
+      // failure.
       const live = await db.$transaction(async (tx) => {
         const novel = await tx.novel.findFirst({
           where: { id: input.novelId, workspaceId: input.workspaceId },
@@ -685,7 +709,7 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
           latestSetId: latestSet?.id ?? null,
           policyFingerprint: fingerprintScalePolicy(policy),
         };
-      });
+      }, { isolationLevel: "RepeatableRead" });
 
       const items: ScaleS3ProposalView[] = page.map((r) => ({
         id: r.id,

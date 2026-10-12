@@ -634,6 +634,14 @@ const evidenceExplanation = ref("");
 const evidenceRunning = ref(false);
 const evidenceFormError = ref<string | null>(null);
 const evidenceDone = ref(false);
+// 050C amendment 1 (finding B): provenance when this set is authored from
+// an S3 proposal (via "Add as evidence" prefill or the manual select).
+// Null = plain S1 authoring; the server validates the pin under its locks.
+const evidenceSourceProposalId = ref<string | null>(null);
+// Manual-alternative select: pending (non-dismissed, non-stale) proposals
+// for the same version; empty string = none (plain S1). `pendingS3Proposals`
+// is defined in the S3 section after the proposals ref.
+const evidenceSourceProposalChoice = ref("");
 
 const NARRATIVE_SCALES = ["PERSONAL", "FAMILY", "VILLAGE", "TOWN", "CITY", "PROVINCE", "KINGDOM", "EMPIRE"];
 
@@ -685,6 +693,8 @@ function resetEvidenceForm(): void {
   evidenceExplanation.value = "";
   evidenceFormError.value = null;
   evidenceDone.value = false;
+  evidenceSourceProposalId.value = null;
+  evidenceSourceProposalChoice.value = "";
 }
 
 async function submitEvidence(): Promise<void> {
@@ -734,6 +744,10 @@ async function submitEvidence(): Promise<void> {
         declaration: evidenceDeclaration.value,
         explanation: evidenceExplanation.value.trim(),
         conflicts: claims,
+        // 050C amendment 1: provenance (absent when plain S1 authoring).
+        ...(evidenceSourceProposalId.value
+          ? { sourceProposalId: evidenceSourceProposalId.value }
+          : {}),
       }),
     });
     // Recheck scope after await. If THIS operation was superseded by a newer
@@ -799,6 +813,11 @@ interface S3AdviceItem {
 
 const s3Enabled = ref(false);
 const s3Proposals = ref<S3ProposalRow[]>([]);
+// Evidence-form provenance options: pending proposals only (a dismissed or
+// stale proposal can never pass the server-side pin/binding check anyway).
+const pendingS3Proposals = computed(() =>
+  s3Proposals.value.filter((p) => p.dismissedByUserId === null && !p.stale),
+);
 const s3Loading = ref(false);
 const s3Busy = ref(false);
 const s3Error = ref<string | null>(null);
@@ -916,9 +935,10 @@ async function dismissS3Proposal(id: string): Promise<void> {
   }
 }
 
-function addS3ClaimAsEvidence(claim: S3Claim): void {
+function addS3ClaimAsEvidence(proposal: S3ProposalRow, claim: S3Claim): void {
   // Prefill ONLY: the author reviews and submits through the existing
-  // validated 050A form; the server re-validates with fresh pins.
+  // validated 050A form; the server re-validates with fresh pins. The
+  // proposal id rides along as provenance (amendment 1, finding B).
   evidenceDeclaration.value = "CONFLICTS";
   claimScale.value = claim.scale;
   claimRelevance.value = claim.relevance;
@@ -926,6 +946,13 @@ function addS3ClaimAsEvidence(claim: S3Claim): void {
   claimSpanStart.value = String(claim.source.start);
   claimSpanEnd.value = String(claim.source.end);
   claimQuote.value = claim.source.quote;
+  evidenceSourceProposalId.value = proposal.id;
+  evidenceSourceProposalChoice.value = proposal.id;
+}
+
+/** Manual select change: empty string clears provenance (plain S1). */
+function onSourceProposalChoice(): void {
+  evidenceSourceProposalId.value = evidenceSourceProposalChoice.value || null;
 }
 
 async function requestS3Advice(): Promise<void> {
@@ -1309,6 +1336,30 @@ function statusClass(status: ChecklistItem["status"]): string {
                   class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[12.5px] text-nf-text focus-visible:nf-focus"
                 />
               </label>
+              <!-- 050C amendment 1 (finding B): optional provenance — an author
+                   crafting an alternative may cite the proposal it responds to;
+                   empty = plain S1 authoring. -->
+              <label
+                v-if="pendingS3Proposals.length > 0"
+                class="flex flex-col gap-1 text-[12px] text-nf-text-dim"
+              >
+                {{ t("workspace.narrative.scaleReview.evidence.sourceProposalLabel") }}
+                <select
+                  v-model="evidenceSourceProposalChoice"
+                  class="rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[12.5px] text-nf-text focus-visible:nf-focus"
+                  @change="onSourceProposalChoice"
+                >
+                  <option value="">
+                    {{ t("workspace.narrative.scaleReview.evidence.sourceProposalNone") }}
+                  </option>
+                  <option v-for="p in pendingS3Proposals" :key="p.id" :value="p.id">
+                    {{ t("workspace.narrative.scaleReview.evidence.sourceProposalOption", {
+                      date: new Date(p.createdAt).toLocaleString(),
+                      count: String(p.claims.length),
+                    }) }}
+                  </option>
+                </select>
+              </label>
               <div>
                 <button
                   type="submit"
@@ -1446,7 +1497,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                       type="button"
                       class="mt-1 rounded-md border border-nf-border px-2 py-1 text-[12px] hover:nf-hover focus-visible:nf-focus"
                       :disabled="s3Busy"
-                      @click="addS3ClaimAsEvidence(c)"
+                      @click="addS3ClaimAsEvidence(p, c)"
                     >
                       {{ t("workspace.narrative.scaleReview.s3.addAsEvidence") }}
                     </button>

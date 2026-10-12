@@ -94,6 +94,8 @@ export interface ScaleEvidenceSetRecord {
   conflicts: ScaleEvidenceClaim[];
   previousSetId: string | null;
   actorUserId: string;
+  /** 050C amendment 1: S3 provenance when authored from a proposal; null = plain S1. */
+  sourceProposalId: string | null;
   createdAt: Date;
 }
 
@@ -229,6 +231,8 @@ type StoredSetRow = {
   conflictsJson: unknown;
   previousSetId: string | null;
   actorUserId: string;
+  /** 050C amendment 1: optional S3 provenance (bare UUID, no FK). */
+  sourceProposalId: string | null;
   createdAt: Date;
 };
 
@@ -347,6 +351,7 @@ function toRecord(
     conflicts,
     previousSetId: row.previousSetId,
     actorUserId: row.actorUserId,
+    sourceProposalId: row.sourceProposalId,
     createdAt: row.createdAt,
   };
 }
@@ -426,6 +431,8 @@ export interface ScaleEvidenceServices {
     explanation: string;
     conflicts: unknown;
     actorUserId: string;
+    /** 050C amendment 1: optional S3 proposal provenance (bare UUID). */
+    sourceProposalId?: string;
   }): Promise<ScaleEvidenceSetRecord>;
 }
 
@@ -701,6 +708,7 @@ export function createScaleEvidenceServices(deps: {
       explanation,
       conflicts,
       actorUserId,
+      sourceProposalId,
     }) {
       if (declaration !== "CONFLICTS" && declaration !== "NO_OPERATIVE_CONFLICT")
         throw new ScaleEvidenceValidationError("declaration must be CONFLICTS or NO_OPERATIVE_CONFLICT");
@@ -828,6 +836,55 @@ export function createScaleEvidenceServices(deps: {
         }
 
         const sequence = (latest ? latest.sequence : 0) + 1;
+
+        // 050C amendment 1 (finding B): validate the optional provenance
+        // link INSIDE this transaction, under the same locks — the proposal
+        // must exist and carry pins byte-identical to the set being
+        // appended. A stale/foreign proposal is refused; nothing is created.
+        let provenanceProposalId: string | null = null;
+        if (sourceProposalId !== undefined) {
+          if (typeof sourceProposalId !== "string" || sourceProposalId.length === 0)
+            throw new ScaleEvidenceValidationError("sourceProposalId must be a nonempty string");
+          const proposal = await tx.scaleS3Proposal.findFirst({
+            where: {
+              id: sourceProposalId,
+              workspaceId,
+              novelId,
+              chapterId,
+              chapterVersionId,
+            },
+            select: {
+              id: true,
+              sourceBranchId: true,
+              sourceRevisionId: true,
+              evidenceSetId: true,
+              policyFingerprint: true,
+            },
+          });
+          if (!proposal) throw new NotFoundError("source proposal");
+          // Policy fingerprint: recompute from the live policy under the
+          // same locks (the proposal stores the digest at extract time).
+          // NOTE: the proposal's evidenceSetId pin is deliberately NOT
+          // compared against the current tip — the author's own appends
+          // legitimately advance the tip between extract and decision, and
+          // requiring that pin to still match would make a second accept or
+          // an alternative (authored after the first accept) impossible.
+          // Tip freshness of the SET is enforced by expectedSetId above.
+          const livePolicy = await tx.narrativePolicy.findUnique({
+            where: { novelId_kind: { novelId, kind: "SCALE" } },
+            select: { id: true, kind: true, hardness: true, hardReason: true, payload: true },
+          });
+          if (
+            proposal.sourceBranchId !== lockedBranchId ||
+            (proposal.sourceRevisionId ?? null) !== (lockedHeadRevisionId ?? null) ||
+            proposal.policyFingerprint !== fingerprintScalePolicy(livePolicy)
+          )
+            throw new ConflictError("source proposal pins no longer match the current context", {
+              currentHeadRevisionId: lockedHeadRevisionId,
+            });
+          provenanceProposalId = proposal.id;
+        }
+
         const created = await tx.scaleEvidenceSet.create({
           data: {
             id: randomUUID(),
@@ -842,6 +899,7 @@ export function createScaleEvidenceServices(deps: {
             conflictsJson: normalizedConflicts as unknown as InputJsonValue,
             previousSetId: latestId,
             actorUserId,
+            sourceProposalId: provenanceProposalId,
           },
         });
         // Validate the created row through the same retained-evidence path

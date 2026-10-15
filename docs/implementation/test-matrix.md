@@ -1,5 +1,16 @@
 # Test Matrix
 
+## NF-WF-052 authorized main integration — 2026-10-15
+
+Observed: apply exit0; five candidate/postimage hashes match; reverse-check
+and touched-source whitespace check exit0. Local memory and ai-services
+typecheck exit0. API typecheck exit2: TS2550 in the existing untracked GAP051
+seed script's Promise.withResolvers use under ES2023. Shell sequence exits1.
+No test rerun: retain exact candidate's 39-pass suites, package checks and
+independent patch APPROVE. Full main API typecheck is not PASS; no live HTTP,
+DB mutation, runtime restart or full release check performed. See integration
+receipt and ISSUES-AND-GAPS for evidence and source-compatibility limitation.
+
 ## Workflow documentation audit — 2026-10-05
 
 Baseline ac4a19a; Markdown-only changes, application code unchanged.
@@ -2307,3 +2318,57 @@ No-auto-linking pin: exactly one `db.endgameCallback.create` call site in the co
 | i18n parity | `simulation.debugger.*` keys en vs id | 45/45 keys present in both |
 
 Invariant 5 pin: replay is non-persisting — `simulationTick.count` unchanged after replay (asserted in test). No state-edit operation exists — the debugger service exposes no tick-history mutation (grep-verified).
+
+## NF-WF-052 — Global novel memory (L5) union read (2026-10-15)
+
+Candidate worktree `.nf-batch-worktrees/nf052-candidate` (HEAD `50609c0` + preserved NF-WF-051 WIP overlay; not merged). Exact reviewed diff v2 `.nf-batch-worktrees/nf052-candidate.diff` sha256 `31bb473eba4caf9f86c9c01eae6e23c04dc4ac6a45c39fe3dba0486575eca222`; v1 `eeb650a3…d2b8` APPROVE_WITH_FINDINGS → F1/F2 applied → v2 APPROVE (hash-scoped).
+
+| Command (candidate worktree) | Scope | Result |
+|---|---|---|
+| `pnpm --filter @novelforge/api exec vitest run src/memory.global.test.ts` | NEW 15-test suite: happy union + provenance, 401, tenant isolation (non-member/foreign novel 404), STALE metadata, FAILED surfaced (no lastError, not excluded), cap 20 + overflow aggregate + byte-identical determinism + no OVER_CAP, UNRESOLVABLE_SOURCE guard, cross-branch as-of 400, as-of never-newer-than-R (rev2 FRESH with rev3 present; rev1 MISSING), outline-saga MISSING, no-head 200 empty union, equal-createdAt cross-source tie determinism, late-projection orphan-source exclusion + exact over-cap accounting, >50 overflow (75 sagas → count 55, 50-id prefix), selected orphan with provenance, MISSING window consumption without backfill | 15/15 PASS, exit 0 (both review rounds) |
+| `pnpm --filter @novelforge/api exec vitest run src/memory.test.ts` | Existing NF-WF-009 memory suite (regression) | 16/16 PASS, exit 0 (both rounds) |
+| `pnpm --filter @novelforge/ai-services test` | Package tests | 2/2 PASS, exit 0 |
+| `pnpm --filter @novelforge/memory test` | Package script (`--passWithNoTests`) | exit 0, no test files |
+| `pnpm --filter @novelforge/{api,memory,ai-services} typecheck` | `tsc --noEmit` ×3 | all exit 0 |
+| `pnpm exec eslint` (5 allowed paths) | Scoped lint | clean, exit 0 |
+
+Contract checks (reviewer-verified against addendum §8 + §7 cases 1–7): disjoint sources with novel-scoped `NOT EXISTS`; no dedupe step / intersection JOIN; `overCapCount` exact two-term sum; P-side counting GROUP BY-scoped; ONE global boundary with per-domain projection; merge comparator == both SQL ORDER BYs; every read-path query LIMIT/aggregate-bounded (no fetch-all-then-slice); discovery queries `sagas`; zero schema/migration change; zero model/gateway imports; `summary: null` / `summaryStatus: "SKIPPED"` on every block; excluded reasons MISSING \| UNRESOLVABLE_SOURCE only; STALE/FAILED included and flagged; provenance per amendment A5; as-of 404/400/never-newer; no-head 200 empty union; `novel:read` gate identical to existing routes. DB: suite-owned `novelforge_test_memory_global` on nf-pg-5433 only.
+
+### NF-WF-052 repair pass — §5 canonical form + F3 regression (2026-10-15 second pass)
+
+Patch under review: `.nf-batch-worktrees/nf052-main-wip.patch` sha256 `76e4d435ed504799aab8ce7c8cb19a74ceee40b1e1241e7b7a9e73133a35fe60` (main-WIP-relative; five allowed paths; NF051 hunk absent). Reviewer: **APPROVE** (exact hash).
+
+| Check | Scope | Result |
+|---|---|---|
+| Red-phase reproduction (pre-fix) | T1 uppercase saga-backed variant → ranked phantom orphan (scopes len 2); T2 malformed scopes → ranked (scopes len 4) | REPRODUCED (3 failed / 16 passed pre-fix) |
+| `vitest run src/memory.global.test.ts src/memory.test.ts` (post-fix, coordinator + reviewer) | 19 global (15 v2 + T1-T4) + 16 memory | 35/35 PASS, exit 0 |
+| `--filter @novelforge/ai-services test` / `--filter @novelforge/memory test` | packages | 2/2 PASS / exit 0 (no test files) |
+| `typecheck` api / ai-services / memory | `tsc --noEmit` ×3 | all exit 0 |
+| `pnpm exec eslint` (memory.ts, memory.global.test.ts) | scoped lint | clean, exit 0 |
+| §5 conformance (reviewer) | canonical regex in all three P queries; LIMIT on canonical population (no filter-after-LIMIT); agreement + disjointness preserved; detection bounded ≤cap, surfaced never ranked; no fetch-all; response shape unchanged | VERIFIED |
+| F3 regression | T3 same-createdAt orphan ordering (uuid-text ASC, determinism pin); T4 boundary tie (overCapCount 1, overCapArcIds [OB2], firstExcludedOrderingKey per §2 P-domain rendering) | PASS (both) |
+| Packaging | apply-check vs live main WIP exit 0; temp-dir apply → 5/5 postimages byte-exact vs candidate; proper git new-file; NF051 hunk absent; apply with `git -c core.autocrlf=false apply` for byte-exact fidelity | VERIFIED |
+
+#### A1.4 bound-conflict reproduction + proposal review (2026-10-15 third pass)
+
+| Check | Scope | Result |
+|---|---|---|
+| Evidence-only probe (deleted after receipts) | A: 20 canonical MISSING sagas + 20 non-canonical scopes → excluded length exactly 40 (20 MISSING + 20 UNRESOLVABLE_SOURCE), overCapCount 0 — 2×cap, A1.4 letter violated | OBSERVED, 2/2 probe tests PASS, exit 0 |
+| Evidence-only probe B | 25 non-canonical scopes → exactly 20 surfaced; `zz-noncanonical-24` absent from body (tail unreported); overCapCount 0 | OBSERVED (completeness gap) |
+| Post-probe suite restore | memory.global + memory.test | 35/35 PASS, exit 0; sources byte-identical (memory.ts `dea0ccd2…`, test `da149659…`) |
+| Amendment proposal | `.nf-batch-worktrees/nf052-a14-amendment-proposal.md` sha256 `4ed6749f…0165a` — A1.4 letter restored + bounded additive `anomalies` aggregate; rejected 2×cap alternative recorded | Separate contract review **APPROVE_WITH_FINDINGS** (2 LOW wording findings to apply at filing); NOT implemented — author approval pending |
+
+#### Anomalies amendment implementation (2026-10-15 fourth pass — AUTHOR APPROVED)
+
+Amendment: `tasks/NF-WF-052-anomalies-amendment-2026-10-15.md` sha256 `47abeabe…8359` (includes the 2 LOW wording corrections to drafting artifact `4ed6749f…0165a`). Final integration artifact: `.nf-batch-worktrees/nf052-main-wip-anomalies.patch` sha256 `7d63a0c37451cc8210d0e578d8f6fe0a9e312f541b17ff629a428486229dfd88` (1691 lines; 5 paths; proper git new-file; NF051 absent; preimages = current main WIP). Reviewer: **APPROVE** (exact hash).
+
+| Check | Scope | Result |
+|---|---|---|
+| Red-phase (pre-fix) | 23 tests: 14 failed / 9 passed — combined fixture captured the A1.4 conflict in-suite (excluded reached 40 = 2×cap); tail/multi-row/canonical-only + T1/T2 + 7 zeroed pins failed on undefined `anomalies` | OBSERVED |
+| `vitest run src/memory.global.test.ts src/memory.test.ts` (writer + coordinator + reviewer) | 23 global (19 v3 + 4 amendment fixtures) + 16 memory | 39/39 PASS, exit 0 |
+| `--filter @novelforge/ai-services test` / `--filter @novelforge/memory test` | packages | 2/2 PASS / exit 0 (no test files) |
+| `typecheck` api / ai-services / memory | `tsc --noEmit` ×3 | all exit 0 |
+| `pnpm exec eslint` (types.ts, memory.ts, memory.global.test.ts) | scoped lint | clean, exit 0 |
+| Amendment conformance (reviewer) | excluded[] = selected-canonical only (|excluded| ≤ |selected| ≤ cap, combined fixture asserts 20=20); anomalies {total exact grouped-before-COUNT, surfaced ≤ shared cap in (MIN(created_at), scope) order raw-text, complete === (total === surfaced.length)}; constant reason omitted contractually; zeroed canonical states unchanged (deep-equal); no-head short circuit preserved + documented no-inspection; diagnostics never ranked; canonical paths byte-stable v3→v4; every query bounded; policies untouched | VERIFIED |
+| Packaging | apply-check vs live main WIP exit 0 (`git -c core.autocrlf=false apply --check`); temp-apply → 5/5 postimages byte-exact vs candidate; proper git new-file; NF051 hunk absent; v3 patch preserved | VERIFIED |
+| INFO finding (1) | tail fixture's computed-expected sort assumes JS default sort agrees with Postgres scope ASC for digit-suffix strings — passes empirically, fails loudly if ever violated (test-only) | recorded, no action |

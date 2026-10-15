@@ -10,6 +10,17 @@ optional AI-assistance contract. Do not redispatch 050A/050B implementation.
 GAP-039/GAP-119, human accessibility and live release gates remain open.
 Earlier READY/implementation-not-started paragraphs below are historical.
 
+Correction (2026-10-14): the paragraph above is historical. NF-WF-050B is
+integrated and CLOSED (live acceptance + separate reviews, 2026-10-11);
+NF-WF-050C is IMPLEMENTED / SEPARATELY REVIEWED / LIVE ACCEPTANCE WITNESSED
+(2026-10-12, amendment 1), with steps 1–9 PASS and the author's functional
+sign-off (2026-10-13). Drafting 050C is no longer a next step. Local evidence
+standard: HEAD `50609c0` plus exact working-tree artifact hashes; a commit is
+not an authorized prerequisite. Correction (2026-10-14, precision): GAP-039's remaining open legs are the
+deferred human GAP-051 screen-reader pass only; the integrated-acceptance
+sign-off leg already closed 2026-10-13. See DELIVERY-PLAN and CURRENT for the
+corrected task list.
+
 
 Current dispatch (2026-10-09): reviewed S1 foundation NF-WF-050A is integrated
 through `843a263` from external `d78afc3`. Next, draft and separately review

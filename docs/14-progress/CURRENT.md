@@ -1,5 +1,1639 @@
 # Current Project State
 
+## Authorized publication execution — 2026-10-15
+
+The author approved the concrete five-commit package and push to origin/main,
+including the three existing local commits. Fetch confirms ahead3/behind0
+before new commits. C1=1ac9e8e (NF051), C2=7419390 (NF052), C3=ec54346
+(reviewed web/parity). C4 staged whitespace check caught an extra EOF blank
+line in both seed scripts; a newline-only correction is being verified.
+C5 records this execution; no extra commit group. Index/path guards and
+explicit literal staging are used; local artifacts/stash remain preserved.
+Push has not yet occurred at this record boundary; verify actual Git/remote
+and the subsequent Engram checkpoint for final publication result.
+
+## Commit/push package assessment — 2026-10-15
+
+Observed manifest1fb621d2 and both seed script postimages e8107b4d match.
+Retain external post-fix API typecheck/lint and exact script APPROVE;
+prior API TS2550 is resolved in WIP. Labels patch1c0c0e6b reverse-check on
+main supplies retained exact batch5 provenance for the label continuations.
+Final publication snapshot uses explicit literal file paths and hashes,
+replacing broad directory staging in the original manifest (preserved).
+See `.nf-batch-worktrees/commit-manifest-final-2026-10-15.json`.
+Five proposed commits cover NF051, NF052, reviewed web/parity work, utility
+scripts and records/PROPOSED ADR; publishing the ADR does not accept A/B.
+Retain the harness's fetched ahead3/behind0 evidence; recheck remote before
+publishing. No staging/commit/push performed; author publication decision
+remains pending. D2 replacement stays excluded and unapplied.
+
+## Scoped commit preparation — 2026-10-15
+
+GAP-051 seed-script typecheck fix (separate reviewer **APPROVE**, zero
+findings): both identical copies of `gap051-loadmore-seed.ts`
+(`apps/api/scripts/` + `scripts/`) had their `Promise.withResolvers` block
+replaced with the in-package executor idiom
+(`await new Promise((resolve) => setTimeout(resolve, 1000));`,
+revision.test.ts:1628 pattern) — API typecheck exit 1 → 0 (the single
+TS2550 at :63 was the only error), scoped eslint clean, retry semantics
+byte-preserved (`attempt < 60`, 1000 ms, continue, throw-on-!ok), script
+not executed (its default target is the acceptance DB — execution against
+acceptance data is forbidden by directive). Post-fix hashes `e8107b4d…0ea9`
+both copies; fix recorded in ISSUES-AND-GAPS fifth-pass entry.
+
+Upstream fetched (no merge/rebase): main is **ahead 3 / behind 0**; the
+three unpushed commits 7589388, 23d4a1a, 50609c0 are confirmed still
+unpushed. A five-commit publication manifest (NF051 sweeper; NF052 endpoint
++ contract chain; batch4 author-approved web/worker/parity integration;
+GAP-051 seed scripts; docs/records incl. ADR-0017 PROPOSED) with per-commit
+file lists, hunk accounting (constants.ts NF051 hunk → first commit, NF052
+hunk → second), evidence and the preserved-exclusions list is filed at
+`.nf-batch-worktrees/commit-manifest-2026-10-15.md` for final publication
+authorization. D2 remains separate; ContinueReading UNKNOWN; human
+screen-reader deferral stands. Nothing staged or committed yet.
+
+## NF-WF-052 applied to main WIP by author authorization — 2026-10-15
+
+Patch7d63a0c3 is now applied (not committed). Five source/test postimages match
+the reviewed candidate byte-for-byte; all other tracked WIP hashes, HEAD,
+empty index and stash remained unchanged at verification. Reverse apply-check
+passes. Receipt: `NF-WF-052-main-integration-2026-10-15.md` in this directory.
+Local memory/ai-services typechecks pass. API typecheck fails TS2550 in the
+pre-existing untracked GAP051 seed script at Promise.withResolvers (ES2023
+lib); script is outside the patch and absent from the candidate. Recorded in
+ISSUES-AND-GAPS; no unrelated source fix or library-target change applied.
+Retain candidate 39-pass suites and exact-patch APPROVE, not fresh main tests.
+Source integration is complete; full main API typecheck is not green.
+No restart/DB mutation/commit/push/merge/deploy or D2 integration performed.
+
+## NF-WF-052 v4 assessment — ready for integration decision, 2026-10-15
+
+Observed final patch and approved amendment hashes match the handoff.
+`git -c core.autocrlf=false apply --check` succeeds on current main WIP;
+numstat identifies exactly the five allowed source/test paths and proper
+new-file test coverage. Source inspection confirms distinct grouped anomaly
+count, shared-cap surfaced prefix, completeness comparison and removal of
+diagnostic appends from selected excluded[]. Approved no-head behavior and
+diagnostic types are present. Retain external 39-pass memory suites, relevant
+checks and separate exact-v4 APPROVE; no suites rerun here and no new local
+review verdict claimed. No blocking finding identified in this assessment.
+
+Candidate is ready for the separate author integration decision on patch
+`7d63a0c37451cc8210d0e578d8f6fe0a9e312f541b17ff629a428486229dfd88`.
+It remains unapplied; HEAD50609c0d, empty index and existing stash preserved.
+No commit/push/merge/deploy, D2 integration or runtime restart is included.
+Keep ContinueReading UNKNOWN and human screen-reader acceptance deferred.
+
+## NF-WF-052 anomalies amendment IMPLEMENTED; patch v4 APPROVE — 2026-10-15 (fourth pass)
+
+The approved amendment is IMPLEMENTED in the same isolated candidate (still
+zero commits; main tree untouched) — the "next" items in the approval entry
+below are now done, separately reviewed. `excluded[]` is restored to
+selected-canonical exclusions only (|excluded| ≤ |selected| ≤ cap — the
+combined fixture asserts 20=20; the pre-fix in-suite red run captured
+excluded reaching 40 = 2×cap); non-canonical diagnostics moved to the new
+bounded additive `global.anomalies` `{ total (exact grouped-before-COUNT
+1-row aggregate), surfaced ≤ shared cap constant in (MIN(created_at),
+scope) order raw-text, complete === (total === surfaced.length) }` with the
+constant reason omitted contractually and raw diagnostic sagaId. No-head
+short circuit preserved and documented (no anomaly/DB-health inspection;
+empty view ≠ health proof; no metadata policy). Canonical
+selection/overflow/guard/freshness/provenance/authorization/as-of
+byte-stable v3→v4 (reviewer-verified line-by-line).
+
+Red-phase: 14 failed / 9 passed pre-fix. Verification (writer + coordinator
++ reviewer independently): memory.global 23/23 + memory.test 16/16 = 39/39
+exit 0; ai-services 2/2; three typechecks exit 0; scoped eslint clean.
+Final integration artifact: `.nf-batch-worktrees/nf052-main-wip-anomalies.patch`
+sha256 `7d63a0c37451cc8210d0e578d8f6fe0a9e312f541b17ff629a428486229dfd88`
+(1691 lines; source-only five paths; proper git new-file; NF051 hunk absent;
+preimages = current main WIP). Apply-check vs live main WIP exit 0
+(`git -c core.autocrlf=false apply --check`); byte-exact fidelity proven
+(applied postimages == candidate hashes: constants `e46dcf1f`, types
+`3264487a`, memory `cd49ef5e`, routes `c2daaf6a`, test `258b20fb`). Separate
+reviewer (distinct actor): **APPROVE** for the exact hash; 1 INFO finding
+recorded (tail fixture collation assumption; test-only, fails loudly if
+violated). One test-only deviation (tail-fixture facts corrected per the
+amendment's ordering rule) reviewer-verified. Preserved: v3 patch
+`76e4d435…5fe60`, v2 diff `31bb473e…a222`, proposal `4ed6749f…0165a`.
+Main integration remains a separate author decision (no staging/commit/
+merge performed). D2 separate; ContinueReading UNKNOWN; human screen-reader
+deferral stand.
+
+## NF-WF-052 anomalies amendment approved — 2026-10-15
+
+The author explicitly approved the proposed anomalies response change for
+the isolated candidate. Filed authoritative amendment:
+`tasks/NF-WF-052-anomalies-amendment-2026-10-15.md`. Older PROPOSED/pending
+approval statements are historical. Keep selected-candidate excluded[] within
+the existing cap; noncanonical diagnostics move to anomalies with exact
+distinct-scope total, <= shared-cap raw surfaced prefix and completeness flag.
+Both LOW wording findings are incorporated. Ordering/cap20/routes-only stay
+approved. Implementation, focused verification and separate exact-diff review
+are next; none has been performed by this approval-recording turn.
+Candidate and main integration remain separate; no new authorization for
+staging/commit/push/merge/deployment or D2 integration. Preserve retained passes,
+ContinueReading UNKNOWN and human screen-reader deferral.
+
+## NF-WF-052 A1.4 conflict resolved to PROPOSED amendment — 2026-10-15 (third pass)
+
+Both next-actions from the packaged repair assessment above are done and
+the source-derived concerns are now reproduced outcomes, separately
+reviewed. Reproduction (suite-owned scratch DB, evidence-only probe since
+deleted; suite restored 35/35 exit 0; production sources byte-identical
+`dea0ccd2…` / `da149659…`): 20 selected canonical sagas without projections
++ 20 non-canonical scopes → `excluded.length === 40` (20 MISSING +
+20 UNRESOLVABLE_SOURCE), twice amendment A1.4's explicit
+selected-count bound; 25 non-canonical scopes → exactly 20 surfaced, tail
+`zz-noncanonical-24` absent from the response body. Prior "no new contract
+decision" conclusion CORRECTED (it verified O(cap) proportionality, not
+A1.4's numeric letter; separate reviewer formally retracted it).
+
+Dated amendment proposal PROPOSED — NOT implemented, NOT filed:
+`.nf-batch-worktrees/nf052-a14-amendment-proposal.md` sha256
+`4ed6749f44fa9c395266d6c7d13ee39dd5fab62f63ba0fd011311b7bfa10165a`.
+Restores A1.4's letter verbatim (|excluded| ≤ |selected| ≤ cap); moves
+non-canonical surfacing to a new bounded additive `anomalies` aggregate
+`{ total (exact 1-row COUNT), surfaced ≤cap raw-verbatim entries,
+complete: total === surfaced.length }` — exact truncation and completeness
+semantics, no silent tail, no relabeling of anomaly truncation as canonical
+overflow, canonical selection and exact canonical overflow unchanged.
+Rejected 2×cap-excluded alternative recorded with rationale. Separate
+contract review (distinct actor) for the exact proposal hash:
+**APPROVE_WITH_FINDINGS** — conflict real and correctly diagnosed;
+resolution preserves every frozen requirement checked (A1.1-A1.4, A2-A6,
+addendum §1-§5, correction §1.6, original invariants, routes-only); two LOW
+documentation-exactness findings to apply verbatim at filing time
+(cap-independent surfaced bound; contractual constant-reason omission from
+the surfaced entry shape). NO implementation before author approval.
+
+Preserved: packaging patch `76e4d435…5fe60` (accepted evidence), v2 diff
+`31bb473e…a222`, retained 35-test/review evidence, candidate isolation,
+main WIP, stash, approved three policies, D2 separation, ContinueReading
+UNKNOWN, human screen-reader deferral. No staging/commit/merge performed.
+
+## NF-WF-052 packaged repair assessment — 2026-10-15
+
+Observed patch 76e4d435ed504799aab8ce7c8cb19a74ceee40b1e1241e7b7a9e73133a35fe60
+matches and current-main apply-check succeeds with core.autocrlf=false.
+Guard and packaging findings are resolved; retain external 35-pass memory
+suites, other checks and exact-artifact APPROVE. No suites rerun here.
+
+Response-bound readiness remains unresolved: detection appends up to 20 extra
+anomalies after up to 20 selected-candidate exclusions, permitting 40 versus
+amendment A1.4's selected-count bound. Source comment acknowledges this numeric
+exception. A truncated anomaly tail has no response-level completeness flag.
+These are source-derived contract concerns, not a reproduced mixed endpoint
+result. See ISSUES-AND-GAPS. Next: bounded combined fixture and a concrete
+resolution proposal; no new shape/bound/policy silently authorized.
+Candidate remains isolated; preserve main WIP, stash, approved three policies,
+D2 separation, ContinueReading UNKNOWN and human screen-reader deferral.
+
+## NF-WF-052 repair + integration packaging complete — 2026-10-15
+
+Both next-actions from the candidate assessment above are done and
+separately reviewed. §5 reproduction (suite-owned scratch DB only): the
+uppercase saga-backed variant ranked as a phantom orphan (scopes length 2,
+double representation) and malformed scopes (braced/bare/junk) ranked as
+orphan entries (scopes length 4) — RED-phase receipts 3 failed / 16 passed;
+the risks are now reproduced outcomes, not just source-derived. Implemented
+handling (§5-permitted exclude-as-UNRESOLVABLE_SOURCE, documented in code):
+canonical regex filter on ALL THREE P queries (DB LIMIT applies to the
+canonical population — no filter-after-LIMIT; select/count/boundary
+agreement and disjointness preserved) + bounded ≤cap detection query
+surfacing non-canonical arc scopes in `excluded[]` (never ranked, never
+silent, raw id text verbatim). Retained F3 regression added: same-createdAt
+orphan ties at endpoint ordering (T3) and at the overflow boundary (T4,
+overCapCount 1, tie spanning the cap). Verification: memory.global 19/19 +
+memory.test 16/16 = 35/35 (coordinator and reviewer independently),
+ai-services 2/2, three package typechecks exit 0, scoped eslint clean;
+policies unchanged (oldest-created, cap 20, routes-only); no
+compiler/UI/schema/worker/LLM scope.
+
+Final packaging artifact:
+`.nf-batch-worktrees/nf052-main-wip.patch` sha256
+`76e4d435ed504799aab8ce7c8cb19a74ceee40b1e1241e7b7a9e73133a35fe60`
+(1462 lines; source-only, five allowed paths, proper git new-file diff for
+the test; NF051 interval hunk absent by construction — preimages are
+CURRENT MAIN WIP: constants `6ec86ea0`, types `994e732e`, memory
+`46c3996f`, routes `af59dadb`, test absent). Apply-check vs live main WIP
+exit 0; byte-exact fidelity proven (patched copies reproduce the candidate
+postimages hash-for-hash: constants `e46dcf1f`, types `3f1b3f74`, memory
+`dea0ccd2`, routes `c2daaf6a`, test `da149659`). Apply byte-exactly with
+`git -c core.autocrlf=false apply` (repo-default autocrlf mangles the LF
+new-file — code-identical but hash-different). Separate reviewer (distinct
+actor) for the exact hash: **APPROVE**; two LOW informational notes
+recorded in ISSUES-AND-GAPS (≤cap detection surfacing bound; raw-text
+sagaId on detection-path exclusions). Preserved v2 diff `31bb473e…a222`
+untouched; candidate still zero-commit; main source unchanged for
+assessment; no staging/commit/merge performed. D2 isolation,
+ContinueReading UNKNOWN and human screen-reader deferral all stand.
+
+## NF-WF-052 candidate assessment — 2026-10-15
+
+Observed v2 hash 31bb473eba4caf9f86c9c01eae6e23c04dc4ac6a45c39fe3dba0486575eca222
+matches. Retain external 31-pass memory suites, backend checks and separate
+APPROVE for that exact artifact; no tests were rerun here. Candidate remains
+isolated. Current-main apply-check fails at the already-present NF051 constants
+hunk; the new test is plain text outside a Git new-file hunk. Require a complete
+current-WIP-relative source patch before integration.
+
+P queries have no canonical-form guard documented/implemented per addendum
+section 5. Uppercase anti-join mismatch and malformed UUID-boundary failure
+are source-derived risks, not reproduced outcomes or observed live data.
+Next: targeted suite-owned reproduction/guard and equal-createdAt orphan
+regression, then exact artifact review/application dry-run. Approved policies
+remain fixed; no compiler/UI/schema scope. See ISSUES-AND-GAPS for closure.
+Preserve all WIP/stashes, D2 isolation, ContinueReading UNKNOWN and human
+screen-reader deferral. No main source integration or runtime restart here.
+
+## NF-WF-052 implemented + separately reviewed — 2026-10-15
+
+The authorized bounded backend/API slice is IMPLEMENTED in the isolated
+candidate worktree `.nf-batch-worktrees/nf052-candidate` (HEAD `50609c0` +
+preserved NF-WF-051 WIP overlay; zero commits, main tree untouched).
+`GET /api/workspaces/:workspaceId/novels/:novelId/memory/global` composes the
+L5 union read per the frozen chain and the three recorded author decisions:
+disjoint candidate sources (every saga; orphan arc scopes via novel-scoped
+`NOT EXISTS`), one normalized `(createdAt, id)` window, cap 20, exact
+two-term `overCapCount`, ≤50-id overflow prefix with `firstExcludedOrderingKey`,
+`excluded[]` only MISSING/UNRESOLVABLE_SOURCE, STALE/FAILED included and
+flagged, as-of discipline, server-side `novel:read`, routes-only.
+
+Exact reviewed diff v2 `.nf-batch-worktrees/nf052-candidate.diff` sha256
+`31bb473eba4caf9f86c9c01eae6e23c04dc4ac6a45c39fe3dba0486575eca222`.
+Review chain: v1 `eeb650a3…d2b8` APPROVE_WITH_FINDINGS (3 × P3;
+four test-seed deviations ACCEPT) → F1/F2 applied (test-only) → v2
+**APPROVE**. Coordinator-observed verification: memory.global 15/15 +
+memory.test 16/16 (both rounds, exit 0), ai-services 2/2, memory package
+exit 0 (no test files), three package typechecks clean, scoped eslint clean;
+reviewer reruns identical. Suite-owned DB `novelforge_test_memory_global` on
+nf-pg-5433 only; acceptance data untouched. F3 residual (P3, reviewer-
+optional: P-vs-P equal-createdAt collation tie unexercised) recorded in
+ISSUES-AND-GAPS. Stale amendment fixture mechanisms (B2/B4) and brief errors
+recorded there as reviewer-accepted deviations. Retained scope unchanged:
+D2 patch unapplied, ContinueReading rendered evidence UNKNOWN, human
+screen-reader acceptance deferred, NF-WF-053/ADR-0017 not gates. Integration
+of the candidate into main is a separate author decision (no commit/merge
+performed). The earlier assessment entry below remains the dispatch record.
+
+## NF-WF-052 author decisions / second-pass assessment — 2026-10-14
+
+Direct author approval selects oldest-created `(createdAt ASC, id ASC)`,
+20 candidate scopes per read, and routes-only. The requested wait until the
+next harness output is now satisfied. See
+`tasks/NF-WF-052-author-decisions-2026-10-14.md`; older PENDING/NOT READY
+policy statements below are historical. Implementation and exact-diff review
+remain unfinished; no endpoint code has been added by this assessment.
+
+Observed: dispatch correction c85f344a matches; the four frozen contract hashes
+and manifest match; candidate discovery.test.ts equals main's exact D5 test
+hash 0f754fdfd2381e17b25ee3f6cf801a188e5b3701e0a537bb9a47fac52f9f5fb6.
+Replacement D2 hash matches and current-main apply-check succeeds. Retain
+external 19-test/independent-review and NovelCard/search normal/hover receipts;
+these were not rerun here. ContinueReading rendered evidence remains UNKNOWN,
+not closed by sibling styles. D2 stays unapplied pending separate integration
+authorization. Retain worker/package results and human screen-reader deferral.
+Next dispatch: implement the authorized bounded NF052 backend/API slice in an
+isolated candidate, verify focused acceptance and review its exact diff.
+
+## Batch 8 continuation assessment — 2026-10-14
+
+Replacement patch SHA256 060b5a32759ce19829f32156d712e968ef0b2fa567231ab4d735358a092b2ee3
+matches and git apply --check succeeds against current main WIP; it remains
+unapplied. Frozen worker/package log hashes match and counts support retained
+84 pass / 1 skip and 571 pass. No checks were rerun and no release inferred.
+The patched worktree lacks main's two-state D5 regression; its 17-test receipt
+does not cover that test, contrary to the closure paragraph's claim.
+NF052 dispatch manifest revives unbounded per-arc OVER_CAP exclusions despite
+amendment A1; require a dated correction, appropriate backend checks and
+working-tree dependency terminology. Preserve the four frozen contracts.
+Ordering/cap/compiler choices remain pending; no endpoint implementation.
+Next: verify an exact current-WIP candidate including existing tests, complete
+missing rendered site evidence without new acceptance data, correct dispatch,
+and retain all existing passes/deferrals. See ISSUES-AND-GAPS for closure limits
+and the reported four-child process violation (maximum three including review).
+
+## Batch 8 assessment — 2026-10-14
+
+Addendum, proposed D2 diff and release-scope hashes match the receipt. Retain
+the final NF052 addendum APPROVE and its seven-case proof; prior overflow
+counterexample is resolved by disjoint sources and one global boundary.
+Ordering/cap/compiler choices remain unrecorded; no endpoint implementation.
+
+The new D2 artifact is not integration-ready. git apply --check fails on
+main.css, GenreChips, SearchBox and browse: it was built from older content
+before the approved #6f6a63 token, D5 ternary and dim-placeholder fixes.
+Its GenreChips base still carries text-dim/border-readable alongside active
+text/accent classes, restoring the competing-class mechanism fixed in D5.
+Do not overwrite main with this reviewed historical worktree. Rebuild only
+genuinely missing control boundaries against current WIP using the existing
+approved token; preserve label, placeholder, active and focus corrections.
+Decorative genre badges need no blanket 3:1 classification. No global border
+token swap or D4 behavior change has been authorized or demonstrated necessary.
+
+Release scope is filed, not executed. Reuse existing results and prioritize
+the specifically missing worker/package coverage; keep a later full battery
+as explicit scope, not a prerequisite for every local task. No database
+migration is required by NF-WF-052. See ISSUES-AND-GAPS for the artifact
+finding and closure check; original frozen patch/review remain intact.
+
+## Batch 8 execution — 2026-10-14 (checkpoint #287)
+
+D2 residual patch delivered: `.nf-batch-worktrees/batch8-d2-border-repair-v2.diff`
+sha256 `060b5a32759ce19829f32156d712e968ef0b2fa567231ab4d735358a092b2ee3`
+(three boundary sites, existing #6f6a63 token, no token additions, hover
+overrides deleted). OBSERVED: main-tree `git apply --check` exit 0;
+independent review APPROVE (7/7, hash-scoped); recomputed ratios
+3.69/3.43/3.13; focused discovery + axe suites 17/17 on the patched
+worktree. Not applied to main; integration is a separate decision. See
+ISSUES-AND-GAPS closure paragraph.
+
+Release-battery stages 6–7 executed serially, stop-on-failure; stages 1–5
+reused, not rerun. Stage 6 (`pnpm --filter @novelforge/worker test`): exit 0,
+11 files, 84 passed / 1 skipped — the skip is worker.test.ts:257
+`describe.skipIf(!itUrl)` real-Redis integration, out of b8 scope by design;
+sweeper IT used only its scratch DB `novelforge_test_memory_sweeper` on
+nf-pg-5433 (its `prisma migrate deploy` touched that scratch only). Stage 7
+(package sweep, `--workspace-concurrency=1`): exit 0, 571 passed / 0 failed
+across 17 suites with tests; 18 packages ran, `@novelforge/memory` has no
+test files. Scope doc's "15 package unit suites" undercounts the current 18
+test-script packages. Frozen logs:
+`.nf-batch-worktrees/logs-b8/stage6-worker.log` sha256
+`3324f3e2e02258b8a88a634b222b5a8deee0633cb34653378637160b1005104b`,
+`.nf-batch-worktrees/logs-b8/stage7-packages.log` sha256
+`964e81cd74d01cc584ae836dcf7c0df43f66cc40524e6e91f647c91544822ba0`. No
+acceptance DB, Redis flush or Docker restart involved.
+
+NF-WF-052 dispatch prepared without implementation:
+`tasks/NF-WF-052-dispatch-manifest.md` sha256
+`f10e231d1ff1504d1732beea8cdab13825d51e53d5c62329d03c8a3893b1d2b7` links the
+four-artifact contract chain (hashes re-verified), allowed/forbidden paths,
+dependencies, PROPOSED verification commands and the arc-21+ explanation.
+Ordering, cap and compiler-adoption remain explicitly PENDING author
+decisions; no endpoint work until recorded; NF-WF-053 and deferred
+ADR-0017 are not gates.
+
+## Batch 8 second pass — 2026-10-14 (checkpoint #289)
+
+D2 candidate verification corrected and completed. The prior 17/17 focused
+receipt is SUPERSEDED: it ran HEAD's discovery.test.ts without the WIP
+it.each([null, "fantasy"]) D5 chip regression. Candidate rebuilt from
+CURRENT main WIP (7 files re-copied incl. the WIP test file), reviewed patch
+`060b5a32759ce19829f32156d712e968ef0b2fa567231ab4d735358a092b2ee3` applied
+unstagged in `.nf-batch-worktrees/border-v2/wt`. OBSERVED: discovery + axe
+suites 2 files, **19 passed / 0 failed** (coordinator run and independent
+reviewer's own run agree); reviewer verdict APPROVE 0.98 — candidate delta
+exactly the 3 substitutions, main tree untouched. Rendered computed colors
+(candidate dev server :3002, live API data, no fixtures): NovelCard and
+browse search-result chapter links — normal border rgb(111,106,99)
+(#6f6a63) on bg rgb(22,20,18); under REAL hover border stays #6f6a63 and
+background shifts rgb(32,29,27) (bg-2); worst-case hover ratio 3.13:1.
+ContinueReading: element NOT rendered for an anonymous session — rendered
+criterion UNKNOWN, covered indirectly by the shared class/token
+construction and the two rendered sibling sites. Receipt:
+`.nf-batch-worktrees/logs-b8/rendered-colors-d2-candidate.md`. Main-tree
+integration remains unauthorized and unperformed.
+
+Dispatch correction issued (documentation only):
+`tasks/NF-WF-052-dispatch-manifest-correction-2026-10-14.md` sha256
+`c85f344aecb102714428c980a84a4340195d026858a221d86b18a9aae7af6009`. It
+supersedes the manifest's §6/§4/§3 statements: per amendment §A1,
+`excluded[]` carries only MISSING | UNRESOLVABLE_SOURCE (never OVER_CAP
+entries — over-cap arcs are reported solely as the bounded aggregate
+`overflow` object: exact `overCapCount`, ≤50 `overCapArcIds` prefix,
+`firstExcludedOrderingKey`); verification commands replaced with
+backend/API filters (@novelforge/api, @novelforge/memory,
+@novelforge/ai-services); NF-WF-051 described as integrated in current WIP,
+not a Git merge. Disjoint-source/global-boundary algorithm, pending
+decisions and NOT READY status unchanged; frozen contracts re-verified
+byte-identical. Worker 84 PASS / 1 SKIP and package 571 PASS battery
+evidence retained — not rerun, not release acceptance.
+
+## Batch 7 assessment — 2026-10-14
+
+Observed :3001 / and /browse both return HTTP 200. Screenshot, corrected
+contract and revised documentation snapshot hashes match the receipt. Retain
+external rendered en and read-only migration-preflight evidence; no repeated
+restart, observation or migration is required. Preflight GO is readiness,
+not authorization for any unnamed migration or platform release.
+
+NF-WF-052 correction still needs an overflow-count repair before implementation.
+P includes Saga-backed scopes with projection-time keys while S uses Saga-time
+keys; deduplication cannot make per-source successor sets equivalent to the
+global selected set. Counterexample: cap 2, S selects S1/S2, P has S1's later
+projection plus one later orphan, and no P row contributes to selection. The
+specified full P count reports 2 overflow candidates, but only the orphan is
+outside the window (1). Simplest repair: S supplies every Saga; P supplies
+only orphan scopes via tenant-scoped NOT EXISTS. These disjoint sources need
+no intersection subtraction. Specify one normalized global boundary for
+selection/count/overflow-prefix, and review adversarial examples.
+
+Three new policy choices remain open (ordering, cap, compiler adoption).
+NF-WF-053 is not a prerequisite; ADR and human screen-reader deferrals already
+stand. Preserve original/correction artifacts; use a dated reviewed addendum.
+See ISSUES-AND-GAPS for the exact concern and closure check.
+
+## Batch 6 assessment boundary — 2026-10-14
+
+Amendment/original/snapshot hashes match the receipt; reverse-check confirms
+the reviewed label patch is applied. Retain 9/9 discovery and rendered id
+evidence. GET :3001/browse independently returns 500 with nitro-dev.mjs/ENOENT;
+the stale module-graph cause is an inference until the exact-process restart
+and HTTP read-back succeed. Component passes do not establish SSR health or
+complete rendered en coverage. No new restart or test execution here.
+
+NF-WF-052 amendment improves output bounds and MISSING discovery, but A6
+still specifies an unrestricted distinct-scope query and saga query before
+cap selection. Bounded output is not bounded candidate retrieval; specify
+database-side limit/order/count semantics before implementation. Its claimed
+corrected ../../AGENTS.md and ../../docs links still resolve outside this
+repository from tasks/; fix links relative to the actual document directory.
+
+Only the original three new policy choices remain unrecorded: arc ordering,
+cap and compiler adoption. Existing ADR-0017 deferral is already authoritative;
+do not ask for acknowledgment again. NF-WF-053 scope is a separate non-goal,
+not an additional gate for 052. Also clarify A2's actual every-Saga rule versus
+the receipt's OutlineNode-only description. Preserve frozen artifacts and
+record any changes as a reviewed dated correction. See ISSUES-AND-GAPS.
+
+RESOLVED (batch 7, 2026-10-14): both contract items above are fixed by
+`tasks/NF-WF-052-correction-2026-10-14.md` (sha256 `1febd2d2…62b2`, review
+chain in the batch 7 record below): database-side bounded query semantics
+(§1) and corrected `../` links (§3). The 500/ENOENT diagnosis is no longer an
+inference: exact-process restart + HTTP 200 + rendered en evidence recorded
+below (batch 7 Scope A).
+
+## Batch 7 — coordinator record 2026-10-14 (web recovery / NF-WF-052 query-semantics correction / plan review + migration preflight)
+
+One coordinator + 3 children (PlanDeltaReview scout; MigrationPreflight;
+NF052CorrectionDraft) plus a follow-up read-only reviewer
+(NF052CorrectionReview). Author WIP, stash, frozen artifacts preserved;
+nothing staged/committed/merged; acceptance worker and Docker untouched.
+
+- **Scope A — :3001 recovered, missing rendered en evidence CAPTURED.**
+  Process identified before any action: old server = supervised service
+  `nf050c-web` (sh 26348 → nuxt 35820 → cli 8732/33560 + esbuild 38128),
+  launched 2026-10-13 04:32 as `nuxt dev --port 3001`, cwd `apps/web`.
+  Root cause OBSERVED from its own log: after heavy HMR (label patch +
+  discovery edits) Nitro began failing `renderer.mjs`/`nitro-dev.mjs`
+  ENOENT against pnpm paths that exist on disk (3461-byte file verified) —
+  stale in-process module graph of the long-running dev server, not a
+  missing file and not app code (discovery suite 9/9, batch 6). Old tree
+  stopped (26348, 35820; children died with it; wrapper exit 127 recorded);
+  relaunched with the SAME config (`./node_modules/.bin/nuxt dev --port
+  3001`, cwd apps/web; service `nf050c-web-r3`, pid 12376). Verified:
+  `/` = 200, `/browse` = 200 (curl). Rendered en proof: locale cookie
+  `nf-locale=en`, page reload, CDP extraction of `.nf-section-label`
+  computed colors — all render `rgb(168,162,158)` = #a8a29e (7.29:1 on
+  bg-1); screenshot `.git/batch7-en-labels-3001.png`
+  (bbad34dbba9bbda80a97167ffcb6f64097dacb4c39c8fe9b299b6e8c72ede77f).
+  Existing id/zoom/reduced-motion evidence retained unchanged.
+- **Scope B — NF-WF-052 query-semantics correction FILED + reviewed**:
+  `tasks/NF-WF-052-correction-2026-10-14.md`
+  (final sha256 `1febd2d2…62b2`; prior reviewed bytes `25701f1c…ac69b`).
+  Frozen original `ccffa3bb…793a3` + amendment `7075d793…7f04`
+  byte-identical (re-verified). Normative content: DB-side deterministic
+  selection — Query P (GROUP BY scope + HAVING aggregate-key successor
+  predicate) + Query S, LIMIT CAP each; k-way merge; overCapCount via
+  exact `|P_beyond ∪ S_beyond|` with one predicate-bounded intersection
+  JOIN (`s.id::text`); ≤50 overflow prefix per side, merged+truncated;
+  discovery normative every-Saga + orphan projection scopes (OutlineNode
+  excluded as source, schema-grounded); required-reading links fixed
+  `../../`→`../` (8 targets exist, verified); §6 section-by-section
+  supersession map; ordering/cap/compiler stay OPEN author decisions; no
+  NF-WF-053 gate, no ADR-0017 gate. Review chain: NF052CorrectionDraft
+  (draft + grounding table) → NF052CorrectionReview
+  **APPROVE_WITH_FINDINGS** (1 MAJOR P-side row-vs-scope semantics, 1
+  MEDIUM unbounded Prisma snippet, 3 LOW) → all 5 findings applied →
+  scoped re-review **all 5 ADDRESSED, ACCEPT** (reviewer retraction: the
+  alleged amendment hash typo was reviewer transcription error; amendment
+  correct). Post-accept tokens applied: `:2884+` cite, `s.id::text` note.
+  Task remains NOT READY — author decisions (ordering, cap, compiler
+  adoption, NF-WF-053) untouched.
+- **Scope C — batch-6 planning delta reviewed + migration preflight.**
+  PlanDeltaReview (read-only): **APPROVE_WITH_FINDINGS** — every batch-6
+  dated correction traces to a named repo record (050B receipt, 050C steps
+  1–9 PASS + live acceptance, sign-off, provenance lines); corrections
+  appended not rewritten; AUDIT-014 human items still
+  DEFERRED_BY_AUTHOR_DECISION; 2 minor findings FIXED by coordinator:
+  (1) START-HERE:18 self-contradictory GAP-039 wording replaced with dated
+  precision correction; (2) consolidated diff supplemented →
+  `.git/batch6-docs-consolidated-r2.diff` (`6b996193…0e484`) now includes
+  the batch-4 receipt delta. MigrationPreflight (read-only, docker exec
+  psql, zero mutation): acceptance DB `novelforge_acceptance_050b`
+  (nf-pg-5433, PG 16.15, pgvector+btree_gist): **45/45 migrations applied,
+  0 pending, 0 orphaned, 0 failed rows, 0 advisory locks**; data present
+  (novels 25, revisions 258, memory_projections 0), 17 MB. **GO** for a
+  future additive migration run only (not now, no run performed).
+  Evidence identity: HEAD `50609c0` + working-tree hashes throughout.
+
+### Corrected dependency-ready list (after batch 7)
+
+1. **Author decisions for NF-WF-052** (unblocks READY): arc ordering
+   policy, MEMORY_ARC_SCOPES_MAX value, compiler adoption timing,
+   NF-WF-053 scope. Contract chain is review-complete and frozen:
+   original → amendment → correction (`1febd2d2…62b2`).
+2. **NF-WF-052 implementation** after READY (contract query shapes §1,
+   fixtures §B).
+3. **Residual text-contrast completion** + AUDIT-014 open rows.
+4. **Additive migration (if any new schema)**: preflight GO recorded;
+   apply only with a named migration and disposable-target evidence.
+5. **Fresh release battery** at HEAD `50609c0` + working-tree hashes
+   (needs named scope per batch-5 assessment rules).
+Author-decision items stay separate: ADR-0017, deferred human
+screen-reader scheduling, credentials/deployment authorization.
+
+## Batch 6 — coordinator record 2026-10-14 (label patch applied / NF-WF-052 amendment / records corrected)
+
+One coordinator + 2 children (both read-only drafters; Scope A executed by the
+coordinator — a main-tree apply of an already-reviewed diff). Author WIP,
+stash, frozen artifacts preserved; nothing staged/committed/merged; acceptance
+worker untouched.
+
+- **Scope A — label patch APPLIED to the main working tree** (authorized by
+  this dispatch): `.git/batch5-labels-repair.diff` (sha256 `1c0c0e6b…fda9d`
+  re-verified) — `git apply --check` clean, applied; all 12
+  `.nf-section-label` sites across 8 files now carry `!text-nf-text-dim`
+  (grep-verified per file). Focused check: discovery suite 9/9 on the
+  integrated tree. Compiled colors verified in the running dev server
+  (Chrome CDP, :3001, **id**): renders rgb(168,162,158) = #a8a29e = 7.29:1
+  on bg-1 (OBSERVED post-patch). **Coverage limits recorded**: the en pass
+  could not complete — the :3001 Nuxt dev server began returning 500
+  (`nitro-dev.mjs` ENOENT from the long-running process's stale module
+  graph; the file exists on disk; unrelated to the class-only patch — the
+  suite proves app code fine). en coverage remains by construction
+  (locale-independent classes; AUDIT-014 row 11 en/id axe retained).
+  Non-rendered label sites (library/notifications/authors/ReaderChapterNav/
+  moderation) verified by class identity only. Environment note: the
+  long-running :3001 dev server needs an owner restart to clear the stale
+  nitropack module state (not restarted by this batch).
+- **Scope B — NF-WF-052 dated amendment FILED**:
+  `tasks/NF-WF-052-amendment-2026-10-14.md` (sha256 `7075d793…7f04`).
+  Original frozen contract preserved byte-identical (`ccffa3bb…793a3`,
+  re-verified). Resolves the three assessor conflicts: (1) bounded
+  selection + single aggregate overflow object (`overCapCount` exact /
+  `overCapArcIds` ≤50 prefix / `firstExcludedOrderingKey`) — OVER_CAP
+  removed from the per-scope excluded enum (output bounded O(cap));
+  (2) discovery = projection arcs ∪ OutlineNode-derived sagas — MISSING
+  sagas now surface; (3) STALE/FAILED scopes INCLUDED and flagged via
+  per-entry freshness (lastError stays in getMemoryStatus). Concrete
+  negative-test fixtures (9 named, exact seeds/assertions), explicit
+  bounds, as-of semantics (cross-branch 400; no-head 200 with
+  `asOf.revisionId === ""`), provenance fields, corrected required-reading
+  (19 paths verified). Reviewer-NF052Amendment: **APPROVE_WITH_FINDINGS**
+  → 2 must-fix (F1 under-scoped supersedes list; F2 malformed fixture
+  text) + 6 minor — **all 8 applied before filing**. Task remains
+  NOT READY; 4 author decisions open (arc ordering policy, compiler
+  adoption timing, MEMORY_ARC_SCOPES_MAX value, NF-WF-053 shape). Policy
+  recommendations with quantified >20-arc effects included (arcs 21+
+  appear only as overflow metadata until the author changes cap/policy).
+- **Scope C — priorities/planning corrected** (drafts by read-only
+  investigator; applied by coordinator): START-HERE header dated
+  correction (050B/050C historical; commit not an authorized prerequisite;
+  local evidence standard = HEAD `50609c0` + working-tree artifact
+  hashes); DELIVERY-PLAN header dated correction (live-gateway gate CLOSED
+  by 050C amendment 1 — no distinct unmet gateway/release criterion remains
+  under NF-WF-050C; corrected task list); CURRENT 050B next-work list
+  dated correction (items 1–3 CLOSED; item 4 author-deferred; 5–6
+  re-anchored); batch-4 receipt provenance correction (HEAD + hashes, no
+  commit implied). Corrected dependency-ready list: (1) planning-ledger
+  reconciliation docs-only; (2) NF-WF-052 author decisions; (3) NF-WF-052
+  implementation after READY; (4) residual text-contrast completion; (5)
+  working-DB migration preflight; (6) fresh release battery at HEAD
+  `50609c0`. Removed: worker reload (done — PID 41284 startup receipt),
+  commit prerequisite (unauthorized+unnecessary), live-gateway repeat
+  (witnessed 2026-10-12). Author-decision items separated: ADR-0017,
+  contrast triage ownership, deferred screen-reader scheduling,
+  credentials/deployment.
+
+## Batch 5 assessment corrections — 2026-10-14
+
+Label patch hash and applicability match the receipt; independently retained
+43/43 tests and APPROVE, no main application in this assessment. The NF-WF-052
+contract and consolidated documentation hashes also match. Worker PID 41284
+remains active; its restart/load receipt already exists. Commit is not an
+authorized or necessary prerequisite for local work, documentation correction
+or read-only preflight; use HEAD plus exact working-tree artifact hashes.
+
+NF-WF-052 is still PLANNED, not dispatch-ready: its own three ordering/cap/
+compiler decisions are unrecorded. Two behavioral conflicts require a reviewed
+contract amendment: enumerating every OVER_CAP scope contradicts bounded
+selection, and discovering only scopes with projection rows prevents the
+required MISSING-saga result. Define bounded query/response semantics and
+candidate selection before implementation. STALE/FAILED entries are included
+with flags per the actual contract; do not describe them as silently excluded.
+
+Do not request live extraction/author observations already established in the
+NF-WF-050C steps 1–9 PASS and accepted functional sign-off. Any separate missing
+gateway/release criterion needs its exact contract and evidence gap first.
+ADR-0017 and human screen-reader scope remain deferred. See the matching
+ISSUES-AND-GAPS assessment; the frozen artifacts are preserved.
+
+RESOLVED (batch 6, 2026-10-14): the two NF-WF-052 conflicts above are fixed by
+the reviewed dated amendment `tasks/NF-WF-052-amendment-2026-10-14.md`
+(sha256 `7075d793…7f04`; original preserved `ccffa3bb…793a3`); the label patch
+is APPLIED to the main working tree (12 sites verified). NF-WF-052 remains
+NOT READY on the three unrecorded author decisions only.
+
+## Batch 5 — coordinator record 2026-10-14 (label contrast / NF-WF-052 contract / delivery priorities)
+
+One coordinator + 3 children (repair worktree `scopeA5-labels`; two
+read-only investigators). Author WIP, stash, frozen artifacts preserved;
+nothing staged/committed/merged; acceptance worker untouched.
+
+- **Scope A — label contrast repair** (worktree `scopeA5-labels`, frozen
+  diff `.git/batch5-labels-repair.diff` sha256 `1c0c0e6b…fda9d`): exhaustive
+  inventory found **12 `.nf-section-label` call sites across 8 files**
+  (faint #79716b = 3.84–4.13:1, FAIL) — all repaired with the accepted
+  house pattern `!text-nf-text-dim` (#a8a29e = 7.29:1 bg-1 / 7.83:1 bg-0
+  / 6.65:1 bg-2 — ≥6.65 everywhere). `.nf-overline` needs nothing (now
+  accent-hi 8.1+); decorative ::after lines and typography untouched;
+  no main.css/i18n changes; meta faint spans recorded-and-skipped
+  (design). OBSERVED: co-located suites 43/43. Reviewer-LabelRepair:
+  **APPROVE** (hash, exhaustiveness — 13 grep matches reconciled to 12
+  call sites + the class definition, hygiene, **main-tree applicability
+  verified — `git apply --check` clean against the integrated dirty
+  tree, no re-basing needed**, contrast arithmetic recomputed, tests
+  reproduced). NOT applied to main — delivered as an on-top patch for
+  the author's next integration step (or apply-on-authorize).
+- **Scope B — NF-WF-052 contract** (contract-only, no implementation):
+  `tasks/NF-WF-052-global-memory-union-read.md` (sha256
+  `ccffa3bb…793a3`) — smallest F3 slice = **L5 global-novel union read**,
+  retrieval-layer composition over existing `arc:` scopes (LLM-free, no
+  storage — storing would reverse Invariant 9's frozen decision), served
+  read-only `GET /memory/global`; per-entry provenance (scope,
+  sourceRevisionId, builtAt); freshness-aware (stale arc scopes excluded
+  with reasons MISSING/OVER_CAP/UNRESOLVABLE_SOURCE); bounded
+  (MEMORY_ARC_SCOPES_MAX, deterministic ordering; Saga has no order
+  column — author picks the ordering policy); failure = explicit
+  degradation semantics (no silent canon mutation); summaries + L6
+  enrichment = explicit non-goal **NF-WF-053** (Invariant-6-gated).
+  Investigator feasibility verdict: all primitives reusable
+  (recallNovel has no L5 — memory.ts:153-233; readBlock scope-generic
+  :111; deriveFreshness :108/:36). Reviewer-F3Contract:
+  **APPROVE_WITH_FINDINGS** (F-1 anchor, F-2 FAILED-entry semantics,
+  F-3 UNRESOLVABLE_SOURCE operationalization — **all three applied by
+  the coordinator before writing the file**; 3 minor informational).
+  Unresolved decisions recorded in-contract for the author: arc ordering
+  policy, compiler adoption timing, MEMORY_ARC_SCOPES_MAX value.
+  ADR-0017 untouched (memory is not among its seven projections).
+- **Scope C — delivery priorities** (read-only reconciliation;
+  coordinator spot-checked key claims: NF-WF-005 migration exists,
+  NF-WF-051 integrated in main memory-jobs.ts, D2 token in
+  DESIGN-TOKENS.md + main.css, webfix stubs in UsageAnalytics.test.ts —
+  all confirmed). Ordered next-task list (unblocks-most first):
+  1. Commit the integrated batch-4 main-tree state (one recorded
+     revision; receipts then cite its hash). S.
+  2. Verify acceptance worker loaded the integrated code (restart
+     receipt at the new hash). S. [Dep: 1]
+  3. Working-DB additive migration preflight
+     (novelforge_acceptance_050b). S. [Dep: 1]
+  4. Live structured-capable gateway extraction receipt (GAP-039
+     residual). S-M. [external creds]
+  5. Fresh release battery at the new hash (NF-WF-023 shape incl. Box 7
+     axe). M. [Dep: 1+3]
+  6. Planning-docs reconciliation (DELIVERY-PLAN header + CAP rows,
+     START-HERE header, stale CURRENT next-steps list, batch-4 receipt
+     provenance). M, docs-only. [Dep: 1]
+  7. NF-WF-052 implementation (contract now frozen+reviewed; dispatch
+     ready). M contract → L implementation.
+  8. Residual text-contrast audit completion (non-D2 faint sites;
+     advanced by this batch's 12 repaired label sites — remaining:
+     out-of-scope faint usages flagged by earlier reviewers). S-M.
+  Author-decision items (separated, not dispatchable): ADR-0017 A-vs-B
+  selection; contrast triage ownership beyond the audited sites;
+  deferred screen-reader scheduling (do not redispatch); live
+  gateway/production credentials + deployment authorization (standing
+  rule: unapproved).
+  Stale-ledger rows flagged for task 6: DELIVERY-PLAN header/queue rows,
+  START-HERE header, batch-4 receipt provenance wording.
+
+## Acceptance worker restarted — 2026-10-14
+
+The author explicitly requested the local worker restart after source
+integration. Old worker PID 30864 (launcher 19048) was identified against the
+existing acceptance environment. Targeted console CTRL_C did not produce a
+shutdown/exit receipt; after all five queues showed active=0 and waiting=0,
+the exact old PID was terminated and one replacement launched hidden.
+New worker PID 41284, launcher 41024, start 2026-10-14 04:54:14 host time.
+
+Existing database novelforge_acceptance_050b at localhost:5433 and Redis at
+localhost:6399 reused through the original acceptance environment script.
+Startup observed: heartbeat proves Redis, all five worker-start flags true,
+memory startup reconciliation completes and memory sweeper starts at 60000ms.
+This establishes loaded startup/timer wiring, not a new real-outage or
+full-period recovery acceptance test. No new fixture, migration, Docker reset,
+commit, push, Git merge or deployment. Docker services and existing stash
+remain. Local logs: .git/worker-restart.stdout.log and stderr.log; original
+worker log retained. Windows signal diagnostic is in ISSUES-AND-GAPS.
+
+Next dispatch: remaining label contrast, a bounded NF-WF-009 F3 memory
+follow-up contract, and delivery-ledger prioritization. ADR-0017 remains
+deferred; human screen-reader scope remains deferred. Do not redispatch
+integration, restart or accepted functional/zoom/reduced-motion observations.
+
+## Author-approved integration applied — 2026-10-14
+
+The author approved the explained candidate integration, scoped D2 token and
+mock/timer repairs. ADR-0017 remains deferred (neither option selected).
+The main working tree now contains GAP-029 parity, NF-WF-051 with companions
+and paired batch-2/A3 accessibility fixes; existing WIP was preserved.
+No staging, commit, push, Git merge, deployment or worker restart occurred.
+
+D2 uses the additive #6f6a63 token only for the four identified discovery
+control types, retaining active accent/focus and removing weak hover borders.
+Locale mocks distinguish keys and reset per test. Timer tests now await real
+passes under controlled ticks; production shutdown semantics are unchanged.
+Observed main web checks: 9 discovery + 41 axe/locale/repaired tests PASS.
+Isolated timer repair: 16 sweeper/reconciliation tests, typecheck and touched
+lint PASS; main test matches the repair except clarified header wording.
+Final independent review: APPROVE; two initial P3 wording notes addressed
+and rechecked in the header and dated NF-WF-051 contract annotation.
+
+Rendered en/id normal/hover checks PASS for search, sort, load-more and active
+all-genres. Corrected contrast ratios are 3.69/3.43/3.13 against bg-0/1/2.
+Inactive chips had no live fixture; component tests cover both selected states
+and inactive classes. Previous zoom/reduced-motion and functional acceptance
+are retained. Human screen-reader testing stays deferred; unrelated residual
+text contrast and ADR-0017 remain open. Source integration does not establish
+that the running worker has loaded this code. Full bounded receipt:
+docs/14-progress/batch4-approved-integration-2026-10-14.md.
+
+## Batch 4 assessment — 2026-10-14
+
+Retain the reviewed integration candidate and actual 200% browser-zoom
+receipt; no repeat of those observations is requested. Inspected raw web
+receipts show 5 + 5 + 3 failed tests with useCookie undefined and matching
+post-repair passes. The older recovery count's cause is unknown without its
+original receipt; run-order attribution is an inference, not established fact.
+The reviewed web-test repair remains outside the integration candidate.
+
+Accessibility is not wholly closed: D2 control-boundary contrast and residual
+text contrast sites remain open/proposed; human screen-reader testing remains
+deferred. The real-timer race is disclosed, not fixed by a green rerun.
+Source inspection also shows the two shared-ref test stubs ignore useState's
+key despite the receipt's keyed claim; see ISSUES-AND-GAPS. Main integration,
+D2 design and ADR-0017 selection remain pending author decisions. No source
+change or test rerun occurred in this assessment.
+
+## Batch 4 — coordinator record 2026-10-14 (integration candidate / web-failure repair / zoom evidence)
+
+One coordinator + 3 children (writer worktrees `candidate-integration`,
+`scopeB4-webfix`; native desktop tooling for zoom). Author WIP, stash,
+frozen artifacts preserved; nothing staged/committed/merged. This batch
+resolves the open items named in "Batch 3 assessment boundary" above.
+
+- **Scope A — integration CANDIDATE** (worktree `candidate-integration`,
+  baseline HEAD 50609c0, NOT merged): WIP overlay (12 files: AUDIT-014,
+  7 workspace components + ScaleReviewPanel.s3.test.ts +
+  cancel-label-i18n.test.ts, CURRENT, ISSUES-AND-GAPS) + 4 frozen patches
+  (GAP-029 `1e59fcc5…`, NF-WF-051 `8a5d448a…` + untracked companions,
+  batch-2 a11y `68942bc6…`, scopeA3 `1569a5f8…`). Overlapping reader-page/
+  GenreChips hunks hand-resolved preserving BOTH repairs; GenreChips
+  final = scopeA3 ternary byte-identical to source; reverse-check
+  `git apply -R --check` passes for all four diffs. OBSERVED in candidate:
+  parity 11/11, memory-sweeper 8/8 (one disclosed real-timer race, green
+  on rerun), publication 21/21, discovery 8/8 (incl. scopeA3 regression),
+  workspace 197/197, ACC-1 27/27 (23+4). Reviewer-IntegrationCandidate:
+  **APPROVE** (frozen hashes, overlay fidelity vs main working copy,
+  patch completeness via reverse-check, companion hashes, spot-reruns,
+  main-checkout integrity all verified; 1 informational
+  overlay-accounting note). Exclusions recorded: output.txt,
+  apps/api/scripts/, scripts/gap051-loadmore-seed.ts, untracked docs.
+  Main checkout untouched (11 dirty files, HEAD 50609c0, nothing staged).
+  → The "isolated final candidate pairing scopeA3 + batch-2 + reviewed
+  WIP" gap from the batch-3 boundary assessment is now CLOSED.
+- **Scope B — web-failure repair** (worktree `scopeB4-webfix`): the 13
+  failures ATTRIBUTED — deterministic clean-HEAD reproduction (raw vitest
+  evidence saved: `evidence/*.raw.txt` in the worktree), single root
+  cause `useCookie is not defined` at useLocale.ts:64 (Nuxt auto-imports
+  absent under plain vitest; count reconciliation: 5+5+3 failed tests,
+  0 file-level; rehearsal's "7 incl 1 file-level" not reproducible —
+  full-sweep run-order artifact; no prior raw receipts existed to
+  compare). Repair: test-only (+28 lines across the 3 files, vi.stubGlobal
+  useCookie/useState/onNuxtReady per the useLocale.test.ts convention;
+  keyed shared ref where setLocale is exercised). OBSERVED post-repair:
+  13/13 × 2 runs (deterministic), neighbors 44/44 + 8/8. Zero production
+  changes, zero assertion changes. Reviewer-WebFailureFix:
+  **APPROVE_WITH_FINDINGS** (3 informational only). → The manifest
+  reconciliation requirement from the batch-3 boundary assessment is now
+  CLOSED with matching-environment baseline evidence.
+- **Scope C — actual browser zoom evidence (native desktop tooling,
+  cua-driver + the user's real Chrome, locale id):**
+  **Page zoom 200% ESTABLISHED** via chrome://settings/appearance
+  "Page zoom" (real browser zoom; the CDP-driven instance cannot zoom
+  and menu-popup clicks are refused by driver foreground verification —
+  Settings dropdown + keyboard selection worked). OBSERVED at 200%:
+  /browse top — single-column flow, no horizontal scrollbar; /browse
+  bottom — card grid intact, "Muat lagi" fully visible, no
+  two-dimensional scroll; reader chapter page — single column, controls
+  intact; keyboard focus ring clearly visible (Tab moves through
+  continue-reading cards). Zoom level verified visually in the settings
+  UI ("200%"). **Restored to 100%** afterward (verified in settings UI).
+  Previous reduced-motion and en/id observations RETAINED unchanged.
+
+## Batch 3 assessment boundary — 2026-10-14
+
+Manifest and ADR hashes match the external receipt. Retain its reduced-motion
+and browse en/id observations; actual browser zoom is still unestablished.
+The rehearsal covers the three batch-2 patches on clean HEAD 50609c0, not
+scopeA3 plus the current main-checkout WIP. Its clean application therefore
+does not yet establish the complete proposed integration. Pair scopeA3 with
+batch-2 a11y in an isolated final candidate and preserve reviewed WIP.
+
+The manifest's web-failure summary needs reconciliation: the listed counts
+5 + 7 + 3 do not explain the reported 13, and untouched test paths alone do
+not establish baseline causality. Reuse an existing exact baseline receipt
+if available; otherwise compare only the affected failing suites under the
+same environment. Until then, baseline attribution remains a retained claim,
+not independently verified here. See ISSUES-AND-GAPS for ownership/closure.
+ADR-0017 and D2 token changes remain proposals. No source change, test rerun,
+integration, commit or new author acceptance occurred in this assessment.
+
+## Batch 3 — coordinator record 2026-10-14 (a11y follow-up / integration package / ADR-0017 correction)
+
+One coordinator + 3 children (writer worktrees `scopeA3-overline`,
+`rehearsal-integration`; read-only investigator). Author WIP, stashes,
+frozen artifacts preserved; nothing staged/committed/merged.
+
+- **Scope A — a11y follow-up (worktree `scopeA3-overline`, 4 files):**
+  overline fix via class-level `!text-nf-text-dim` override at the two
+  contracted read-page call sites (7.83:1 on bg-0 — main.css untouched);
+  NEW regression test pinning the D5 class-level intent both directions
+  (RED→GREEN proven: fails against the pre-repair object-syntax form);
+  GenreChips D5 ternary restored in this worktree (byte-identical to the
+  reviewed batch-2 form) so the pinned intent is true. OBSERVED:
+  discovery+a11y suites 70/70. Reviewer-OverlineDiff:
+  **APPROVE_WITH_FINDINGS** (3 Minor informational: 9 other .nf-overline
+  sites + .nf-section-label residual are main.css-owned, next batch;
+  scopeA3 must integrate PAIRED with the batch-2 patch or D1 stays open
+  on reader pages). **D2 design proposal (PROPOSED, author decision):**
+  new token `--color-nf-border-focus: #6f6a63` — computed 4.02:1 (bg-0),
+  3.72:1 (bg-1), 3.38:1 (bg-2 hover); optional
+  `--color-nf-border-focus-strong: #8a857c` (5.55/5.18/4.74) for hover
+  emphasis; call sites: SearchBox input, GenreChips inactive branch,
+  sort select, load-more; focus ring already compliant (accent-hi
+  8.12+); disabled exempt. Not applied.
+- **Rendered evidence (coordinator, Chrome CDP on :3001, working tree):**
+  - **en/id**: id locale activated via the `nf-locale` cookie (real UI
+    text in Indonesian: "Semua genre", "Muat lagi", "3 bab · tanggal",
+    placeholder "Judul, penulis, atau f…") — computed colors identical
+    to en (tokens are locale-independent): text-faint 3.84–4.13:1,
+    boundaries 1.40:1, dim 7.29:1 on the same elements. Locale coverage
+    OBSERVED for the browse page.
+  - **Reduced-motion OBSERVED (real browser, host OS setting)**:
+    `prefers-reduced-motion: reduce` is ACTIVE on this host and the
+    real browser reads it; the global guard rule
+    (`animation-duration: 0.01ms !important` etc.) applies — computed
+    animation/transition durations on live controls read 1e-05s; zero
+    running CSS animations; no transform/size transitions on any
+    element (color-only). Note: the host's own setting, not an
+    emulated toggle.
+  - **Actual browser zoom NOT ESTABLISHED (tooling blocker recorded)**:
+    CDP here cannot set browser zoom (Ctrl+= / Ctrl+− produce no
+    outer/inner-width or dpr change; dpr fixed at 1; CSS-px probe
+    invariant). The criterion requires real zoom (1280→640 CSS);
+    substitution by narrow viewport remains forbidden. Blocker: harness
+    lacks zoom control; needs an author-side zoom pass or a harness
+    with real zoom-level support.
+- **Scope B — integration package (worktree `rehearsal-integration`):**
+  frozen inputs `.git/batch2-gap029-parity-test.diff` (`1e59fcc5…f603d`),
+  `.git/batch2-nfwf051-sweeper.diff` (`8a5d448a…2bca4`),
+  `.git/batch2-a11y-repair-scopeA.diff` (`68942bc6…98fc2`). Rehearsal
+  (fresh worktree @ 50609c0): apply order GAP-029 → NF-WF-051 → a11y,
+  all clean, **zero conflicts**; combined 9 tracked files +51/−16 + 2
+  untracked tests; file sets fully disjoint (api/worker/web).
+  OBSERVED combined behavior: api parity 11/11, worker memory 20/20
+  (one transient DB-timing flake, green on rerun — disclosed),
+  publication regression 21/21, web discovery+a11y 170 green; 13
+  pre-existing web failures (UsageAnalytics/recovery/workspace-navigation)
+  are baseline-present and untouched by the patches. Manifest:
+  `.nf-batch-worktrees/rehearsal-integration/INTEGRATION-MANIFEST-scopeB.md`.
+  Integration cutover notes: NF-WF-051 untracked companions
+  (memory-sweeper.test.ts, task doc) must be copied explicitly; worker
+  tests need DATABASE_URL on 5433; scopeA3-overline must integrate
+  PAIRED with the batch-2 a11y patch (hunk-level sequencing on the read
+  pages). Reviewer-IntegrationManifest verdict recorded in
+  ISSUES-AND-GAPS (batch-3 section). NO merge performed — integration
+  remains author-gated.
+- **Scope C — ADR-0017 corrected (PROPOSED, reviewed):**
+  `docs/adr/ADR-0017-derived-rebuild-intent-end-state.md` rewritten with
+  the per-projection evidence map: **seven of seven** named projections
+  lack intent-consuming pipelines (the earlier "six of seven" was
+  wrong); memory excluded from the seven (Q2) and demoted from
+  platform-wide proof to memory-only evidence; NF-WF-051 referenced at
+  its actual isolated status; both options PROPOSED, recommendation
+  non-selected, intent-lifecycle closure reserved for the author.
+  Reviewer-ADR0017: **APPROVE_WITH_FINDINGS** (2 Minor path-qualification
+  nits — applied by the coordinator in the same batch). OBSERVED
+  spot-checks by the reviewer: writers, zero production readers,
+  OPERATIONAL classification, memory scope vocabulary, PROJECTIONS list.
+
+## Batch 2 assessment correction — 2026-10-14
+
+The batch receipt below retains its implementation/review evidence, but its
+pending-author list is stale: NF-WF-050C journey steps 1–9, including live
+locale checks, are retained PASS; GAP-039 functional author sign-off was
+explicitly accepted on 2026-10-13. Do not request those observations again.
+Human NVDA/VoiceOver acceptance is DEFERRED_BY_AUTHOR_DECISION, not PASS;
+actual browser zoom and reduced-motion evidence remain pending.
+
+The a11y repair, NF-WF-051 and GAP-029 parity packages remain isolated,
+not integrated into main. ADR-0017 is PROPOSED: clarify its seven named
+intent projections versus memory (which is not one of them) before an
+architecture decision. Memory recovery evidence does not establish recovery
+for every intent projection. Replace the obsolete NF-WF-0XX follow-up with
+the actual NF-WF-051 isolated implementation status in the next ADR revision.
+See the matching assessment in ISSUES-AND-GAPS. No new test execution,
+integration or commit occurred in this assessment; this annotation is a new
+delta outside the frozen batch-2 documentation review.
+
+## Two-scope batch 2 — coordinator record 2026-10-14 (rendered a11y / NF-WF-051 / intent ADR + ACC-1)
+
+One coordinator + 3 children (writer worktrees `.nf-batch-worktrees/scopeA-a11y`
+and `.nf-batch-worktrees/scopeB-memsweeper`; read-only investigators shared the
+dirty checkout). Author WIP preserved untouched; nothing staged or committed.
+
+- **Scope A — rendered evidence + bounded repair.** Coordinator ran real
+  Chrome CDP sessions against the live app (:3001, working tree, en):
+  measured computed fg/bg colors and states. Confirmed rendered: D1
+  (text-faint rgb(121,113,107) 3.84–4.13:1), D2 (control boundaries
+  1.40–2.05:1), D3 (`<mark>` MEASURED black-on-yellow rgb(0,0,0)/rgb(255,255,0)
+  ≈19.6:1 — pass, off-design; no longer assumed), D4 (whole-card-grid
+  `aria-live=polite` present in DOM). NEW reproduced defect **D5**: the active
+  genre chip (`aria-current="true"`) declared `border-nf-accent-hi` +
+  `text-nf-text` but computed border/color came from the always-present
+  `border-nf-border`/`text-nf-text-dim` utilities (CSS order wins) → the
+  active state was visually indistinguishable. Functional checks OBSERVED:
+  Escape clears search, sort works, viewport 360/768/1440 layout clean
+  (1-col/2-col, no horizontal scroll, 700px reader measure at 1440),
+  reader progress write works (chapter 2 recorded, fresh timestamp).
+  NOT ESTABLISHED (harness lacks control): actual browser zoom
+  (Ctrl+= produced no dpr/zoom change) and `prefers-reduced-motion` —
+  recorded as missing, not PASS.
+  Bounded repair (worktree scopeA-a11y): D5 ternary conditional classes in
+  GenreChips.vue (hover:border confined to inactive branch) + 12 D1 swaps
+  text-nf-text-faint → text-nf-text-dim (existing house token, 7.29–7.83:1)
+  across the 7 AUDIT-014-scope files; +16/−16; discovery/a11y/composables
+  suites 123/123 OBSERVED. Reviewer-A11yDiff: **APPROVE_WITH_FINDINGS**
+  (2 Minor informational: pre-existing `.nf-overline` faint-token site
+  needs main.css edit — next batch; no test pins chip classes — future
+  hardening). D2 remains a PROPOSAL (no compliant boundary token exists);
+  D3/D4 recorded, unmodified. NOT integrated into main (author-gated).
+- **Scope B — NF-WF-051 implemented.** Contract
+  `tasks/NF-WF-051-memory-reconciliation-sweeper.md` (copied verbatim from
+  the reviewed worktree artifact; original kept immutable in
+  `.nf-batch-worktrees/scopeB-memsweeper/`). Contract review
+  Reviewer-NF051Contract: NEEDS_FIXES (2 Important: timing-dependent
+  overlap assertion → deterministic shape (b); vacuous MISSING test →
+  head-less-novel fixture; 1 Minor: distinct-key wording) → fixed →
+  **APPROVE**. Implementation in `.nf-batch-worktrees/scopeB-memsweeper`
+  (constants.ts +7, memory-jobs.ts +28, memory-sweeper.test.ts NEW 8 tests):
+  startup reconciliation untouched, `reconcileMemoryRebuilds` reused
+  verbatim, 60s interval, DI seam, unref/clearInterval-first stop(),
+  queue-undefined guard. OBSERVED: focused memory suites 20/20, publication
+  regression 21/21, both typechecks clean, touched-file eslint clean (8
+  repo-wide lint errors are pre-existing at 50609c0, outside the slice).
+  Reviewer-NF051Diff: **APPROVE_WITH_FINDINGS** (2 Minor non-blocking:
+  real-timer margins for CI; looser logger.error match). NOT integrated
+  into main; does NOT close intent lifecycle or L5/L6 gaps.
+- **Scope C — ADR-0017 (PROPOSED) + ACC-1 verdict.**
+  `docs/adr/ADR-0017-derived-rebuild-intent-end-state.md` written
+  proposal-only: recommends option B (intents stay write-side durable
+  invalidation audit; C6/C7 + schema-comment amendment) over option A
+  (per-projection consumers); explicitly author-decided, no intent code
+  changed. ACC-1 amendment review (Bat2-IntentADR, read-only, no test
+  reruns): **APPROVE_WITH_FINDINGS** — scope fidelity VERIFIED against the
+  frozen r5 artifact (`2f250878…`), receipts exist and match, no silent
+  broadening, amendment procedure SATISFIED (separate reviews r1–r5);
+  3 P3 non-blocking (transcript retrievability, missing round-3
+  disposition line in the amendment doc, disclosed unapplied T6a note);
+  owed: author-gated commit, author acceptance steps 5–7 + locale +
+  GAP-051 deferral, steps 3–4 OPEN on model quality.
+- **Records/boundaries:** GAP-029 remains RESOLVED-BY-TEST as reviewed
+  delivery in its isolated worktree (`.nf-batch-worktrees/scopeB`) until
+  main integration is authorized — original reviewed artifacts untouched.
+  This batch record + the corrected-deferral annotation are the
+  coordinator's doc delta, reviewed separately (see review receipt below).
+  Human NVDA/VoiceOver stays DEFERRED_BY_AUTHOR_DECISION; visual/
+  viewport/contrast/reduced-motion/zoom checks are ACTIVE (Scope A
+  executed under that reading). No staging, commit, push, merge,
+  deployment, cleanup, or fixture mutation performed.
+
+## Three-scope batch assessment corrections — 2026-10-13
+
+- Scope B's reviewed parity test is in `.nf-batch-worktrees/scopeB`, not yet
+  integrated into main. Preserve its review/tests as scoped delivery evidence.
+- Only human screen-reader testing was deferred by the author. Restore active
+  pending status for rendered contrast, viewport, reduced-motion and zoom
+  checks incorrectly deferred in the batch entry below. No NVDA request needed.
+- D1/D2 token measurements are retained; rendered applicability needs actual
+  colors/states and distinction between functional boundaries and decoration.
+  D3 UA-default mark contrast is not measured browser proof; D4 whole-grid
+  aria-live is a source-derived risk, not an observed human speech result.
+- The memory interval-sweep proposal needs a real task ID, bounded contract
+  and separate approval before implementation. It does not resolve intent
+  lifecycle or L5/L6 summaries. Continue the ADR as proposal-only.
+- Next batch: rendered accessibility verification/bounded repair planning;
+  interval-sweep contract then approved implementation; intent ADR plus
+  independent ACC-1 amendment review. Preserve previous source-review receipts.
+  These assessment annotations postdate the approved batch-docs snapshot and
+  require scoped review. No main source/data change, commit or push performed.
+
+## Three-scope external batch — coordinator record 2026-10-13 (A11y evidence / GAP-029 / memory-intent)
+
+One coordinator + three children; writers used a dedicated worktree
+(`.nf-batch-worktrees/scopeB`); read-only investigators shared the dirty
+checkout. Author WIP (ACC-1/F4 docs + components) preserved untouched;
+nothing staged or committed by the batch.
+
+- **Scope A — AUDIT-014 technical evidence (read-only):** token-level
+  WCAG math (coordinator-verified independently) found real AA failures:
+  `text-faint #79716b` never reaches 4.5:1 (max 4.13:1 on bg-0, 3.84:1 on
+  bg-1, 3.50:1 on bg-2), and boundary tokens `nf-border #33302d` /
+  `nf-border-strong #48443f` never reach 3:1 (1.51:1 / 2.05:1 on bg-0).
+  Active-chip `accent-hi` border passes (8.1–8.7:1). `<mark>` has no CSS
+  anywhere → UA-default ≈17–19.6:1 (PASS; off-design only). Whole
+  browse card grid is one `aria-live="polite"` region (verbosity defect,
+  not AA). Static viewport/reduced-motion analysis recorded; NOT browser-
+  zoom or rendered-pixel proof. New product defects D1–D4 recorded in
+  AUDIT-014; no repair applied in this batch. Automated half re-run
+  OBSERVED 2026-10-13: 30/30 across useReadingProgress,
+  useSyncedReadingProgress, discovery, discovery.axe (en+id).
+  Human legs (#6 announcement leg, #7 rendered, #8 rendered, #9 rendered,
+  #10 zoom, #13, #14) are **DEFERRED_BY_AUTHOR_DECISION** per the
+  deferral amendment below — recorded as deferred, never PASS.
+- **Scope B — GAP-029 (own worktree, disjoint paths):** API and executor
+  resolvers verified EQUIVALENT against the actual contracts
+  (workspace-shadows-platform, published-only, tenant isolation,
+  absence handling); no behavioral defect found. Remedy option 2
+  delivered: `apps/api/src/definition-resolution-parity.test.ts`
+  (11 cases — 8, then +3 skill-side cases after review round 1;
+  disposable DB `novelforge_test_resolver_parity`, no source changes,
+  no new deps). Observed: parity 11/11 (implementer run + coordinator
+  re-run), executor 22/22, worker
+  workflow-jobs 10/10, definitions 49/49 (nf-pg-5433). Diff
+  `.nf-batch-worktrees/scopeB-gap029-parity-test.diff`; separate review
+  Reviewer-Gap029Diff: round 1 APPROVE_WITH_FINDINGS (1 Minor, skill
+  mirror) → fixed → round 2 **APPROVE, zero findings**; verdict recorded
+  in ISSUES-AND-GAPS GAP-029 entry. Not committed.
+- **Scope C — memory/rebuild-intent (read-only):** NF-WF-009 F3 remains a
+  correctly-recorded gated deferral (PROMISED, not drift).
+  DerivedRebuildIntent is STILL a behavioral no-op after NF-WF-032/036/
+  037/030 + advanceHeadLow: three writers (api revisions.ts, ai-services
+  extraction, worker publication-jobs.ts), zero consumers; only PENDING
+  ever assigned; RUNNING/FRESH/STALE unreachable. Follow-up contract
+  **NF-WF-0XX memory reconciliation interval sweeper** is dependency-ready
+  (mirror of the publication sweeper; no intent consumer, no schema
+  change, no LLM, no outbox). ADR required for the intent end-state
+  (per-projection consumers vs demotion to write-side invalidation
+  audit). Evidence map + contract recorded in the ISSUES-AND-GAPS
+  intent-lifecycle entry.
+- **Baseline/preserved:** HEAD main 50609c0, ahead 3; r4 artifact hash
+  re-verified `b0418d76…af72a`; NVDA-deferral docs amendment reviewed
+  separately from Group C r4 (pre-batch snapshot
+  `.git/nvda-deferral-docs-prebatch.diff` sha256 `1fa276b5…cf5b4`).
+  Docker + acceptance services untouched; no uninstall, commit, push,
+  merge or deployment performed by the batch.
+
+## Author decision — defer NVDA human testing — 2026-10-13
+
+- The author explicitly requests archiving NVDA testing for future work,
+  like the earlier VoiceOver deferral, citing unavailable Indonesian speech
+  on their Windows setup and no available Mac. These are author-reported
+  constraints, not a finding about all Windows speech support.
+- **GAP-051 human screen-reader verification: DEFERRED_BY_AUTHOR_DECISION.**
+  Both NVDA + Firefox and VoiceOver + Safari are now future draft/backlog
+  scope, not active acceptance prerequisites. Historical passes remain valid
+  only for their recorded scope; unperformed tests are deferred, never PASS.
+- This supersedes instructions to obtain further NVDA observations, including
+  the human portions of announcement items #13/#14. No screen-reader software
+  is uninstalled; application accessibility support and en/id localization
+  remain. Keyboard, semantic labels, focus, contrast, responsive layout,
+  reduced motion, zoom and automated accessibility work continue as applicable.
+- Update the external three-scope batch accordingly: Scope A continues its
+  technical/visual/functional checks without waiting for screen-reader input;
+  Scopes B/C continue unchanged. No new author sign-off question is needed.
+  Full screen-reader verification or complete WCAG conformance is not claimed.
+- This documentation delta postdates Group C r4 APPROVE and needs its own
+  scoped review before inclusion in a future commit. No source/data change,
+  uninstall, staging, commit, push, merge or deployment is authorized here.
+
+## GAP-051 reconciliation review — 2026-10-13 (documentation changes requested)
+
+- The evidence table and A/B/C file grouping are retained as useful proposals.
+  Group C is not review-ready: aria-live result count and 404 silence are
+  original screen-reader announcement checks, not merely visual checks.
+  Their unresolved evidence prevents the new unconditional closure conclusion
+  from being established. Retain all supported human passes and historical
+  closure receipts; do not repeat completed observations or narrow scope.
+- GAP-039's author functional sign-off leg remains CLOSED per explicit author
+  decision (#244). Older DELIVERY-PLAN/START-HERE references are stale for
+  that leg, not renewed blockers. Other acceptance/release dependencies need
+  their own current evidence. Calibration-data authorization remains resolved.
+- Correct the table's marked-text contrast threshold to the original 4.5:1,
+  distinct from 3:1 UI boundaries. Next: repair these documentation conclusions,
+  map existing evidence for the unresolved screen-reader criteria, and obtain
+  separate review of the exact Group C diff before any commit decision.
+- No staging, commit, push, source/data mutation or repeated test run performed
+  by this assessment. The untracked screenshot paths named in the proposal
+  are absent from the current `git status`; their current location is UNKNOWN.
+  Do not claim their archival/deletion or manufacture replacements.
+
+## GAP-051 evidence reconciliation + commit-scope proposal — 2026-10-13 (documentation-only; nothing staged)
+
+- **Baseline re-verified (OBSERVED):** HEAD `50609c0`; stash
+  `nf050b-acceptance-wip` intact; working tree = 11 modified files +
+  untracked `apps/web/app/components/workspace/cancel-label-i18n.test.ts`,
+  `scripts/gap051-loadmore-seed.ts` + `apps/api/scripts/` copy, `output.txt`,
+  `tasks/NF-050C-ACC-1-repair-amendment.md` (+ `capture-1..4.png` author
+  evidence). Frozen-artifact byte-match re-confirmed: ACC-1 r5 worktree diff
+  vs `50609c0` (ScaleReviewPanel.vue + ScaleReviewPanel.s3.test.ts) sha256
+  `2f250878…ec6b6` == reviewed r5 artifact; F4 combined diff (6 components +
+  cancel-label-i18n.test.ts) sha256 `162ebf99…b3528` == frozen
+  `.git/gap-051-f4-cancel-key-repair-r1.diff`. No successful check re-run
+  (no new source changes since those receipts).
+- **Evidence reconciliation (documentation-only):** AUDIT-014 now carries a
+  16-row evidence table separating OBSERVED / RETAINED / UNSUPPORTED /
+  PENDING. Key correction, without rewriting historical receipts: the
+  "GAP-051 CLOSED" entry is accurate **for the human screen-reader gate
+  scope only** (keyboard, names, dialogs, announcements — the guided
+  instruction scope). The broader WCAG-AA manual items remain PENDING:
+  contrast, viewports 360/768/1024/1440, reduced motion, 200% zoom,
+  reader-chapter progress-write, plus weakly-inferred/unknown items
+  (snippet `<mark>`, aria-live result count, ContinueReading 404 silence).
+  Each is annotated in the table with the specific missing observation it
+  needs; they are distinct from full-platform release acceptance.
+  **[CORRECTED by the same-day reconciliation review: #13/#14 are original
+  screen-reader-scope items, so their missing evidence DOES qualify the
+  gate closure — see the "reconciliation review" entry above; this
+  bullet's "do NOT retroactively weaken" wording is superseded.]**
+- **Release-gate cross-check:** GAP-097 verified CLOSED 2026-10-07
+  (`ab7d71d`) — not a current blocker. The 023C battery boxes 2–7 were never
+  re-run after the Box-1 stop; the 023C SHIP_WITH_KNOWN_GAPS decision is a
+  recorded historical recommendation, not a current release decision.
+  **Correction to this entry's first wording:** GAP-039's author FUNCTIONAL
+  sign-off leg is CLOSED (explicit author decision, CURRENT + Engram #244) —
+  older DELIVERY-PLAN/START-HERE paragraphs that read as "author acceptance
+  pending" are stale pointers to that settled leg, not a reopened question;
+  no sign-off request is made. What remains open at the release-blocker tier:
+  SCALE GAP-039's parent capability gap, the GAP-051 residuals below, and
+  the live release gates.
+- **Proposed commit file selection (PROPOSAL ONLY — nothing staged; the
+  author decides the actual split):**
+  - **Group A — reviewed ACC-1 repair + regressions** (r5 artifact, review
+    APPROVE): `apps/web/app/components/workspace/ScaleReviewPanel.vue`,
+    `apps/web/app/components/workspace/ScaleReviewPanel.s3.test.ts`.
+  - **Group B — reviewed F4 repair + guard** (r1 artifact, review APPROVE):
+    `apps/web/app/components/workspace/{DnaEditor,PolicyList,Antagonists,
+    HealthMemoryPanel,ReferenceIngest,ReferenceLibrary}.vue`,
+    `apps/web/app/components/workspace/cancel-label-i18n.test.ts`.
+  - **Group C — acceptance/task documentation:** `docs/14-progress/CURRENT.md`,
+    `docs/implementation/ISSUES-AND-GAPS.md`, `apps/web/a11y/AUDIT-014.md`,
+    `tasks/NF-050C-ACC-1-repair-amendment.md`.
+  - **NOT proposed (unreviewed/temporary):** `scripts/gap051-loadmore-seed.ts`
+    + `apps/api/scripts/` copy (test scaffolding — author decision: commit as
+    reviewed tooling or keep untracked until purge); `output.txt` (harness
+    spill — deletion candidate, not commit content); `capture-1..4.png`
+    (author evidence — in-repo only if wanted, else archive outside git).
+    No unreviewed application material exists: every source change belongs
+    to Group A or B with its own review receipt.
+  - Suggested sequence: A, then B, then C (each independently reviewable;
+    A and B already carry separate review receipts).
+- **Specific missing observations (each asked once; not re-asked here):**
+  AUDIT-014 evidence-table items #6 (reader progress write), #7 (contrast),
+  #8 (viewports), #9 (reduced motion), #10 (200% zoom), and the explicit
+  looks for #12 (`<mark>` integrity), #13 (aria-live result count),
+  #14 (ContinueReading 404 silence). Next action: the author runs these as
+  one short visual/keyboard pass, or records a decision routing them to a
+  separate visual-audit task.
+
+## GAP-051 calibration-data authorization confirmed — 2026-10-13
+
+- **AUTHOR DECISION:** the existing flagship novel with ten chapters plus
+  twenty calibration novels are within the reasonable scope personally
+  authorized by the author. The earlier authorization uncertainty is resolved;
+  no further confirmation or authorization lookup is needed for these fixtures.
+- Preserve the existing data. This clarification does not authorize cleanup,
+  unrelated data creation, commit, push, merge or deployment.
+- Next: continue only the separate full-checklist evidence reconciliation
+  described below, retaining the recorded human passes.
+
+## GAP-051 closure report assessment — 2026-10-13 (fallback handoff)
+
+- Read the latest `output.txt`, actual AUDIT-014 closure, issue records and
+  seed scripts. Retain the other harness's human F4/locale/load-more PASS
+  receipts; no repeat of those observations is requested. The reported CLOSED
+  verdict below is retained as provenance. The broader full-checklist claim
+  needs evidence mapping for contrast, viewports, reduced motion, zoom and
+  reader progress; see GAP-051's closure assessment qualification.
+- The quoted one-novel/ten-chapter authorization does not establish the scope
+  of twenty additional calibration novels. Locate retained authorization first;
+  this assessment does not conclude it was absent. Data and both seed copies
+  are preserved. No seed rerun, deletion, installation or database mutation.
+- HEAD `50609c0`; `nf050b-acceptance-wip` stash present. WIP includes ACC-1,
+  F4, audit records, untracked captures and two seed-script copies. Commit
+  scope must account for these separately; no commit/push/merge/deploy allowed.
+- **Engram unavailable at this boundary:** host hook reports spawnSync
+  `engram.exe` ETIMEDOUT and UNBOUND. No attributed writes or reused identity;
+  this entry is the fallback handoff, not an Engram checkpoint.
+- Next: reconcile existing acceptance evidence and calibration authorization,
+  correct only unsupported scope claims, and prepare a precise proposed file
+  selection for review. Historical 023C statements alone do not establish
+  today's release blockers or authorize release. Functional author sign-off
+  remains accepted; VoiceOver testing remains deferred.
+
+## GAP-051 human audit — 2026-10-13 (screen-reader gate closed on evidenced scope; QUALIFIED overall — see the evidence-reconciliation entry at top)
+
+- **OBSERVED:** recovered Engram #244 (author functional sign-off decision) and
+  #245 (handoff). AGENTS.md, CURRENT acceptance records, GAP-039/GAP-051 entries,
+  `apps/web/a11y/AUDIT-014.md` and `docs/implementation/023C-battery-report.md`
+  re-verified this session: automated axe half 0 violations (2026-10-06, RETAINED),
+  human gate OPEN. SHIP_WITH_KNOWN_GAPS is a historical 023C disposition,
+  not current release authorization.
+- **Auditor NAMED:** the author (`ch0c01d.xyz@gmail.com`). Host detection
+  (Windows 10.0.26200): NVDA NOT installed, Firefox NOT installed, VoiceOver +
+  Safari N/A (macOS-only), Chrome `154.0.8037.98` + Edge present — **no
+  runbook-named combination is currently performable on this host.** Narrator
+  exists but is not runbook-named; substituting it requires an explicit recorded
+  author deviation decision. Active enablement: install NVDA + Firefox here;
+  VoiceOver + Safari is deferred by the author decision below.
+- **Recorded in `apps/web/a11y/AUDIT-014.md`** ("GAP-051 human-audit coordination
+  — 2026-10-13"): auditor, date, environment detection, FULL scope (existing
+  browse/reader checklist + 050C SCALE/S3 additions: roving-tabindex keyboard
+  reachability, focus order, accessible names on Enable/Disable/reason/confirm,
+  dialog behavior, saving/forbidden/saveFailed announcements, disabled-state SCALE
+  panel — en+id) and an explicit zero-results statement. GAP-051 entry in
+  ISSUES-AND-GAPS carries the same coordination update.
+- **Every manual check is UNPERFORMED and PENDING.** Scheduling, screenshots and
+  automation cannot establish the human pass; GAP-051 stays the explicit release
+  gate. Nothing committed, pushed, merged or deployed; worktree changes are doc
+  edits only.
+- **Author scope decision (2026-10-13):** "untuk fitur VoiceOver tidak perlu dan
+  tidak saya gunakan, masukkan fitur tersebut ke dalam draft dulu untuk
+  kedepannya" — VoiceOver + Safari moves to a future draft/backlog item; the
+  active gate combination is NVDA + Firefox only. Historical runbook wording kept
+  as history in AUDIT-014/023C records. Gate still OPEN until a real human
+  NVDA + Firefox pass (en + id, full scope) is recorded.
+- **Human audit progress (partial, later 2026-10-13):** with NVDA 2026.2 +
+  Firefox 157.0.1 (installed with the author's explicit winget approval after
+  absence was re-verified), the author performed the `/browse` walkthrough except
+  load-more (PASS per author observation) and confirmed the "you stopped at"
+  marker (PASS, below the novel-detail chapter list). Findings recorded in
+  AUDIT-014.md: F1 — no dashboard menu/link to `/browse` (URL typed manually);
+  F2 — load-more untestable with current data volume (PENDING, not a failure);
+  F3 — author suggestion: tooltips advertising keyboard shortcuts (backlog).
+  NOT yet performed: the Policies/S3 card portion (author found earlier
+  instructions unclear — clarified instructions provided); locale coverage of
+  performed items unstated. The author closed NVDA mid-session; the gate
+  verifies assistive-technology-user experience, so remaining items need NVDA
+  active. **GAP-051 stays OPEN.** No code changes; findings routed to backlog.
+- **Policies/S3 portion PERFORMED; F4 found (later 2026-10-13):** author reports the
+  S3/Policies keyboard, dialog and announcement checks normal — PASS apart from a
+  new **F4**: the Cancel button renders the raw key `workspace.common.cancel` in
+  the DNA editor and Policies dialogs (works when clicked). Source-verified root
+  cause: 9 call sites in 7 components use the non-existent key path while the
+  correct `common.cancel` ("Cancel"/"Batal") exists and is used correctly by
+  siblings incl. `ScaleS3SettingToggle.vue`. Raw keys are also announced by screen
+  readers — an accessible-name defect inside the audited surface. Repair is a
+  per-site key-path change, awaiting author authorization; GAP-051 stays OPEN
+  until F4 is fixed + re-verified and load-more/locale items resolve.
+- **F4 REPAIRED (later 2026-10-13, author-authorized bounded scope):** all 9
+  call sites across the six components switched to `t("common.cancel")`; no
+  aliases/dependencies added. New guard `cancel-label-i18n.test.ts` (GAP-121
+  real-dictionary pattern; pins "Cancel"/"Batal"; ≥9 sites, ≥1 per component;
+  forbids the old path). Focused vitest 8/8 (incl. scale-review-i18n-parity),
+  `vue-tsc --noEmit` 0, eslint 0. Frozen artifact
+  `.git/gap-051-f4-cancel-key-repair-r1.diff` sha256 `162ebf99…b3528`;
+  separate reviewer `Gap051F4RepairReviewR1` **APPROVE, zero findings**.
+  Not committed. Open for the gate: human re-verification of the repaired
+  Cancel buttons (label + NVDA announcement), locale coverage, load-more.
+  **GAP-051 stays OPEN.**
+- **F4 human re-verification PASS (later 2026-10-13):** author confirms the
+  repaired Cancel labels read "Cancel"/"Batal" and are synchronized ("sudah
+  normal ... sudah singkron"). Recorded in AUDIT-014. Remaining gate items:
+  locale coverage confirmation of retained PASS items; load-more (blocked on
+  authorized data). **GAP-051 stays OPEN** on those two residual items.
+- **Locale coverage CONFIRMED (en + id, later 2026-10-13):** author evidence —
+  en "you stopped at chapter 2" / id "Anda berhenti di bab 2". Dual-locale
+  exercise of the audited surfaces recorded.
+- **F2 load-more PASS; screen-reader gate closed on its evidenced scope
+  (latest 2026-10-13 — SUPERSEDED-QUALIFIED, see the evidence-reconciliation
+  entry at top):** with the author-authorized test data in place (flagship
+  10-chapter Indonesian novel + 20 labelled slim published novels, all
+  created through the RUNNING API's real routes incl. review+publish gates;
+  `/api/public/novels?limit=20` → 20 items, `hasMore=true`), the author
+  performed the load-more checks with NVDA active in both locales: PASS —
+  "Load more" (en) / "Muat lagi" (id), focus retention and announcements
+  normal. Automated axe half 0 violations (RETAINED). VoiceOver + Safari:
+  deferred to future draft by explicit recorded author decision. This entry's
+  "every manual item covered" claim was too broad: original announcement
+  items #13/#14 remain PENDING, and items #6–#10 were never in the gate
+  (#6 functional progress write; #7–#10 visual) — see the AUDIT-014
+  evidence table. Backlog items F1 (dashboard→/browse link) and F3
+  (shortcut tooltips) remain tracked as enhancements, not AA failures. F4
+  repair remains uncommitted with the rest of the worktree (author-gated).
+  023C's other release conditions (battery boxes 2–7, GAP-097 — CLOSED) are
+  separate gates, unaffected.
+
+## NF-WF-050C harness report assessed — 2026-10-13
+
+- **OBSERVED:** this Codex coordinator read `output.txt`, the steps 6/8/9
+  closure records below, Engram #238 revision 3, and `capture-1..4.png`.
+  Captures support the visible disabled badge, retained history/checklist and
+  English/Indonesian labels. Database preservation and the author's Dismiss
+  confirmation are RETAINED from the other harness's attributed receipt;
+  no duplicate queries or journey checks were performed.
+- Earlier pending requests for Dismiss/disable/locale observations are
+  superseded by the recorded closure. HEAD remains `50609c0`; stash is intact.
+- **AUTHOR DECISION:** following a separate scoped sign-off question, the
+  author explicitly accepted the integrated functional result and kept
+  GAP-051 open. GAP-039's author functional sign-off leg is CLOSED; its
+  remaining human accessibility dependency is still OPEN. The earlier
+  instruction to continue was not used as approval. No commit, push, merge,
+  deployment or full-platform release approval follows.
+- Next: coordinate the human
+  GAP-051 run using `apps/web/a11y/AUDIT-014.md` and the existing S3 additions
+  in this file. Retain the full browse/reader scope plus SCALE/S3 controls;
+  record auditor, date, browser/screen-reader versions, locale, results and
+  findings. Do not claim a pass from scheduling, screenshots or automation.
+
+## NF-WF-050C author journey steps 6, 8, 9 CLOSED — 2026-10-13 (author observation + read-only DB evidence)
+
+- **Step 6 human leg CONFIRMED (AUTHOR OBSERVATION + DB):** the author states
+  they personally clicked Dismiss on proposal `8ef91ca1` (~20:13 local,
+  2026-10-12) to test the control, and it worked normally. The unchanged
+  dismissal row (actor `5c0005c6` = `ch0c01d.xyz@gmail.com`, 13:13:39.571 UTC,
+  default reason "Ditolak dari panel tinjauan SCALE.") now carries human
+  confirmation; no re-generation was required.
+- **Step 8 disable-via-UI PASS (AUTHOR OBSERVATION + DB + browser captures):**
+  author disabled S3 through Policies → S3 card (reason "Test nonaktifkan").
+  Read-only DB, 2026-10-13: novel C `61840872-d6bd-4280-9c5c-e8abd8e39876`
+  `scaleS3.enabled=false`; exactly ONE new `novel.scale-s3-settings-changed`
+  audit row (enabled=false, actor `5c0005c6`, 21:37:46.483 UTC = 04:37:46
+  local — the per-committed-PUT audit invariant holds). Browser evidence
+  (author captures, 04:38 local): `capture-1.png` — id locale, "Saran AI (S3)"
+  card with badge Mati (Off); `capture-2.png` — id SCALE review: AI suggestions
+  section INCLUDING proposal cards absent, "Riwayat (5)" and the deterministic
+  checklist ("Receipt tinjauan basi") present. Hidden ≠ deleted: post-disable
+  preservation verified — all 4 proposals, all 8 evidence sets with the 4
+  provenance links (`94ed5bd6`→`2a0c3fce`, `4eb52eb2`→`2a0c3fce`,
+  `9136bd7e`→`8ef91ca1`, `e1c2fea0`→`226e9c0c`) and the dismissal record
+  unchanged.
+- **Step 9 live locale PASS (AUTHOR OBSERVATION + browser captures):** author
+  switched English ↔ Indonesian through the locale control; visible settings
+  and deterministic panel labels followed the selected locale. id: Kebijakan /
+  "Saran AI (S3)" / Nyala–Mati / Tinjauan SCALE / Riwayat / Tambah set bukti /
+  Daftar periksa (`capture-1.png`, `capture-2.png`); en: Narrative / SCALE
+  review / Standing / Deterministic review / SCALE evidence (050A) / History
+  (5) / Append evidence set / Checklist (`capture-3.png`, `capture-4.png`;
+  en-side S3 settings card per author statement). AI-section labels were NOT
+  required to render while S3 is disabled (section hidden). Static-key parity
+  leg remains PASS RETAINED.
+- **Environment note:** prior-session dev processes were dead (ports
+  3000/3001/20127 all closed); API :3000 and web :3001 were restarted against
+  `novelforge_acceptance_050b` via inline env overrides (`DATABASE_URL` →
+  nf-pg-5433, `REDIS_URL` → :6399); targeting verified by `/ready`
+  (database up, redis up) plus a socket from the API PID to :5433. No code or
+  config file changed. 9Router gateway :20127 remains DOWN — not needed for
+  steps 8–9 (no extraction). `capture-1..4.png` are untracked author evidence
+  at repo root; the earlier `output.txt` no longer holds the prior DB
+  reconciliation record (it contains this session's spill) — direct read-only
+  queries are the citation of record.
+- **Status after this entry:** journey steps 1–9 all PASS (3 live-extraction
+  and 7 stale-409 legs PASS RETAINED from the 2026-10-12 live session). NOT
+  done: author integrated acceptance sign-off — GAP-039's acceptance leg stays
+  OPEN; functional PASS on the journey does NOT imply sign-off. GAP-051 human
+  screen-reader pass (NVDA+Firefox / VoiceOver+Safari per the existing
+  runbook) remains PENDING HUMAN. Nothing pushed; worktree = reviewed r5
+  repair + doc edits + untracked evidence files; stash intact.
+
+## NF-WF-050C acceptance resume — 2026-10-13 (bound Codex session)
+
+- **OBSERVED:** recovered Engram #239 and #240; both concern runtime binding
+  only, not the previous implementation conversation. Live session read-back
+  confirms this host's active binding; see the GAP-021 boundary update.
+- **OBSERVED:** HEAD remains `50609c0d2704380ac2b48fa5eb01164fe8e858ca`.
+  The current two-file source/test diff matches the frozen ACC-1 r5 artifact
+  byte-for-byte by SHA-256
+  `2f25087879e58ba5e6fc8aa31a5934f92cc1d4573b1490d6231aa7d97dcec6b6`.
+  Existing source edits, documentation edits, untracked files and
+  `nf050b-acceptance-wip` stash are preserved. Existing Docker containers are
+  running; none was restarted or changed.
+- **RETAINED:** r5 separate APPROVE, S3 25/25, adjacent 42/42, typecheck and
+  targeted lint receipts, fresh-page acceptance, and the reconciliation below.
+  These checks were not rerun. Historical reviewer identity/verdict comes from
+  the retained records; this session did not independently re-review the repair.
+- **PENDING HUMAN / next action:** confirm the previously unconfirmed Dismiss
+  click, perform or report step 8 UI disable observations, then step 9 live
+  locale switch. Do not repeat already recorded extraction, provenance,
+  alternative, stale-extract or fresh-page checks. After the disable report,
+  verify setting/audit and retained history read-only. Author integrated
+  sign-off and the full GAP-051 screen-reader gate remain separate and open.
+- No source or acceptance-data mutation, generation, commit, push, merge or
+  deployment performed. The prior unbound-session notes remain historical;
+  they do not describe this session's confirmed binding.
+
+## NF-WF-050C author acceptance reconciliation — 2026-10-13 (steps 5–7 reconciled; steps 8–9 pending author)
+
+- **Baseline verified (OBSERVED):** main HEAD `50609c0` (nothing pushed;
+  `origin/main` = `b7969de`). Working tree source+test exactly match the
+  reviewed ACC1 r5 repair — hash of
+  `git diff 50609c0 -- apps/web/app/components/workspace/ScaleReviewPanel.vue
+  apps/web/app/components/workspace/ScaleReviewPanel.s3.test.ts` equals
+  frozen artifact `.git/nf-050c-acc1-repair-r5-20261012.diff` sha256
+  `2f25087879e58ba5e6fc8aa31a5934f92cc1d4573b1490d6231aa7d97dcec6b6` — plus
+  uncommitted docs handoff edits and untracked `output.txt`, `capture.png`,
+  `tasks/NF-050C-ACC-1-repair-amendment.md`; stash `nf050b-acceptance-wip`
+  intact. API :3000 `/health` 200, web :3001 200 (read-only probes). No code,
+  fixture, commit, push or generation performed this session.
+- **Steps 5–7 reconciled (DB evidence verified read-only on
+  `novelforge_acceptance_050b`, UTC; details in ISSUES-AND-GAPS NF-050C-ACC-1
+  2026-10-13 paragraph):** extract → `8ef91ca1` 13:03:24 → dismiss `8ef91ca1`
+  13:13:39 → Set #4 `9136bd7e` provenance→`8ef91ca1` 13:23:38 → extract
+  `226e9c0c` 13:28:42 → Set #5 `e1c2fea0` provenance→`226e9c0c` 13:29:52
+  (edited claim). Corrected chronology confirmed: dismiss FIRST, accept after;
+  Set #5 links to `226e9c0c`, not the first proposal. Server accepting a
+  provenance-linked accept on a dismissed proposal is observed server
+  behavior (dismissed = inert, not a blocker) — no product-policy claim.
+  Human confirmation of the Dismiss click: OPEN (author asked;
+  `actorUserId` is not human-interaction proof).
+- **Criterion status (journey):** 1–2 toggle/enable PASS (RETAINED; setting
+  `enabled=true` 02:44:47 + audit) · 3 live extraction PASS (RETAINED DB:
+  13:03/13:28 proposals, `claude-fable-5-1`) · 4 accept+provenance PASS
+  (`9136bd7e`) · 5 edited alternative+provenance PASS (`e1c2fea0`) · 6 dismiss
+  PASS server-side, human click OPEN · 7 stale-extract 409 zero rows PASS
+  (RETAINED, 2026-10-12 live) · 8 disable-via-UI OPEN · 9 locale static PASS
+  RETAINED (`s3.*` translated in `en.ts`+`id.ts`), live switch OPEN ·
+  GAP-051 screen-reader gate PENDING HUMAN · author integrated sign-off /
+  GAP-039 OPEN.
+- **Step-8 instruction CORRECTED (supersedes the prior handoff line "old
+  proposal cards remain [visible]"):** when S3 is disabled, the AI suggestions
+  section — INCLUDING its proposal cards — disappears from the SCALE panel;
+  deterministic SCALE guidance remains; proposal/dismissal/evidence/
+  provenance history remains persisted. Hidden cards after disable are
+  expected, NOT data loss. After the author's UI disable, assistant verifies
+  read-only: setting `enabled=false` + `novel.scale-s3-settings-changed` audit
+  row; exact IDs intact — proposals `406e33f5`/`2a0c3fce`/`8ef91ca1`
+  (dismissal 13:13:39)/`226e9c0c`; sets `94ed5bd6`/`4eb52eb2`/`9136bd7e`/
+  `e1c2fea0` with `source_s3_proposal_id` links `2a0c3fce`×2/`8ef91ca1`/
+  `226e9c0c`; AI section absent, deterministic guidance present (author
+  observation).
+- **Next action:** author (a) answers whether they personally clicked Dismiss
+  on `8ef91ca1` (~20:13 local) and (b) performs step 8 in the UI — Policies →
+  S3 card → Disable → reason → Confirm — reporting badge, AI-section/cards
+  absence, checklist presence; then step 9 live en/id switch through the
+  existing locale control. Assistant verifies read-only afterwards. Engram
+  attributed writes unavailable this session (no runtime session binding;
+  GAP-021 context) — this entry is the fallback handoff.
+
+## NF-WF-050C amendment 1 committed 50609c0 — author acceptance handoff — 2026-10-12 (OBSERVED this session)
+
+- **Git (OBSERVED):** main HEAD `50609c0d2704380ac2b48fa5eb01164fe8e858ca`
+  (parent `23d4a1a`, 3 local commits after `b7969de`). `git fetch origin`
+  run this session: `origin/main` = `b7969de` — 3 outgoing commits
+  (`7589388`, `23d4a1a`, `50609c0`), 0 incoming. Nothing pushed or merged
+  by this session. Worktree: modified `docs/14-progress/CURRENT.md` (this
+  entry, uncommitted) + untracked `output.txt`; stash
+  `nf050b-acceptance-wip` intact. This handoff entry is NOT committed.
+- **Scope (RETAINED):** amendment 1 findings A–D repair + live-found defect
+  fixes, frozen artifact
+  `.git/nf-050c-amendment1-final-r2-20261012.patch` (sha256 `98b25150…453ad45a`,
+  base `23d4a1a`), separate review `agent://FinalDiffReview-r2` **APPROVE**
+  zero findings. Technical review COMPLETE; author acceptance NOT claimed.
+- **Acceptance environment (OBSERVED this session):** API :3000
+  (PID 18600, `/health` → `{"status":"ok"}`), web :3001 (Nuxt dev, PID 24536,
+  HTTP 200), 9Router gateway :20127 (PID 26616), Docker `nf-pg-5433` and
+  `nf-redis-acceptance` up 18h. DB `novelforge_acceptance_050b` intact:
+  45/45 finished migrations, gateway row `9Router local (050c acceptance)`
+  → `http://localhost:20127/v1` enabled, 2 proposals retained (1 dismissed
+  + linked evidence, 1 pending). Novel C (`61840872…`) `scaleS3.enabled=false`
+  — an OBSERVED saved setting from the previous session's disable step, NOT
+  proof of the code default (default-off behavior is covered by tests,
+  RETAINED).
+- **Gateway readiness (OBSERVED this session, read-only):** profile
+  `STRUCTURED_EXTRACTOR` maps (enabled) to model ref
+  `f887da5b-ab4d-477e-9208-ad6a81d4f225` = `fable5` (enabled) on gateway
+  `9Router local (050c acceptance)` (enabled). `GET http://localhost:20127/v1/models`
+  → HTTP 200, 2500 models, `fable5` present. A listening port, enabled row
+  or catalog hit does NOT prove extraction success; no billable generation
+  was run this session, so live extraction capability for the author's run
+  remains **UNKNOWN until the author extracts** (last live receipt: 2026-10-12
+  session, `fable5`→`claude-fable-5-1`, RETAINED). Historical PIDs are NOT
+  ownership evidence.
+- **Author journey (start at `http://localhost:3001`, log in as an author
+  fixture — see unknowns):** Workspace → Novel → Narrative → Policies tab →
+  S3 card. (1) Setting shows Off with enable/disable controls for
+  OWNER/ADMIN/AUTHOR (read-only note for other roles). (2) Enable → reason
+  form (required, pre-filled default) → confirm → badge flips to On; PUT
+  audited (`novel.scale-s3-settings-changed`, one row per committed PUT).
+  (3) SCALE tab → chapter → Extract → checklist renders; AI proposal (if the
+  gateway model returns valid canonical-scale claims) appears with
+  `Model: <reportedModel>`. Error semantics are distinct: **422** = invalid
+  model output (fail-closed; Generation rows record real token usage, NO
+  proposal row); **502** = gateway/upstream failure; **409** = stale-context
+  or setting refusal (also S3_DISABLED / S3_NOT_CONFIGURED), zero rows.
+  Visible UI checks are verified in the browser; audit rows, Generation
+  usage, and provenance column values are DB/API verification (psql or API
+  response), not UI-visible. (4) Accept → "Add as evidence" opens the 050A
+  form PREFILLED from the proposal; the set is only committed after the
+  author explicitly submits that form AND the server accepts it (audited);
+  the committed set carries `source_s3_proposal_id` (provenance). (5)
+  Alternative: author a different
+  claim through the same form (S1) — linked to the same proposal. (6)
+  Reject/dismiss: dismiss control records actor/reason/identity; idempotent.
+  (7) Disable via the same Policies toggle — AI section disappears, checklist
+  and proposal history preserved. (8) Deterministic guidance renders beside
+  checklist; stale extract (old expectedSetId) → 409 refusal, zero rows.
+  (9) Locale switch en/id: all S3 strings translated; a key missing in the
+  active locale falls back to English ONLY because the key exists in `en`
+  (verified present in `apps/web/app/i18n/en.ts`, incl. the `s3.setting.*`
+  family). FAILURE = any error banner on 403/404 GET, missing badge update,
+  proposal rows on 422, missing provenance column value, sibling-key loss on
+  concurrent PUT, or a missing key in BOTH locales (renders the raw key).
+- **Remaining author checks:** integrated-acceptance sign-off (journey above)
+  + the FULL human screen-reader pass already defined by GAP-051's existing
+  audit/runbook scope (NVDA + Firefox / VoiceOver + Safari; see
+  `docs/implementation/023C-battery-report.md` and the GAP-051 entries in
+  ISSUES-AND-GAPS) — the gate is NOT narrowed to the toggle. The new S3
+  controls join that existing scope: keyboard reachability in the Policies
+  tab roving-tabindex shell, focus order, accessible names on
+  Enable/Disable/reason field/confirm, dialog behavior + status/error
+  announcements (saving/forbidden/saveFailed), plus the pre-existing SCALE
+  panel surfaces. Status of all screen-reader checks: **PENDING HUMAN
+  VERIFICATION** — axe/component/DOM evidence does not satisfy the gate.
+- **Login dependency (UNKNOWN):** no password is stored in the repo; this
+  session did NOT read, reset or create credentials. The author should use
+  an existing local browser session for `localhost:3001` if one is still
+  authenticated; otherwise the author signs in locally with their own
+  fixture credentials — do NOT paste passwords into chat, and do NOT reset
+  fixture credentials for this check. Passsing the checklist alone does not
+  authorize production deployment.
+- **Next action:** author performs the journey + the full GAP-051
+  screen-reader scope above; author sign-off closes GAP-039's acceptance
+  leg. Push and deployment are separately author-gated decisions
+  (repository authorization policy) and are NOT made dependent on, nor
+  automatic after, human acceptance.
+- **NF-050C-ACC-1 update (2026-10-12, later session):** defect CONFIRMED
+  (author-supplied HAR proves the proposals-list request is never issued on
+  page load) and REPAIRED at working tree on top of `50609c0` — the S3
+  proposals list now loads after BOTH the setting and context prerequisites
+  resolve (either order), with selection/operation guards added to
+  `loadS3Setting` (stale-response finding closed). Round 2 (same session):
+  two further source findings (retry-recovery gap; failed context with
+  non-null version prop could still fire the list) were reproduced as
+  failing tests (T8–T10), then repaired — `loadContext` reports success;
+  `retryLoad`/`reconcileSelection` load S3 proposals after a successful
+  context; the initial chain gates the list on setting-ready AND
+  context-success with a per-chain fired latch (one request per chain);
+  evidence loading stays independent of the S3 gating (r2-review finding 2).
+  Tests: S3 suite 21/21, adjacent panel suites 42/42, `vue-tsc --noEmit`
+  exit 0, eslint clean on the changed test path (`.vue` outside eslint
+  scope — disclosed, pre-existing). Review: r2 artifact got
+  CHANGES_REQUESTED from `agent://Acc1RepairReviewR2` (duplicate-list
+  window; evidence-gating regression) — both applied; final artifact r3
+  (`.git/nf-050c-acc1-repair-r3-20261012.diff`, sha256
+  `bf8153dc59e9ec84ec7e141a1223d3e8abbda786673cb4163ac5170de460b1a0`)
+  re-reviewed by the same separate reviewer: **APPROVE**, zero findings.
+  Two P3s deferred with consent (setting-in-flight-during-Retry
+  conservative clean-absence; T6a assertion brittleness). Not committed
+  (author-gated). Live journey state this session: steps 0–2 PASS (toggle +
+  audit rows verified in DB); steps 3–4 OPEN on model output quality
+  (2×422 fail-closed + 2×Atria timeout across
+  `fable5`/`atria`/`dahono/deepseek-v4.1-flash`; mapping currently back on
+  `fable5` per author instruction); steps 5–7 PENDING author observation on
+  the repaired build; step 9 pending. Author sign-off NOT supplied. Session
+  fixture changes (approved, additive): membership row
+  `ch0c01d.xyz@gmail.com` → AUTHOR in workspace C.
+- **NF-050C-ACC-1 round 3 (2026-10-12, later session):** the deferred
+  "setting-in-flight-during-Retry" P3 was reproduced (independent probe:
+  Retry leaves `s3Enabled` stuck false — zero list requests; the deferral
+  is superseded) and REPAIRED: retryLoad/reconcileSelection own their
+  setting prerequisite under the recovery identity; loadS3Setting's reset
+  writes moved below the identity guard; the generic-failure catch now
+  forces `s3Enabled=false` (no list on any failed replacement). Tests:
+  S3 suite 25/25 (T11–T14 new; T11 failed pre-fix), adjacent 42/42,
+  `vue-tsc --noEmit` exit 0, eslint test path exit 0. Review: r4 artifact
+  CHANGES_REQUESTED (`agent://Acc1RepairReviewR4`; generic-failure gap +
+  T12 mock fall-through bug), all applied; final r5 artifact
+  (`.git/nf-050c-acc1-repair-r5-20261012.diff`, sha256
+  `2f25087879e58ba5e6fc8aa31a5934f92cc1d4573b1490d6231aa7d97dcec6b6`)
+  re-reviewed: **APPROVE**, zero findings. Not committed (author-gated).
+  Fresh-page technical check by the author still pending (login is the
+  author's own browser session; no credentials held by the assistant).
+  Author acceptance steps 5–7, locale checks and GAP-051 remain PENDING
+  until actually observed.
+- **Fresh-page verification PASSED (2026-10-12, r5 build, OBSERVED):**
+  author hard-refresh + SCALE review → `GET …/scale-s3?chapterVersionId=74a5ab9d…`
+  auto-issued on load, HTTP 200, both stored proposals rendered as cards
+  (both `Stale —`, `Model: claude-fable-5-1`), zero extraction/model calls.
+  Stale cards correctly render read-only (no Add-as-evidence/Dismiss) — a
+  FRESH actionable proposal requires a successful live extraction (steps
+  3–4 remain OPEN on model output quality). Steps 5–7, locale checks and
+  GAP-051 stay PENDING until actually observed; card rendering does not
+  close GAP-039 or the screen-reader gate.
+
 ## NF-WF-050C findings A–D repaired; LIVE integrated S3 acceptance witnessed — 2026-10-12
 
 Findings A–D (recorded in ISSUES-AND-GAPS under the GAP-039 umbrella) were
@@ -381,6 +2015,7 @@ the fresh evidence above; items 2–6 remain in dependency order):
    suggestions, structured evidence validation, author decisions and NF049
    usage/model attribution. No automatic canon/standing approval. 050C is not
    yet a dispatch-ready contract; GAP-039 stays open through integrated acceptance.
+
 4. Perform the author-owned GAP-051 human screen-reader audit. Automated axe
    results cannot complete that gate.
 5. Complete live gateway/storage/service credentials and working additive
@@ -389,6 +2024,11 @@ the fresh evidence above; items 2–6 remain in dependency order):
    approved performance/resource/recovery targets; no local LLM quota enforcement.
 6. Obtain the author's explicit production deployment approval after release
    gates pass. Integration is not deployment authorization.
+
+Correction (2026-10-14): items 1–3 of this list are CLOSED (fresh merged-tree
+acceptance; 050C implemented/live-accepted 2026-10-12/13); item 4 (GAP-051) is
+author-deferred, not scheduled; items 5–6 are re-anchored to HEAD 50609c0 +
+working-tree hashes with no commit prerequisite.
 
 Separate maintenance remains:GAP-029 resolver duplication/synchronization,
 GAP-014 chronology attribution, GAP-013 serving-model evidence where required,

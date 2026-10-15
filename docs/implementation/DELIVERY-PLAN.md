@@ -10,6 +10,26 @@ author-owned human screen-reader pass remain, plus the live extraction
 receipt through a structured-capable model profile. Do not redispatch
 050A/050B/050C implementation.
 
+Correction (2026-10-14): the paragraph above retains its evidence record but
+its gate wording is superseded. The remaining live-gateway gate it names is
+CLOSED by NF-WF-050C amendment 1 (live extraction receipt witnessed 2026-10-12
+through a structured-capable model profile; steps 1–9 PASS; author functional
+sign-off 2026-10-13). No distinct live-gateway/release criterion is owed under
+NF-WF-050C; GAP-039's residual legs are the completed integrated-acceptance
+sign-off and the deferred human screen-reader pass (GAP-051). The batch-5
+priority items "verify acceptance worker loaded the integrated code" and
+"commit the integrated state" are removed: the worker restart receipt (PID
+41284, 2026-10-14 startup observed) exists, and a commit is not an authorized
+or necessary prerequisite — local evidence standard is HEAD `50609c0` plus
+exact working-tree artifact hashes. The corrected dependency-ready task list:
+(1) planning-ledger reconciliation (docs-only); (2) NF-WF-052 contract
+amendment (three author decisions + two behavioral conflicts, reviewed before
+READY — the contract is NOT dispatch-ready as-is); (3) NF-WF-052
+implementation after (2); (4) residual text-contrast completion; (5) working-DB
+additive migration preflight; (6) fresh release battery at HEAD `50609c0`.
+Author-decision items stay separated: ADR-0017, contrast triage ownership,
+deferred screen-reader scheduling, live credentials/deployment authorization.
+
 
 Current execution (2026-10-09): NF-WF-050A S1 API/storage foundation is
 IMPLEMENTED / REVIEWED and integrated through `843a263`. Next freeze and

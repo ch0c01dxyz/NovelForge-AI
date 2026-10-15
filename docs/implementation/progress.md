@@ -1,5 +1,14 @@
 # Implementation Progress
 
+## NF-WF-052 main source integration — 2026-10-15
+
+Explicit author authorization applied reviewed patch7d63a0c3 to main WIP.
+Five postimages match candidate byte-for-byte; unrelated tracked WIP, stash,
+index and HEAD preserved. No commit or deployment. Candidate 39-pass evidence
+and APPROVE retained. Local memory/ai-services typechecks pass; main API
+typecheck fails in the pre-existing GAP051 utility (TS2550), recorded in
+ISSUES-AND-GAPS. Receipt: ../14-progress/NF-WF-052-main-integration-2026-10-15.md.
+
 > Durable record of phase/task status. Update after each substantial
 > change (CLAUDE.md sections 10–13). Detailed architecture lives in
 > `docs/02-architecture/`, decisions in
@@ -5825,3 +5834,60 @@ Implementer: 024B subagent (separate actor from contract author, contract review
 - Invariant 0: 021A (18/18) + 021B + 024B (47/47) green; refactor behavior-preserving. Invariant 5: replay non-persisting (tick count unchanged asserted); no state-edit operation (service exposes none — grep-verified in review).
 
 **Honest limitations:** (1) backends MODEL_UNVERIFIED per GAP-013; (2) component tests mock at HTTP boundary per Q5; (3) 024A/024C parallel files have pre-existing tsc errors (not 024B scope).
+
+## NF-WF-052 — Global novel memory (L5) union read (2026-10-15)
+
+Coordinator: this session (controller). Implementation writer: NF052Implementer subagent (separate actor). Reviewer: NF052Reviewer subagent (separate actor, two rounds). Backends MODEL_UNVERIFIED per GAP-013.
+
+**What was built** (isolated candidate `.nf-batch-worktrees/nf052-candidate`, HEAD `50609c0` + preserved NF-WF-051 WIP overlay; zero commits; main tree untouched):
+- `packages/memory/src/constants.ts` — `MEMORY_ARC_SCOPES_MAX = 20` (hard bound, not configuration plumbing).
+- `packages/memory/src/types.ts` — additive `GlobalMemory*` types (ordering key, overflow aggregate, provenance, `ArcMemoryEntry`, `ExcludedArcScope`, `GlobalMemoryResult`); no existing type altered.
+- `packages/ai-services/src/memory.ts` — `readGlobalMemory` in `createMemoryServices`: shared `gate` (`novel:read`, 404-for-non-members), as-of resolution identical to `recallNovel` (unknown/foreign revision → 404; cross-branch → 400 INVALID_INPUT; same-branch pins `(branchId, number)`), no-head → 200 empty union; disjoint LIMIT-bounded candidate sources (S = every saga `ORDER BY created_at, id LIMIT cap`; P = orphan arc scopes via novel-scoped `NOT EXISTS`, grouped, aggregate-ordered, LIMITed); two-pointer merge under the `(createdAt, id)` domain-projected comparator; ONE global boundary (`lastKey` = key of the cap-th merged entry) feeding per-domain successor predicates; exact two-term `overCapCount` (P-side count over the GROUP BY with HAVING row comparison; S-side WHERE disjunction); ≤50-per-side overflow id retrieval merged app-side and truncated to 50 with null-safe `firstExcludedOrderingKey`; one bounded `UNRESOLVABLE_SOURCE` guard query (`LEFT JOIN revisions … IS NULL`, `scope = ANY(≤cap)`) before `readBlock`; MISSING exclusion via `readBlock` null; entries structural-only (`summary: null`, `summaryStatus: "SKIPPED"`) with amendment-A5 provenance.
+- `apps/api/src/memory-routes.ts` — `GET /api/workspaces/:workspaceId/novels/:novelId/memory/global` (zod params/query; 400 INVALID_INPUT; `{ global }` envelope; header comment updated).
+- `apps/api/src/memory.global.test.ts` — NEW 15-test focused suite on suite-owned `novelforge_test_memory_global`.
+
+**Verification (coordinator-observed, both rounds):** memory.global 15/15 + memory.test 16/16, exit 0; `@novelforge/ai-services` 2/2; `@novelforge/memory` exit 0 (no test files); `tsc --noEmit` clean for api/memory/ai-services; scoped eslint clean (5 allowed paths). Reviewer independently re-ran suites with identical results. Contract chain + author-decision + diff hashes re-verified by both coordinator and reviewer.
+
+**Review:** v1 diff `eeb650a3…d2b8` APPROVE_WITH_FINDINGS (all addendum §8 checks PASS; adversarial §7 cases PASS except case-4 seed gap; four test-seed deviations ACCEPT (a)–(d)); F1 (multi-revision scope now endpoint-discriminated in test 13) and F2 (as-of never-newer-than-R proven against a newer row in test 9) applied test-only; v2 diff `31bb473eba4caf9f86c9c01eae6e23c04dc4ac6a45c39fe3dba0486575eca222` **APPROVE**, no new findings. F3 (P3, reviewer-optional) recorded as residual in ISSUES-AND-GAPS.
+
+**Honest limitations:** (1) backends MODEL_UNVERIFIED per GAP-013; (2) candidate not merged — integration is a separate author decision; (3) stale repo `.env` port 5432 auth failure worked around via worktree-local `.env` → `nf-pg-5433` (recorded in ISSUES-AND-GAPS; nothing restarted); (4) routes-only per author decision — compiler adoption not wired; NF-WF-053/ADR-0017 untouched.
+
+## NF-WF-052 repair pass — §5 canonical form + integration packaging (2026-10-15 second pass)
+
+Coordinator: this session. Repair writer: NF052RepairWriter subagent (separate actor). Packaging/review reviewer: NF052PackReviewer subagent (separate actor; APPROVE for the exact patch hash). Backends MODEL_UNVERIFIED per GAP-013.
+
+**Reproduction before fix (red-first, suite DB `novelforge_test_memory_global` only):** uppercase variant of a saga-backed scope ranked as phantom orphan (double representation); braced/bare/non-uuid malformed scopes ranked as orphan entries. Receipts: 3 failed / 16 passed pre-fix (third failure = wrong brief expectation on T4 id rendering — v2's §2 P-domain scope-string rendering is correct; writer pinned the test, no production change).
+
+**Fix (smallest §5-permitted handling, documented in code):** canonical lowercase-hyphenated regex added to all three P queries (select/count/overflow prefix — DB LIMIT applies to the canonical population; no filter-after-LIMIT; agreement and disjointness preserved) + bounded detection query (LIMIT cap) surfacing non-canonical arc scopes as `excluded[] UNRESOLVABLE_SOURCE` (never ranked, never silent, ≤cap, raw id text verbatim). Canonicalize-before-ordering rejected: would require case-insensitive scope reads in shared `readBlock` (outside allowed paths). Reviewer: proportionate, no new contract decision.
+
+**F3 regression:** T3 (two orphans, same createdAt → uuid-text ASC ordering, determinism pin) + T4 (tie spanning the cap boundary → overCapCount 1, overCapArcIds [OB2], firstExcludedOrderingKey with §2 rendering).
+
+**Verification (coordinator + reviewer independently):** memory.global 19/19 + memory.test 16/16 = 35/35 exit 0; ai-services 2/2; memory package exit 0 (no test files); typechecks api/ai-services/memory all 0; eslint clean (both changed files). Broad suites reused, not rerun.
+
+**Packaging:** final artifact `.nf-batch-worktrees/nf052-main-wip.patch` sha256 `76e4d435ed504799aab8ce7c8cb19a74ceee40b1e1241e7b7a9e73133a35fe60` — source-only, five allowed paths, git new-file for the test, NF051 hunk absent (preimages = current main WIP). Apply-check vs live main exit 0; byte-exact fidelity proven (postimages == candidate hashes). Apply with `git -c core.autocrlf=false apply`. Reviewer **APPROVE** (exact hash); two LOW informational findings recorded (≤cap detection surfacing; raw-text sagaId semantics) — no fixes required.
+
+**Honest limitations:** (1) backends MODEL_UNVERIFIED per GAP-013; (2) candidate and patch not applied to main — integration is a separate author decision; (3) detection surfacing bounded at cap (contract-conformant; tail beyond cap unreported — documented); (4) policies frozen (oldest-created, cap 20, routes-only); D2/ContinueReading/screen-reader residuals untouched.
+
+## NF-WF-052 third pass — A1.4 bound conflict: reproduced, proposed, review-gated (2026-10-15)
+
+Coordinator: this session. Reproduction probe: NF052RepairWriter (existing writer actor, evidence-only, deleted after receipts). Contract review: NF052PackReviewer (separate actor, APPROVE_WITH_FINDINGS for the exact proposal hash). No production code changed in this pass (sources byte-identical before/after; 35/35 suite restored).
+
+**Reproduced (was source-derived concern):** combined state (20 selected canonical sagas without projections + 20 non-canonical scopes) → `excluded.length === 40` = 2×cap, violating amendment A1.4's "|excluded| ≤ (selected candidates)"; >20 non-canonical (25 seeded) → exactly 20 surfaced, tail absent from the response. Probe receipts: 2/2 PASS exit 0, then deletion + suite restore 35/35 exit 0.
+
+**Prior verdict corrected:** the repair-round "no new contract decision required" conclusion verified §5 proportionality (O(cap)) but not A1.4's explicit numeric bound; the separate contract reviewer formally retracted it — O(cap) does not satisfy an explicit bound, and §5 surfacing + A1.4's letter cannot both hold in the combined state without a contract change.
+
+**Proposal (PROPOSED, gate = author approval):** `.nf-batch-worktrees/nf052-a14-amendment-proposal.md` sha256 `4ed6749f44fa9c395266d6c7d13ee39dd5fab62f63ba0fd011311b7bfa10165a`. A1.4 letter restored verbatim; new bounded additive `anomalies` aggregate `{total: exact 1-row COUNT, surfaced: ≤cap raw-verbatim entries, complete: boolean}`; exact truncation/completeness semantics; four examples incl. the reproduced states; compatibility: zero in-tree consumers (routes-only), strictly additive shape, rollback = source revert. Rejected alternative (2×cap excluded bound) recorded: keeps tail silent+uncounted and blurs ranked-candidate exclusions with keyspace anomalies. Separate contract review APPROVE_WITH_FINDINGS: every frozen requirement checked preserved; 2 LOW documentation-exactness findings (cap-independent surfaced bound wording; contractual constant-reason omission) to apply verbatim when filing.
+
+**Honest limitations:** (1) backends MODEL_UNVERIFIED per GAP-013; (2) the anomalies shape is NOT implemented — current shipped behavior (patch `76e4d435…5fe60`) still exhibits the 2×cap bound and the silent tail until the author approves the amendment; (3) broad suites reused, not rerun; (4) retained residuals untouched (D2, ContinueReading UNKNOWN, screen-reader deferral).
+
+## NF-WF-052 fourth pass — anomalies amendment implemented (author-approved); patch v4 APPROVE (2026-10-15)
+
+Coordinator: this session. Implementation: NF052RepairWriter (existing writer actor). Review: NF052PackReviewer (separate actor, APPROVE for the exact patch hash). Backends MODEL_UNVERIFIED per GAP-013.
+
+**Implemented (author-approved amendment `47abeabe…8359`):** additive `GlobalMemoryAnomalyEntry`/`GlobalMemoryAnomalies` types; `GlobalMemoryResult.anomalies`; exact anomaly total (GROUP BY before COUNT, same novel-scoped predicate as detection, 1-row aggregate); bounded surfaced select (shared cap constant, deterministic (MIN(created_at), scope) order, raw text, constant reason omitted contractually); `complete === (total === surfaced.length)`; detection-path `excluded.push` deleted (excluded[] = selected-canonical exclusions only — A1.4 bound restored in code); no-head short circuit zeroed + documented no-inspection (empty view ≠ DB-health proof, no metadata policy).
+
+**Red-phase:** 14 failed / 9 passed pre-fix — the combined fixture captured the A1.4 conflict in-suite (excluded reached 40 = 2×cap). **Verification (writer + coordinator + reviewer independently):** 39/39 (23 global + 16 memory) exit 0; ai-services 2/2; memory pkg exit 0; typechecks ×3; eslint clean (3 files). One test-only deviation (tail-fixture facts corrected per the amendment's ordering rule; computed-sort deep-equality) — reviewer verified correct. 1 INFO finding recorded (collation assumption in tail fixture; test-only).
+
+**Packaging:** `.nf-batch-worktrees/nf052-main-wip-anomalies.patch` sha256 `7d63a0c37451cc8210d0e578d8f6fe0a9e312f541b17ff629a428486229dfd88` — source-only, five allowed paths, proper git new-file, NF051 hunk absent, preimages = current main WIP. Apply-check exit 0; byte-exact fidelity proven (temp-apply postimages == candidate hashes). Reviewer **APPROVE** (exact hash); canonical paths byte-stable v3→v4.
+
+**Honest limitations:** (1) backends MODEL_UNVERIFIED per GAP-013; (2) not applied to main — integration is a separate author decision; (3) broad suites reused, not rerun; (4) retained residuals untouched (D2, ContinueReading UNKNOWN, screen-reader deferral).

@@ -17,6 +17,7 @@ import {
   MEMORY_REBUILD_QUEUE_NAME,
   MEMORY_REBUILD_MAX_ATTEMPTS,
   MEMORY_REBUILD_RETRY_BASE_MS,
+  MEMORY_RECONCILE_INTERVAL_MS,
   processRebuild,
   type MemoryRebuildJobData,
 } from "@novelforge/memory";
@@ -50,6 +51,12 @@ export interface MemoryWorkerDeps {
     close(): Promise<void>;
   };
   processRebuild: typeof processRebuild;
+  /**
+   * NF-WF-051: interval between memory reconciliation sweeps (mid-run
+   * Redis-loss recovery). Defaults to MEMORY_RECONCILE_INTERVAL_MS;
+   * tests inject a short value to prove the timer wiring.
+   */
+  reconcileIntervalMs: number;
   probeTimeoutMs: number;
   logger: WorkerLogger;
 }
@@ -66,6 +73,7 @@ export function defaultMemoryWorkerDeps(logger: WorkerLogger): MemoryWorkerDeps 
         concurrency: 4,
       }),
     processRebuild,
+    reconcileIntervalMs: MEMORY_RECONCILE_INTERVAL_MS,
     probeTimeoutMs: 10_000,
     logger,
   };
@@ -140,6 +148,25 @@ export async function startMemoryWorkerApp(
     });
   }
 
+  // NF-WF-051: interval sweeper — the startup pass only heals losses that
+  // happened before the process started; a long-lived worker that loses
+  // Redis mid-run gets the same pass on a timer. One failed pass is logged
+  // and never kills the timer — the next tick retries. Ticks skip when the
+  // queue factory failed at startup (queue undefined).
+  const reconcileTimer = setInterval(() => {
+    if (stopped) return;
+    if (!queue) return;
+    void reconcileMemoryRebuilds({ db, queue, logger: d.logger }).catch((err) => {
+      d.logger.error("memory reconciliation sweep failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }, d.reconcileIntervalMs);
+  reconcileTimer.unref?.();
+  d.logger.info("memory reconciliation sweeper started", {
+    reconcileIntervalMs: d.reconcileIntervalMs,
+  });
+
   const worker = d.createWorker(
     MEMORY_REBUILD_QUEUE_NAME,
     async (job) => {
@@ -196,6 +223,7 @@ export async function startMemoryWorkerApp(
     async stop() {
       if (stopped) return;
       stopped = true;
+      clearInterval(reconcileTimer);
       await worker.close();
       await queue?.close();
       connection.disconnect();

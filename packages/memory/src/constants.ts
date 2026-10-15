@@ -16,6 +16,13 @@ export const MEMORY_REBUILD_MAX_ATTEMPTS = 5;
 /** Base backoff between rebuild retries, exponential (F6). */
 export const MEMORY_REBUILD_RETRY_BASE_MS = 1000;
 
+/**
+ * NF-WF-051: interval between memory reconciliation sweeps in the worker
+ * (mid-run Redis-loss recovery, re-running the NF-WF-030 startup pass).
+ * Matches PUBLICATION_SWEEPER_INTERVAL_MS / WORKFLOW_SWEEPER_INTERVAL_MS.
+ */
+export const MEMORY_RECONCILE_INTERVAL_MS = 60_000;
+
 /** Default L2 window: preceding chapters' scopes in recentMemory (F7). */
 export const MEMORY_RECENT_CHAPTERS_DEFAULT = 10;
 

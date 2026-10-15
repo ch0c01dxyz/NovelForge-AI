@@ -531,7 +531,7 @@ onMounted(() => {
               class="rounded-md border border-nf-border-strong px-2.5 py-1 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
               @click="confirmingRebuild = false"
             >
-              {{ t("workspace.common.cancel") }}
+              {{ t("common.cancel") }}
             </button>
           </div>
         </div>

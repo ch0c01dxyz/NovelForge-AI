@@ -1,10 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { axe } from "vitest-axe";
+import { ref, type Ref } from "vue";
 import RecoveryPage from "./recovery.vue";
 import { useLocale } from "../../../../../composables/useLocale";
 import { id } from "../../../../../i18n/id";
 
+// useLocale uses Nuxt auto-imports (useCookie/useState/onNuxtReady) that
+// don't exist under plain vitest; stub them like useLocale.test.ts does
+// (useState keyed so setLocale reaches the mounted page).
+const stateMap = new Map<string, Ref<unknown>>();
+const cookieRef = ref<string | null>(null);
+vi.stubGlobal("useCookie", vi.fn(() => cookieRef));
+vi.stubGlobal("useState", vi.fn((key: string, init?: () => unknown) => {
+  if (!stateMap.has(key)) stateMap.set(key, ref(init ? init() : undefined));
+  return stateMap.get(key)!;
+}));
+vi.stubGlobal("onNuxtReady", vi.fn(() => {}));
 vi.stubGlobal("useRoute", () => ({ params: { workspaceId: "ws-1", novelId: "novel-1" } }));
 const api = vi.fn();
 vi.mock("../../../../../composables/useApi", () => ({
@@ -24,6 +36,9 @@ function mountPage() {
   return wrapper;
 }
 beforeEach(() => {
+  stateMap.clear();
+  cookieRef.value = null;
+  localStorage.clear();
   useLocale().setLocale("en");
   api.mockReset();
   api.mockImplementation(async (url: string, options?: { method: string }) => {

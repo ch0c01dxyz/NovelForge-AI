@@ -114,7 +114,7 @@ onMounted(async () => {
         {{ t("social.actionFailed") }}
       </p>
       <section aria-label="novels" class="mt-10">
-        <h2 class="nf-section-label">{{ t("reader.publishedNovels") }}</h2>
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t("reader.publishedNovels") }}</h2>
         <ul class="mt-4 space-y-2">
           <li v-for="n in novels" :key="n.id">
             <NuxtLink

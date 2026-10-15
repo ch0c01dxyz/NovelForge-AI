@@ -27,8 +27,8 @@ const { t } = useLocale();
   <div class="flex flex-wrap gap-2" role="group" :aria-label="t('discover.genreFacets')">
     <button
       type="button"
-      class="rounded-full border border-nf-border px-3.5 py-1.5 text-[13px] text-nf-text-dim transition-colors hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
-      :class="{ 'border-nf-accent-hi text-nf-text': props.active === null }"
+      class="rounded-full border px-3.5 py-1.5 text-[13px] transition-colors hover:bg-nf-bg-2 focus-visible:nf-focus"
+      :class="props.active === null ? 'border-nf-accent-hi text-nf-text' : 'border-nf-border-focus text-nf-text-dim'"
       :aria-current="props.active === null ? 'true' : undefined"
       @click="emit('select', null)"
     >
@@ -38,13 +38,13 @@ const { t } = useLocale();
       v-for="f in props.facets"
       :key="f.key"
       type="button"
-      class="min-h-[44px] rounded-full border border-nf-border px-3.5 py-1.5 text-[13px] tabular-nums text-nf-text-dim transition-colors hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
-      :class="{ 'border-nf-accent-hi text-nf-text': props.active === f.key }"
+      class="min-h-[44px] rounded-full border px-3.5 py-1.5 text-[13px] tabular-nums transition-colors hover:bg-nf-bg-2 focus-visible:nf-focus"
+      :class="props.active === f.key ? 'border-nf-accent-hi text-nf-text' : 'border-nf-border-focus text-nf-text-dim'"
       :aria-current="props.active === f.key ? 'true' : undefined"
       @click="emit('select', f.key)"
     >
       {{ t(`genre.${f.key}`) }}
-      <span class="text-nf-text-faint" aria-hidden="true">· {{ f.count }}</span>
+      <span class="text-nf-text-dim" aria-hidden="true">· {{ f.count }}</span>
       <span class="sr-only">{{ t("discover.facetCount", { n: f.count }) }}</span>
     </button>
   </div>

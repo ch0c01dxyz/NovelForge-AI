@@ -13,7 +13,7 @@
  * - 422 from validation → dedicated invalid message.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mount, flushPromises } from "@vue/test-utils";
+import { mount, flushPromises, type VueWrapper } from "@vue/test-utils";
 import { ApiError } from "../../composables/useApi";
 import ScaleReviewPanel from "./ScaleReviewPanel.vue";
 
@@ -439,6 +439,405 @@ describe("ScaleReviewPanel S3 (050C)", () => {
     openGate();
     await flushPromises();
     expect(wrapper.text()).not.toContain("STALE_ADVICE");
+  });
+
+  // --- NF-050C-ACC-1 repair: proposals load needs BOTH prerequisites ---
+
+  /** Mount with chapterVersionId=null (the novel page passes null). */
+  async function mountPanelNullVersion(): Promise<VueWrapper> {
+    const wrapper = mount(ScaleReviewPanel, {
+      props: {
+        workspaceId: "ws-1",
+        novelId: "novel-1",
+        chapterId: "ch-1",
+        chapterVersionId: null,
+        hasSavedVersion: true,
+      },
+    });
+    await flushPromises();
+    return wrapper;
+  }
+
+  it("T1: setting before context, versionId null → one list request with the server-resolved version; proposals render", async () => {
+    const calls: string[] = [];
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = await mountPanelNullVersion();
+    const listCalls = calls.filter((u) => u.includes("/scale-s3?"));
+    expect(listCalls).toHaveLength(1);
+    expect(listCalls[0]).toContain(`chapterVersionId=${V1}`);
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+    // Rendered WITHOUT any extraction call.
+    expect(calls.filter((u) => u.endsWith("/scale-s3/extract"))).toHaveLength(0);
+  });
+
+  it("T2: context before setting → still exactly one list request; proposals render", async () => {
+    const calls: string[] = [];
+    let releaseSetting: (() => void) | null = null;
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-s3-setting")) {
+        // Hold the setting until the context chain has fully settled.
+        await new Promise<void>((resolve) => {
+          releaseSetting = resolve;
+        });
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = mount(ScaleReviewPanel, {
+      props: {
+        workspaceId: "ws-1",
+        novelId: "novel-1",
+        chapterId: "ch-1",
+        chapterVersionId: null,
+        hasSavedVersion: true,
+      },
+    });
+    await flushPromises();
+    // Context resolved (evidence loaded) but the list must not have fired
+    // yet — setting is still pending.
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
+    releaseSetting!();
+    await flushPromises();
+    const listCalls = calls.filter((u) => u.includes("/scale-s3?"));
+    expect(listCalls).toHaveLength(1);
+    expect(listCalls[0]).toContain(`chapterVersionId=${V1}`);
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+  });
+
+  it("T4: selection change with a pending old setting/context → old responses never write new state, no list for the old selection", async () => {
+    const { promise: gate, resolve: openGate } = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-s3-setting")) {
+        // First setting request (old selection) hangs until released.
+        if (calls.filter((u) => u.includes("/scale-s3-setting")).length === 1) {
+          await gate;
+        }
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = mount(ScaleReviewPanel, {
+      props: {
+        workspaceId: "ws-1",
+        novelId: "novel-1",
+        chapterId: "ch-1",
+        chapterVersionId: null,
+        hasSavedVersion: true,
+      },
+    });
+    await flushPromises();
+    // Switch selection while the old setting request is pending.
+    await wrapper.setProps({ chapterId: "ch-2" });
+    await flushPromises();
+    openGate();
+    await flushPromises();
+    // The old (hung) response resolved AFTER the switch: exactly ONE list
+    // request total, and it belongs to the NEW selection chain (ch-2).
+    const listCalls = calls.filter((u) => u.includes("/scale-s3?"));
+    expect(listCalls).toHaveLength(1);
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+  });
+
+  it("T5: unmount before completion → no list request after unmount", async () => {
+    const { promise: gate, resolve: openGate } = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-review-context")) await gate;
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = mount(ScaleReviewPanel, {
+      props: {
+        workspaceId: "ws-1",
+        novelId: "novel-1",
+        chapterId: "ch-1",
+        chapterVersionId: null,
+        hasSavedVersion: true,
+      },
+    });
+    await flushPromises();
+    wrapper.unmount();
+    openGate();
+    await flushPromises();
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
+  });
+
+  it("T6a: disabled setting → no list request, no affordances", async () => {
+    const calls: string[] = [];
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      return baseRoutes({ s3Enabled: false })(url, opts);
+    };
+    const wrapper = await mountPanelNullVersion();
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
+    expect(wrapper.text()).not.toContain("AI suggestions");
+  });
+
+  it("T6b: context failure → no list request", async () => {
+    const calls: string[] = [];
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-review-context")) {
+        throw new ApiError("SERVER_ERROR", 500);
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    await mountPanelNullVersion();
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
+  });
+
+  it("T7: a failed extract (422) leaves already-loaded proposals rendered", async () => {
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      if (url.endsWith("/scale-s3/extract")) {
+        throw new ApiError("S3_INVALID_PROPOSAL", 422);
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = await mountPanelNullVersion();
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+    const requestBtn = wrapper.findAll("button").find((b) => b.text() === "Suggest claims with AI");
+    await requestBtn!.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("The AI response failed validation and was discarded.");
+    // Proposals survive the failed extraction.
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+  });
+
+  // --- NF-050C-ACC-1 round 2: retry + failed-context paths ---
+
+  it("T8: initial context failure, successful Retry → one list request with the recovered version; proposals render; no extract", async () => {
+    const calls: string[] = [];
+    let contextFailures = 0;
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-review-context")) {
+        contextFailures++;
+        if (contextFailures === 1) throw new ApiError("SERVER_ERROR", 500);
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = await mountPanelNullVersion();
+    // Initial load failed: no list request yet.
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
+    const retryBtn = wrapper.findAll("button").find((b) => b.text() === "Retry");
+    expect(retryBtn).toBeDefined();
+    await retryBtn!.trigger("click");
+    await flushPromises();
+    const listCalls = calls.filter((u) => u.includes("/scale-s3?"));
+    expect(listCalls).toHaveLength(1);
+    expect(listCalls[0]).toContain(`chapterVersionId=${V1}`);
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+    expect(calls.filter((u) => u.endsWith("/scale-s3/extract"))).toHaveLength(0);
+  });
+
+  it("T9: context failure with a NON-null version prop → no list request", async () => {
+    const calls: string[] = [];
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-review-context")) throw new ApiError("SERVER_ERROR", 500);
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    await mount(ScaleReviewPanel, {
+      props: {
+        workspaceId: "ws-1",
+        novelId: "novel-1",
+        chapterId: "ch-1",
+        chapterVersionId: V1,
+        hasSavedVersion: true,
+      },
+    });
+    await flushPromises();
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
+  });
+
+  it("T10: old selection's pending responses resolve after recovery → no state corruption, no duplicate list request", async () => {
+    const { promise: gate, resolve: openGate } = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-review-context")) {
+        // The FIRST context call (old selection, ch-1) hangs until released
+        // and then FAILS — the superseded chain must never touch the new
+        // selection's state either way. Everything after that succeeds.
+        if (calls.filter((u) => u.includes("/scale-review-context")).length === 1) {
+          await gate;
+          throw new ApiError("SERVER_ERROR", 500);
+        }
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = mount(ScaleReviewPanel, {
+      props: {
+        workspaceId: "ws-1",
+        novelId: "novel-1",
+        chapterId: "ch-1",
+        chapterVersionId: null,
+        hasSavedVersion: true,
+      },
+    });
+    await flushPromises();
+    // Switch selection: the new chain owns the state now. Its context
+    // succeeds; its list request fires for the new selection.
+    await wrapper.setProps({ chapterId: "ch-2" });
+    await flushPromises();
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(1);
+    // The old selection's hung context resolves afterwards.
+    openGate();
+    await flushPromises();
+    // Still exactly one list request; the recovered (new selection) state
+    // is intact and the stale old response added nothing.
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(1);
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+  });
+
+  // --- NF-050C-ACC-1 round 3: retry setting-prerequisite recovery ---
+
+  it("T11: setting pending → context fails → Retry succeeds → old setting released → one list request with the recovered version", async () => {
+    const { promise: gate, resolve: openGate } = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    let settingCalls = 0;
+    let contextFailures = 0;
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-s3-setting")) {
+        settingCalls++;
+        // The INITIAL setting request hangs until after Retry.
+        if (settingCalls === 1) await gate;
+      }
+      if (url.includes("/scale-review-context")) {
+        contextFailures++;
+        if (contextFailures === 1) throw new ApiError("SERVER_ERROR", 500);
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = await mountPanelNullVersion();
+    // Initial load failed with the setting still pending: no list request.
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
+    const retryBtn = wrapper.findAll("button").find((b) => b.text() === "Retry");
+    await retryBtn!.trigger("click");
+    await flushPromises();
+    // Post-fix: Retry fetches a REPLACEMENT setting under its own identity;
+    // the replacement resolves immediately, so the list legitimately fires
+    // now (the old setting response is still pending and cannot interfere).
+    const listCallsBeforeGate = calls.filter((u) => u.includes("/scale-s3?"));
+    expect(listCallsBeforeGate).toHaveLength(1);
+    expect(listCallsBeforeGate[0]).toContain(`chapterVersionId=${V1}`);
+    // Release the original setting response.
+    openGate();
+    await flushPromises();
+    // The stale original response is discarded: still exactly one list
+    // request with the recovered version; proposals render without any
+    // extraction.
+    const listCalls = calls.filter((u) => u.includes("/scale-s3?"));
+    expect(listCalls).toHaveLength(1);
+    expect(listCalls[0]).toContain(`chapterVersionId=${V1}`);
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+    expect(calls.filter((u) => u.endsWith("/scale-s3/extract"))).toHaveLength(0);
+  });
+
+  it("T12: replacement setting disabled/403/500 → recovery completes, no list request", async () => {
+    const cases = [
+      { label: "disabled", respond: () => ({ enabled: false }) },
+      { label: "403", respond: () => { throw new ApiError("FORBIDDEN", 403); } },
+      { label: "500", respond: () => { throw new ApiError("SERVER_ERROR", 500); } },
+    ] as const;
+    for (const c of cases) {
+      const calls: string[] = [];
+      let contextFailures = 0;
+      apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+        calls.push(url);
+        if (url.includes("/scale-s3-setting")) {
+          // Must RETURN: falling through would hit baseRoutes' own
+          // /scale-s3-setting branch and return {enabled:true} instead.
+          return c.respond();
+        }
+        if (url.includes("/scale-review-context")) {
+          contextFailures++;
+          if (contextFailures === 1) throw new ApiError("SERVER_ERROR", 500);
+        }
+        return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+      };
+      const wrapper = await mountPanelNullVersion();
+      const retryBtn = wrapper.findAll("button").find((b) => b.text() === "Retry");
+      await retryBtn!.trigger("click");
+      await flushPromises();
+      // Recovery completes contextually: the context recovered (no load
+      // error banner; Retry button gone).
+      expect(wrapper.text()).not.toContain("Network error.");
+      expect(wrapper.findAll("button").map((b) => b.text())).not.toContain("Retry");
+      // ...but the failed/disabled replacement setting never fires the list.
+      expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
+      expect(wrapper.text()).not.toContain("The failed harvest collapses the kingdom.");
+      if (wrapper.exists()) await wrapper.unmount();
+    }
+  });
+
+  it("T13: old setting (disabled) released after Retry cannot beat the replacement (enabled) — one list request", async () => {
+    const { promise: gate, resolve: openGate } = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    let settingCalls = 0;
+    let contextFailures = 0;
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-s3-setting")) {
+        settingCalls++;
+        if (settingCalls === 1) {
+          // OLD setting response: enabled=false, arriving late.
+          await gate;
+          return { enabled: false };
+        }
+        // Replacement setting: enabled=true.
+        return { enabled: true };
+      }
+      if (url.includes("/scale-review-context")) {
+        contextFailures++;
+        if (contextFailures === 1) throw new ApiError("SERVER_ERROR", 500);
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = await mountPanelNullVersion();
+    const retryBtn = wrapper.findAll("button").find((b) => b.text() === "Retry");
+    await retryBtn!.trigger("click");
+    await flushPromises();
+    openGate();
+    await flushPromises();
+    const listCalls = calls.filter((u) => u.includes("/scale-s3?"));
+    expect(listCalls).toHaveLength(1);
+    expect(listCalls[0]).toContain(`chapterVersionId=${V1}`);
+    expect(wrapper.text()).toContain("The failed harvest collapses the kingdom.");
+  });
+
+  it("T14: unmount during recovery → no list request afterwards", async () => {
+    const { promise: gate, resolve: openGate } = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    let settingCalls = 0;
+    let contextFailures = 0;
+    apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      calls.push(url);
+      if (url.includes("/scale-s3-setting")) {
+        settingCalls++;
+        // The REPLACEMENT setting (fired by Retry) hangs; unmount before
+        // it resolves.
+        if (settingCalls === 2) await gate;
+      }
+      if (url.includes("/scale-review-context")) {
+        contextFailures++;
+        if (contextFailures === 1) throw new ApiError("SERVER_ERROR", 500);
+      }
+      return baseRoutes({ s3Enabled: true, proposals: [makeProposal()] })(url, opts);
+    };
+    const wrapper = await mountPanelNullVersion();
+    const retryBtn = wrapper.findAll("button").find((b) => b.text() === "Retry");
+    await retryBtn!.trigger("click");
+    await flushPromises();
+    wrapper.unmount();
+    openGate();
+    await flushPromises();
+    expect(calls.filter((u) => u.includes("/scale-s3?"))).toHaveLength(0);
   });
 });
 

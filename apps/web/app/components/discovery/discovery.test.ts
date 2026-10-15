@@ -110,6 +110,34 @@ describe("GenreChips", () => {
     expect(w.text()).toContain("discover.facetCount|n=3");
   });
 
+  // D5/D2: active and inactive boundaries cannot compete through CSS order,
+  // and hover must not restore the previous low-contrast border.
+  it.each([null, "fantasy"])("chip boundaries remain distinct with active %s", (selected) => {
+    const w = mount(GenreChips, {
+      props: { facets, active: selected },
+      global: { stubs },
+    });
+    const buttons = w.findAll("button");
+    const active = buttons.find((b) => b.attributes("aria-current") === "true")!;
+    const inactive = buttons.filter((b) => b.attributes("aria-current") === undefined);
+
+    expect(active.classes()).toContain("border-nf-accent-hi");
+    expect(active.classes()).toContain("text-nf-text");
+    expect(active.classes()).not.toContain("border-nf-border");
+    expect(active.classes()).not.toContain("border-nf-border-focus");
+    expect(active.classes()).not.toContain("text-nf-text-dim");
+    expect(active.classes()).not.toContain("hover:border-nf-border-strong");
+
+    for (const chip of inactive) {
+      expect(chip.classes()).toContain("border-nf-border-focus");
+      expect(chip.classes()).not.toContain("border-nf-border");
+      expect(chip.classes()).toContain("text-nf-text-dim");
+      expect(chip.classes()).not.toContain("hover:border-nf-border-strong");
+      expect(chip.classes()).not.toContain("border-nf-accent-hi");
+      expect(chip.classes()).not.toContain("text-nf-text");
+    }
+  });
+
   it("emits select on click", async () => {
     const w = mount(GenreChips, {
       props: { facets, active: null },

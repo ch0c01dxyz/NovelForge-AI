@@ -197,13 +197,13 @@ function statusErrorKey(e: unknown): string {
   return t("workspace.narrative.scaleReview.errors.network");
 }
 
-async function loadContext(selSeq: number, opSeq: number): Promise<void> {
+async function loadContext(selSeq: number, opSeq: number): Promise<boolean> {
   if (!hasSavedVersion.value) {
     loadState.value = "idle";
     context.value = null;
     receipt.value = null;
     effectiveVersionId.value = null;
-    return;
+    return false;
   }
   loadState.value = "loading";
   loadError.value = null;
@@ -221,7 +221,7 @@ async function loadContext(selSeq: number, opSeq: number): Promise<void> {
     // unmounted → drop. An older operation's response must never overwrite
     // data fetched by a newer operation (same selection). This data
     // acceptance is independent from operation-owned busy cleanup.
-    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return false;
     context.value = res.context;
     receipt.value = res.receipt;
     // Server-derived deterministic checklist — consumed verbatim below.
@@ -238,11 +238,13 @@ async function loadContext(selSeq: number, opSeq: number): Promise<void> {
     reviewStale.value = res.applicability?.status !== "FRESH";
     loadState.value = "loaded";
     await loadProposals(selSeq, opSeq);
+    return true;
   } catch (e) {
-    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return false;
     loadState.value = "error";
     loadError.value = statusErrorKey(e);
     loadErrorStatus.value = e instanceof ApiError ? e.status : null;
+    return false;
   }
 }
 
@@ -253,10 +255,28 @@ async function loadContext(selSeq: number, opSeq: number): Promise<void> {
 async function retryLoad(): Promise<void> {
   const selSeq = selectionSeq;
   const opSeq = ++operationSeq;
-  await loadContext(selSeq, opSeq);
+  // NF-050C-ACC-1 round 3: the recovery owns its OWN setting
+  // prerequisite. Retry bumps operationSeq, so an initial setting
+  // response that is still in flight will be discarded as stale and
+  // s3Enabled would stay false forever — the S3 section could never
+  // recover (reproduced; the earlier "clean absence" deferral is
+  // superseded). Refetch the setting under the recovery's identity.
+  const settingReady = loadS3Setting(selSeq, opSeq);
+  const ok = await loadContext(selSeq, opSeq);
   // Abort the chain when superseded: a newer operation owns the refresh now.
   if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+  // Evidence loading stays independent of the context outcome (review R2
+  // finding 2): it reloads whenever the context settled for this selection.
   await loadEvidence(selSeq, opSeq);
+  await settingReady;
+  if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+  // NF-050C-ACC-1 round 2 (finding A): a context recovered through Retry
+  // must also load the S3 proposals — both prerequisites must hold:
+  // successful context + enabled setting (the fresh replacement, not a
+  // stale response).
+  if (ok && s3Enabled.value) {
+    await loadS3Proposals(selSeq, opSeq);
+  }
 }
 
 /**
@@ -273,9 +293,22 @@ async function reconcileSelection(): Promise<void> {
   if (isUnmounted) return;
   const selSeq = selectionSeq;
   const opSeq = ++operationSeq;
-  await loadContext(selSeq, opSeq);
+  // Round 3, same rationale as retryLoad: the recovery owns its own
+  // setting prerequisite under its fresh identity.
+  const settingReady = loadS3Setting(selSeq, opSeq);
+  const ok = await loadContext(selSeq, opSeq);
   if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+  // Evidence loading stays independent of the context outcome (review R2
+  // finding 2).
   await loadEvidence(selSeq, opSeq);
+  await settingReady;
+  if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+  // NF-050C-ACC-1 round 2 (finding A): reconcile reloads context after a
+  // mutation; the recovered context must also refresh the S3 proposals
+  // under the same identity, only when both prerequisites hold.
+  if (ok && s3Enabled.value) {
+    await loadS3Proposals(selSeq, opSeq);
+  }
 }
 
 async function loadProposals(selSeq: number, opSeq: number): Promise<void> {
@@ -834,20 +867,27 @@ function s3Reset(): void {
   s3AdviceBusy.value = false;
 }
 
-async function loadS3Setting(): Promise<void> {
-  s3Enabled.value = false;
-  s3Advice.value = null;
-  s3Error.value = null;
+async function loadS3Setting(selSeq: number, opSeq: number): Promise<void> {
   try {
     // Novel-scoped setting (not chapter-scoped): the enablement is
     // configured per novel (050C contract).
     const res = await api<{ enabled: boolean }>(
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/scale-s3-setting`,
     );
-    if (isUnmounted) return;
+    // Stale-response guard (NF-050C-ACC-1 related finding): a slow setting
+    // response from a previous selection or a superseded operation must
+    // not write into the current state — same identity check as the other
+    // loaders. The reset writes moved BELOW this guard (round 3): a
+    // recovery path re-invokes loadS3Setting under its own identity while
+    // the initial request may still be pending; resetting s3Enabled/
+    // s3Advice/s3Error here would clobber the replacement's accepted
+    // result when the stale initial response settles afterwards.
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     s3Enabled.value = res.enabled === true;
+    s3Advice.value = null;
+    s3Error.value = null;
   } catch (e) {
-    if (isUnmounted) return;
+    if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
     // 403/404 = clean absence per the 050C contract; anything else is a
     // section-level error affordance (never silently swallowed).
     if (e instanceof ApiError && (e.status === 403 || e.status === 404)) {
@@ -858,6 +898,12 @@ async function loadS3Setting(): Promise<void> {
       s3Enabled.value = false;
       return;
     }
+    // Generic failure (e.g. 500): the replacement never established an
+    // enabled state, so the section must fall back to absence — retaining
+    // a prior s3Enabled=true here would let a recovery chain fire the
+    // proposals list on a FAILED setting prerequisite (review R4 finding
+    // 1). The error is still recorded on the section affordance.
+    s3Enabled.value = false;
     s3Error.value = statusErrorKey(e);
   }
 }
@@ -1025,15 +1071,40 @@ watch(
     decisionTarget.value = null;
     // S3 setting is per-novel; fetch it on every selection change. Its
     // result gates the S3 section (zero affordances when absent/disabled).
-    void loadS3Setting().then(() => {
+    // NF-050C-ACC-1 fix: the proposals list needs BOTH prerequisites —
+    // the setting (enabled) AND a successfully accepted context. The
+    // original race (setting-first with a still-null version skipped the
+    // list forever) and the round-2 failure mode (a failed context with a
+    // non-null version prop still firing the list) share one rule: the
+    // list fires exactly once, only when BOTH loads succeeded — either
+    // response order, no dependence on extraction success. The fired
+    // latch guarantees one request per chain even when the setting
+    // response lands while evidence is still in flight (review R2 finding
+    // 1). Evidence loading stays independent of the setting/context
+    // outcomes (review R2 finding 2: never gated on them).
+    let settingReady = false;
+    let contextReady = false;
+    let s3ListFired = false;
+    const maybeLoadS3Proposals = () => {
+      if (s3ListFired || !settingReady || !contextReady) return;
       if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
-      return loadS3Proposals(selSeq, opSeq);
+      if (!s3Enabled.value) return;
+      s3ListFired = true;
+      void loadS3Proposals(selSeq, opSeq);
+    };
+    void loadS3Setting(selSeq, opSeq).then(() => {
+      if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
+      settingReady = true;
+      maybeLoadS3Proposals();
     });
-    loadContext(selSeq, opSeq).then(() => {
-      // Abort the chained evidence load when superseded: a newer operation
-      // owns the refresh now.
+    void loadContext(selSeq, opSeq).then((ok) => {
       if (opSeq !== operationSeq || selSeq !== selectionSeq || isUnmounted) return;
-      return loadEvidence(selSeq, opSeq);
+      contextReady = ok === true;
+      maybeLoadS3Proposals();
+      // Evidence remains independent of the S3 gating: it loads whenever
+      // the context settled for this selection (success or failure),
+      // exactly as before this repair (review R2 finding 2).
+      void loadEvidence(selSeq, opSeq);
     });
   },
   { immediate: true },

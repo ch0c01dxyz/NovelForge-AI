@@ -50,7 +50,7 @@ function formatDate(iso: string): string {
         {{ t(`genre.${g}`) }}
       </span>
     </div>
-    <p class="mt-3 text-[13px] tabular-nums text-nf-text-faint">
+    <p class="mt-3 text-[13px] tabular-nums text-nf-text-dim">
       {{ t("reader.chapterCount", { n: props.novel.publishedChapterCount }) }}
       <span class="mx-[7px] text-nf-border-strong" aria-hidden="true">·</span>
       {{ formatDate(props.novel.lastPublishedAt) }}

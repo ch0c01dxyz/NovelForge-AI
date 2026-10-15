@@ -221,11 +221,11 @@ onUnmounted(() => {
       >
         {{ t("reader.backToNovel") }}
       </NuxtLink>
-      <div class="nf-overline mt-6">{{ t("reader.chapterOverline", { n: chapter.number }) }}</div>
+      <div class="nf-overline mt-6 !text-nf-text-dim">{{ t("reader.chapterOverline", { n: chapter.number }) }}</div>
       <h1 class="mt-3 font-nf-literary text-[30px] font-semibold leading-[1.2]">
         {{ chapter.title }}
       </h1>
-      <p class="mt-2 text-[13px] tabular-nums text-nf-text-faint">
+      <p class="mt-2 text-[13px] tabular-nums text-nf-text-dim">
         {{ formatDate(chapter.publishedAt) }}
         <span class="mx-[7px] text-nf-border-strong" aria-hidden="true">·</span>
         {{ t("reader.wordCount", { n: chapter.wordCount }) }}
@@ -240,7 +240,7 @@ onUnmounted(() => {
         <span
           v-if="syncState === 'synced'"
           :title="t('progressSync.syncedHint')"
-          class="text-nf-text-faint"
+          class="text-nf-text-dim"
         >
           {{ t("progressSync.syncedLabel") }}
         </span>
@@ -256,7 +256,7 @@ onUnmounted(() => {
           :like-count="likeCount"
           @failed="likeFailed = true"
         />
-        <p v-else class="text-[13px] tabular-nums text-nf-text-faint">
+        <p v-else class="text-[13px] tabular-nums text-nf-text-dim">
           {{ t("social.likeCount", { n: likeCount }) }}
         </p>
       </div>

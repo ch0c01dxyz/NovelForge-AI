@@ -123,7 +123,7 @@ onMounted(async () => {
     </div>
     <div v-else-if="error" role="alert" class="text-sm text-nf-text-dim">{{ error }}</div>
     <article v-else-if="novel">
-      <div class="nf-overline">{{ t("reader.novelOverline") }}</div>
+      <div class="nf-overline !text-nf-text-dim">{{ t("reader.novelOverline") }}</div>
       <h1 class="mt-3 font-nf-literary text-[30px] font-semibold leading-[1.2]">
         {{ novel.title }}
       </h1>
@@ -153,7 +153,7 @@ onMounted(async () => {
             @failed="engagementFailed = true"
           />
         </template>
-        <p v-else class="text-[13px] tabular-nums text-nf-text-faint">
+        <p v-else class="text-[13px] tabular-nums text-nf-text-dim">
           {{ t("social.followerCount", { n: followerCount }) }}
         </p>
       </div>
@@ -165,7 +165,7 @@ onMounted(async () => {
         {{ t("social.actionFailed") }}
       </p>
       <section aria-label="chapters" class="mt-10">
-        <h2 class="nf-section-label">{{ t("reader.chapters") }}</h2>
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t("reader.chapters") }}</h2>
         <p v-if="stoppedAt !== null" class="mt-3 text-[13px] text-nf-text-dim">
           {{ t("progress.stoppedAtNovel", { n: stoppedAt }) }}
         </p>
@@ -179,12 +179,12 @@ onMounted(async () => {
               class="flex items-baseline justify-between gap-4 rounded-lg border border-nf-border bg-nf-bg-1 px-4 py-3 shadow-nf-sm hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
             >
               <span class="min-w-0">
-                <span class="mr-3 text-sm tabular-nums text-nf-text-faint">{{ ch.number }}</span>
+                <span class="mr-3 text-sm tabular-nums text-nf-text-dim">{{ ch.number }}</span>
                 <span class="font-medium">{{ ch.title }}</span>
               </span>
               <time
                 :datetime="ch.publishedAt"
-                class="shrink-0 text-[13px] tabular-nums text-nf-text-faint"
+                class="shrink-0 text-[13px] tabular-nums text-nf-text-dim"
               >
                 {{ formatDate(ch.publishedAt) }}
               </time>

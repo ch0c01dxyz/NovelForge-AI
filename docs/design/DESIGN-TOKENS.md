@@ -17,6 +17,15 @@ Dark background, orange accent. Stone-family surface ladder for depth; orange re
 | `--border` | `#33302d` | hairline dividers |
 | `--border-strong` | `#48443f` | control borders |
 
+Author-approved amendment (2026-10-14, GAP-051 D2): use the additive runtime
+token `--color-nf-border-focus: #6f6a63` for discovery SearchBox, inactive genre
+chips, sort select and load-more boundaries, including hover. Despite its
+historical proposal name, this is the persistent control boundary, not the
+keyboard focus indicator; the accent-hi focus outline stays unchanged.
+It replaces the insufficient border/strong colors only at these call sites.
+Decorative borders and unrelated controls retain existing tokens. Verify
+contrast on bg-0, bg-1 and bg-2; do not extend to other surfaces by assumption.
+
 ## Ink
 
 | Token | Value | Use |

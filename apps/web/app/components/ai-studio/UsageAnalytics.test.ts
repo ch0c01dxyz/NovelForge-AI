@@ -1,9 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { axe } from "vitest-axe";
+import { ref, type Ref } from "vue";
 import UsageAnalytics from "./UsageAnalytics.vue";
 import { useLocale } from "../../composables/useLocale";
 import { ApiError } from "../../composables/useApi";
+
+// useLocale uses Nuxt auto-imports (useCookie/useState/onNuxtReady) that
+// don't exist under plain vitest; stub them like useLocale.test.ts does
+// (useState keyed so setLocale reaches the mounted component).
+const stateMap = new Map<string, Ref<unknown>>();
+const cookieRef = ref<string | null>(null);
+vi.stubGlobal("useCookie", vi.fn(() => cookieRef));
+vi.stubGlobal("useState", vi.fn((key: string, init?: () => unknown) => {
+  if (!stateMap.has(key)) stateMap.set(key, ref(init ? init() : undefined));
+  return stateMap.get(key)!;
+}));
+vi.stubGlobal("onNuxtReady", vi.fn(() => {}));
 
 const mocks = vi.hoisted(() => ({ usage: vi.fn(), novels: vi.fn() }));
 vi.mock("../../composables/useReceipts", () => ({ useReceipts: () => ({ usageAnalytics: mocks.usage, listNovels: mocks.novels }) }));
@@ -12,7 +25,14 @@ const response = {
   rows: [{ component: "CHAPTER", task: "chapter.generate", artifactId: null, model: "served-model", requests: 2, inputTokens: "12", outputTokens: "7", totalTokens: "19", unknownUsageRecords: 1, legacyRecords: 1 }],
   hasMore: false,
 };
-beforeEach(() => { mocks.usage.mockReset().mockResolvedValue(response); mocks.novels.mockReset().mockResolvedValue([{ id: "novel", title: "Novel", slug: "novel" }]); useLocale().setLocale("en"); });
+beforeEach(() => {
+  stateMap.clear();
+  cookieRef.value = null;
+  localStorage.clear();
+  mocks.usage.mockReset().mockResolvedValue(response);
+  mocks.novels.mockReset().mockResolvedValue([{ id: "novel", title: "Novel", slug: "novel" }]);
+  useLocale().setLocale("en");
+});
 
 describe("generation usage analytics", () => {
   it.each(["en", "id"] as const)("renders observed tokens, model, coverage and accessible filters in %s", async locale => {

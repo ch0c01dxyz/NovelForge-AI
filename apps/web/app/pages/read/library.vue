@@ -98,7 +98,7 @@ onMounted(async () => {
       </h1>
 
       <section aria-label="bookmarks" class="mt-10">
-        <h2 class="nf-section-label">{{ t("social.libraryBookmarks") }}</h2>
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t("social.libraryBookmarks") }}</h2>
         <p
           v-if="bookmarks.length === 0"
           class="mt-3 text-sm text-nf-text-dim"
@@ -130,7 +130,7 @@ onMounted(async () => {
       </section>
 
       <section aria-label="novel follows" class="mt-10">
-        <h2 class="nf-section-label">{{ t("social.libraryNovelFollows") }}</h2>
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t("social.libraryNovelFollows") }}</h2>
         <p
           v-if="novelFollows.length === 0"
           class="mt-3 text-sm text-nf-text-dim"
@@ -162,7 +162,7 @@ onMounted(async () => {
       </section>
 
       <section aria-label="author follows" class="mt-10">
-        <h2 class="nf-section-label">{{ t("social.libraryAuthorFollows") }}</h2>
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t("social.libraryAuthorFollows") }}</h2>
         <p
           v-if="authorFollows.length === 0"
           class="mt-3 text-sm text-nf-text-dim"

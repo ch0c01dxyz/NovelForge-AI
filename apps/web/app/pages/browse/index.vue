@@ -152,7 +152,7 @@ onMounted(() => {
         >
           <p v-if="searchLoading" class="text-sm text-nf-text-dim">{{ t("discover.loading") }}</p>
           <template v-else-if="searchDone">
-            <p class="text-[13px] tabular-nums text-nf-text-faint">
+            <p class="text-[13px] tabular-nums text-nf-text-dim">
               {{ t("discover.resultsCount", { n: searchResults.length }) }}
             </p>
             <ul v-if="searchResults.length > 0" class="mt-3 space-y-2">
@@ -189,7 +189,7 @@ onMounted(() => {
       </section>
 
       <section class="mt-12" :aria-label="t('discover.browseSection')">
-        <h2 class="nf-section-label">{{ t("discover.browseSection") }}</h2>
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t("discover.browseSection") }}</h2>
         <div class="mt-3">
           <GenreChips :facets="facets" :active="activeGenre" @select="onGenreSelect" />
         </div>
@@ -198,7 +198,7 @@ onMounted(() => {
           <select
             id="discover-sort"
             :value="sort"
-            class="min-h-[44px] rounded-lg border border-nf-border bg-nf-bg-1 px-3 text-[14px] text-nf-text focus-visible:nf-focus"
+            class="min-h-[44px] rounded-lg border border-nf-border-focus bg-nf-bg-1 px-3 text-[14px] text-nf-text focus-visible:nf-focus"
             @change="onSortChange"
           >
             <option value="recent">{{ t("discover.sortRecent") }}</option>
@@ -221,7 +221,7 @@ onMounted(() => {
           <button
             type="button"
             :disabled="loadingMore"
-            class="min-h-[44px] rounded-lg border border-nf-border px-6 py-2.5 text-[14px] text-nf-text transition-colors hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50"
+            class="min-h-[44px] rounded-lg border border-nf-border-focus px-6 py-2.5 text-[14px] text-nf-text transition-colors hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50"
             @click="fetchNovels(false)"
           >
             {{ loadingMore ? t("discover.loading") : t("discover.loadMore") }}

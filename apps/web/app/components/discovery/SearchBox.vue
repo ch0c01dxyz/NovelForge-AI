@@ -37,7 +37,7 @@ onUnmounted(() => {
 
 <template>
   <div role="search">
-    <label :for="'discover-search'" class="nf-section-label">
+    <label :for="'discover-search'" class="nf-section-label !text-nf-text-dim">
       {{ t("discover.searchLabel") }}
     </label>
     <input
@@ -48,10 +48,10 @@ onUnmounted(() => {
       :placeholder="t('discover.searchPlaceholder')"
       :minlength="2"
       autocomplete="off"
-      class="mt-2 w-full rounded-lg border border-nf-border bg-nf-bg-1 px-4 py-3 text-[15px] text-nf-text placeholder:text-nf-text-faint focus-visible:nf-focus"
+      class="mt-2 w-full rounded-lg border border-nf-border-focus bg-nf-bg-1 px-4 py-3 text-[15px] text-nf-text placeholder:text-nf-text-dim focus-visible:nf-focus"
       @input="onInput"
       @keydown="onKeydown"
     />
-    <p class="mt-1.5 text-[12px] text-nf-text-faint">{{ t("discover.searchHint") }}</p>
+    <p class="mt-1.5 text-[12px] text-nf-text-dim">{{ t("discover.searchHint") }}</p>
   </div>
 </template>

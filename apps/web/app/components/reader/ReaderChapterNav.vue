@@ -38,7 +38,7 @@ function chapterUrl(novelSlug: string, number: number): string {
       :to="chapterUrl(novelSlug, prevChapter.number)"
       class="w-[45%] rounded-lg border border-nf-border bg-nf-bg-1 px-4 py-3 text-left shadow-nf-sm hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
     >
-      <span class="nf-section-label block">{{ t("reader.prevChapter") }}</span>
+      <span class="nf-section-label block !text-nf-text-dim">{{ t("reader.prevChapter") }}</span>
       <span class="mt-1 block truncate text-sm font-medium text-nf-text">
         <span class="mr-2 tabular-nums text-nf-text-faint">{{ prevChapter.number }}</span
         >{{ prevChapter.title }}
@@ -51,7 +51,7 @@ function chapterUrl(novelSlug: string, number: number): string {
       :to="chapterUrl(novelSlug, nextChapter.number)"
       class="w-[45%] rounded-lg border border-nf-border bg-nf-bg-1 px-4 py-3 text-right shadow-nf-sm hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
     >
-      <span class="nf-section-label block">{{ t("reader.nextChapter") }}</span>
+      <span class="nf-section-label block !text-nf-text-dim">{{ t("reader.nextChapter") }}</span>
       <span class="mt-1 block truncate text-sm font-medium text-nf-text">
         {{ nextChapter.title }}
         <span class="ml-2 tabular-nums text-nf-text-faint">{{ nextChapter.number }}</span>

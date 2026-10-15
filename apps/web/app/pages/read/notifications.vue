@@ -239,7 +239,7 @@ useHead({ meta: [{ name: "robots", content: "noindex" }] });
       </section>
 
       <section aria-label="preferences" class="mt-12 border-t border-nf-border pt-8">
-        <h2 class="nf-section-label">{{ t("notifications.preferencesTitle") }}</h2>
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t("notifications.preferencesTitle") }}</h2>
         <p class="mt-2 text-[13px] text-nf-text-dim">{{ t("notifications.preferencesHint") }}</p>
         <div v-if="prefsError" role="alert" class="mt-3 text-[13px] text-nf-text-dim">
           {{ prefsError }}
@@ -317,7 +317,7 @@ useHead({ meta: [{ name: "robots", content: "noindex" }] });
       </section>
 
       <section aria-label="privacy" class="mt-12 border-t border-nf-border pt-8">
-        <h2 class="nf-section-label">{{ t("notifications.privacyTitle") }}</h2>
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t("notifications.privacyTitle") }}</h2>
         <p class="mt-2 text-[13px] text-nf-text-dim">{{ t("notifications.privacyIntro") }}</p>
         <ul class="mt-3 list-disc space-y-1.5 pl-5 text-[13px] text-nf-text-dim">
           <li>{{ t("notifications.privacyBookmarks") }}</li>

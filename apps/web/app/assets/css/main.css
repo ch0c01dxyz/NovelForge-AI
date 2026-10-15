@@ -13,6 +13,8 @@
   --color-nf-bg-3: #2a2725;
   --color-nf-border: #33302d;
   --color-nf-border-strong: #48443f;
+  /* Author-approved discovery control boundaries (GAP-051 D2). */
+  --color-nf-border-focus: #6f6a63;
 
   /* Ink */
   --color-nf-text: #f0eeec;

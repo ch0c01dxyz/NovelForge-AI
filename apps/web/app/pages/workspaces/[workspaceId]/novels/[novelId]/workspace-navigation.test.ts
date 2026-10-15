@@ -1,9 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
-import { computed, ref, watch, onUnmounted } from "vue";
+import { computed, ref, watch, onUnmounted, type Ref } from "vue";
 import Workspace from "./index.vue";
 import { useApi } from "../../../../../composables/useApi";
 
+// useLocale (via the page setup) uses Nuxt auto-imports (useCookie/useState/
+// onNuxtReady) that don't exist under plain vitest; stub like useLocale.test.ts.
+const stateMap = new Map<string, Ref<unknown>>();
+const cookieRef = ref<string | null>(null);
+vi.stubGlobal("useCookie", vi.fn(() => cookieRef));
+vi.stubGlobal("useState", vi.fn((key: string, init?: () => unknown) => {
+  if (!stateMap.has(key)) stateMap.set(key, ref(init ? init() : undefined));
+  return stateMap.get(key)!;
+}));
+vi.stubGlobal("onNuxtReady", vi.fn(() => {}));
 vi.stubGlobal("ref", ref);
 vi.stubGlobal("computed", computed);
 vi.stubGlobal("watch", watch);
@@ -15,7 +25,12 @@ let guard: () => boolean;
 vi.stubGlobal("onBeforeRouteLeave", (callback: () => boolean) => { guard = callback; });
 
 describe("workspace navigation preserves unsaved text", () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    stateMap.clear();
+    cookieRef.value = null;
+    localStorage.clear();
+  });
   it("blocks dirty, in-flight and conflicted buffers and allows only saved state", () => {
     // Execute the real page setup/guard; child rendering and network loading
     // are outside this navigation check.

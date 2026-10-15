@@ -52,7 +52,7 @@ onMounted(async () => {
 
 <template>
   <section v-if="!loading && entries.length > 0" :aria-label="t('progress.continueReading')">
-    <h2 class="nf-section-label">{{ t("progress.continueReading") }}</h2>
+    <h2 class="nf-section-label !text-nf-text-dim">{{ t("progress.continueReading") }}</h2>
     <ul class="mt-3 space-y-2">
       <li v-for="e in entries" :key="e.slug">
         <NuxtLink
@@ -67,7 +67,7 @@ onMounted(async () => {
               {{ t("reader.byAuthor") }} {{ e.authorName }}
             </span>
           </span>
-          <span class="shrink-0 text-[13px] tabular-nums text-nf-text-faint">
+          <span class="shrink-0 text-[13px] tabular-nums text-nf-text-dim">
             {{ t("progress.stoppedAt", { n: e.chapterNumber }) }}
           </span>
         </NuxtLink>

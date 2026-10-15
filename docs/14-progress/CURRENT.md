@@ -1,5 +1,17 @@
 # Current Project State
 
+## CI full-suite fixture repair — 2026-10-15
+
+Hosted c43f234 passes lint/typecheck but run38714183668 exposes five failures
+among2557 passing tests. Fixed three test-only assumptions: HIGH inventory now
+accounts for dedicated SCALE route coverage; historical050A fixture excludes
+all later migration directories from private copies; routing source lookup
+supports root-workspace and package cwd. No production migration, route or
+workflow is changed. Local API revision/migration60/60 and routing3/3 in both
+invocations pass; scoped lint/API typecheck exit0. Separate exact test-diff
+APPROVE on SHA89e081a736f6194fcf4de4c8a994c15f0c4de645a24feb1e595708d7310561e9.
+Publishing the bounded follow-up; CI closure waits for the actual full run.
+
 ## CI lint repair — 2026-10-15
 
 GitHub run38712272150 on34d5d3c fails eight SCALE lint errors, also present

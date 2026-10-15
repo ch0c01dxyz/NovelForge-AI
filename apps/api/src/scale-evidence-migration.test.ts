@@ -35,8 +35,6 @@ const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build",
 const MIGRATIONS_DIR = path.join(DB_PACKAGE_ROOT, "prisma", "migrations");
 const SCHEMA_PRISMA = path.join(DB_PACKAGE_ROOT, "prisma", "schema.prisma");
 const MIGRATION_050A = "20261008_nf_wf_050a_scale_evidence";
-// Migrations after 050A (e.g., 050B) depend on 050A tables; exclude them from baseline too.
-const MIGRATIONS_AFTER_050A = ["20261008_nf_wf_050b_scale_decisions"];
 
 if (!process.env.DATABASE_URL) {
   try {
@@ -72,10 +70,12 @@ function makeTempPrismaHome(with050A: boolean): TempPrismaHome {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "050a-mig-"));
   const migrationsDir = path.join(root, "migrations");
   fs.cpSync(MIGRATIONS_DIR, migrationsDir, { recursive: true });
-  // Always exclude post-050A migrations (e.g., 050B) from this 050A-focused test;
-  // they depend on 050A tables and are covered by their own migration tests.
-  for (const m of MIGRATIONS_AFTER_050A) {
-    fs.rmSync(path.join(migrationsDir, m), { recursive: true, force: true });
+  // Pin both private homes to the historical cutoff; later migrations may
+  // depend on 050A tables and must not enter the pre-050A baseline.
+  for (const entry of fs.readdirSync(migrationsDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name > MIGRATION_050A) {
+      fs.rmSync(path.join(migrationsDir, entry.name), { recursive: true, force: true });
+    }
   }
   if (!with050A) {
     fs.rmSync(path.join(migrationsDir, MIGRATION_050A), { recursive: true, force: true });
@@ -382,6 +382,13 @@ describe("migration: populated baseline via Prisma ledger", () => {
       fs.existsSync(path.join(upgradeHome.migrationsDir, MIGRATION_050A)),
       "050A present in upgrade temp copy",
     ).toBe(true);
+    const migrationNames = (dir: string) => fs.readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    const baselineNames = migrationNames(baselineHome.migrationsDir);
+    expect(baselineNames.every((name) => name < MIGRATION_050A)).toBe(true);
+    expect(migrationNames(upgradeHome.migrationsDir)).toEqual(
+      [...baselineNames, MIGRATION_050A].sort(),
+    );
 
     const client = new pg.Client({ connectionString: TEST_URL });
     let bodyFailure: BodyFailure | undefined;

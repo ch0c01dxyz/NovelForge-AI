@@ -17,9 +17,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// vitest (jsdom) rewrites import.meta.url to the page origin, so anchor on
-// the package root instead: suites run with cwd = apps/web.
-const READ_DIR = join(process.cwd(), "app", "pages", "read");
+// Package and workspace runs use apps/web and repo-root cwd respectively.
+// jsdom rewrites import.meta.url, so resolve the explicit package location.
+const WEB_ROOT = existsSync(join(process.cwd(), "apps", "web", "package.json"))
+  ? join(process.cwd(), "apps", "web")
+  : process.cwd();
+const READ_DIR = join(WEB_ROOT, "app", "pages", "read");
 
 function relative(path: string): string {
   return `apps/web/app/pages/read/${path}`;

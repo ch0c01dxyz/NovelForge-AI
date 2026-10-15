@@ -1739,22 +1739,23 @@ describe("NF-WF-002D coverage inventory", () => {
     // Derived from C3's own classification, not hand-listed, so it cannot
     // drift from `impactFor`. The invariant is the IMPLICATION — "every HIGH
     // operation that has a mutation route carries the expectation" — not the
-    // equality "the routed set equals the HIGH set", which is false today:
-    // three HIGH operations have no route anywhere in apps/api/src. A future
-    // task that adds one of those routes must add its case here, which is why
-    // the inventory is pinned rather than left implicit.
+    // equality "the routed set equals the HIGH set": some operations have
+    // dedicated route suites or no route yet. New operations must be accounted
+    // for explicitly rather than silently escaping this pinned inventory.
     const high = OPERATIONS.filter((op) => impactFor(op) === "HIGH");
     const routed = HIGH_ROUTE_CASES.map((c) => c.operation);
     for (const op of routed) expect(high, `${op} must be HIGH`).toContain(op);
 
     // `restore.apply` carries the server-pinned form and `checkpoint.create`
-    // has its own client assertion, so both already comply.
+    // has its own client assertion. SCALE standing approval's mandatory head
+    // pin, CAS and PRE_MUTATION rollback are covered in scale-decisions.test.ts.
     expect(high.filter((op) => !routed.includes(op)).sort()).toEqual([
       "ai.bulkRewrite",
       "branch.merge",
       "checkpoint.create",
       "outline.bulkRewrite",
       "restore.apply",
+      "scale.standing.approve",
     ]);
   });
 });

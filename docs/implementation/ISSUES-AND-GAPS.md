@@ -28,6 +28,31 @@ This new documentation delta is outside the previously approved r4 artifact.
 
 ## Recording and resolution rules
 
+CI full-suite follow-up — 2026-10-15:
+Run38714183668 on c43f234 passes hosted lint/typecheck, then reports2557
+passed/5 failed across212 files (209 pass,3 fail). Actual causes: revision
+coverage inventory omits the registered HIGH scale.standing.approve operation
+already tested in the dedicated SCALE CAS/checkpoint suite; historical050A
+migration fixture excludes050B by hardcoded name but leaves dependent050C
+migrations, causing P3018/42P01 before scale_evidence_sets exists; web routing
+guard anchors at process.cwd(), which is repo root under workspace Vitest
+rather than apps/web. Compose skipped, status unknown. Owner: CI repair.
+Next: accurately account for separately covered HIGH route, bound historical
+fixture to its migration cutoff, support both documented runner roots without
+weakening route/import assertions. Verify all three affected files locally,
+obtain separate review and rerun hosted CI; do not alter production migration
+history, route behavior or test gates. CI remains open until hosted proof.
+
+Follow-up verified locally: cutoff fixture now removes every later migration
+directory from its private copy, asserts the exact historical upgrade set,
+and preserves ledger/checksum/data checks. HIGH inventory explicitly lists
+dedicated SCALE coverage; routing guard supports package and workspace cwd.
+API revision + migration suites60/60 pass on dedicated scratch DBs; routing
+3/3 passes independently from repo root and package cwd. Scoped lint and API
+typecheck exit0. Separate test-diff review APPROVE on SHA256
+89e081a736f6194fcf4de4c8a994c15f0c4de645a24feb1e595708d7310561e9.
+No production migration or workflow change. Hosted full rerun is pending.
+
 CI repair — 2026-10-15, owner: current CI repair task:
 Observed GitHub Actions run38712272150 on34d5d3c fails at pnpm lint with
 eight errors: two explicit-any casts and one unused binding in API SCALE

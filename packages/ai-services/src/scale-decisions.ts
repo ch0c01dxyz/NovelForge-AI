@@ -16,7 +16,7 @@
  * INCOMPLETE never fabricates proved violations. hardViolations includes only
  * proved hard violations. Overall FAIL also includes blocking INCOMPLETE.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { NovelForgeDb } from "@novelforge/database";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 import {
@@ -27,7 +27,6 @@ import {
 } from "@novelforge/ai-services";
 import { isValidScalePayload, scaleStandingOf } from "./narrative.ts";
 import { advanceForMutation } from "./revisions.ts";
-import type { ScalePolicySnapshot } from "./scale-review-types.ts";
 import {
   readScaleContext,
   type ScaleReviewContext,
@@ -35,7 +34,6 @@ import {
 } from "./scale-evidence.ts";
 import {
   assessScaleAppropriateness,
-  NARRATIVE_SCALES,
   type NarrativeScale,
 } from "@novelforge/narrative-rhythm";
 import type {
@@ -424,7 +422,7 @@ export interface DecideProposalInput {
 export type ScaleDecisionTx = import("./revisions.ts").RevisionTx;
 
 export function createScaleDecisionServices(deps: ScaleDecisionDeps) {
-  const { db, audit } = deps;
+  const { db } = deps;
 
   async function checkCapability(
     client: Pick<NovelForgeDb, "membership" | "novel">,

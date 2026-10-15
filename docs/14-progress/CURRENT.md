@@ -1,5 +1,17 @@
 # Current Project State
 
+## CI lint repair — 2026-10-15
+
+GitHub run38712272150 on34d5d3c fails eight SCALE lint errors, also present
+in previous run38139293497. Minimal three-path cleanup preserves audit
+transactions, authorization and test assertions. Local full source lint and
+workspace typecheck exit0; web slice3 tests12/12 and API SCALE tests36/36 pass
+using suite-owned scratch data only. Independent source review APPROVE,
+diffSHA2b780a4fdc4d54057033d4781f551d16b1330cdbdb7ab9e002cb72da8be1d40d.
+Publishing this bounded fix for the requested CI repair; full hosted result
+is pending at this record boundary. No CI gate is disabled, no deployment or
+acceptance-data mutation performed. See ISSUES-AND-GAPS for root cause/proof.
+
 ## Authorized publication execution — 2026-10-15
 
 The author approved the concrete five-commit package and push to origin/main,

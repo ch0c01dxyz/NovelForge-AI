@@ -1298,7 +1298,7 @@ describe("decideProposal", () => {
     expect(outcomes).toHaveLength(1);
 
     // Zero partial loser effects: the loser's proposal has no outcome.
-    const winnerProposalId = (fulfilled[0] as PromiseFulfilledResult<any>).value.outcome.proposalId;
+    const winnerProposalId = fulfilled[0]!.value.outcome.proposalId;
     const loserProposalId =
       winnerProposalId === proposalA.proposal.id ? proposalB.proposal.id : proposalA.proposal.id;
     const loserOutcome = await db.scaleDecisionOutcome.findUnique({
@@ -1408,7 +1408,7 @@ describe("decideProposal", () => {
       where: { novelId_kind: { novelId: f.novelId, kind: "SCALE" } },
     });
     expect(policyAfter.payload).toEqual(policyBefore.payload);
-    expect((policyAfter.payload as any).standing.scale).toBe("VILLAGE");
+    expect(policyAfter.payload).toMatchObject({ standing: { scale: "VILLAGE" } });
   });
 
   it("ACTUAL STORY restore with old snapshot JSON lacking scale_review: invokes previewRestore/applyRestore", async () => {
@@ -1537,7 +1537,7 @@ describe("decideProposal", () => {
     for (const [table, rows] of Object.entries(livePayload)) {
       oldPayload[table] = rows.map((row) => {
         if (table === "final_text_reviews") {
-          const { scale_review, ...rest } = row;
+          const { scale_review: _scaleReview, ...rest } = row;
           return rest;
         }
         return { ...row };

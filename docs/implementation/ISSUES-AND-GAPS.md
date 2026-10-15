@@ -28,6 +28,31 @@ This new documentation delta is outside the previously approved r4 artifact.
 
 ## Recording and resolution rules
 
+CI repair — 2026-10-15, owner: current CI repair task:
+Observed GitHub Actions run38712272150 on34d5d3c fails at pnpm lint with
+eight errors: two explicit-any casts and one unused binding in API SCALE
+decision tests; unused V2 in the slice3 component test; three unused imports
+and an unused audit destructuring binding in scale-decisions.ts. Typecheck,
+tests and Compose validation were skipped, so their CI status is unknown.
+Earlier main run38139293497 also failed; its exact mechanism is not yet
+claimed identical. Impact: branch CI red before later gates. Next: remove
+dead bindings/imports, replace casts with inferred/narrow test assertions,
+run scoped and repository lint plus affected checks; verify the hosted run
+after a reviewed fix. Preserve audit transaction logic, validation, CI gates,
+Windows Docker and all acceptance data. Close only with actual hosted evidence.
+
+Local repair verified: removed unused imports/bindings, used inferred fulfilled
+result and structural standing assertion, retained discarded-field semantics.
+Scoped lint and full repository-source lint exit0 (local-only untracked harness
+directories excluded from that invocation); pnpm typecheck exit0 for the full
+workspace. Affected web slice3 suite12/12 and API SCALE decision suite36/36
+pass; API fixture used only novelforge_test_scale_decisions on existing5433.
+Separate source review APPROVE on raw three-path git diff SHA256
+2b780a4fdc4d54057033d4781f551d16b1330cdbdb7ab9e002cb72da8be1d40d.
+Observed previous run38139293497 has the same eight lint errors, establishing
+this failure predates the latest publication. Hosted rerun remains pending;
+do not infer later CI gates from these focused local results.
+
 Authorized publication C4 whitespace check — 2026-10-15:
 C1/C2/C3 committed as 1ac9e8e/7419390/ec54346. Staged C4 whitespace
 check detects one extra blank EOF line in both GAP051 seed scripts (line881).

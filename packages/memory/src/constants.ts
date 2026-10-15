@@ -26,6 +26,10 @@ export const MEMORY_RECONCILE_INTERVAL_MS = 60_000;
 /** Default L2 window: preceding chapters' scopes in recentMemory (F7). */
 export const MEMORY_RECENT_CHAPTERS_DEFAULT = 10;
 
+/** NF-WF-052: max arc-scope candidates considered per global memory read
+ * (hard bound, not configuration plumbing). */
+export const MEMORY_ARC_SCOPES_MAX = 20;
+
 /** Scope key prefixes (Invariant 9). */
 export const CHAPTER_SCOPE_PREFIX = "chapter:";
 export const ARC_SCOPE_PREFIX = "arc:";

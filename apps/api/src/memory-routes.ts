@@ -9,6 +9,9 @@
  * - `GET  /api/workspaces/:workspaceId/novels/:novelId/memory/as-of`
  *   → historical retrieval by chapter (settle revision) or explicit
  *   revision id (novel:read). Cross-branch revision → 400 INVALID_INPUT.
+ * - `GET  /api/workspaces/:workspaceId/novels/:novelId/memory/global`
+ *   → bounded union read of the novel's arc:{sagaId} scopes
+ *   (novel:read). Cross-branch as-of revision → 400 INVALID_INPUT.
  *
  * Error mapping lives in platform-routes' ONE setErrorHandler (shared
  * with canon, workflow, revision routes).
@@ -39,6 +42,10 @@ const rebuildBody = z.object({
 const asOfQuery = z.object({
   chapter: z.coerce.number().int().positive().optional(),
   revisionId: z.string().uuid().optional(),
+});
+
+const globalQuery = z.object({
+  asOfRevisionId: z.string().uuid().optional(),
 });
 
 export function registerMemoryRoutes(
@@ -101,5 +108,21 @@ export function registerMemoryRoutes(
       query.data,
     );
     return reply.code(200).send(result);
+  });
+
+  app.get("/api/workspaces/:workspaceId/novels/:novelId/memory/global", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = novelParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    const query = globalQuery.safeParse(request.query ?? {});
+    if (!query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    const global = await memory.readGlobalMemory(
+      actorUserId,
+      params.data.workspaceId,
+      params.data.novelId,
+      query.data,
+    );
+    return reply.code(200).send({ global });
   });
 }

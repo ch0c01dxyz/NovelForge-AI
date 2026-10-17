@@ -1,5 +1,18 @@
 # Current Project State
 
+## Local artifact categories and privacy protection — 2026-10-17
+
+The author authorized organization, suitable local commits and verified-safe
+cleanup. Curated safe summaries now live under
+`docs/14-progress/evidence/windows-local-2026-10-17/`; raw local evidence and
+harness memory are root-ignored in Git. A private category index/catalog
+organizes receipts, backups, tooling, drafts, review packages and worktrees
+without breaking referenced legacy paths. Five unreferenced snapshots and
+imported output were archived with hash read-back; two exact duplicates
+were deleted only after confirming a retained copy. All15 registered nested
+worktrees, their14 dirty states, backups, memory and active logs were retained.
+No product behavior change, push, deployment or repeated release battery.
+
 ## Windows local cleanup verified — 2026-10-17
 
 Executed the author's selected follow-ups on HEAD74572cca plus preserved

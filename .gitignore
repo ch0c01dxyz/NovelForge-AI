@@ -28,3 +28,9 @@ review-receipts/
 # Local Orca/ruflo runtime state (regenerated, machine-specific)
 .claude-flow/policy/
 .swarm/
+
+# Private local harness memory, evidence, backups and registered scratch worktrees.
+/.harness-memory/
+/.nf-batch-worktrees/
+# Imported harness output can contain private author input or runtime details.
+/output.txt

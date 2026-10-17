@@ -76,6 +76,8 @@ export function isExclusionViolation(e: unknown): boolean {
 }
 
 export interface PlatformServices {
+  listWorkspaces(actorUserId: string): Promise<WorkspaceListView[]>;
+
   createWorkspace(input: {
     actorUserId: string;
     name: string;
@@ -133,6 +135,14 @@ export interface WorkspaceView {
   slug: string;
   ownerId: string;
   role: Role;
+}
+
+export interface WorkspaceListView {
+  id: string;
+  name: string;
+  slug: string;
+  role: Role;
+  canCreateNovel: boolean;
 }
 
 export interface MemberView {
@@ -224,6 +234,19 @@ export function createPlatformServices(deps: {
         payload: { slug },
       });
       return { id: workspace.id };
+    },
+
+    async listWorkspaces(actorUserId) {
+      const memberships = await db.membership.findMany({
+        where: { userId: actorUserId },
+        select: { role: true, workspace: { select: { id: true, name: true, slug: true } } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+      return memberships.map(({ role, workspace }) => ({
+        ...workspace,
+        role,
+        canCreateNovel: can(role, "novel:create"),
+      }));
     },
 
     async getWorkspace(actorUserId, workspaceId) {

@@ -274,6 +274,7 @@ onMounted(async () => {
 
 <template>
   <div class="mx-auto max-w-6xl px-4 py-6">
+    <NuxtLink to="/" class="mb-4 inline-block text-sm text-nf-text-dim underline focus-visible:nf-focus">{{ t("authorHome.backHome") }}</NuxtLink>
     <h1 class="mb-4 text-[20px] font-semibold text-nf-text">
       {{ t("platformAdmin.title") }}
     </h1>

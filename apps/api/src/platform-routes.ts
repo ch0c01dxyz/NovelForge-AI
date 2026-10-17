@@ -308,6 +308,12 @@ export async function registerPlatformRoutes(
   }
 
   // --- Workspaces ---
+  app.get("/api/workspaces", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    return services.listWorkspaces(actorUserId);
+  });
+
   app.post("/api/workspaces", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;

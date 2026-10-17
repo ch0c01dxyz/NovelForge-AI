@@ -127,6 +127,48 @@ beforeAll(async () => {
   app = await buildApp(env, { db, createGateway: fakeCreateGateway });
 });
 
+describe("workspace choices for author onboarding", () => {
+  it("requires authentication", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/workspaces" });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("returns only memberships with server-derived create capability", async () => {
+    const actor = await seedUser("onboarding-author@example.com");
+    const owner = await seedUser("onboarding-owner@example.com");
+    const create = (name: string, slug: string) => db.workspace.create({
+      data: { name, slug, ownerId: owner.userId },
+    });
+    const writable = await create("Writing", "writing");
+    const readonly = await create("Reading", "reading");
+    await create("Private", "private");
+    await db.membership.createMany({ data: [
+      { workspaceId: writable.id, userId: actor.userId, role: "AUTHOR" },
+      { workspaceId: readonly.id, userId: actor.userId, role: "VIEWER" },
+    ] });
+    const response = await app.inject({
+      method: "GET", url: "/api/workspaces", headers: { cookie: actor.cookie },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toHaveLength(2);
+    expect(response.json()).toEqual(expect.arrayContaining([
+      { id: writable.id, name: "Writing", slug: "writing", role: "AUTHOR", canCreateNovel: true },
+      { id: readonly.id, name: "Reading", slug: "reading", role: "VIEWER", canCreateNovel: false },
+    ]));
+  });
+
+  it("does not grant global workspace visibility to platform admins", async () => {
+    const admin = await seedUser("onboarding-admin@example.com", "SUPER_ADMIN");
+    const owner = await seedUser("onboarding-other@example.com");
+    await db.workspace.create({ data: { name: "Other", slug: "other", ownerId: owner.userId } });
+    const response = await app.inject({
+      method: "GET", url: "/api/workspaces", headers: { cookie: admin.cookie },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([]);
+  });
+});
+
 afterAll(async () => {
   await app?.close();
   await db?.$disconnect();

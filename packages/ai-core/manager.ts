@@ -14,7 +14,7 @@ import {
   type ErrorCategory,
 } from "./errors.ts";
 import { OmniRouteGateway, type FetchLike } from "./omniroute.ts";
-import { reportedTokens } from "./types.ts";
+import { reportedTokens, JSON_MODE_INCOMPATIBLE } from "./types.ts";
 import {
   backoffDelayMs,
   DEFAULT_GATEWAY_RETRIES,
@@ -83,10 +83,13 @@ export interface GatewayRegistry {
   /**
    * Concrete models mapped to a profile, best-first, each tied to an
    * enabled gateway. Empty when the profile has no mapping.
+   * `capabilities` carries the mapped model's catalog capabilities when
+   * a local AIModel row exists; undefined = UNKNOWN (no row or older
+   * fake), never a verified value.
    */
   resolveProfile(
     profile: ModelProfile,
-  ): Promise<Array<{ gatewayId: string; modelId: string }>>;
+  ): Promise<Array<{ gatewayId: string; modelId: string; capabilities?: string[] }>>;
   /** Persist an attempt row (append-only). */
   recordAttempt(generationId: string, attempt: AttemptRecord): Promise<void>;
   /** Update breaker/health counters after an attempt. */
@@ -111,6 +114,8 @@ export interface GenerateOptions {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  /** Optional structured-output mode, mapped by the adapter (types.ts). */
+  outputMode?: "json_object";
   /** Logical generation id to attach attempts to. */
   generationId: string;
   signal?: AbortSignal;
@@ -127,13 +132,20 @@ export interface GenerateOptions {
 }
 
 /** How many transport attempts a single logical request may make. */
-export const DEFAULT_MAX_ATTEMPTS = 3;
+export const DEFAULT_MAX_ATTEMPTS = 7;
 
 /** Options shared by every operation that routes through a profile. */
 export interface RouteAttemptOptions {
   profile: ModelProfile;
   /** Logical generation id to attach attempts to. */
   generationId: string;
+  /**
+   * Optional structured-output request context. Only `generate`/
+   * `generateStream` set it (`embed` never does); when present, routing
+   * excludes candidates whose recorded capability data marks them
+   * incompatible with the mode (manager.requestEligible).
+   */
+  outputMode?: "json_object";
   signal?: AbortSignal;
   /** Override strategy; defaults to PRIORITY. */
   strategy?: RoutingStrategy;
@@ -159,8 +171,15 @@ export interface EmbedOptions extends RouteAttemptOptions {
  */
 export class NoRouteError extends Error {
   readonly code = "NO_ROUTE" as const;
-  constructor(readonly profile: ModelProfile) {
-    super(`no gateway model is configured for profile ${profile}`);
+  constructor(
+    readonly profile: ModelProfile,
+    /** Distinguishes an eligibility exhaustion from an empty mapping. */
+    detail?: string,
+  ) {
+    super(
+      detail ??
+        `no gateway model is configured for profile ${profile}`,
+    );
     this.name = "NoRouteError";
   }
 }
@@ -212,6 +231,53 @@ export class GatewayManager {
   }
 
   /**
+   * Request-aware candidate eligibility (NF053 JSON follow-up). A
+   * structured-output request must not silently route through a
+   * candidate whose recorded capability data marks it incompatible with
+   * the mode; ordinary requests are unchanged. Absence of capability
+   * data is UNKNOWN, not verified — such candidates stay eligible and
+   * strict output validation remains the authority. This only filters;
+   * it never reorders the authored mapping priority.
+   */
+  private requestEligible(
+    candidates: Candidate[],
+    outputMode: RouteAttemptOptions["outputMode"],
+  ): Candidate[] {
+    if (outputMode !== "json_object") return candidates;
+    return candidates.filter(
+      (c) => !c.capabilities?.includes(JSON_MODE_INCOMPATIBLE),
+    );
+  }
+
+  /**
+   * Build the attempt plan for one logical request, failing explicitly
+   * before any adapter call when no compatible route exists (never
+   * falling back to a candidate the request excluded).
+   */
+  private planFor(opts: RouteAttemptOptions, candidates: Candidate[]): Candidate[] {
+    const eligible = this.requestEligible(candidates, opts.outputMode);
+    const plan = planAttempts(eligible, opts.strategy ?? this.deps.defaultStrategy ?? "PRIORITY", {
+      random: opts.random,
+      roundRobinCursor: (opts.roundRobinCursor ?? (() => this.nextCursor()))(),
+      maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+    });
+    if (plan.length === 0) {
+      if (opts.outputMode === "json_object" && candidates.length > 0) {
+        // The profile has mapped models, but every one of them is
+        // excluded for this request: a configuration/compatibility gap,
+        // not a transient failure — surface it as the same operator
+        // action a missing mapping needs (NoRouteError → 409).
+        throw new NoRouteError(
+          opts.profile,
+          "no candidate model mapped to this profile is eligible for the requested JSON output mode",
+        );
+      }
+      throw new NoRouteError(opts.profile);
+    }
+    return plan;
+  }
+
+  /**
    * Assemble the ordered candidate list: profile mapping joined with live
    * gateway state (enabled, priority, weight, breaker counters).
    *
@@ -241,6 +307,7 @@ export class GatewayManager {
         consecutiveFailures: g.consecutiveFailures,
         enabled: g.enabled,
         maxRetries: g.maxRetries ?? DEFAULT_GATEWAY_RETRIES,
+        capabilities: m.capabilities,
       });
     }
     return { candidates: out, gateways: byId };
@@ -260,6 +327,7 @@ export class GatewayManager {
         messages: opts.messages,
         temperature: opts.temperature,
         maxTokens: opts.maxTokens,
+        outputMode: opts.outputMode,
         signal: opts.signal,
       }),
     );
@@ -300,12 +368,7 @@ export class GatewayManager {
     call: (adapter: AIGateway, target: Candidate) => Promise<T>,
   ): Promise<T> {
     const { candidates, gateways } = await this.candidates(opts.profile);
-    const plan = planAttempts(candidates, opts.strategy ?? this.deps.defaultStrategy ?? "PRIORITY", {
-      random: opts.random,
-      roundRobinCursor: (opts.roundRobinCursor ?? (() => this.nextCursor()))(),
-      maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
-    });
-    if (plan.length === 0) throw new NoRouteError(opts.profile);
+    const plan = this.planFor(opts, candidates);
 
     const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
 
@@ -387,12 +450,7 @@ export class GatewayManager {
     opts: GenerateOptions,
   ): AsyncGenerator<StreamChunk, void, unknown> {
     const { candidates, gateways } = await this.candidates(opts.profile);
-    const plan = planAttempts(candidates, opts.strategy ?? this.deps.defaultStrategy ?? "PRIORITY", {
-      random: opts.random,
-      roundRobinCursor: (opts.roundRobinCursor ?? (() => this.nextCursor()))(),
-      maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
-    });
-    if (plan.length === 0) throw new NoRouteError(opts.profile);
+    const plan = this.planFor(opts, candidates);
 
     const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
 
@@ -412,6 +470,7 @@ export class GatewayManager {
         messages: opts.messages,
         temperature: opts.temperature,
         maxTokens: opts.maxTokens,
+        outputMode: opts.outputMode,
         signal: opts.signal,
       });
 

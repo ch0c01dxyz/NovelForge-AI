@@ -337,6 +337,8 @@ function freshBlock(
     structural: { facts, threads: [], promises: [] },
     summary: null,
     summaryStatus: "SKIPPED",
+    summaryCoveredFactIds: [],
+    summaryProvenance: null,
     provenance: { revisionId: sourceRevisionId, builtAt: new Date().toISOString() },
   };
 }

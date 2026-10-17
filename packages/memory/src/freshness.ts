@@ -13,7 +13,7 @@
  *   a restore to an older revision).
  */
 import type { NovelForgeDb } from "@novelforge/database";
-import type { MemoryFreshness } from "./types.ts";
+import type { MemoryFreshness, MemorySummaryStatus } from "./types.ts";
 import { mainBranchHead } from "./settle.ts";
 
 export interface ScopeFreshness {
@@ -25,6 +25,9 @@ export interface ScopeFreshness {
   chapterCoverage: number[];
   lastError: string | null;
   attempts: number;
+  /** NF-WF-053: stored summary state of the selected row. */
+  summaryStatus: MemorySummaryStatus;
+  summaryError: string | null;
 }
 
 /**
@@ -54,6 +57,8 @@ export async function deriveAsOfFreshness(
       lastError: true,
       attempts: true,
       chapterCoverage: true,
+      summaryStatus: true,
+      summaryError: true,
       sourceRevision: { select: { number: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -68,6 +73,8 @@ export async function deriveAsOfFreshness(
       chapterCoverage: [],
       lastError: null,
       attempts: 0,
+      summaryStatus: "SKIPPED",
+      summaryError: null,
     };
   }
   let newest = rows[0]!;
@@ -85,6 +92,8 @@ export async function deriveAsOfFreshness(
       chapterCoverage: newestRow.chapterCoverage,
       lastError: newestRow.lastError,
       attempts: newestRow.attempts,
+      summaryStatus: newestRow.summaryStatus,
+      summaryError: newestRow.summaryError,
     };
   }
   const freshness: MemoryFreshness =
@@ -98,6 +107,8 @@ export async function deriveAsOfFreshness(
     chapterCoverage: newestRow.chapterCoverage,
     lastError: null,
     attempts: newestRow.attempts,
+    summaryStatus: newestRow.summaryStatus,
+    summaryError: newestRow.summaryError,
   };
 }
 
@@ -120,6 +131,8 @@ export async function deriveFreshness(
       lastError: true,
       attempts: true,
       chapterCoverage: true,
+      summaryStatus: true,
+      summaryError: true,
       sourceRevision: { select: { number: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -134,6 +147,8 @@ export async function deriveFreshness(
       chapterCoverage: [],
       lastError: null,
       attempts: 0,
+      summaryStatus: "SKIPPED",
+      summaryError: null,
     };
   }
   // Newest row by source revision number (F1).
@@ -151,6 +166,8 @@ export async function deriveFreshness(
       chapterCoverage: newest.chapterCoverage,
       lastError: newest.lastError,
       attempts: newest.attempts,
+      summaryStatus: newest.summaryStatus,
+      summaryError: newest.summaryError,
     };
   }
   const freshness: MemoryFreshness =
@@ -164,5 +181,7 @@ export async function deriveFreshness(
     chapterCoverage: newest.chapterCoverage,
     lastError: null,
     attempts: newest.attempts,
+    summaryStatus: newest.summaryStatus,
+    summaryError: newest.summaryError,
   };
 }

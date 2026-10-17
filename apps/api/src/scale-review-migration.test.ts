@@ -39,8 +39,6 @@ const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build",
 const MIGRATIONS_DIR = path.join(DB_PACKAGE_ROOT, "prisma", "migrations");
 const SCHEMA_PRISMA = path.join(DB_PACKAGE_ROOT, "prisma", "schema.prisma");
 const MIGRATION_050B = "20261008_nf_wf_050b_scale_decisions";
-// Migrations after 050B (none yet); kept for forward-compatibility.
-const MIGRATIONS_AFTER_050B: string[] = [];
 
 if (!process.env.DATABASE_URL) {
   try {
@@ -78,8 +76,11 @@ function makeTempPrismaHome(with050B: boolean): TempPrismaHome {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "050b-mig-"));
   const migrationsDir = path.join(root, "migrations");
   fs.cpSync(MIGRATIONS_DIR, migrationsDir, { recursive: true });
-  for (const m of MIGRATIONS_AFTER_050B) {
-    fs.rmSync(path.join(migrationsDir, m), { recursive: true, force: true });
+  // Keep both private homes at the historical 050B cutoff.
+  for (const entry of fs.readdirSync(migrationsDir, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name > MIGRATION_050B) {
+      fs.rmSync(path.join(migrationsDir, entry.name), { recursive: true, force: true });
+    }
   }
   if (!with050B) {
     fs.rmSync(path.join(migrationsDir, MIGRATION_050B), { recursive: true, force: true });
@@ -425,6 +426,7 @@ describe("migration: populated baseline via Prisma ledger", () => {
       prismaMigrateDeployAt(baselineHome.root);
 
       const ledgerBefore = await ledgerRows(client);
+      expect(ledgerBefore.every((r) => r.migration_name < MIGRATION_050B)).toBe(true);
       expect(ledgerBefore.some((r) => r.migration_name === MIGRATION_050B)).toBe(false);
       expect(ledgerBefore.some((r) => r.migration_name === "20261008_nf_wf_050a_scale_evidence")).toBe(true);
 
@@ -522,6 +524,7 @@ describe("migration: populated baseline via Prisma ledger", () => {
 
       // 5. Ledger proof: exactly one new row (050B); all baseline rows byte-identical.
       const ledgerAfter = await ledgerRows(client);
+      expect(ledgerAfter.every((r) => r.migration_name <= MIGRATION_050B)).toBe(true);
       expect(ledgerAfter.length).toBe(ledgerBefore.length + 1);
       const beforeByName = new Map(ledgerBefore.map((r) => [r.migration_name, r]));
       for (const row of ledgerAfter) {
@@ -578,7 +581,10 @@ describe("migration: populated baseline via Prisma ledger", () => {
     // after both success and any failure inside the private fixture.
     expect(liveMigrationsFingerprint()).toBe(liveBefore);
     expect(fs.existsSync(path.join(MIGRATIONS_DIR, MIGRATION_050B))).toBe(true);
-  });
+    // Same double-deploy pattern as the 050A upgrade test; measured >30s
+    // against the 30s default in the 2026-10-17 full run (timed out) after
+    // passing it on 2026-10-16 — the budget, not the assertion, was wrong.
+  }, 120_000);
 });
 
 /**

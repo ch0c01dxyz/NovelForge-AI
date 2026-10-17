@@ -2898,6 +2898,23 @@ model MemoryProjection {
   structural       Json
   /// Chapter numbers whose settled state is included, ascending.
   chapterCoverage  Int[]             @map("chapter_coverage")
+  /// NF-WF-053: arc-scope narrative summary (Invariant 6). Additive;
+  /// structural columns above never depend on summary state.
+  summary                 String?               @db.Text
+  summaryStatus           MemorySummaryStatus   @default(SKIPPED) @map("summary_status")
+  summaryError            String?               @map("summary_error") @db.Text
+  /// Validated per-fact provenance (subset of the row's structural facts).
+  summaryCoveredFactIds   String[]              @map("summary_covered_fact_ids")
+  summarizerVersion       String?               @map("summarizer_version")
+  summarizerModelProfile  ModelProfile?         @map("summarizer_model_profile")
+  summarizerPromptVersion String?               @map("summarizer_prompt_version")
+  summaryClaimedAt        DateTime?             @map("summary_claimed_at")
+  summaryClaimId          String?               @map("summary_claim_id")
+  /// Append-only consumed forced-retry intents (NF-WF-053 §8).
+  summaryRetryIds         String[]              @default([]) @map("summary_retry_ids")
+  /// CURRENT-selection pointer to the accepted Generation (NF-WF-053 §12.3);
+  /// never a historical outcome ledger.
+  summaryGenerationId     String?               @map("summary_generation_id") @db.Uuid
   builtAt          DateTime          @default(now()) @map("built_at")
   createdAt        DateTime          @default(now()) @map("created_at")
 
@@ -2910,6 +2927,16 @@ model MemoryProjection {
 enum MemoryBuildStatus {
   OK
   FAILED
+}
+
+/// Summary state for a MemoryProjection row (NF-WF-053, Invariant 6).
+/// Independent of MemoryBuildStatus: a FAILED summary never degrades
+/// structural availability.
+enum MemorySummaryStatus {
+  SKIPPED
+  SUMMARIZING
+  FAILED
+  OK
 }
 
 /// Final-text review receipts (NF-WF-010): a stored, per-version verdict

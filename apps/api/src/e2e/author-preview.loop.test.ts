@@ -201,7 +201,14 @@ beforeAll(async () => {
   outlineRef = approved.id;
 
   workflowId = await resolveTemplateWorkflowId();
-}, 120_000);
+  // The e2e DB lifecycle lock (GAP-076) serializes the three getE2E files;
+  // this hook must out-wait a sibling file's WHOLE runtime under full-suite
+  // parallel load. 2026-10-17 full run: this 120s budget burned entirely
+  // waiting (run log nf053-full-suite-run-20261017b.log) while gates held
+  // the lock. All three getE2E files now carry 600s; the 2026-10-16 full
+  // run's unlogged gates file-level failure suggests even the previous 300s
+  // can be exceeded. 600s stays finite.
+}, 600_000);
 
 afterAll(async () => {
   await closeE2E();

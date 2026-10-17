@@ -10,3 +10,4 @@ export * from "./types.ts";
 export * from "./settle.ts";
 export * from "./freshness.ts";
 export * from "./rebuild.ts";
+export * from "./validate.ts";

@@ -292,13 +292,29 @@ function tryStealStaleLock(): boolean {
 }
 
 async function acquireE2eLock(): Promise<void> {
+  const waitStart = Date.now();
+  let holder = "unknown";
   for (;;) {
     try {
       fs.writeFileSync(E2E_LOCK_PATH, e2eLockPayload(), { flag: "wx" });
       e2eLockHeld = true;
+      // GAP-076 evidence line: a contended wait means this file's beforeAll
+      // budget is partly consumed by ANOTHER file's whole-lifecycle hold.
+      // Waited=0 confirms the serialized schedule leaves the lock free.
+      const waitedMs = Date.now() - waitStart;
+      if (waitedMs > 0 || holder !== "unknown") {
+        process.stderr.write(
+          `[e2e-lock] acquired after ${waitedMs}ms (previous holder: ${holder})\n`,
+        );
+      }
       return;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      try {
+        holder = JSON.parse(fs.readFileSync(E2E_LOCK_PATH, "utf8")).pid;
+      } catch {
+        holder = "unknown";
+      }
       if (!tryStealStaleLock()) {
         await new Promise((r) => setTimeout(r, E2E_LOCK_POLL_MS));
       }

@@ -28,6 +28,14 @@ export interface GenerateRequest {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  /**
+   * Optional provider-neutral structured-output mode. `"json_object"`
+   * asks the adapter to request JSON-only output from the gateway; each
+   * adapter maps it to the parameter its provider supports (OmniRoute:
+   * `response_format`). Omitted by ordinary callers — absence must stay
+   * the default wire behavior.
+   */
+  outputMode?: "json_object";
   /** Abort signal owned by the caller (NovelForge timeout policy). */
   signal?: AbortSignal;
 }
@@ -62,6 +70,26 @@ export interface GatewayModel {
   capabilities: string[];
   contextWindow?: number;
 }
+
+/**
+ * Application-managed observed structured-output markers. They live
+ * inside `AIModel.capabilities` under an `nf:` namespace that gateway
+ * catalog discovery never reports, so an ordinary catalog refresh
+ * preserves them instead of erasing observed evidence (NF053 JSON
+ * follow-up). Absence of a marker is UNKNOWN, not verified: routing
+ * only excludes candidates with recorded incompatibility.
+ */
+export const JSON_MODE_PREFIX = "nf:json_object=";
+export const JSON_MODE_OK = `${JSON_MODE_PREFIX}ok`;
+export const JSON_MODE_INCOMPATIBLE = `${JSON_MODE_PREFIX}incompatible`;
+
+/**
+ * Namespace reserved for application-managed (observed/authorized)
+ * capability entries. Gateway catalog discovery never reports `nf:`
+ * tags, so syncModels can preserve them across refreshes without
+ * freezing gateway-reported values.
+ */
+export const OBSERVED_CAPABILITY_PREFIX = "nf:";
 
 /** A chunk of a streamed generation. */
 export interface StreamChunk {

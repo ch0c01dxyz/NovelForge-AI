@@ -357,3 +357,85 @@ describe("reconcileMemoryRebuilds (NF-WF-030)", () => {
     expect(queue.jobs.has(jobId)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// NF-WF-053: sweeper expiry (§9.4) + creator attribution (§14.2)
+// ---------------------------------------------------------------------------
+
+describe("reconcileMemoryRebuilds NF053 additions", () => {
+  let db: NovelForgeDb;
+
+  beforeAll(async () => {
+    db = createDb(IT_URL);
+  });
+
+  afterAll(async () => {
+    for (const novelId of createdNovelIds.splice(0)) {
+      await db.novel.deleteMany({ where: { id: novelId } });
+    }
+    await db?.$disconnect();
+  });
+
+  it("T-expiry-no-model: aged SUMMARIZING claims expire to SKIPPED with byte hygiene; report counts them", async () => {
+    const seed = await seedNovel(db);
+    await seedProjection(db, seed, { sourceRevisionId: seed.headRevisionId, buildStatus: "OK" });
+    await db.memoryProjection.updateMany({
+      where: { novelId: seed.novelId },
+      data: {
+        summaryStatus: "SUMMARIZING",
+        summarizerVersion: "arc-sum-v0-old",
+        summaryClaimedAt: new Date(Date.now() - 11 * 60_000),
+        summaryClaimId: crypto.randomUUID(),
+        summary: "PRIOR BYTES",
+        summaryCoveredFactIds: ["f1"],
+        summaryGenerationId: crypto.randomUUID(),
+      },
+    });
+
+    const report = await reconcileMemoryRebuilds({ db, queue: mockQueue(), logger: testLogger() });
+    expect(report.summaryClaimsExpired).toBe(1);
+
+    const row = await db.memoryProjection.findFirstOrThrow({ where: { novelId: seed.novelId } });
+    expect(row.summaryStatus).toBe("SKIPPED");
+    expect(row.summaryError).toBe("claim expired");
+    expect(row.summary).toBeNull();
+    expect(row.summaryCoveredFactIds).toEqual([]);
+    expect(row.summaryGenerationId).toBeNull();
+    expect(row.summaryClaimId).toBeNull();
+    expect(row.summaryClaimedAt).toBeNull();
+
+    // A FRESH row is not requeued (structural freshness unaffected by summary).
+    expect(report.requeued).toBe(0);
+  });
+
+  it("fresh (non-aged) SUMMARIZING claims are never expired", async () => {
+    const seed = await seedNovel(db);
+    await seedProjection(db, seed, { sourceRevisionId: seed.headRevisionId, buildStatus: "OK" });
+    await db.memoryProjection.updateMany({
+      where: { novelId: seed.novelId },
+      data: {
+        summaryStatus: "SUMMARIZING",
+        summaryClaimedAt: new Date(), // live claim
+        summaryClaimId: crypto.randomUUID(),
+      },
+    });
+    const report = await reconcileMemoryRebuilds({ db, queue: mockQueue(), logger: testLogger() });
+    expect(report.summaryClaimsExpired).toBe(0);
+    const row = await db.memoryProjection.findFirstOrThrow({ where: { novelId: seed.novelId } });
+    expect(row.summaryStatus).toBe("SUMMARIZING");
+  });
+
+  it("T-auth-2: re-enqueued jobs carry the novel creator as attribution actor", async () => {
+    const seed = await seedNovel(db);
+    await seedProjection(db, seed, { sourceRevisionId: seed.oldRevisionId, buildStatus: "OK" });
+
+    const queue = mockQueue();
+    const report = await reconcileMemoryRebuilds({ db, queue, logger: testLogger() });
+    expect(report.requeued).toBe(1);
+    const jobId = memoryRebuildJobId(seed.novelId, seed.scope, seed.headRevisionId);
+    const job = queue.jobs.get(jobId)!;
+    const data = job.data as { actorUserId?: string };
+    const novel = await db.novel.findUniqueOrThrow({ where: { id: seed.novelId } });
+    expect(data.actorUserId).toBe(novel.createdById);
+  });
+});

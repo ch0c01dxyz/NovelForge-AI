@@ -16,7 +16,11 @@ import {
   GatewayManager,
   GatewayError,
   isGatewayFault,
+  JSON_MODE_INCOMPATIBLE,
+  JSON_MODE_OK,
+  JSON_MODE_PREFIX,
   NoRouteError,
+  OBSERVED_CAPABILITY_PREFIX,
   type AIGateway,
   type GatewayRecord,
   type GatewayRegistry,
@@ -175,6 +179,20 @@ export interface AiServices {
     modelId: string;
     enabled: boolean;
   }): Promise<void>;
+  /**
+   * Record observed JSON-mode compatibility for a model (NF053 JSON
+   * follow-up). `"ok"`/`"incompatible"` store the observed marker inside
+   * the model's capabilities under the `nf:` namespace; `"unknown"`
+   * clears any marker back to unverified. Routing only excludes
+   * `"incompatible"`; absence is UNKNOWN, never a verified claim.
+   * Audited like every other model configuration change.
+   */
+  setModelJsonMode(input: {
+    actorPlatformRole: PlatformRole;
+    actorUserId: string;
+    modelId: string;
+    mode: "ok" | "incompatible" | "unknown";
+  }): Promise<void>;
   setProfileMapping(input: {
     actorPlatformRole: PlatformRole;
     actorUserId: string;
@@ -231,6 +249,15 @@ export interface AiServices {
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;
     maxTokens?: number;
+    /** NF-WF-053 §7.2: written through to the Generation row. */
+    promptVersion?: string;
+    /** NF-WF-053 §11.5: caps the transport attempt plan (M-bound). */
+    maxAttempts?: number;
+    /**
+     * Optional structured-output mode passed through to the gateway
+     * adapter. Omitted by default; arc summaries set it (NF053 hardening).
+     */
+    outputMode?: "json_object";
   }): Promise<{ generationId: string; content: string; model: string }>;
   /**
    * Embed a batch of texts through the EMBEDDING profile.
@@ -587,7 +614,23 @@ export function createAiServices(deps: {
       // `updateMany` pair if a catalog this size makes the sync slow.
       let discovered = 0;
       await db.$transaction(async (tx) => {
+        // Observed capability markers (`nf:` namespace, e.g. recorded
+        // JSON-mode compatibility) are application-managed evidence set
+        // through the audited model API — not gateway-reported data. A
+        // catalog refresh updates gateway-reported values but must not
+        // silently erase what real generations established.
+        const existing = await tx.aIModel.findMany({
+          where: { gatewayId: input.gatewayId },
+          select: { modelId: true, capabilities: true },
+        });
+        const observed = new Map(
+          existing.map((r) => [
+            r.modelId,
+            r.capabilities.filter((c) => c.startsWith(OBSERVED_CAPABILITY_PREFIX)),
+          ]),
+        );
         for (const m of models) {
+          const keep = observed.get(m.modelId) ?? [];
           await tx.aIModel.upsert({
             where: {
               gatewayId_modelId: { gatewayId: input.gatewayId, modelId: m.modelId },
@@ -601,7 +644,7 @@ export function createAiServices(deps: {
             },
             update: {
               displayName: m.displayName ?? null,
-              capabilities: m.capabilities,
+              capabilities: [...new Set([...m.capabilities, ...keep])],
               contextWindow: m.contextWindow ?? null,
               discoveredAt: new Date(),
             },
@@ -651,6 +694,31 @@ export function createAiServices(deps: {
         entityType: "AIModel",
         entityId: input.modelId,
         payload: { enabled: input.enabled },
+      });
+    },
+
+    async setModelJsonMode(input) {
+      requirePlatformCapability(input.actorPlatformRole, "model:manage");
+      const model = await db.aIModel.findUnique({ where: { id: input.modelId } });
+      if (!model) throw new NotFoundError("model");
+      // Replace any previous observed JSON-mode marker; "unknown" clears
+      // the marker entirely — absence is UNKNOWN, never a verified claim.
+      const capabilities = model.capabilities.filter(
+        (c) => !c.startsWith(JSON_MODE_PREFIX),
+      );
+      if (input.mode !== "unknown") {
+        capabilities.push(input.mode === "ok" ? JSON_MODE_OK : JSON_MODE_INCOMPATIBLE);
+      }
+      await db.aIModel.update({
+        where: { id: input.modelId },
+        data: { capabilities },
+      });
+      await audit.record({
+        actorUserId: input.actorUserId,
+        action: "model.updated",
+        entityType: "AIModel",
+        entityId: input.modelId,
+        payload: { jsonOutputMode: input.mode },
       });
     },
 
@@ -845,6 +913,7 @@ export function createAiServices(deps: {
           component: input.component ?? "OTHER",
           artifactId: input.artifactId ?? null,
           modelProfile: input.profile,
+          promptVersion: input.promptVersion ?? null,
           status: "IN_PROGRESS",
         },
         select: { id: true },
@@ -857,6 +926,8 @@ export function createAiServices(deps: {
           messages: input.messages,
           temperature: input.temperature,
           maxTokens: input.maxTokens,
+          outputMode: input.outputMode,
+          ...(input.maxAttempts !== undefined ? { maxAttempts: input.maxAttempts } : {}),
           generationId: generation.id,
         });
         const latencyMs = Date.now() - started;

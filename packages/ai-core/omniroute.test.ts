@@ -435,3 +435,26 @@ describe("OmniRouteGateway timeout and health", () => {
     expect(Object.values(gw)).not.toContain("sk-secret-abc");
   });
 });
+
+describe("structured-output request option", () => {
+  const ok = () =>
+    jsonResponse({
+      model: "m1",
+      choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+
+  it("serializes outputMode json_object as response_format", async () => {
+    const { fetch, calls } = fakeFetch(ok);
+    await new OmniRouteGateway(CONFIG, fetch).generate({ ...REQ, outputMode: "json_object" });
+    expect(JSON.parse(String(calls[0]?.init?.body)).response_format).toEqual({
+      type: "json_object",
+    });
+  });
+
+  it("omits response_format by default", async () => {
+    const { fetch, calls } = fakeFetch(ok);
+    await new OmniRouteGateway(CONFIG, fetch).generate(REQ);
+    expect("response_format" in JSON.parse(String(calls[0]?.init?.body))).toBe(false);
+  });
+});

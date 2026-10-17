@@ -236,7 +236,12 @@ beforeAll(async () => {
     scope: chapterScope(chapter1Id),
     sourceRevisionId: settled!.revisionId,
   });
-}, 300_000);
+  // Lock-wait budget must exceed a sibling getE2E file's WHOLE runtime under
+  // parallel load. Measured 2026-10-17 co-run: this 300s budget burned while
+  // the long-novel measure file held the shared e2e lock (log
+  // nf053-affected-corun.log) — the same file-level failure the 2026-10-16
+  // full run reported without a retained log. 600s stays finite.
+}, 600_000);
 
 afterAll(async () => {
   await closeE2E();

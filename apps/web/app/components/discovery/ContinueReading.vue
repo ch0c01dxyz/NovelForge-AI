@@ -57,7 +57,7 @@ onMounted(async () => {
       <li v-for="e in entries" :key="e.slug">
         <NuxtLink
           :to="`/read/${encodeURIComponent(e.slug)}/${e.chapterNumber}`"
-          class="flex items-baseline justify-between gap-4 rounded-lg border border-nf-border bg-nf-bg-1 px-4 py-3 shadow-nf-sm transition-colors hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
+          class="flex items-baseline justify-between gap-4 rounded-lg border border-nf-border-focus bg-nf-bg-1 px-4 py-3 shadow-nf-sm transition-colors hover:bg-nf-bg-2 focus-visible:nf-focus"
         >
           <span class="min-w-0">
             <span class="block truncate font-nf-literary text-[17px] font-semibold text-nf-text">

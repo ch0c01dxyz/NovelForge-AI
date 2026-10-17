@@ -20,7 +20,9 @@ import {
   MEMORY_RECONCILE_INTERVAL_MS,
   processRebuild,
   type MemoryRebuildJobData,
+  type MemorySummarizerPort,
 } from "@novelforge/memory";
+import { createDbArcSummarizer } from "@novelforge/ai-services";
 import type { WorkerLogger } from "./worker.ts";
 import {
   createMemoryReconQueue,
@@ -51,6 +53,17 @@ export interface MemoryWorkerDeps {
     close(): Promise<void>;
   };
   processRebuild: typeof processRebuild;
+  /**
+   * NF-WF-053: arc-summary port. Optional DI: absent → structural-only
+   * behavior identical to pre-053 (§10 case 2). Defaults to the REAL
+   * db-backed summarizer when APP_ENCRYPTION_KEY is configured.
+   */
+  summarizer?: MemorySummarizerPort;
+  /**
+   * NF-WF-053: encryption key for the default summarizer's gateway
+   * registry (deployment config; tests inject `summarizer` instead).
+   */
+  encryptionKey?: string;
   /**
    * NF-WF-051: interval between memory reconciliation sweeps (mid-run
    * Redis-loss recovery). Defaults to MEMORY_RECONCILE_INTERVAL_MS;
@@ -86,7 +99,7 @@ export interface MemoryWorkerApp {
 }
 
 export async function startMemoryWorkerApp(
-  env: { DATABASE_URL: string; REDIS_URL: string },
+  env: { DATABASE_URL: string; REDIS_URL: string; APP_ENCRYPTION_KEY?: string },
   logger: WorkerLogger,
   deps: Partial<MemoryWorkerDeps> = {},
 ): Promise<MemoryWorkerApp> {
@@ -96,6 +109,16 @@ export async function startMemoryWorkerApp(
 
   const db = d.createDb(env.DATABASE_URL);
   const connection = d.createConnection(env.REDIS_URL);
+
+  // NF-WF-053: default summarizer = the REAL generate path over the
+  // db-backed gateway registry (production). Tests inject a fake port.
+  const summarizer =
+    d.summarizer ??
+    (d.encryptionKey ?? env.APP_ENCRYPTION_KEY
+      ? createDbArcSummarizer(db, {
+          encryptionKey: (d.encryptionKey ?? env.APP_ENCRYPTION_KEY) as string,
+        })
+      : undefined);
 
   const onConnError = (err: Error) => {
     if (!stopped) d.logger.warn("memory redis connection error", { message: err.message });
@@ -179,12 +202,30 @@ export async function startMemoryWorkerApp(
       ) {
         throw new Error("malformed memory-rebuild job data");
       }
-      const result = await d.processRebuild(db, {
-        workspaceId: data.workspaceId,
-        novelId: data.novelId,
-        scope: data.scope,
-        sourceRevisionId: data.sourceRevisionId,
-      });
+      // NF-WF-053 §8.2(1)/A-T4: a forced job without a retry intent is
+      // INVALID JOB DATA — deterministic refusal, no structural work, no
+      // claim, no model call, no job-budget burn.
+      if (data.force === true && typeof data.retryIntentId !== "string") {
+        logger.warn("forced memory rebuild without retryIntentId; refused", {
+          novelId: data.novelId,
+          scope: data.scope,
+          jobId: job.id,
+        });
+        return;
+      }
+      const result = await d.processRebuild(
+        db,
+        {
+          workspaceId: data.workspaceId,
+          novelId: data.novelId,
+          scope: data.scope,
+          sourceRevisionId: data.sourceRevisionId,
+          ...(data.force === true ? { force: true } : {}),
+          ...(data.retryIntentId !== undefined ? { retryIntentId: data.retryIntentId } : {}),
+          ...(data.actorUserId !== undefined ? { actorUserId: data.actorUserId } : {}),
+        },
+        summarizer,
+      );
       d.logger.info("memory rebuild processed", {
         novelId: data.novelId,
         scope: data.scope,

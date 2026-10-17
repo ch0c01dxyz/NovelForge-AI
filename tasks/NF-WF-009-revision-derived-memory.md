@@ -321,6 +321,15 @@ incomplete. (Delivery-plan acceptance: "N→N+1 continuity".)
 
 ### Invariant 6 — Model-assisted summaries: gate for the follow-up (not shipped in 009)
 
+Author override — 2026-10-16: NF-WF-053 schema and
+`LONG_CONTEXT_REVIEWER` are approved. From now on use real implementation,
+the actual configured gateway and real story data for integrated acceptance.
+The fake-only GAP-028 test-mode sentence below is historical, superseded by
+this direct author instruction; do not use it to block live acceptance or
+require new mock infrastructure. All validation, authorization, recovery and
+structural-memory invariants remain in force. See NF-WF-053 §15.0 and
+MODEL-EVIDENCE-POLICY for current acceptance requirements.
+
 Per the Q1 review decision, 009 ships structural memory only
 (Invariant 1's deterministic core) and MUST NOT depend on model
 output. Narrative summaries are a scoped follow-up, allowed ONLY

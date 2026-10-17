@@ -34,7 +34,14 @@ import {
   type GatewayRecord,
   type GatewayRegistry,
 } from "./manager.ts";
-import type { AIGateway, GenerateResult, StreamChunk } from "./types.ts";
+import {
+  JSON_MODE_INCOMPATIBLE,
+  JSON_MODE_OK,
+  type AIGateway,
+  type GenerateRequest,
+  type GenerateResult,
+  type StreamChunk,
+} from "./types.ts";
 
 const KEY = "test-secret-key";
 
@@ -257,6 +264,7 @@ interface FakeOptions {
 
 function fakeRegistry(
   gateways: GatewayRecord[],
+  capabilities?: Record<string, string[]>,
 ): GatewayRegistry & { attempts: AttemptRecord[]; health: string[] } {
   const attempts: AttemptRecord[] = [];
   const health: string[] = [];
@@ -267,7 +275,11 @@ function fakeRegistry(
       return gateways;
     },
     async resolveProfile() {
-      return gateways.map((g) => ({ gatewayId: g.id, modelId: `${g.name}-model` }));
+      return gateways.map((g) => ({
+        gatewayId: g.id,
+        modelId: `${g.name}-model`,
+        ...(capabilities ? { capabilities: capabilities[g.id] } : {}),
+      }));
     },
     async recordAttempt(_gen, a) {
       attempts.push(a);
@@ -868,5 +880,168 @@ describe("error classification: only real network faults are transient", () => {
     expect(isGatewayFault("UNSUPPORTED")).toBe(true);
     expect(isGatewayFault("INVALID_REQUEST")).toBe(false);
     expect(isGatewayFault("DETERMINISTIC")).toBe(false);
+  });
+});
+
+describe("structured-output option propagation", () => {
+  function recordingGateway(): { gateway: AIGateway; seen: GenerateRequest[] } {
+    const seen: GenerateRequest[] = [];
+    return {
+      seen,
+      gateway: {
+        id: "g1",
+        name: "one",
+        async listModels() {
+          return [];
+        },
+        async generate(req) {
+          seen.push(req);
+          return { content: "ok", model: "m", inputTokens: 1, outputTokens: 1, finishReason: "stop" };
+        },
+        async *generateStream() {
+          yield { delta: "x" };
+        },
+        async embed() {
+          return { vectors: [[0.1]], model: "m", inputTokens: 1 };
+        },
+        async healthCheck() {
+          return { healthy: true, category: null };
+        },
+      },
+    };
+  }
+
+  it("forwards outputMode to the adapter when set", async () => {
+    const { gateway, seen } = recordingGateway();
+    const manager = new GatewayManager(fakeRegistry([gw()]), { createGateway: () => gateway });
+    await manager.generate({
+      profile: "CREATIVE_WRITER",
+      messages: [],
+      generationId: "gen",
+      outputMode: "json_object",
+    });
+    expect(seen[0]!.outputMode).toBe("json_object");
+  });
+
+  it("leaves outputMode unset for ordinary callers", async () => {
+    const { gateway, seen } = recordingGateway();
+    const manager = new GatewayManager(fakeRegistry([gw()]), { createGateway: () => gateway });
+    await manager.generate({ profile: "CREATIVE_WRITER", messages: [], generationId: "gen" });
+    expect(seen[0]!.outputMode).toBeUndefined();
+  });
+});
+
+describe("request-aware JSON-mode candidate eligibility", () => {
+  function twoGatewaySetup(
+    capabilities: Record<string, string[]>,
+  ) {
+    const g1 = gw({ id: "g1", name: "one", priority: 100 });
+    const g2 = gw({ id: "g2", name: "two", priority: 100 });
+    return {
+      registry: fakeRegistry([g1, g2], capabilities),
+      behaviour: { g1: { ok: false, category: "INVALID_REQUEST" }, g2: { ok: true } } as Record<string, { ok: boolean; category?: string }>,
+    };
+  }
+
+  it("skips a candidate recorded incompatible and preserves authored order among the eligible", async () => {
+    const { registry, behaviour } = twoGatewaySetup({
+      g1: [JSON_MODE_INCOMPATIBLE],
+      g2: [JSON_MODE_OK],
+    });
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour }),
+    });
+    const result = await manager.generate({
+      profile: "LONG_CONTEXT_REVIEWER",
+      messages: [],
+      generationId: "gen",
+      outputMode: "json_object",
+    });
+    // Authored order was [g1, g2]; the ineligible first candidate is
+    // filtered, never reordered around, and g1 is never contacted.
+    expect(result.model).toBe("two-model");
+    expect(registry.attempts).toHaveLength(1);
+    expect(registry.attempts[0]!.gatewayId).toBe("g2");
+  });
+
+  it("fails explicitly with no adapter call when every mapped candidate is incompatible", async () => {
+    const { registry, behaviour } = twoGatewaySetup({
+      g1: [JSON_MODE_INCOMPATIBLE],
+      g2: [JSON_MODE_INCOMPATIBLE],
+    });
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour }),
+    });
+    await expect(
+      manager.generate({
+        profile: "LONG_CONTEXT_REVIEWER",
+        messages: [],
+        generationId: "gen",
+        outputMode: "json_object",
+      }),
+    ).rejects.toThrow(/eligible for the requested JSON output mode/);
+    // Explicit refusal BEFORE any transport attempt: no candidate known
+    // to reject the mode is tried, and nothing is recorded as an attempt.
+    expect(registry.attempts).toHaveLength(0);
+  });
+
+  it("leaves ordinary (non-JSON) requests routing through all mapped candidates", async () => {
+    const { registry, behaviour } = twoGatewaySetup({
+      g1: [JSON_MODE_INCOMPATIBLE],
+      g2: [JSON_MODE_OK],
+    });
+    // Only the routing behavior is under test here: let both candidates
+    // succeed so the first authored candidate serves the request.
+    behaviour.g1 = { ok: true };
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour }),
+    });
+    // Without outputMode the marker must not globally disable the model:
+    // the authored first candidate still serves the request.
+    const result = await manager.generate({
+      profile: "LONG_CONTEXT_REVIEWER",
+      messages: [],
+      generationId: "gen",
+    });
+    expect(result.model).toBe("one-model");
+    expect(registry.attempts).toHaveLength(1);
+    expect(registry.attempts[0]!.gatewayId).toBe("g1");
+  });
+
+  it("treats unknown capability data as UNKNOWN and keeps the candidate eligible", async () => {
+    const g1 = gw({ id: "g1", name: "one" });
+    const registry = fakeRegistry([g1]);
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour: {} }),
+    });
+    const result = await manager.generate({
+      profile: "LONG_CONTEXT_REVIEWER",
+      messages: [],
+      generationId: "gen",
+      outputMode: "json_object",
+    });
+    expect(result.model).toBe("one-model");
+  });
+
+  it("applies the same eligibility to streamed generations", async () => {
+    const { registry, behaviour } = twoGatewaySetup({
+      g1: [JSON_MODE_INCOMPATIBLE],
+      g2: [],
+    });
+    const manager = new GatewayManager(registry, {
+      createGateway: (rec) => fakeGateway(rec, { behaviour }),
+    });
+    const chunks: string[] = [];
+    for await (const c of manager.generateStream({
+      profile: "LONG_CONTEXT_REVIEWER",
+      messages: [],
+      generationId: "gen",
+      outputMode: "json_object",
+    })) {
+      chunks.push(c.delta);
+    }
+    expect(chunks.join("")).toBe("hello world");
+    // Only the eligible candidate was ever contacted.
+    expect(registry.attempts.map((a) => a.gatewayId)).toEqual(["g2"]);
   });
 });

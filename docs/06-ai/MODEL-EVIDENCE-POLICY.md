@@ -5,6 +5,29 @@ coding models and NovelForge
 story agents. No model or prompting technique guarantees zero hallucinations.
 The system must prevent unsupported claims from becoming trusted actions.
 
+## Author-directed real acceptance — 2026-10-16
+
+From now on, implement working product flows and validate integrated AI
+acceptance using the author's actual configured gateway, real story data,
+and persisted real generation results. The author explicitly rejects further
+mock-only design cycles as a delivery prerequisite. Existing fake/unit tests
+may remain regressions; they cannot substitute for real integrated evidence.
+Do not build new mock infrastructure or manufacture a failure merely to
+postpone implementation. Fix failures observed in the real flow and rerun
+only affected checks. State unobserved negative cases honestly.
+
+This supersedes older fake-only/no-live-AI clauses in task records, including
+NF-WF-009/NF-WF-053 GAP-028 test-mode language. Keep credentials secret;
+use the normal authenticated API/worker/gateway path and genuine runtime
+model mapping. Do not add unattended real calls or secrets to default CI.
+Preserve Windows Docker and all story/acceptance data. Use dedicated databases
+for destructive migration/fault experiments; approved additive local rollout
+for real acceptance requires a recoverable pre-change backup and migration
+preflight, not a stack reset. Generation never implies canon approval or
+publication. Retain actual generation/attempt IDs, reported usage or explicit
+unknowns, source revision, status and durable read-back; do not call mocks or
+old receipts real acceptance. No commit/push/merge/deploy permission is implied.
+
 ## 1. Evidence vocabulary
 
 | Label | Meaning | Permitted use |

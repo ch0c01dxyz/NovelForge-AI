@@ -527,7 +527,10 @@ describe("migration: populated baseline via Prisma ledger", () => {
     // after both success and any failure inside the private fixture.
     expect(liveMigrationsFingerprint()).toBe(liveBefore);
     expect(fs.existsSync(path.join(MIGRATIONS_DIR, MIGRATION_050A))).toBe(true);
-  });
+    // Two real `prisma migrate deploy` children + seed + checksums; measured
+    // 39.6s (2026-10-16 full run) and >30s (2026-10-17 full run) against the
+    // 30s default — the test's own budget, not a global raise.
+  }, 120_000);
 });
 
 /**

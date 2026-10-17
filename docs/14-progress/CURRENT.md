@@ -1,5 +1,951 @@
 # Current Project State
 
+## Coordinator: delivery package refreshed; NF023 local green steps closed at this artifact — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF053-PACKAGE-REFRESH-AND-NF023-GAPS-PROMPT.md`
+at HEAD `4227594…` plus the preserved WIP (0 staged, stash untouched; no
+commit/push/merge/deploy; no application source change). Scope A: refreshed
+package `.nf-batch-worktrees/nf053-prepub-package-v2/` — same 47-file
+allowlist; final delta vs the frozen v1 package is exactly five files — the
+reviewed GAP-124 fixture fix (Git blob `91ee6e1b…` re-verified) plus task
+records in CURRENT, ISSUES-AND-GAPS (GAP-124 RESOLVED + new GAP-125),
+test-matrix (refresh + missing-evidence map) and DELIVERY-PLAN (suite-count
+correction); 42/47 byte-identical; per-file SHA256 + full patch regenerated; v1
+kept frozen as history. Separate read-only delta review:
+APPROVE_WITH_FINDINGS (F-1 missing REVIEW-REPORT.md at review time — written
+after the verdict; F-2 deleted prior test-matrix heading — RESTORED; F-3
+stale mid-task delta snapshots in records — CORRECTED to the final 5-file
+state; F-4 build-hashes.sh now referenced in MANIFEST reproduce section).
+Final v2 patch identity is recorded in the package's own MANIFEST.md
+(repo records do not embed the package's self-hash). Scope B: criterion-to-receipt map for NF023/NF039 written to the
+test matrix — none of the four carried unknowns (live outage/429 failover,
+JSON multi-hop beyond the first eligible hop, real all-ineligible 409,
+real A-T7/T-conc-dup timing) is a required local gate under the effective
+contracts; each is labeled PENDING with its live/target dependency or NOT
+required with its unit-pinned retained evidence. Repo `pnpm lint` exits 1 on
+this host solely from untracked `.nf-batch-worktrees/` tooling (205 errors,
+bisected; GAP-125 recorded, record-only); the 37-file delivery surface lints
+0 errors. Newly OBSERVED at this
+exact artifact: `npx tsc --noEmit` (api) exit 0 and `npx vue-tsc --noEmit`
+(web) exit 0, completing the locally runnable NF023 battery legs alongside
+the retained full suite. Remaining gates unchanged in kind: author WIP
+commit/push disposition, hosted CI on the pushed revision, NF-WF-023 release
+acceptance on a published revision, live deployment, story publication;
+GAP-051 stays DEFERRED_BY_AUTHOR_DECISION (never PASS); ADR-0017 stays
+PROPOSED/non-gate. Refreshed-package review: separate read-only reviewer on
+the incremental delta — see the v2 package REPORT/REVIEW for the verdict.
+
+## Coordinator: GAP-124 repaired and independently reviewed before publication — 2026-10-17
+
+The prepublication package's minor fixture issue is resolved before any
+commit/push decision. `scale-review-migration.test.ts` now excludes all later
+migration directories using the existing 050A cutoff pattern and checks
+actual before/after Prisma-ledger bounds. Focused suite: 8/8 PASS, exit 0;
+separate read-only reviewer APPROVE, file blob
+`91ee6e1b1969b692f7d596d60b3493b7d4cc1095`. See GAP-124's resolution update.
+The old 47-file package hash remains valid for its frozen historical bytes,
+not for the now-current working tree. Coordinator hash read-back also found
+CURRENT and ISSUES changed after that package; refresh the manifest/patch
+and distinguish documentation drift from the reviewed fixture fix.
+
+Next bounded dispatch:
+`.nf-batch-worktrees/NF053-PACKAGE-REFRESH-AND-NF023-GAPS-PROMPT.md`.
+No publication or fresh full-suite run was performed or authorized.
+
+## NF053 prepublication package frozen + independently reviewed — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF053-PREPUBLICATION-REVIEW-PROMPT.md` at HEAD
+`4227594…` plus the preserved 50-path WIP (0 staged, stash untouched; no
+commit/push/merge/deploy; no application change). Exact reviewed package:
+`.nf-batch-worktrees/nf053-prepub-package/` — MANIFEST.md (47-file allowlist
+with per-file sha256/bytes; excluded: `.harness-memory/`, `.nf-batch-worktrees/`,
+`output.txt`), full.patch sha256 `4a6ee968…ea31238` (42 tracked + 5 new-file
+diffs incl. arc-summarizer/validator/migration/contract), untracked raw copies
+hash-verified, secrets scan clean (only pre-existing disposable
+`novelforge_test`@localhost test-role matches, classified NON_SECRET).
+Independent separate read-only reviewer (scout agent, zero modifications,
+runtime MODEL_UNVERIFIED per GAP-013): verified 47/47 hashes + patch identity;
+composed-artifact source review PASS on schema/migration preservation,
+authorization/auditing, pin/claim fencing + terminal validation, retries/usage
++ ordinary-routing preservation, JSON eligibility + marker preservation, test
+DB isolation, D2 scope (3 one-line changes), rollback. Verdict
+**APPROVE_WITH_FINDINGS**: F-1 MINOR recorded as GAP-124 (050B-upgrade
+baseline no longer excludes post-050B migrations; one-line fix, not applied —
+fixing would change the reviewed bytes), F-2/F-3 notes (test-DB fallback;
+app/worker restart dependency). Post-review recheck: 46/47 byte-identical;
+only ISSUES-AND-GAPS.md changed by the GAP-124 append itself (sha256
+`525d7fb2…ccf644`); frozen review artifacts untouched. Remaining gates
+unchanged in kind: author WIP commit/push disposition (COMMIT-PROPOSAL.md
+prepared, NOT executed), hosted CI on the pushed revision, GAP-124 follow-up,
+NF-WF-023 release acceptance on a published revision, live deployment, story
+publication — each distinct and unauthorized here. GAP-051 stays
+DEFERRED_BY_AUTHOR_DECISION (never PASS); ADR-0017 PROPOSED/non-gate.
+Author-facing report: `.nf-batch-worktrees/nf053-prepub-package/REPORT.md`.
+Engram checkpoint `novelforge-ai/nf-wf-053-prepub` saved + read-back verified.
+
+## Live local runtime refreshed onto current source — 2026-10-17 (NF023/NF039)
+
+Executed `.nf-batch-worktrees/NF023-LIVE-RUNTIME-REFRESH-PROMPT.md` at HEAD
+`4227594…` plus the preserved 50-path WIP (stash untouched; no commit/push/
+merge/deploy; no source changes). The pre-rollout author processes (API :3000
+PID 43884 and worker PID 35348, both started 07:02, positively identified via
+launch command + working DB/Redis targets) were stopped in a verified
+zero-active window (all five db0 queues 0 active/waiting/delayed; the
+Windows cross-process graceful-signal limitation from the 2026-10-14
+diagnostic applies, so no in-flight-drain claim is made) and relaunched from
+the current tree with the same env contract (working `DATABASE_URL`
+nf-pg-5433/`novelforge_acceptance_050b`, `REDIS_URL` localhost:6399 db0,
+`APP_ENCRYPTION_KEY` from repo-root `.env`, never printed). New processes:
+API PID 41492 on :3000, worker PID 39984; persistent services
+`nf023-api-r2` / `nf023-worker-r2` with bounded logs. The old
+`nf023-api`/`nf023-worker` service entries showing `failed (exit 127)` are
+the harness wrappers' record of that intended stop — retained as history.
+
+Verified (OBSERVED, receipt
+`.nf-batch-worktrees/NF023-LIVE-RUNTIME-REFRESH-RECEIPT.md`): `/ready` 200
+database up / redis up; authenticated `GET /api/models` shows all seven
+`nf:json_object` markers; ONE authorized idempotent PATCH re-asserting
+deepseek-v4.1-flash's already-correct `jsonOutputMode:"ok"` returned 200,
+added exactly one `model.updated` audit (7 → 8, DB clock
+`2026-10-17 05:28:36.395+00`), and produced zero capability/configuration
+drift; minted harness session deleted (0 admin sessions in the last hour).
+Worker: exactly 5 db0 `bzpopmin` consumers matching the five workers of the
+single node process (no duplicate memory worker), all five
+started-proven flags true, memory reconciliation `checked:1 stale:0
+failed:0`, publication reconciliation clean, no startup errors. Postimage ==
+preimage: db0 176 keys, projection `f27f9af5…` OK/OK 272 chars @ head
+revision `1a385bba` (6), generations 25, attempts 19, mappings/markers/
+enabled gateway identical. Retained evidence reused, not re-run: suite log
+213 files / 2608 tests / 1 skipped exit 0, clone generation
+`a2c69645…` receipt, prior NF023/NF053/D2 receipts. Local operational
+readiness: READY. Remaining gates unchanged in kind: GAP-051 human
+screen-reader acceptance DEFERRED_BY_AUTHOR_DECISION (never PASS); ADR-0017
+PROPOSED/non-gate; live deployment / final release verification separate;
+author sign-off and WIP commit/integration disposition author-owned.
+
+## NF053 working JSON configuration rolled out to the live working database — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF053-WORKING-JSON-ROLLOUT-PROMPT.md` at HEAD
+`4227594…` plus the preserved WIP (stash untouched; no commit/push/merge/
+deploy; NO source changes by this task). Scope A: the seven evidence-backed
+`jsonOutputMode` markers were applied to the WORKING database
+`novelforge_acceptance_050b` (nf-pg-5433) through the existing audited
+`PATCH /api/models/:modelId` (task-owned API instance, server-side role
+verified): MiniMax-M3/mimo-v2.6-flash/claude-haiku-5-5 `incompatible`,
+deepseek-v4.1-flash/agnes-2.5-flash/laguna-s-2.1/muse-spark-1.3 `ok`; 7
+`model.updated` audits; preimage (`nf053json/working-preimage-20261017.json`,
+non-secret) shows zero markers before; read-back shows all seven markers and
+identical priorities/enabled/context sizes; projection `f27f9af5…` OK/OK 272
+chars, generations 25 and head revision `1a385bba` (6) unchanged; minted
+harness session deleted; redis db0 unchanged (176 keys / 5 consumers).
+Rollback scope: per-marker `jsonOutputMode:"unknown"` only. Resolves the
+issue-register entry "NF053 JSON compatibility rollout missing from working
+database" (see that entry for closure evidence).
+
+Scope B: a FRESH `pg_dump` of the CURRENT working database (carrying the new
+markers — the old pre-marker backup was NOT used) was restored into owned
+clone `novelforge_nf053rollout_clone` (redis db5 verified empty, sole
+task-owned `bull:memory-rebuild` consumer, API 3100, real
+`startMemoryWorkerApp` worker). Only the cloned derived projection row was
+deleted (declared precondition); one real rebuild ran: 202 → queue → worker
+→ gateway → strict validation → persisted projection → API read-back.
+Generation `a2c69645-30ed-4ffb-8996-c0d5d4641f62`, attempt 1/1
+requested/reported `bansosmontera/deepseek-v4.1-flash` SUCCEEDED (1288 in /
+170 out, 2686 ms, NONE) — priority-10 MiniMax-M3 skipped WITHOUT a forced
+outage, proving the working marker configuration reaches real execution.
+Projection `680d6e2a…` OK/OK 207 chars, 3/3 covered fact ids, source pinned
+to `1a385bba` (6) = head; `/memory/status` 200 FRESH/OK; `/memory/global`
+200 with provenance. Receipt: `nf053json/nf053-rollout-receipt.json`.
+Cleanup verified: clone dropped, db5 back to 0 keys, working invariants
+re-checked after cleanup.
+
+Working-runtime readiness (separate from cloned acceptance, OBSERVED): the
+author's API on :3000 is healthy (/ready 200) but started 07:02 with
+pre-rollout source, and the live db0 worker set predates the rollout — the
+OWNER must restart those processes to load `setModelJsonMode` and the
+routing eligibility filter; this task deliberately did not reload
+non-task-owned processes. Retained model limits unchanged (MiniMax fences /
+mimo trailing garbage on ordinary non-JSON selection; claude rejects the
+parameter outside recorded-incompatible routing). GAP-051 stays
+DEFERRED_BY_AUTHOR_DECISION; ADR-0017 stays PROPOSED/non-gate; live
+deployment/final release verification remain separate gates.
+
+## Coordinator assessment: JSON code verified; working configuration rollout pending — 2026-10-17
+
+Observed: current routing filters recorded-incompatible candidates only for
+JSON requests; ordinary generation retains authored order. The retained final
+log `nf053json/fullsuite-after.log` reports 213 passed files, 2608 passed tests,
+1 skipped, `SUITE-EXIT:0`. Real clone receipt and Engram #355 describe successful
+DeepSeek summary generation `712a3c23-57b3-4c0d-a9f6-4d9c6aee718c`;
+independent exact-diff APPROVE is a retained harness claim, not a new coordinator
+review. No duplicate suite or acceptance run was performed here.
+
+Direct working-database read-back reveals all seven requested models still
+lack `nf:json_object` markers. The clone-only configuration was not rolled
+out. See the issue-register entry "NF053 JSON compatibility rollout missing
+from working database". Next dispatch:
+`.nf-batch-worktrees/NF053-WORKING-JSON-ROLLOUT-PROMPT.md`.
+Preserve HEAD `4227594f8349b175648cc47b8b8019133935af05`, all uncommitted work
+and stash. No commit/push/merge/deploy permission is inferred. GAP-051 remains
+deferred by author decision; ADR-0017 remains PROPOSED/non-gate.
+
+## NF053 request-aware JSON eligibility + E2E scheduling repair IMPLEMENTED and verified — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF053-JSON-COMPATIBILITY-AND-SUITE-REPAIR-PROMPT.md`
+at HEAD `4227594f8349b175648cc47b8b8019133935af05` plus the preserved 39-path
+WIP (stash `nf050b-acceptance-wip` untouched; no commit/push/merge/deploy).
+Both scopes implemented on the real system; no new contract chain.
+
+**Scope A — request-specific JSON candidate eligibility.** Smallest
+request-aware check at the existing routing boundary, no new schema/platform/
+dependency: `Candidate.capabilities?` carried from the registry
+(`resolveProfile` now selects the mapped `AIModel.capabilities`),
+`GatewayManager.planFor/requestEligible` filter candidates ONLY when
+`outputMode:"json_object"` is set, excluding candidates whose recorded
+capability data contains `nf:json_object=incompatible`; absence of capability
+data stays UNKNOWN (eligible; strict terminal validation remains the
+authority); authored mapping order is filtered, never reordered; ordinary
+(no-outputMode) requests are unchanged and still route through marked
+models. If every mapped candidate is excluded, the request fails explicitly
+(`NoRouteError` detail "no candidate model … eligible for the requested JSON
+output mode" → 409) with zero adapter calls — no fallback to an incompatible
+candidate; `generateStream` shares the same plan path. Observed markers are
+application-managed under the reserved `nf:` namespace
+(`JSON_MODE_OK`/`JSON_MODE_INCOMPATIBLE`, packages/ai-core/types.ts):
+`syncModels` preserves `nf:`-prefixed entries across ordinary catalog
+refresh; the existing audited `PATCH /api/models/:modelId` accepts an
+additive `jsonOutputMode: "ok"|"incompatible"|"unknown"` (same
+`model:manage` gate, `model.updated` audit; `"unknown"` clears the marker).
+
+**Scope B — shared E2E scheduling repair.** Root cause distinguished with
+evidence: the GAP-076 whole-lifecycle lock was correct; the defect was
+scheduling — all three `src/e2e` files start their `beforeAll` at t≈0 and
+wait for earlier files' ENTIRE lifecycles, so the long-novel measurement
+file consumed its fixed 600 s hook budget purely waiting (0 tests run;
+captured log shows exactly 600000 ms, suite total 611.81 s, solo file 453 s).
+Fix in `apps/api/vitest.config.ts` (test-harness scheduling only, budgets
+NOT raised): nested vitest projects — `e2e` project
+(`fileParallelism: false`) runs the three files strictly one-at-a-time so
+the lock is never contended and each hook budget covers only its own
+setup+fixture; the `unit` project keeps the default parallel schedule and
+no unrelated suite is serialized. `acquireE2E` now logs
+`[e2e-lock] acquired after Nms` as permanent wait evidence. The
+`endgame-projection` unique-DB-name fix is preserved and verified: only
+`endgame.test.ts` uses `novelforge_test_endgame`; focused parallel pair
+2 files / 27 tests PASS.
+
+**Checks (OBSERVED).** packages/ai-core `vitest run` 91/91 (5 new
+eligibility tests: skip-and-preserve-order, explicit all-incompatible
+failure with zero attempts, ordinary requests unchanged, UNKNOWN eligible,
+stream parity); apps/api `src/ai.test.ts` 39/39 (2 new: audited marker
+record/clear incl. empty-patch 400, marker preserved across catalog
+resync); typecheck ai-core/ai-services/api clean; scoped ESLint clean on
+all ten touched files; combined real e2e run
+(`nf053json/e2e-combined.log`): 3 files / 21 tests PASS, 518.32 s, all
+three lock acquisitions `after 1ms`.
+
+**Real acceptance (owned clone `novelforge_nf053compat_clone` on nf-pg-5433
+restored from backup `0e37b3ba…74bd5` SHA re-verified; redis db5 verified 0
+keys before, sole `bull:memory-rebuild` consumer during; API port 3100;
+real `startMemoryWorkerApp` worker only).** Observed JSON-mode evidence from
+the retained seven-model sampling applied through the REAL audited API
+(`PATCH jsonOutputMode`): MiniMax-M3 (priority 10), mimo (50),
+claude-haiku (70) → `incompatible`; deepseek (20), agnes (30), laguna (40),
+muse (60) → `ok`; 7 `model.updated` audit rows; read-back shows markers
+alongside gateway-reported capabilities. Cloned derived projection row
+deleted as declared rebuild precondition (canonical sources, revisions,
+Generation history preserved; generations baseline 25). Normal
+authenticated POST → 202 → queue → worker → JSON-mode generate → strict
+validation → persisted projection → API read-back: generation
+`712a3c23-57b3-4c0d-a9f6-4d9c6aee718c` (MEMORY_ARC_SUMMARY,
+LONG_CONTEXT_REVIEWER, attempt 1/1 requested/reported
+`bansosmontera/deepseek-v4.1-flash`, 1288 in / 156 out, 2839 ms, NONE),
+projection `9fb0e70f…` OK/OK 225 chars, covered fact ids = exactly the 3
+structural facts, source revision `1a385bba` (rev 6) pinned;
+`/memory/status` 200 FRESH/OK, `/memory/global` 200 with provenance. The
+priority-10 authored first candidate (MiniMax-M3) was skipped WITHOUT any
+provider outage or forced failure — eligibility exclusion demonstrated by
+attempt rows alone. Receipt: `.nf-batch-worktrees/nf053json/nf053compat-acceptance-receipt.json`.
+Cleanup: worker+API stopped, clone dropped, db5 back to 0 keys.
+
+**Full suite after fixes (once):** `nf053json/fullsuite-after.log` —
+**213/213 files, 2608 passed / 1 skipped, exit 0, 979.43 s** (recorded in
+the test matrix, 2026-10-17). Separate exact repair-diff review: APPROVE
+(10/10 items, file:line evidence).
+
+Remaining true limits (unchanged model facts, retained): MiniMax-M3 can
+still emit fenced output and mimo trailing garbage when these models ARE
+selected for ordinary (non-JSON) requests or by future callers that do not
+set `outputMode`; JSON validity proves shape only. `GET
+/api/workspaces/:id/generations` etc. unchanged. Human GAP-051 screen-reader
+pass stays deferred; ADR-0017 remains PROPOSED/non-gate.
+
+## JSON hardening coordinator assessment / repairs still pending — 2026-10-17
+
+Observed source contains the additive outputMode pass-through and adapter
+response_format mapping; the summarizer opts in. Retain reported real
+DeepSeek summary acceptance and model compatibility results. They are not
+proof that all seven candidates honor JSON mode: MiniMax fenced samples,
+Mimo trailing content and Claude Haiku parameter rejection remain actual
+reported limits. Request-aware candidate eligibility is an implementation
+compatibility concern under existing gateway capability rules, not a new
+author decision to accept invalid output or globally reorder their models.
+Preserve the seven-model ordinary-request list and strict terminal validation.
+
+The latest full suite is NOT green (211/213 files; reported 2573 pass /
+29 skip, two failed suites). The endgame DB-name fix's 27/27 pair pass and
+long-novel 7/7 solo pass do not close the combined run. The earlier 2597-pass
+receipt predates these shared-source changes and is not current completion.
+Next bounded task: request-specific JSON compatibility plus a root-cause
+shared-E2E DB scheduling/isolation repair, then final applicable checks and
+real read-back; do not merely raise hook budgets or repeat until green.
+
+## NF053 real JSON-output hardening IMPLEMENTED + real acceptance — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF053-REAL-JSON-HARDENING-PROMPT.md` at HEAD
+`4227594f8349b175648cc47b8b8019133935af05` plus the preserved 39-path WIP
+(stash `nf050b-acceptance-wip` untouched; no commit/push/merge/deploy).
+Smallest additive seam: optional provider-neutral
+`GenerateRequest.outputMode?: "json_object"` → `GatewayManager` (generate +
+generateStream) → workspace `generate` → `OmniRouteGateway.chatBody` maps it
+to `response_format {type:"json_object"}`. Only the arc summarizer sets it
+(required on its port type); default caller wire behavior is byte-identical
+(test-pinned). Strict `validate.ts` validation, terminal invalid-output
+behavior, retry/claim/provenance/usage contracts and author model mappings
+unchanged; no fence-stripping, JSON repair, blind retry or capability
+framework. Regression tests: adapter serialization + default omission,
+manager propagation + default omission. Checks: ai-core 86/86, ai-services,
+api/worker/memory/database typechecks, scoped ESLINT clean on all touched
+files. Independent exact implemented-diff review (`nf053json/TASK-DIFF.md`):
+REVIEW_VERDICT APPROVE, 7/7 hunks verified.
+
+Real acceptance (owned clone `novelforge_nf053json_clone` on nf-pg-5433 from
+backup `0e37b3ba…74bd5` re-verified; Redis db5 verified empty, sole
+`bull:memory-rebuild` consumer; API port 3100; memory-worker factory only):
+novel `0888c5ba…80b1`, scope `arc:8356f690…fb29`, source revision `1a385bba`
+(rev 6) pinned; ONLY the cloned derived projection row deleted; normal API
+202 → queue → worker → real gateway → strict validation → persisted
+projection → API read-back (`/memory/status` 200 OK/FRESH; `/memory/global`
+200). Primary OK sample: generation `d67c5cd4-735a-4460-88fd-d803d3033959`
+(MEMORY_ARC_SUMMARY, LONG_CONTEXT_REVIEWER, requested/reported
+`bansosmontera/deepseek-v4.1-flash`, attempt 1/1 SUCCEEDED, 1288 in / 255
+out, 3260 ms, error NONE), summaryStatus OK, 242 chars,
+`summary_covered_fact_ids` = exactly the 3 structural fact ids, attempts 4.
+Mode-serialized proof on the real path: claude-haiku-5-5 attempt row FAILED /
+INVALID_REQUEST (gateway rejected `response_format` — the parameter reached
+the gateway), plus clean-JSON samples from honoring models.
+
+Compatibility (one sample per author-selected candidate, §17 order, isolated
+cloned profile config, restored): MiniMax-M3 accepted but intermittently
+```json-fences its output under JSON mode (raw captured through the same
+summarizer path: `ace089f6…` fenced FAIL, `b3523bff…` clean OK; its 3
+queue-path samples that session failed strict validation terminal);
+deepseek-v4.1-flash / agnes-2.5-flash / laguna-s-2.1 / muse-spark-1.3 clean;
+mimo-v2.6-flash appends trailing garbage; claude-haiku-5-5 rejects the
+parameter (400 class, non-retryable). Remaining limits recorded in
+ISSUES-AND-GAPS (MiniMax-M3 reliability not guaranteed; p70 claude leg fails
+INVALID_REQUEST if routing ever reaches it with outputMode set; author
+mappings deliberately unchanged). JSON validity still proves shape only,
+never semantic truth or canon approval.
+
+Full suite run once with `DATABASE_URL` override to the 5433 instance (the
+repo-root `.env` credential does not authenticate against host 5432 —
+pre-existing environment condition recorded in ISSUES-AND-GAPS): 211/213
+files, 2573 passed / 29 skipped, 2 failed suites. Failure 1 root-caused and
+fixed: `endgame.test.ts` and `endgame-projection.test.ts` shared the test
+database name `novelforge_test_endgame` → concurrent CREATE race;
+`endgame-projection.test.ts` now uses `novelforge_test_endgame_projection`;
+focused parallel pair re-run 2 files / 27 tests PASS. Failure 2:
+`e2e/long-novel.measure.test.ts` beforeAll hook hit the 600 s vitest ceiling
+under full-suite load (7 tests skipped) — pre-existing Windows-load
+sensitivity already tracked in this register; focused solo re-run PASS
+(1 file / 7 tests, 453 s, same command/URL), confirming load as the cause;
+no check weakened. Cleanup of all task-owned resources
+follows in the handoff entry.
+
+## Coordinator assessment / next observed defect — 2026-10-17
+
+Retain real failure/replay/recovery evidence in
+`.nf-batch-worktrees/NF053-REAL-FAILURE-RECOVERY-RECEIPT.md`: actual
+authorization failures persisted summary FAILED without new AI rows, forced
+I/J intents were consumed, old I replay was a full-row no-op, and a fresh
+intent recovered a genuine validated summary through the normal gateway.
+The reported final clone cleanup preserved the working source data; current
+source /ready is still healthy. Source was not changed or tests repeated.
+
+Receipt annotated to scope the losing contender's zero-write claim: no model
+or summary-result write, not zero structural writes (upsert precedes CAS).
+The real non-JSON sample is a product reliability gap even though fail-closed
+validation worked correctly. Current generation transport does not expose a
+structured-output request option; raw cause of that sample is not established.
+Next bounded implementation: harden the arc-summary output request at the
+existing gateway boundary and prove it through real traffic, preserving strict
+validation, terminal invalid-output behavior and genuine model provenance.
+No new mock framework, blind retry or JSON-repair workaround is authorized.
+
+## NF053 real failure/replay/recovery VERIFIED — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF053-REAL-FAILURE-RECOVERY-PROMPT.md` from
+clean context at HEAD `4227594f8349b175648cc47b8b8019133935af05` plus the
+pre-existing 39-path WIP (all preserved; no commit/push/merge/deploy; no
+source change by this task). Full evidence:
+`.nf-batch-worktrees/NF053-REAL-FAILURE-RECOVERY-RECEIPT.md`.
+
+OBSERVED, in an owned scratch restore (`novelforge_nf053fail_clone` on
+nf-pg-5433, backup SHA256 re-verified; empty Redis db5; API port 3100;
+memory-worker-factory-only consumer): (1) real execute-time authorization
+failure — unforced rebuild with the cloned membership revoked at execution →
+`buildStatus OK` + `summaryStatus FAILED`, `summary_error "summarizer
+failed: workspace not found"`, ZERO Generation/attempt rows, zero model
+calls; (2) forced intents I and J under revoked membership — both genuine
+FAILED terminals consuming their intents atomically (set {I,J}), identity
+re-derived and matched against `memoryForcedRebuildJobId`; (3) redelivery of
+old completed job I via the installed BullMQ 5.81.5 supported
+`Job.retry('completed')` (reprocessJob-8.lua inspected first) →
+consumed-intent no-op BEFORE structural work: full-row md5 byte-identical,
+attempts/counts unchanged, `deduped:true ok:false` (A-T6 I/J/I shape live);
+(4) concurrent forced K/L — observed live-claim exclusion (processedOn 1 ms
+apart, L claim 0, L wrote nothing, one SUMMARIZING, exactly one generation);
+K's real MiniMax-M3 output failed deterministic validation ("unparseable
+output: not JSON") and the terminal FAILED arm consumed K's intent; a fresh
+authorized intent M recovered to `OK` via a real gateway call
+(generation `b7beab9f-…`, LONG_CONTEXT_REVIEWER, requested/reported
+MiniMax-M3, 1378/294 tokens) with the exact 3 covered fact ids, full
+provenance, and normal API read-back (status 200 OK/FRESH; global 200 with
+summary+provenance). Final consumed set {I,J,K,M}; attempts 5; generations
+25→27; attempt rows 19→21.
+
+Unobserved limits: provider-failure/429 fallback legs never executed (both
+real calls hit priority-10 MiniMax-M3); one of two real samples returned
+non-JSON and was correctly rejected (recorded in ISSUES-AND-GAPS as an
+observed model-output fragility, not a code defect; recovery needed one
+fresh intent). Full suite NOT re-run — source unchanged; prior receipts
+apply. All owned resources removed (scratch DB dropped, db5 keys deleted,
+clone services stopped, task-owned files deleted); source acceptance runtime
+re-verified untouched (port 3000 ready 200; projection OK/OK 272 chars,
+retry_ids {}, generations 25, memberships 1; db0 176 keys/17 clients).
+
+## Next bounded real-system verification — 2026-10-17
+
+At the author's request for the next harness prompt, prepared
+`.nf-batch-worktrees/NF053-REAL-FAILURE-RECOVERY-PROMPT.md` for clean-context
+execution. Scope: remaining genuine execute-time authorization failure,
+consumed-intent replay after intervening intent, and real-gateway recovery
+through the implemented memory flow. Fault setup is confined to an owned
+restore of real data with isolated Redis and API/worker; working acceptance
+data and consumers remain untouched. No new mock implementation or repeated
+NF053/D2 build, backup drill or successful suite is requested. These cases
+are not yet executed; previous green/readiness evidence is retained.
+
+## D2 main integration authorized and verified — 2026-10-17
+
+The author explicitly approved the concrete D2 proposal. Applied patch
+`060b5a32759ce19829f32156d712e968ef0b2fa567231ab4d735358a092b2ee3`
+to the main working tree: exactly one outer-border class replacement each
+in ContinueReading.vue, NovelCard.vue and browse/index.vue. Existing
+border-focus token is used and hover border override removed. No other
+product source changed in this turn; prior NF053/source/doc WIP retained.
+Focused discovery + axe suites: 2 files / 19 tests PASS, exit 0. Separate
+exact three-file diff review APPROVE; normalized postimages match the
+previously rendered en/id normal/hover candidate. No new browser run,
+full-suite rerun or gateway call. Receipt:
+`.nf-batch-worktrees/D2-MAIN-INTEGRATION-RECEIPT.md`.
+
+D2 main-integration decision and scoped implementation gate are CLOSED.
+Human screen-reader acceptance remains DEFERRED_BY_AUTHOR_DECISION, never
+PASS; no unconditional release, commit, push or deployment is implied.
+The current host-confirmed Engram binding recovered after the preceding
+timeout: attributed decision #346 saved and read back successfully. The
+previous unbound/file-handoff record remains historical evidence.
+
+## NF023 coordinator verification / file handoff — 2026-10-17
+
+Observed on this host: API /ready returns 200 with database up / redis up;
+reported API PID 43884 and worker PID 35348 still exist. Current-state dump
+SHA256 matches `0e37b3bafa2f014d149a76d60cfd2b67aa0fbb7e2ab0aa9ea1ed17b2c2774bd5`.
+Source, restored and source-after capture files are byte-identical (SHA256
+`6a755f4ad279ca803e688356ef45c92c6049fd22db31113cf897719594aa9c95`).
+The reported 98-table / 5088-row restore and restored API checks are retained
+execution evidence; no restore, full suite or gateway call was repeated.
+The readiness receipt's runtime command contained a credential-bearing DB
+URI; it was redacted with a dated note/pre-redaction hash, preserving results.
+Do not print credentials or raw backups in later handoffs.
+
+Corrected next-step interpretation: GAP051 remains author-deferred; do NOT
+ask to schedule it as a prerequisite. ADR0017 is PROPOSED, non-gate. D2 main
+integration is a separate concrete pending decision: reviewed patch
+`060b5a32…2ee3`, exactly three border-class replacements, still applies
+cleanly to current main. Proposal and bounded fallback handoff:
+`.nf-batch-worktrees/NF023-HANDOFF-AND-D2-PROPOSAL.md`. D2 is not applied.
+No claim of unconditional release or all-platform completion.
+
+ENGRAM UNBOUND on this turn: host registration failed with
+`spawnSync C:/Users/ch0c0/bin/engram.exe ETIMEDOUT`. No attributed memory
+write, old identity reuse or claimed Engram save. This entry and the proposal
+are the file fallback. Recheck only a future host-confirmed binding; do not
+invent an ID or reopen an old session. HEAD 4227594 and all WIP/stash retained.
+
+## NF023/NF039 real-system readiness batch — 2026-10-17
+
+Executed on the real running system (HEAD `4227594` + preserved WIP), reusing
+retained receipts; no suite, lint/typecheck or AI rerun. Receipt:
+`.nf-batch-worktrees/nf023-real-readiness-receipt.json`.
+
+- Runtime: acceptance API (node `src/server.ts`, port 3000, PID 43884) and
+  worker (node `src/index.ts`, PID 35348) started against
+  `novelforge_acceptance_050b` (nf-pg-5433) + `nf-redis-acceptance` (6399).
+  Sole memory-rebuild consumer proven by port-ownership mapping (only worker,
+  API and the Docker relay connect to 6399); no zombie present. Worker loaded
+  the current WIP source; startup reconciliation `checked=1 stale=0
+  skippedFresh=1`. `/health` and `/ready` 200 (`database:up, redis:up`);
+  authenticated `/memory/status` + `/memory/global` 200 (summaryStatus OK,
+  FRESH, revision 6, provenance served); anonymous published-reader route
+  observed live (`/api/public/novels` 200 count=20; detail + chapter read 200,
+  existing GAP-051 seed publications — nothing published by this task).
+- Current-state data recovery (new 023A evidence for the summary-bearing
+  acceptance DB): `pg_dump -Fc` →
+  `nf023-current-state-backup-20261017.dump` (650,916 bytes, sha256
+  `0e37b3bafa2f014d149a76d60cfd2b67aa0fbb7e2ab0aa9ea1ed17b2c2774bd5`);
+  restored ONLY into new scratch `novelforge_nf023_restore_scratch`: state
+  capture identical (98/98 tables, 5088/5088 rows; projection `f27f9af5` row
+  sha256 `1c6d6b89…0d6c47` and generation `9f572692` row sha256
+  `edbc93d2…0b3682` equal; attempts 1; 46 migrations with
+  `20261016_nf_wf_053_arc_summary` last, 0 unfinished); second API on :3010
+  served `/ready` 200 and the same 7/7 runtime checks from the restored data;
+  `prisma migrate deploy` on the restore is a clean no-op. Scratch DB,
+  container dump copy and minted sessions cleaned; acceptance DB re-captured
+  identical after the drills. The retained pre-migration backup
+  (`d3f41023…4eace`) remains the pre-NF053 restore point; this batch adds the
+  current-state restore proof.
+- Criteria mapping: full suite `213 files / 2597 passed / 1 skipped exit 0`
+  (log `nf053-full-suite-final-20261017.log`), lint/typecheck receipts and
+  NF053 separate review are reused unchanged (repair diff hash
+  `1d72404d…e15459` re-verified in tree with the 600s/120s budgets present).
+  Remaining gates unchanged: GAP-051 human screen-reader
+  (DEFERRED_BY_AUTHOR_DECISION), ADR-0017 PROPOSED, D2 main integration,
+  live provider-failure/forced-failure/concurrency stress UNOBSERVED, and the
+  release decision itself (author-owned). No commit/push/merge/publish/deploy.
+
+## Coordinator verification / next execution — 2026-10-17
+
+Observed final log totals: 213 files passed, 2597 tests passed / 1 skipped.
+Repair SHA256 `1d72404deb785fff355730fe9580c161f8eda22259cd9a360d5224b535e15459`
+matches the reported separate review; reverse-apply dry-run exits 0 against
+current source. The genuine forced-cache-hit receipt SHA256 is
+`721763f25114a4d6306a7c0966a08e0629ab7d8f36106e60f9a251d13d2b487f`;
+Redis retains matching processedOn/finishedOn timestamps for the distinct
+job. Receipt includes actual handler deduped=true/ok=true, full-row hash
+equality, and zero new linked Generation/Attempt rows. No test or AI rerun.
+
+The two preceding final-evidence findings are closed for the observed local
+artifact. NF053 is not a production deployment or blanket release sign-off.
+DELIVERY-PLAN's stale NF052/contract queue is now explicitly superseded;
+planning-ledger reconciliation has been done here, not sent as another
+documentation-only task. Next: existing real-system release-readiness scope,
+preserving the green suite and real gateway evidence, checking actual runtime
+ownership/readiness and current-data recovery where evidence is still missing.
+Human screen-reader deferral, ADR-0017 and D2 main-integration scope stand.
+
+## NF053 final verification CLOSED — 2026-10-17
+
+Both pending evidence limits from the 2026-10-17 coordinator read-back are
+resolved on the implemented real system (HEAD `4227594` WIP, uncommitted).
+
+Scope A — the two reported full-suite failures are root-caused test-budget
+defects, not host flakes: (1) the populated migration-proof tests
+(scale-evidence 050A-upgrade, scale-review 050B-upgrade) run two real
+`prisma migrate deploy` children inside one test under the 30s default —
+measured 39.6s plus two observed 30s timeouts; per-test 120s budgets added,
+assertions untouched. (2) the three e2e files serialize on the GAP-076
+shared-DB lock held for a file's whole runtime; author-preview burned its
+whole 120s hook budget in the capture run and gates burned its whole 300s
+budget in the pre-fix co-run (reproducing the 2026-10-16 unlogged
+file-level failure); all three getE2E hooks now carry finite 600s budgets.
+Repair diff `.nf-batch-worktrees/nf053-scope-a-repair.diff` sha256
+`1d72404deb785fff355730fe9580c161f8eda22259cd9a360d5224b535e15459`
+reviewed separately: APPROVE (3 INFO, no MINOR/MAJOR; INFO-1 comment
+rewording applied + re-confirmed). Final full suite once after the repair:
+213/213 files, 2597 passed / 1 skipped, exit 0 — first full-run green on
+this WIP (log `nf053-full-suite-final-20261017.log`).
+
+Scope B — worker-executed dedup proven without a new model call: a distinct
+authorized forced job on the existing OK arc scope was accepted 202,
+executed by the real worker (22ms, attemptsMade 1) with the handler log
+"memory rebuild processed … deduped:true ok:true" (§10 Case 3 OK-cache hit
+before any structural work or gateway call); the full projection row is
+byte-identical and linked Generations/Attempts stayed 1/1. Receipt:
+`.nf-batch-worktrees/nf053-forced-cache-hit-receipt.json`. A pre-NF053
+zombie worker (PID 41284, since stopped and documented in ISSUES) consumed
+an earlier forced job — retained as ambiguous, not proof; the receipt job
+ran under verified sole-consumer ownership.
+
+Environment finding: bare `pnpm test` is an invalid invocation on this host
+(host→5432 password auth broken by volume-before-password compose
+recreation). Suites were run with explicit `DATABASE_URL` → nf-pg-5433
+using disposable `novelforge_test*` databases; the acceptance database was
+verified untouched (projection OK/OK, attempts 1, 1 generation) before and
+after all runs. Retained negative log `nf053-full-suite-run-20261017.log`.
+
+Honest limits: live provider failure/rate-limit fallback, concurrency
+stress and forced-failure paths remain unobserved (not PASS); generated
+summaries are derived artifacts, NOT canon approval or publication; no
+commit/push/merge/deploy performed. See ISSUES-AND-GAPS for the full
+closure entry.
+
+## NF053 coordinator read-back / final checks pending — 2026-10-17
+
+Superseded the same day by "NF053 final verification CLOSED — 2026-10-17"
+above; retained as the read-back evidence record.
+
+Observed directly in the existing acceptance DB: projection
+`f27f9af5-0141-4690-beab-0fd56bd4e907` is buildStatus OK / summaryStatus OK,
+272 characters, three covered facts, source revision 6, linked to SUCCEEDED
+MEMORY_ARC_SUMMARY generation `9f572692-7ecb-4fc1-94a4-0072f2a4547c`
+(LONG_CONTEXT_REVIEWER / arc-sum-prompt-v1); one generation for that artifact.
+The approved migration is recorded applied. Frozen implementation diff
+SHA256 `bce9c4a7c0c14652ad8f5487f425b2f9af4ef48a9c9f84b97e2c3fb2e15052b6`
+matches the reported review artifact and reverse-apply check succeeds on the
+current postimages; backup SHA256 `d3f41023…4eace` matches. No AI call repeated.
+
+Two final evidence limits remain: the reported full run has two failures;
+isolation passes do not establish host-load flakiness or exclude regression.
+Historical hosted green CI at HEAD 4227594 does not verify this uncommitted
+implementation. Also, the repeat-rebuild receipt proves an accepted API
+request and unchanged selected fields/no new generation, but its fixed wait
+does not prove worker execution: retained ordinary job IDs can suppress a
+repeat. Next: diagnose the two actual failures and prove worker-executed
+dedup using the existing OK arc and a distinct authorized forced job (which
+should cache-hit without another model call). Preserve real acceptance and
+data; no new fixture or design cycle is needed. See ISSUES-AND-GAPS.
+
+## NF-WF-053 IMPLEMENTED + REAL gateway acceptance — 2026-10-16
+
+The author-approved NF053 contract (sha256 `b73fb690…0590`) is IMPLEMENTED on
+main WIP at HEAD `4227594` (uncommitted, preserved WIP intact). One additive
+forward-only migration `20261016_nf_wf_053_arc_summary` (complete 11 columns +
+`MemorySummaryStatus`) was scratch-validated, then applied to
+`novelforge_acceptance_050b` AFTER a verified recoverable backup
+(`nf053-pre-migration-backup-acceptance-050b.sql`, sha256 `d3f41023…4eace`,
+restore proven on a scratch DB). Summarizer runs through the normal
+generate→manager→gateway path with `LONG_CONTEXT_REVIEWER` (D1), M-bound 7
+(= manager cap; gateway maxRetries 6), claim/result CAS, consumed forced-retry
+intent set, sweeper expiry hygiene, and fail-closed validation (shape +
+referential closure + registered-entity closure). Forced retries use the
+`memory-rebuild-forced-<sha256>` transport identity with explicit-scope
+refusal (§8.1a).
+
+REAL acceptance (§15.0) observed on this host: story data created through the
+REAL authoring routes (novel + saga + entity + 3 author-written canon facts
+birthing revisions 2–6) in the existing acceptance DB with the existing author
+account (OWNER); `POST /memory/rebuild` accepted via the running API+worker;
+the configured gateway produced a GENUINE English summary (requested
+`bansosmontera/MiniMax-M3`, reported `MiniMax-M3`, SUCCEEDED, usage recorded),
+row `summaryStatus OK` with 3/3 covered fact ids + provenance +
+`summaryGenerationId`; served through `/memory/status` and `/memory/global`
+(`summaryProvenance.actorUserId` = acting member). Unchanged repeat rebuild
+deduped with ZERO new generation calls and a byte-identical row. Receipts:
+`.nf-batch-worktrees/nf053-real-acceptance-receipt.json`,
+`.nf-batch-worktrees/nf053-dedup-receipt.json`.
+
+Checks: new deterministic suite `apps/api/src/memory-arc-summary.test.ts`
+33/33 (dedup 1–5 incl. T-dedup-failed-dup, A-T1..A-T6 incl. A-T5
+expiry-recovery, A-T8/A-T10, forced transport identity, T2 series + T2c
+length ceiling, expiry hygiene, real-path Generation/attempt attribution,
+T6a–e attempt bounds on a 7-model single-gateway plan, revoked-at-execute
+ZERO rows); existing memory regressions api 39/39 + worker 24/24 + state
+consumers 8/8 (two worker handler-shape assertions updated to the new
+contract); workspace typecheck PASS; lint PASS exit 0 over repo source
+(local untracked artifact dirs excluded — CI unaffected). Full `pnpm test`
+once on the final tree: 2588 passed / 2 failed / 8 skipped; the 2 failures
+(scale-evidence-migration 050A-upgrade, e2e gates/author-preview file-level)
+ALL pass in isolation on the final tree (8/8, 14/14) — host parallel-load
+flakes, not NF053-caused; hosted CI full-suite stays the authoritative gate
+(retained green run38717181655 at HEAD `4227594`).
+Separate exact-diff review: pass 1 APPROVE_WITH_FINDINGS (0 MAJOR, 3 MINOR,
+3 INFO) on diff `ed89abb3…d290`; all MINOR repaired (§9.1 in-flight read
+renders summary null; three missing deterministic tests added; GAP-030
+idempotent-guard migration, revalidated scratch + no-op reapply) → scoped
+delta re-verdict **APPROVE** on diff `bce9c4a7…52b6` (2747 lines), no open
+findings. Honest limits: live provider failure/rate-limit fallback NOT
+exercised; forced retry proven at suite level only; A-T7/T-conc-dup/
+T-claim-interleave live timing not exercised. No commit/push/merge/deploy;
+generated summaries are derived artifacts, NOT canon approval or publication.
+
+## Seven-model gateway configuration applied — 2026-10-16
+
+The author's seven exact model IDs are present in the live gateway catalog
+and configured in listed order for six text profiles, including
+LONG_CONTEXT_REVIEWER (42 enabled mappings); EMBEDDING untouched. Existing
+acceptance DB `novelforge_acceptance_050b` and gateway reused. Configuration
+preimage saved without credentials, changes audited and read back.
+Gateway maxRetries=6 and manager default cap=7 make all seven eligible;
+explicit lower request caps still truncate the list. NF053 must use a
+sufficient attempt cap. Preserve invalid-request/validation stop behavior.
+
+Real generation `86fdf9e5-1a3f-4ef7-baaa-28468574383b` SUCCEEDED through
+MiniMax-M3; durable attempt read-back reports 931 input / 26 output tokens.
+All seven catalog IDs verified; actual provider failure/rate-limit fallback
+was NOT exercised. Gateway advertises Agnes and Claude Haiku as 200000,
+lower than author-declared sizes; effective metadata conservatively uses
+200000, with both claims retained. NF053 §17 has the full table/receipt paths.
+Focused existing ai-core/OmniRoute tests: 82/82 PASS. No NF053 implementation
+or summary acceptance claimed; no commit/push/deployment.
+
+## Author approval / implement with real gateway — 2026-10-16
+
+The author explicitly approved NF053's complete §7.1 additive specification
+and selected LONG_CONTEXT_REVIEWER. The author directs, from now on, actual
+implementation and testing with the real configured gateway, real story data
+and persisted generated results. No further mock-only/design-only cycle or
+new mock infrastructure is a prerequisite. Fix defects observed in the real
+flow. Older pending approvals and fake-only GAP-028 restrictions below are
+historical and superseded. MODEL-EVIDENCE-POLICY and NF053 §15.0 record this.
+
+Next: implement NF053 through existing API/queue/worker/gateway/read surfaces;
+validate the approved migration in scratch, then perform the required additive
+local real-data rollout with a verified recoverable backup. Preserve Windows
+Docker/data and canon. Verify real Generation/attempt/summary read-back,
+dedup, relevant regressions and exact implementation review. Do not ask again
+for the schema/profile or real gateway. No commit/push/merge/deploy approval.
+No code, migration or real model call has been performed by this decision
+record; implementation and real acceptance remain to be executed.
+
+## NF053 coordinator verification / author decision pending — 2026-10-16
+
+Observed final contract SHA256
+`02ec0bd82606582f240283114d72c2e6eefcf4d550586920b5da89fb84210ff1`
+and historical copy `9a3c18bf…ab8c` match the reported artifacts. Targeted
+source/contract inspection confirms the requested forced-transport/scope,
+barrier-separated concurrency, valid-reference build-failure fixture and
+current-selection/historical-unknown wording corrections are present.
+The reported independent full review plus final delta APPROVE is retained;
+this is contract readiness for author decision, not implementation evidence.
+Next: present the complete 11-column additive proposal (§7.1) and recommend
+LONG_CONTEXT_REVIEWER for D1. Await explicit author decisions before source
+implementation/migration authoring; no live migration/deployment implied.
+HEAD `4227594`, WIP/stash and acceptance data preserved. No CI/UI reruns.
+
+## NF053 corrections applied + reviewed APPROVE — 2026-10-16
+
+The GAP-028/NF053 transport and acceptance corrections are APPLIED to the
+single effective contract `tasks/NF-WF-053-arc-summary-contract.md` —
+final sha256 `02ec0bd82606582f240283114d72c2e6eefcf4d550586920b5da89fb84210ff1`
+(1160 lines); pre-correction `9a3c18bf…ab8c` byte-preserved at
+`.nf-batch-worktrees/nf053-contract-consolidated-pre-correction-2026-10-16.md`.
+Resolutions: forced transport identity + forced scope selection (§8.1a,
+A-T9/A-T10; BullMQ 5.81.5 duplicate suppression evidence; no job removal,
+no Redis reset); A-T7 barrier-separated with §9.2-consistent loser
+assertions (§15.1); T-first-row-fail valid-reference fixture (cascade FK
+respected; missing-source outcome stated); §12.3 CURRENT-selection vs
+historical-UNKNOWN outcome semantics. Independent review: FULL APPROVE 0.9
+on intermediate `5110bbcc…98bd4` (0 MAJOR, 3 MINOR, all applied) → delta
+re-verdict **APPROVE 0.95** on `02ec0bd8…10ff1`, no open findings.
+Review receipt, NOT author authorization. Still contract-only — no code,
+migration, model calls, data mutation, D2, commit/push/merge/deploy; D2
+evidence and green CI run38717181655 retained, not re-run. Open author
+gates unchanged: §7.1 additive migration approval, D1 ModelProfile
+(rec `LONG_CONTEXT_REVIEWER`). HEAD `4227594`; doc WIP and stash
+preserved. Full entry in ISSUES-AND-GAPS (2026-10-16).
+
+## NF053 consolidated coordinator assessment — 2026-10-16
+
+Observed contract hash `9a3c18bf…ab8c` matches the harness report. The
+consumed-intent set resolves the prior I/J/I predicate counterexample at
+design level. Retain the reported full-review receipt, but final dispatch
+readiness still needs the transport and acceptance corrections recorded in
+ISSUES-AND-GAPS (GAP-028/NF053). Retained BullMQ job IDs can suppress a new
+forced retry, and A-T7 contradicts the pre-claim structural write. No
+implementation/schema approval inferred. Correct this single effective
+contract without another amendment chain; preserve the submitted version
+as review history. External dispatch prompts must work after `/clear`.
+HEAD `4227594`, WIP/stash, D2 and green CI evidence retained; no reruns.
+
+## NF-WF-053 consolidated contract REVIEWED APPROVE — 2026-10-16
+
+Contract consolidation complete: `tasks/NF-WF-053-arc-summary-contract.md`
+sha256 `9a3c18bf2fa5d0a57d2b9218b5a762ad00d11ff1102ca0862cd76a20e3bfab8c`
+(996 lines) is the single effective contract superseding the frozen chain
+(all four `.nf-batch-worktrees/nf053-*` artifacts hash-verified and
+byte-preserved); implementers need not resolve the amendment chain.
+Corrections consolidated: consumed-intent SET `summary_retry_ids TEXT[]`
+consumed atomically by the terminal CAS (closes the I/J/I delayed-replay
+counterexample; replaces successor-2's scalar last-intent column as an
+explicit §7.1 item); execute-time authorization refusal = ZERO logical
+calls, ZERO gateway attempts, ZERO durable rows; all `attempts`
+exactness/monotonicity promises removed; provenance mapped to actual
+durable fields (`Generation.task="MEMORY_ARC_SUMMARY"` + `artifactId` =
+row id) with ONE new explicitly proposed column `summary_generation_id`;
+M-bound wired via a `maxAttempts` pass-through; gateway AUTH/UNSUPPORTED
+attempt counts corrected per `router.ts:196-208`. Review: pass 1 FULL by
+one distinct reviewer actor (3 MAJOR + 1 MINOR, source-verified, all
+applied); scoped delta re-verdict (all ADDRESSED, 1 new MINOR, applied);
+final **APPROVE** on `9a3c18bf…ab8c`, confidence 0.93, no open findings.
+Review receipt, NOT author authorization. Still contract-only: no code,
+no migration, no model calls, no commit/push/merge/deploy; D2 main
+unapplied; CI run38717181655 retained green, not re-run. Open author
+gates: §7.1 additive migration approval (complete 11-column table incl.
+`summary_claim_id`, `summary_retry_ids`, `summary_generation_id`), D1
+summarizer ModelProfile (rec `LONG_CONTEXT_REVIEWER`). HEAD `4227594`;
+doc WIP and stash preserved. Full entry in ISSUES-AND-GAPS (2026-10-16).
+
+## NF053 successor-2 coordinator assessment — 2026-10-16
+
+Observed artifact hash `af8ac1ef…1d441` matches the external report.
+The retry identity handles immediate replay, but storing only the last intent
+does not handle I-fails, J-fails, old-I-redelivered: the predicate admits I
+again. A focused retry-precondition correction remains before final readiness;
+see GAP-028/NF053 in ISSUES-AND-GAPS. No implementation approval inferred.
+Consolidate the effective contract for clean-context execution rather than
+requiring implementers to resolve the amendment chain. Every external prompt
+must be self-contained after `/clear` (explicit author preference).
+HEAD `4227594`, documentation WIP, stash, D2 and CI evidence retained.
+
+## NF-WF-053 successor-2 REVIEWED APPROVE — 2026-10-16
+
+Contract-only correction complete, resolving the successor assessment's
+two remaining defect groups. (1) Forced-retry intent idempotency:
+durable consumed-precondition — §4.1 proposal gains
+`summary_retry_id TEXT NULL` (same single additive migration, same
+gate); job `retryIntentId` required with `force`, one UUID per
+accepted manual request; amended claim force arm
+`{FAILED, summaryRetryId: {not: intent}}`; MANDATORY consumed-intent
+dedup classification before structural work; terminal write stamps
+the intent; cases A-T1..A-T5 cover same-intent replay (consumed no-op),
+new intent (retries), NULL-retryId claim, force-without-intent
+refusal, and post-expiry recovery via the ordinary SKIPPED arm.
+(2) Guarantees/accounting: four-term vocabulary (claim holder /
+logical generation call / gateway attempt / accepted result);
+"zero-or-one model call per claim" retracted → at most one logical
+call per won claim with 1..M gateway attempts (T6 retained); TTL
+bounds claim age only; BullMQ job-level retries (`memory-jobs.ts:212`,
+attempts=5) are at-least-once redelivery gated by the claim CAS;
+discarded-result usage records retained, never fabricated; `attempts`
+best-effort (may undercount or regress), nothing depends on it.
+Artifact `.nf-batch-worktrees/nf053-contract-successor-2-2026-10-16.md`
+sha256 `af8ac1efd4b0a117bc6a5e76cfa5b880f4287a8d57b0cbdb80b8c30947d1d441`
+(343 lines). Frozen predecessors byte-preserved (`b1e5a68d…8bde`/399,
+`4fc689a3…bf95`/607, `e2e33eb6…8159`/547). Review: pass 1 by one
+distinct reviewer actor on pre-fix `5118e503…ff37` incorrect (2 MAJOR
++ 2 MINOR, all verified against source and applied); scoped delta
+re-verdict on the final hash **APPROVE**, no new defect at MINOR or
+above. Review receipt, not author authorization. Still PLANNED/
+contract-only: no code, migration, model calls, commit/push/merge/
+deploy; D2 main unapplied; CI run38717181655 retained green not
+re-run; rendered evidence preserved. Open author gates: §4.1 additive
+migration approval (now incl. `summary_claim_id` +
+`summary_retry_id`), D1 summarizer ModelProfile (rec
+LONG_CONTEXT_REVIEWER). HEAD `4227594`; doc WIP and stash preserved.
+Full entry in ISSUES-AND-GAPS (2026-10-16).
+
+## NF053 successor assessment — 2026-10-16 (coordinator)
+
+Observed successor hash `b1e5a68d…8bde` matches the external report; both
+predecessors remain byte-identical. First-row persistence and stale-result
+identity fencing address the prior counterexamples at design level. The
+reported APPROVE is retained, but remaining retry-idempotency and call-bound
+contradictions prevent final readiness; see the dated GAP-028/NF053 assessment
+in ISSUES-AND-GAPS. No implementation or migration approval inferred.
+Next: one focused successor correction with explicit forced-job redelivery
+and retry-bound cases, followed by exact-artifact review. Preserve D2 and CI
+evidence without reruns. HEAD `4227594`, documentation WIP and stash retained.
+
+## NF-WF-053 successor contract APPROVE — 2026-10-16
+
+Bounded contract correction complete. Successor
+`.nf-batch-worktrees/nf053-contract-successor-2026-10-16.md` sha256
+`b1e5a68d5b356ae8d6eeb1e9f3097f6c77f6d658aa6f648fda65b00a98208bde`
+(399 lines) resolves both remaining defect groups (claim lifecycle;
+dedup/retry) from the coordinator follow-up, with 14 deterministic
+fake-gateway acceptance cases. Both frozen drafts preserved byte-exact
+(`e2e33eb6…8159`, `4fc689a3…bf95`); the corrected draft's external APPROVE
+is retained as a receipt only. Independent review (one distinct reviewer
+actor): pass 1 APPROVE_WITH_FINDINGS on `8d3e9a10…0ea1` (2 MINOR + 4 INFO,
+all applied); scoped delta re-verdict on the final hash **APPROVE**, no
+findings at MINOR or above. Review receipt, not author authorization.
+Still PLANNED/contract-only: no code, no migration, no model calls, no
+commit/push/merge/deploy; D2 main unapplied; retained green CI
+run38717181655 not re-run; D2 rendered evidence preserved. Open author
+gates: §4.1 additive migration approval (now incl. `summary_claim_id
+TEXT NULL`), D1 summarizer ModelProfile (rec LONG_CONTEXT_REVIEWER).
+HEAD `4227594`; doc WIP and stash preserved. Full resolution table in
+ISSUES-AND-GAPS NF053 successor entry (2026-10-16).
+
+## NF-WF-053 coordinator follow-up — 2026-10-16
+
+The external APPROVE on corrected draft `4fc689a3…bf95` is retained as a
+review receipt, not final readiness. Coordinator inspection finds remaining
+claim-lifecycle and dedup defects; see ISSUES-AND-GAPS, NF053 follow-up below.
+The contract needs one bounded correction and exact-artifact review before
+schema/profile approval or implementation. No source or migration changed.
+D2 corrected receipt hashes verified (`9fbb93ba…def7b`, `8aa4c80a…64c76`);
+rendered evidence retained without reruns. Main integration remains unapplied.
+HEAD remains `4227594`; existing documentation WIP and stash are preserved.
+
+## Post-CI batch completion — 2026-10-16 (corrections + corrected contract reviewed)
+
+Retain completed anonymous ContinueReading rendered en/id normal/hover evidence
+(CLOSED-CONFIRMED; receipt hashes match, no repeats). D2 receipt CORRECTED and
+empirically retested on current main `4227594`: the `060b5a32` artifact IS a
+proper Git diff; plain `git apply --check` exits 0 under the repo default
+(`core.autocrlf=true`, `core.eol` unset); the `-c core.autocrlf=false` failure
+is the CRLF working-file interaction (LF-normalized hunks), not a malformed
+patch. Preimage blobs match HEAD (`8584c2e`/`a6bc0b5`/`c0e4e5a`); postimages
+verified via throwaway temp-index staging (`c8e1368`/`ebbfd0f`/`45d6b89`,
+LF-equal to the reviewed candidate). Evidence receipts annotated (originals
+retained). Integration package filed: apply with repo-default configuration;
+main D2 remains UNAPPLIED — integration is a separate author decision; no
+human screen-reader PASS implied.
+
+NF-WF-053 corrected contract REVIEWED **APPROVE**: author-escalated findings
+resolved in `.nf-batch-worktrees/nf053-contract-corrected-2026-10-15.md`
+sha256 `4fc689a395ec3037769e5db17d322234b87a94f9e49f08a8b01501a7a7a7bf95`
+(607 lines; original draft `e2e33eb6…8159` preserved untouched, cited in the
+correction header). All five groups RESOLVED with inspected-source grounding
+(execute-time `generation:create` gate; Generation.userId nullability
+INSPECTED; honesty statement + reconciled four-field read shapes; real
+pre-call CAS claim + TTL recovery + exact-bounds T6; real-generate/
+fake-gateway seam + non-destructive rollback; NF052 integrated-and-pushed at
+`4227594` recorded). Reviewer findings: 2 INFO citation-drift only. Still
+contract-only PLANNED: no migration authored, no model calls, no
+implementation; §4.1 schema/migration proposal remains gated on its own
+author approval; only D1 (summarizer ModelProfile constant, rec
+LONG_CONTEXT_REVIEWER) remains open. CI run38717181655 (2562 tests / 212
+files) evidence retained.
+
+## CI green / next batch handoff — 2026-10-15
+
+Hosted run38717181655 on4227594f8349b175648cc47b8b8019133935af05 succeeds
+lint, typecheck, all2562 tests across212 files, and Compose validation.
+Earlier pending hosted-CI statements below are historical boundaries.
+Five integrated batches and both CI fixes are pushed; local artifacts and
+stash remain preserved. No deployment or human acceptance is implied.
+
+Next bounded batch (2026-10-15, second half): reconcile active execution status without rewriting frozen
+history — DONE (this entry + dated DELIVERY-PLAN override); finish missing residual-D2 rendered evidence on an isolated candidate —
+CLOSED (separate reviewer verdict CLOSED-CONFIRMED; isolated candidate
+`d2-cr-candidate` at `4227594`: real rendered ContinueReading on /browse after
+anonymous device-local progress on the existing published chapter
+`/read/gap-051-lentera-menara-kelabu/1`; en+id normal/real-hover computed
+border `rgb(111,106,99)`=#6f6a63, hover bg bg-1→bg-2; contrast
+3.6855/3.4278/3.1267 EXACT vs the D2 receipt; receipts
+`.nf-batch-worktrees/logs-b8/continue-reading-cr-evidence.{json,md}` + 4
+screenshots; candidate :3002 evidence server stopped after verification);
+draft/review NF-WF-053 summary follow-up under NF009 Invariant6, no code yet —
+DRAFTED and **APPROVE_WITH_FINDINGS** (draft
+`.nf-batch-worktrees/nf053-contract-draft.md` sha256
+`e2e33eb68fae4cc930dc304cd0b6790c8a0f39ff4650eba89fc96c908c3e8159`, 547
+lines; arc-scope summaries via the existing processRebuild stored on the
+existing MemoryProjection row and served by existing read surfaces; every
+Invariant-6 condition mapped; schema-touching prerequisite §4.1 flagged —
+additive columns + MemorySummaryStatus enum need their own author approval
+before implementation; open author decisions D1–D5 with recommendations;
+review findings are citation-drift only, applied at filing).
+ContinueReading authentication is not a source-backed prerequisite: progress
+is device-local and novel resolution uses public GETs — now PROVEN by
+rendered observation (no login, no stored state). Acceptance DB read-only
+throughout; no fixtures created. D2 main integration stays separate, and
+summary/compiler/ADR policies are not silently broadened.
+
 ## CI full-suite fixture repair — 2026-10-15
 
 Hosted c43f234 passes lint/typecheck but run38714183668 exposes five failures

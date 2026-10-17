@@ -80,6 +80,11 @@ export {
   scaleStandingOf,
 } from "./src/narrative.ts";
 export { createMemoryServices, type MemoryServices, MemoryError } from "./src/memory.ts";
+export {
+  createArcSummarizer,
+  createDbArcSummarizer,
+  ARC_SUMMARY_MODEL_PROFILE,
+} from "./src/arc-summarizer.ts";
 export { createStateAssemblyServices } from "./src/state-assembly.ts";
 
 // Extracted helpers (see module docstrings for provenance)

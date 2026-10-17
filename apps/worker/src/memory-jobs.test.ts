@@ -84,12 +84,17 @@ describe("startMemoryWorkerApp", () => {
         sourceRevisionId: "rev",
       },
     });
-    expect(processRebuild).toHaveBeenCalledWith(db, {
-      workspaceId: "ws",
-      novelId: "novel",
-      scope: "chapter:abc",
-      sourceRevisionId: "rev",
-    });
+    expect(processRebuild).toHaveBeenCalledWith(
+      db,
+      {
+        workspaceId: "ws",
+        novelId: "novel",
+        scope: "chapter:abc",
+        sourceRevisionId: "rev",
+      },
+      // NF-WF-053: the summarizer port is always passed (undefined = structural-only DI).
+      undefined,
+    );
 
     await expect(handler!({ data: { novelId: "novel" } })).rejects.toThrow(
       "malformed memory-rebuild job data",
@@ -104,7 +109,12 @@ describe("startMemoryWorkerApp", () => {
     const logger = testLogger();
     const db = {
       $disconnect: vi.fn(),
-      memoryProjection: { findMany: vi.fn(async () => []) },
+      memoryProjection: {
+        findMany: vi.fn(async () => []),
+        // NF-WF-053 §9.4: the sweeper's expired-claim CAS precedes the scan.
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
+      novel: { findMany: vi.fn(async () => []) },
     } as unknown as import("@novelforge/database").NovelForgeDb;
     const connection = {
       ping: vi.fn(async () => "PONG"),

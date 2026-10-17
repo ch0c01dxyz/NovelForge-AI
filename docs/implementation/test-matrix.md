@@ -1,5 +1,83 @@
 # Test Matrix
 
+## NF053 package refresh + NF023/NF039 missing-evidence map — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF053-PACKAGE-REFRESH-AND-NF023-GAPS-PROMPT.md`
+at HEAD `4227594…` plus preserved WIP (stash `nf050b-acceptance-wip` intact;
+no commit/push/merge/deploy; no application source change).
+
+| Check | Result |
+|---|---|
+| GAP-124 fixture closure (RETAINED, not re-run per prompt) | Focused migration suite 1 file / 8 tests PASS, exit 0, 25.87 s on disposable `novelforge_test_scale_review_migration`; separate read-only reviewer APPROVE on exact Git blob `91ee6e1b1969b692f7d596d60b3493b7d4cc1095` — blob re-verified equal to the working file this task |
+| Working-tree delta vs frozen 47-file package | Final: exactly 5 changed — `apps/api/src/scale-review-migration.test.ts` (30914→31154 bytes; the reviewed fixture fix), `docs/14-progress/CURRENT.md`, `docs/implementation/ISSUES-AND-GAPS.md` (GAP-124 + GAP-125), `docs/implementation/test-matrix.md` (this section), `docs/implementation/DELIVERY-PLAN.md` (suite-count correction); 42/47 byte-identical; all 5 untracked copies still MATCH working files. (An earlier mid-task snapshot showed 3 changed / 44 identical before this task's own records landed.) No unexpected delta |
+| `npx tsc --noEmit` (apps/api) at the current artifact | exit 0 (OBSERVED this task, 66 s) |
+| `npx vue-tsc --noEmit` (apps/web) at the current artifact | exit 0 (OBSERVED this task, 39 s) |
+| `pnpm lint` (repo) at the current artifact | exit 1, 205 errors — bisected OBSERVED: ALL 205 are inside `.nf-batch-worktrees/` local task tooling/evidence (that dir alone = 205 errors / 0 warnings; `.harness-memory` ignored), which are excluded from the publication allowlist and absent from a CI checkout; the 37-file delivery-allowlist surface lints 0 errors (3 warnings: .vue files have no eslint plugin config, skipped); committed-tree lint green remains RETAINED hosted CI run 38717181655 — hosted CI stays authoritative for the pushed revision |
+| Retained NF023 battery legs at this WIP (not re-run) | `nf053json/fullsuite-after.log` 213 files / 2608 passed / 1 skipped, exit 0; combined e2e 3 files / 21 PASS; axe suites included in the full suite; source delta since that run = reviewed fixture fix (8/8 focused) + records only |
+| Retained NF023 023A/023B legs (historical, 2026-10-07) | migrate-from-zero 36/36 + clean no-op; backup/restore drill 5/5 (`BACKUP-RESTORE-RUNBOOK.md`); tenant-isolation 14/14 + zero unfiltered queries; GAP-062 CLOSED (typed refusal, 4 new tests) |
+| NF023/NF039 unknown → classification | live provider outage/429 fallback → PENDING, requires real provider failure not manufactured (unit-pinned backoff/attempts T6a–e; fake-gateway deterministic per contract §15); JSON multi-hop failover beyond first eligible hop → PENDING, same dependency (first-hop eligibility skip OBSERVED on real gateway, rollout receipt); real all-ineligible 409 → NOT a contract criterion (absent from NF053 contract §8/§13/§15; unit-pinned w/ zero attempts in ai-core suite); real A-T7/T-conc-dup/T-claim-interleave timing → NOT required (contract prescribes fake-gateway barriers; live-process timing explicitly disclaimed in `memory-arc-summary.test.ts` header; deterministic claim-CAS pinned via T6/auth/ordering cases) |
+| Refreshed package | `.nf-batch-worktrees/nf053-prepub-package-v2/` (see its MANIFEST/REPORT/DELTA; frozen v1 kept as history) |
+| NOT a gate here | GAP-051 human screen-reader DEFERRED_BY_AUTHOR_DECISION; ADR-0017 PROPOSED; hosted CI, NF023 release acceptance and live deployment require the published revision; no fresh full-suite/CI run claimed |
+
+## NF053 JSON eligibility + E2E scheduling repair — 2026-10-17
+
+| Check | Result |
+|---|---|
+| packages/ai-core `vitest run` | 91/91 (2 files) incl. 5 new request-aware eligibility tests (skip+order, explicit all-ineligible failure w/ 0 attempts, ordinary unchanged, UNKNOWN eligible, stream parity) |
+| apps/api `src/ai.test.ts` | 39/39 incl. 2 new audited `jsonOutputMode` tests (record/replace/clear + empty-patch 400 + audit payload sequence; marker preserved across real catalog resync) |
+| Typechecks | ai-core, ai-services, api `tsc --noEmit` clean |
+| Scoped ESLint | clean on all 10 touched files (untracked artifacts not linted) |
+| endgame pair (parallel) | 2 files / 27 tests PASS — endgame-projection unique-DB-name fix preserved; only `endgame.test.ts` uses `novelforge_test_endgame` (grep-verified) |
+| Combined real e2e (`e2e-combined.log`) | 3 files / 21 tests PASS, 518.32 s; all three `[e2e-lock] acquired after 1ms` — sequential e2e project leaves the GAP-076 lock uncontended; prior failure was 600 s beforeAll budget consumed purely waiting for earlier files' whole lifecycles (0 tests run) |
+| Real acceptance (owned clone `novelforge_nf053compat_clone`, backup SHA `0e37b3ba…` re-verified, redis db5, API 3100, real `startMemoryWorkerApp` worker, sole `bull:memory-rebuild` consumer) | 7 observed JSON-mode markers applied via audited `PATCH /api/models/:id` (MiniMax prio-10 / mimo 50 / claude 70 → `incompatible`; deepseek 20 / agnes 30 / laguna 40 / muse 60 → `ok`; 7 `model.updated` audit rows); projection row deleted as declared precondition (generations baseline 25 preserved); rebuild 202 → worker → generation `712a3c23-57b3-4c0d-a9f6-4d9c6aee718c` attempt 1/1 `bansosmontera/deepseek-v4.1-flash` SUCCEEDED 1288/156 tok 2839 ms — priority-10 MiniMax skipped WITHOUT forced outage; projection `9fb0e70f…` OK/OK 225 chars, 3/3 covered fact ids, source rev `1a385bba` (6); `/memory/status` 200 FRESH/OK; `/memory/global` 200 with provenance. Receipt `nf053json/nf053compat-acceptance-receipt.json` |
+| FINAL full `pnpm test` once after fixes (`DATABASE_URL` → nf-pg-5433) | **213/213 files, 2608 passed / 1 skipped, exit 0, 979.43 s** (`nf053json/fullsuite-after.log`) — first combined green incl. e2e scheduling fix + eligibility changes; no repeat-until-green loop |
+| Separate exact repair-diff review | APPROVE 10/10 items with file:line evidence (independent reviewer agent record; prior-task hunks excluded, e.g. `DEFAULT_MAX_ATTEMPTS 3→7` out of scope) |
+| Cleanup | worker+API stopped, clone dropped (pg_database 0 rows), redis db5 flushed to pre-task 0 keys, launcher/driver retained under `.nf-batch-worktrees/nf053json/` as receipts |
+| NOT exercised | live provider outage/429 fallback; multi-candidate failover WITH outputMode set beyond the eligible-first hop; all-ineligible 409 on the real gateway (unit-pinned only); reader UI |
+
+## D2 authorized main integration — 2026-10-17
+
+| Check | Result |
+|---|---|
+| Exact approved patch identity/application | 060b5a32…2ee3 verified; three one-line replacements applied |
+| Focused discovery and discovery axe | 2 files, 19/19 PASS, exit 0 |
+| Exact source review | APPROVE on normalized three-file postimages |
+| Whitespace and preservation | diff --check clean; staging empty; prior WIP/stash retained |
+| Rendered en/id normal/hover | Retained candidate evidence, identical normalized source; not a new browser run |
+| Full suite / gateway | Not rerun for border classes; prior receipts retained |
+| Human screen reader | DEFERRED_BY_AUTHOR_DECISION, never PASS |
+
+## NF053 final verification — Scope A repair + Scope B forced cache-hit — 2026-10-17
+
+| Check | Result |
+|---|---|
+| Capture full `pnpm test` (proper invocation, `DATABASE_URL` → nf-pg-5433) | 2592 passed / 2 failed / 4 skipped. Exact errors retained (`nf053-full-suite-run-20261017b.log`): scale-evidence 050A-upgrade timeout 30000ms; scale-review 050B-upgrade timeout 30000ms; e2e author-preview beforeAll hook timeout 120000ms at `getE2E()` lock wait |
+| Pre-fix co-run (5 affected files) | gates beforeAll "Hook timed out in 300000ms" (`nf053-affected-corun.log`) — reproduces the 2026-10-16 unlogged gates file-level failure |
+| Root cause (Scope A) | (1) double real `prisma migrate deploy` + seed + checksums in one `it` vs 30s default `testTimeout` (39.6s measured 2026-10-16); (2) GAP-076 e2e lock held for a file's whole runtime; waiter hook budgets (120s/300s) below measured holder runtimes |
+| Repair | 5 test files, budgets/comments only: per-test 120s on both populated migration-upgrade tests; beforeAll 600s on all three getE2E files. Diff `nf053-scope-a-repair.diff` sha256 `1d72404d…5459`. No assertion, coverage or global config change |
+| Post-fix co-run | 5 files / 37 tests PASS, 498.8s (`nf053-affected-corun-2.log`) |
+| FINAL full `pnpm test` once after repair | **213/213 files, 2597 passed / 1 skipped, exit 0** (`nf053-full-suite-final-20261017.log`) — first full-run green on this WIP |
+| Separate exact-diff review | APPROVE (3 INFO no-action; INFO-1 comment rewording applied + re-confirmed) |
+| Scope B forced cache-hit (real worker, no new model call) | distinct forced job `memory-rebuild-forced-d2a6bce3…935ab` accepted 202 → executed by the sole-consumer worker (22ms, attemptsMade 1) → handler log "deduped:true ok:true" (§10 Case 3, before gateway call) → projection row byte-identical (SHA before==after), Generations 1→1, Attempts 1→1. Receipt `nf053-forced-cache-hit-receipt.json` |
+| Acceptance DB integrity across all runs | projection `f27f9af5…` OK/OK attempts=1, 1 linked generation, `novelforge_acceptance_050b` present before/after; retained forced jobs not deleted |
+| Runtime ownership | pre-NF053 zombie worker PID 41284 (2026-10-14) stopped after it consumed an ambiguous first forced job (retained, not proof); sole consumer verified for the receipt job |
+| Environment finding | bare `pnpm test` invalid on this host: host→5432 auth broken (volume predates container POSTGRES_PASSWORD); explicit `DATABASE_URL` required (negative log `nf053-full-suite-run-20261017.log` retained); 79 disposable test DBs accumulated on nf-pg-5433, not purged |
+| NOT exercised | live provider failure/rate-limit fallback; concurrency stress; forced-failure/provider-outage paths; lock-wait beyond 600s budgets |
+
+## NF-WF-053 arc-scope summaries — 2026-10-16
+
+| Check | Result |
+|---|---|
+| Migration on dedicated scratch DB (`novelforge_test_nf053_migration`, dropped after) | APPLY OK; 11 columns + 4-label enum read back |
+| Acceptance DB backup / recoverability | `pg_dump` `d3f41023…4eace`; restore into scratch DB 0 errors; then single additive migration applied; 11 columns read back |
+| New deterministic suite `apps/api/src/memory-arc-summary.test.ts` | 33/33 PASS (dedup cases 1–5, A-T1..A-T6 incl. A-T5 expiry-recovery + A-T8, A-T10, forced transport identity, T2 series + T2c length ceiling + T2a/T2b/T2d validator units, T-expiry hygiene, T1-real Generation/attempts attribution, T6a/b/c/d/e attempt bounds on a 7-model single-gateway plan, T-auth-1 revoked-at-execute ZERO rows, T-auth-3 non-creator attribution) |
+| Existing memory regressions | api `memory.test.ts` + `memory.global.test.ts` 39/39 PASS; worker `memory-reconciliation/jobs/sweeper/queue` 24/24 PASS (2 handler-shape assertions updated to the new contract: summarizer arg, sweeper stubs) |
+| REAL gateway acceptance (§15.0) | PASS — real API/queue/worker/gateway; MiniMax-M3 SUCCEEDED; summary persisted + read back via status/global; dedup repeat = 0 new calls, byte-identical row |
+| Workspace `pnpm typecheck` | PASS (all apps) |
+| Final lint (repo source; local untracked artifact dirs excluded) | PASS, exit 0 |
+| Full `pnpm test` once on the final tree | 2588 passed / 2 failed / 8 skipped (213 files). Failures: `scale-evidence-migration` 050A-upgrade (39.6s under parallel load) + file-level `e2e/gates` + `e2e/author-preview.loop`. ALL THREE pass in isolation on the final tree (migration 8/8; e2e 14/14 co-run) — host parallel-load flakes (jsdom ×93), not NF053-caused; my changed-area suites pass isolated. CI full-suite remains the authoritative gate (retained green run38717181655 at HEAD `4227594`; the 33 new NF053 tests are additive). |
+| NOT exercised | live provider failure/rate-limit fallback; live forced retry (suite-level only); A-T7 live-barrier concurrency and T-conc-dup/T-claim-interleave timing (deterministic claim-CAS exclusion is pinned at unit level via T6/auth/ordering cases; the suite header lists exactly what is and is not claimed) |
+
 ## NF-WF-052 authorized main integration — 2026-10-15
 
 Observed: apply exit0; five candidate/postimage hashes match; reverse-check
@@ -2372,3 +2450,13 @@ Amendment: `tasks/NF-WF-052-anomalies-amendment-2026-10-15.md` sha256 `47abeabe�
 | Amendment conformance (reviewer) | excluded[] = selected-canonical only (|excluded| ≤ |selected| ≤ cap, combined fixture asserts 20=20); anomalies {total exact grouped-before-COUNT, surfaced ≤ shared cap in (MIN(created_at), scope) order raw-text, complete === (total === surfaced.length)}; constant reason omitted contractually; zeroed canonical states unchanged (deep-equal); no-head short circuit preserved + documented no-inspection; diagnostics never ranked; canonical paths byte-stable v3→v4; every query bounded; policies untouched | VERIFIED |
 | Packaging | apply-check vs live main WIP exit 0 (`git -c core.autocrlf=false apply --check`); temp-apply → 5/5 postimages byte-exact vs candidate; proper git new-file; NF051 hunk absent; v3 patch preserved | VERIFIED |
 | INFO finding (1) | tail fixture's computed-expected sort assumes JS default sort agrees with Postgres scope ASC for digit-suffix strings — passes empirically, fails loudly if ever violated (test-only) | recorded, no action |
+
+#### Residual-D2 rendered closure + NF-WF-053 contract review (2026-10-15, post-CI batch)
+
+| Check | Scope | Result |
+|---|---|---|
+| D2 candidate applicability | `batch8-d2-border-repair-v2.diff` (`060b5a32…2ee3`) vs `4227594` — summary-format diff, content-replacement applied (preimage uniqueness 3/3, offsets +3); postimages ContinueReading `32babaa3…`, NovelCard `c94c3928…`, browse `bd47ca18…` | APPLICABLE, uncommitted in `d2-cr-candidate` |
+| Rendered evidence (chrome_devtools, fresh anonymous isolated context) | /browse after device-local progress on existing published chapter `/read/gap-051-lentera-menara-kelabu/1`; en+id; real CDP hover (`matches(':hover')===true`) | ContinueReading renders with postimage class; border `#6f6a63` unchanged on hover; bg steps bg-1→bg-2; contrast 3.6855/3.4278/3.1267 EXACT vs D2 receipt (independently recomputed by reviewer) |
+| Reviewer verdict (distinct actor) | D2 evidence package | CLOSED-CONFIRMED (INFO: screenshots not pixel-audited; corroborated via live :3002 probe) |
+| NF-WF-053 contract draft `e2e33eb6…8159` (547 lines) | arc-scope summaries, Invariant-6 item-by-item, §4.1 schema prerequisite flagged, D1–D5 author decisions, fake-gateway-only acceptance T1–T8 | APPROVE_WITH_FINDINGS — citation-drift only (5 pointers + 1 anchor), applied at freeze |
+| Constraints | anonymous context, no login/content creation, acceptance DB SELECT-only, :3001 untouched, no commits | ALL HONORED |

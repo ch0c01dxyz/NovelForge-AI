@@ -162,7 +162,9 @@ beforeAll(async () => {
   db = e2e.db;
   mdb = bindMeasureDb(db);
   fixture = await ensureFixture(db);
-}, 300_000);
+  // Same shared-lock wait budget as gates/author-preview (600s): this file
+  // can also be the HOLDER whose fixture runtime the siblings must out-wait.
+}, 600_000);
 
 afterAll(async () => {
   await closeE2E();

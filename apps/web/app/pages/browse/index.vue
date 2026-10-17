@@ -161,7 +161,7 @@ onMounted(() => {
                   :to="hit.type === 'novel'
                     ? `/read/${encodeURIComponent(hit.novel.slug)}`
                     : `/read/${encodeURIComponent(hit.novel.slug)}/${hit.chapter!.number}`"
-                  class="block rounded-lg border border-nf-border bg-nf-bg-1 p-4 shadow-nf-sm transition-colors hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
+                  class="block rounded-lg border border-nf-border-focus bg-nf-bg-1 p-4 shadow-nf-sm transition-colors hover:bg-nf-bg-2 focus-visible:nf-focus"
                 >
                   <p class="text-[12px] uppercase tracking-[0.14em] text-nf-accent-hi">
                     {{ hit.type === "novel" ? t("discover.novelResult") : t("discover.chapterResult") }}

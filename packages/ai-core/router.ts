@@ -30,6 +30,13 @@ export interface Candidate {
   enabled: boolean;
   /** Extra attempts allowed against this gateway after its first failure. */
   maxRetries?: number;
+  /**
+   * Catalog capabilities of the mapped model, when the registry row has
+   * one. Undefined = UNKNOWN, not verified (never inferred from a model
+   * name); only an explicit recorded incompatibility removes a candidate
+   * from a structured-output request.
+   */
+  capabilities?: string[];
 }
 
 /**

@@ -456,6 +456,7 @@ export class OmniRouteGateway implements AIGateway {
     };
     if (req.temperature !== undefined) body.temperature = req.temperature;
     if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
+    if (req.outputMode === "json_object") body.response_format = { type: "json_object" };
     if (stream) body.stream = true;
     return body;
   }

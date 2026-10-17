@@ -8,11 +8,13 @@
  * for the context compiler, status reads, rebuild triggers (BullMQ),
  * and as-of reads — with server-side auth (Invariant 11).
  */
+import { randomUUID } from "node:crypto";
 import type { NovelForgeDb } from "@novelforge/database";
 import {
   ARC_SCOPE_PREFIX,
   MEMORY_ARC_SCOPES_MAX,
   MEMORY_RECENT_CHAPTERS_DEFAULT,
+  memoryForcedRebuildJobId,
   memoryRebuildJobId,
   chapterScope,
   parseScope,
@@ -23,6 +25,7 @@ import {
   type MemoryBlock,
   type MemoryFreshness,
   type MemoryScopeStatus,
+  type MemorySummaryProvenance,
   type RecallNovelResult,
   type GlobalMemoryResult,
   type ArcMemoryEntry,
@@ -89,7 +92,7 @@ export function createMemoryServices(deps: {
     actorUserId: string,
     workspaceId: string,
     novelId: string,
-    body: { scope?: string; revisionId?: string; simulation?: boolean },
+    body: { scope?: string; revisionId?: string; simulation?: boolean; force?: boolean },
   ) => Promise<{ accepted: true; scopes: string[] }>;
   readAsOf: (
     actorUserId: string,
@@ -149,6 +152,23 @@ export function createMemoryServices(deps: {
       },
     });
     if (!row) return null;
+    // NF-WF-053 §13.2: summary fields come from the stored row; the acting
+    // user comes from the CURRENT selected Generation (§12.3 pointer).
+    let summaryProvenance: MemorySummaryProvenance | null = null;
+    if (row.summaryStatus === "OK") {
+      const generation = row.summaryGenerationId
+        ? await db.generation.findUnique({
+            where: { id: row.summaryGenerationId },
+            select: { userId: true },
+          })
+        : null;
+      summaryProvenance = {
+        summarizerVersion: row.summarizerVersion ?? "",
+        modelProfile: row.summarizerModelProfile ?? "",
+        promptVersion: row.summarizerPromptVersion ?? "",
+        actorUserId: generation?.userId ?? null,
+      };
+    }
     return {
       scope,
       freshness: freshness.freshness as Exclude<MemoryFreshness, "MISSING">,
@@ -156,8 +176,12 @@ export function createMemoryServices(deps: {
       sourceRevisionNumber: freshness.sourceRevisionNumber ?? 0,
       chapterCoverage: row.chapterCoverage,
       structural: row.structural as unknown as MemoryBlock["structural"],
-      summary: null,
-      summaryStatus: "SKIPPED",
+      // §9.1: an in-flight claim renders summary null + SUMMARIZING — never
+      // a prior version's stranded bytes.
+      summary: row.summaryStatus === "SUMMARIZING" ? null : row.summary,
+      summaryStatus: row.summaryStatus,
+      summaryCoveredFactIds: row.summaryCoveredFactIds,
+      summaryProvenance,
       provenance: { revisionId: row.sourceRevisionId, builtAt: row.builtAt.toISOString() },
     };
   }
@@ -279,6 +303,8 @@ export function createMemoryServices(deps: {
         chapterCoverage: f.chapterCoverage,
         lastError: f.lastError,
         attempts: f.attempts,
+        summaryStatus: f.summaryStatus,
+        summaryError: f.summaryError,
       });
     }
     return statuses;
@@ -288,7 +314,7 @@ export function createMemoryServices(deps: {
     actorUserId: string,
     workspaceId: string,
     novelId: string,
-    body: { scope?: string; revisionId?: string; simulation?: boolean },
+    body: { scope?: string; revisionId?: string; simulation?: boolean; force?: boolean },
   ): Promise<{ accepted: true; scopes: string[] }> {
     await gate(workspaceId, novelId, actorUserId, "novel:update");
     // Invariant 8 (enforceable scope): an explicit simulation source
@@ -299,6 +325,12 @@ export function createMemoryServices(deps: {
         "SIMULATION_SOURCE_REFUSED",
         "simulation sources cannot feed memory",
       );
+    }
+    // NF-WF-053 §8.1a(3): a forced retry is inherently targeted — an
+    // explicit scope is REQUIRED (omitted-scope selection only sees STALE
+    // rows and cannot deterministically address a FAILED-summary target).
+    if (body.force === true && body.scope === undefined) {
+      throw new MemoryError(400, "INVALID_INPUT", "force requires an explicit scope");
     }
     if (body.scope !== undefined) {
       const parsed = parseScope(body.scope);
@@ -355,10 +387,26 @@ export function createMemoryServices(deps: {
     }
 
     for (const scope of scopes) {
-      const jobId = memoryRebuildJobId(novelId, scope, sourceRevisionId);
+      // NF-WF-053 §8.2(1): one accepted forced request = exactly one fresh
+      // retry intent, enqueued under the force-specific transport identity
+      // (§8.1a) so retained-job duplicate suppression can never silence it.
+      // The authenticated caller is stamped for execute-time authorization
+      // (§14.2). Unforced identity/payload are byte-unchanged.
+      const forced = body.force === true;
+      const retryIntentId = forced ? randomUUID() : undefined;
+      const jobId = forced
+        ? memoryForcedRebuildJobId(novelId, scope, sourceRevisionId, retryIntentId as string)
+        : memoryRebuildJobId(novelId, scope, sourceRevisionId);
       await queue.add(
         "rebuild",
-        { workspaceId, novelId, scope, sourceRevisionId },
+        {
+          workspaceId,
+          novelId,
+          scope,
+          sourceRevisionId,
+          actorUserId,
+          ...(forced ? { force: true, retryIntentId } : {}),
+        },
         { jobId },
       );
     }
@@ -698,8 +746,10 @@ export function createMemoryServices(deps: {
         sourceRevisionNumber: block.sourceRevisionNumber,
         chapterCoverage: block.chapterCoverage,
         structural: block.structural,
-        summary: null,
-        summaryStatus: "SKIPPED",
+        summary: block.summary,
+        summaryStatus: block.summaryStatus,
+        summaryCoveredFactIds: block.summaryCoveredFactIds,
+        summaryProvenance: block.summaryProvenance,
         provenance: {
           revisionId: block.provenance.revisionId,
           builtAt: block.provenance.builtAt,

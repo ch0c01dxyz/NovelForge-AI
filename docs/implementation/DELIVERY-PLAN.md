@@ -1,5 +1,58 @@
 # NovelForge Workflow Delivery Plan
 
+D2 execution update — 2026-10-17: the author approved main-tree integration
+and the exact three-line border patch is now applied, 19 focused tests PASS,
+separate exact review APPROVE. Earlier pending-D2 entries below are historical.
+Human screen-reader scope remains deferred; ADR0017 stays proposed/non-gate.
+No release, commit/push/merge/deploy approval is inferred.
+
+## Active execution override — 2026-10-17
+
+Planning-ledger reconciliation is complete at this boundary. Historical
+queues below are retained, not dispatch authority. Current source identity:
+HEAD 4227594 plus reviewed uncommitted NF053 implementation and the reviewed
+five-test budget repair; no publication permission is implied.
+
+- NF051/NF052: integrated, published and baseline CI-closed. Do not reopen
+  their recorded ordering/cap/routes-only/anomalies decisions or redispatch.
+- NF053: implemented, separately reviewed, additive local migration applied,
+  actual gateway summary read back, worker-executed cache hit verified.
+  Final local suite log: 213 files passed, 2608 tests passed / 1 skipped
+  (`nf053json/fullsuite-after.log`, 2026-10-17, post-eligibility-fix).
+  Repair evidence and genuine forced-job receipt are in CURRENT/ISSUES.
+- Residual D2 rendered evidence: closed on isolated candidate; main-tree
+  integration remains a separate author decision. Do not rerun its receipts.
+- Human screen-reader acceptance: DEFERRED_BY_AUTHOR_DECISION, never PASS.
+  ADR-0017 remains PROPOSED, non-gate; no compiler adoption authorized.
+
+Next ready execution is the existing NF023/NF039 release-readiness scope on
+the current working artifact: start/verify the actual local app/worker with
+explicit working DB configuration, verify remaining current-data restore and
+operational evidence, reuse applicable final tests and receipts, and report
+the precise remaining release gates. This is execution on the real system,
+not another NF053 contract cycle or a duplicate NF052 task. Existing local
+5432 authentication drift is not permission to reset passwords/volumes;
+reuse the working 5433 service and preserve all data. No deployment, commit,
+push, merge, automatic canon approval or publication is authorized.
+
+Integration status override (2026-10-15): all five scoped batches are
+PUBLISHED (origin/main at `4227594f8349b175648cc47b8b8019133935af05`) and
+hosted CI is green (run 38717181655: lint, typecheck, 2562 tests across 212
+files, Compose validation). NF-WF-051 (reconciliation sweeper) and NF-WF-052
+(bounded global memory union read + anomalies channel) are implemented,
+separately reviewed, integrated and CI-closed — do not redispatch them and
+do not re-request their recorded decisions (oldest-created ordering, cap 20,
+routes-only, anomalies channel). The 2026-10-14 "corrected dependency-ready
+task list" below is superseded: its items (2) and (3) are DONE; item (6)'s
+HEAD reference is stale (publication moved main to `4227594`). Remaining
+active items: residual-D2 rendered evidence (in progress, isolated
+candidate); NF-WF-053 summary follow-up contract (drafted, separately
+reviewed, PROPOSED — author decisions listed in the handoff, no
+implementation authorized); GAP-039 residual human screen-reader pass
+(DEFERRED_BY_AUTHOR_DECISION); ADR-0017 (PROPOSED, not a gate); D2 main
+integration (separate decision). The 2026-10-12 paragraph below is retained
+for its evidence record only.
+
 Current integration (2026-10-12): 050C (optional S3 assistance) is
 implemented, separately reviewed and committed as `7589388` on main
 (not pushed); contract,

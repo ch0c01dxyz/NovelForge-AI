@@ -623,6 +623,93 @@ describe("model catalog + profile mapping", () => {
     expect(row.health).toBe("UNKNOWN");
   });
 
+  it("records and clears observed JSON-mode compatibility through the audited model API", async () => {
+    const admin = await seedUser("admin23@t.io", "SUPER_ADMIN");
+    const gwId = await createGateway(admin.cookie, "jsonmode");
+    await mapProfile(admin.cookie, gwId, "LONG_CONTEXT_REVIEWER");
+    const modelId = (
+      (await app.inject({ method: "GET", url: "/api/models", headers: { cookie: admin.cookie } })).json() as Array<{
+        id: string;
+        modelId: string;
+      }>
+    ).find((m) => m.modelId === "fake-writer")!.id;
+
+    const patch = async (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/models/${modelId}`,
+        headers: { cookie: admin.cookie },
+        payload,
+      });
+    const caps = async () => {
+      const res = await app.inject({ method: "GET", url: "/api/models", headers: { cookie: admin.cookie } });
+      return (
+        (res.json() as Array<{ id: string; capabilities: string[] }>).find((m) => m.id === modelId)!
+          .capabilities
+      );
+    };
+
+    // Empty patches are refused like every other admin body.
+    expect((await patch({})).statusCode).toBe(400);
+
+    await patch({ jsonOutputMode: "incompatible" });
+    expect(await caps()).toContain("nf:json_object=incompatible");
+
+    // A new observation replaces the previous marker instead of stacking.
+    await patch({ jsonOutputMode: "ok" });
+    expect(await caps()).toContain("nf:json_object=ok");
+    expect(await caps()).not.toContain("nf:json_object=incompatible");
+
+    // "unknown" clears the marker: absence is unverified, not a claim.
+    await patch({ jsonOutputMode: "unknown" });
+    expect((await caps()).some((c) => c.startsWith("nf:json_object="))).toBe(false);
+
+    const logs = await db.auditLog.findMany({
+      where: { action: "model.updated", entityId: modelId },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(logs.map((l) => (l.payload as { jsonOutputMode?: string }).jsonOutputMode)).toEqual([
+      "incompatible",
+      "ok",
+      "unknown",
+    ]);
+  });
+
+  it("preserves observed JSON-mode markers across a catalog resync", async () => {
+    const admin = await seedUser("admin24@t.io", "SUPER_ADMIN");
+    const gwId = await createGateway(admin.cookie, "sync-keep");
+    await mapProfile(admin.cookie, gwId, "LONG_CONTEXT_REVIEWER");
+    const modelId = (
+      (await app.inject({ method: "GET", url: "/api/models", headers: { cookie: admin.cookie } })).json() as Array<{
+        id: string;
+        modelId: string;
+      }>
+    ).find((m) => m.modelId === "fake-writer")!.id;
+
+    await app.inject({
+      method: "PATCH",
+      url: `/api/models/${modelId}`,
+      headers: { cookie: admin.cookie },
+      payload: { jsonOutputMode: "incompatible" },
+    });
+
+    // Ordinary catalog refresh: gateway-reported capabilities are
+    // refreshed, observed application-managed evidence is preserved.
+    const resync = await app.inject({
+      method: "POST",
+      url: `/api/gateways/${gwId}/sync-models`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(resync.statusCode).toBe(200);
+
+    const res = await app.inject({ method: "GET", url: "/api/models", headers: { cookie: admin.cookie } });
+    const caps = (res.json() as Array<{ id: string; capabilities: string[] }>).find(
+      (m) => m.id === modelId,
+    )!.capabilities;
+    expect(caps).toContain("chat");
+    expect(caps).toContain("nf:json_object=incompatible");
+  });
+
   it("resets gateway health to HEALTHY after a successful sync", async () => {
     const admin = await seedUser("admin21@t.io", "SUPER_ADMIN");
     const gwId = await createGateway(admin.cookie, "recovers");

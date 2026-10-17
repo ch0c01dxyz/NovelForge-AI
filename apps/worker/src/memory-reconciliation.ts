@@ -30,6 +30,7 @@ import {
   MEMORY_REBUILD_QUEUE_NAME,
   MEMORY_REBUILD_MAX_ATTEMPTS,
   MEMORY_REBUILD_RETRY_BASE_MS,
+  MEMORY_SUMMARY_CLAIM_TTL_MS,
   type MemoryRebuildJobData,
 } from "@novelforge/memory";
 import type { WorkerLogger } from "./worker.ts";
@@ -55,6 +56,8 @@ export type MemoryReconciliationReport = {
   skippedFresh: number;
   skippedMissing: number;
   failed: number;
+  /** NF-WF-053 §9.4: crashed summary claims recovered to SKIPPED. */
+  summaryClaimsExpired: number;
 };
 
 /** Deterministic jobId — must match the API's `triggerRebuild` format. */
@@ -109,12 +112,46 @@ export async function reconcileMemoryRebuilds({
     skippedFresh: 0,
     skippedMissing: 0,
     failed: 0,
+    summaryClaimsExpired: 0,
   };
 
+  // NF-WF-053 §9.4: crashed summary claimants. A SUMMARIZING row whose
+  // claim is older than MEMORY_SUMMARY_CLAIM_TTL_MS is expired back to
+  // CLAIMABLE SKIPPED with the required prior-version byte hygiene
+  // (summary, covered ids, generation pointer). Never a terminal FAILED;
+  // never consults the in-flight result; never calls any model.
+  const cutoff = new Date(Date.now() - MEMORY_SUMMARY_CLAIM_TTL_MS);
+  const expired = await db.memoryProjection.updateMany({
+    where: { summaryStatus: "SUMMARIZING", summaryClaimedAt: { lt: cutoff } },
+    data: {
+      summaryStatus: "SKIPPED",
+      summaryError: "claim expired",
+      summary: null,
+      summaryCoveredFactIds: [],
+      summaryGenerationId: null,
+      summaryClaimId: null,
+      summaryClaimedAt: null,
+    },
+  });
+  report.summaryClaimsExpired = expired.count;
+
+  // NF-WF-053 §14.2: reconciliation-enqueued jobs are attributed to the
+  // novel's creator (worker-side system-act attribution precedent) —
+  // attribution data only; execute-time authorization stays with the
+  // generate gate.
   const pairs = await db.memoryProjection.findMany({
     select: { novelId: true, scope: true, workspaceId: true },
     distinct: ["novelId", "scope"],
   });
+  const creatorByNovel = new Map<string, string>();
+  const novelIds = [...new Set(pairs.map((p) => p.novelId))];
+  if (novelIds.length > 0) {
+    const novels = await db.novel.findMany({
+      where: { id: { in: novelIds } },
+      select: { id: true, createdById: true },
+    });
+    for (const n of novels) creatorByNovel.set(n.id, n.createdById);
+  }
 
   for (const { novelId, scope, workspaceId } of pairs) {
     report.checked++;
@@ -138,11 +175,13 @@ export async function reconcileMemoryRebuilds({
       // STALE or FAILED → re-derive for the head revision.
       report.stale++;
       const jobId = memoryRebuildJobId(novelId, scope, f.headRevisionId);
+      const creator = creatorByNovel.get(novelId);
       const data: MemoryRebuildJobData = {
         workspaceId,
         novelId,
         scope,
         sourceRevisionId: f.headRevisionId,
+        ...(creator !== undefined ? { actorUserId: creator } : {}),
       };
 
       // P2-6 hazard: re-adding against a retained `failed` job is a silent

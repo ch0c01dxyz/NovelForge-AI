@@ -1,7 +1,7 @@
 /**
  * Endgame closure projection (NF-WF-022C) integration suite.
  *
- * Dedicated `novelforge_test_endgame` db (parallel-safe per ADR-0003 §8).
+ * Dedicated `novelforge_test_endgame_projection` db (parallel-safe per ADR-0003 §8).
  * Drives `runEndgameProjection` against the real 021A SimulationServices
  * and a real migrated database, with an in-memory ledger store behind the
  * injected EndgameLedgerReader seam (022A is implemented in parallel;
@@ -46,7 +46,7 @@ import {
 import { createEndgameServices } from "./services/endgame.ts";
 import { createAuditService } from "@novelforge/ai-services";
 
-const TEST_DB = "novelforge_test_endgame";
+const TEST_DB = "novelforge_test_endgame_projection";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const DB_PACKAGE_ROOT = path.join(HERE, "..", "..", "..", "packages", "database");
 const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build", "index.js");

@@ -65,7 +65,19 @@ const updateGatewayBody = z
   })
   .refine((v) => Object.keys(v).length > 0, { message: "empty patch" });
 
-const setModelEnabledBody = z.object({ enabled: z.boolean() });
+const patchModelBody = z
+  .object({
+    enabled: z.boolean().optional(),
+    /**
+     * NF053 JSON follow-up: record observed structured-output
+     * compatibility. "ok"/"incompatible" store the marker; "unknown"
+     * clears it back to unverified. Audited via "model.updated".
+     */
+    jsonOutputMode: z.enum(["ok", "incompatible", "unknown"]).optional(),
+  })
+  .refine((v) => v.enabled !== undefined || v.jsonOutputMode !== undefined, {
+    message: "empty patch",
+  });
 
 const platformAuditLogQuery = z.object({
   action: z.enum(PLATFORM_AUDIT_ACTIONS).optional(),
@@ -258,14 +270,24 @@ export function registerAiRoutes(
     if (!actor) return;
     const params = modelParams.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-    const body = setModelEnabledBody.safeParse(request.body);
+    const body = patchModelBody.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-    await services.setModelEnabled({
-      actorPlatformRole: actor.platformRole,
-      actorUserId: actor.userId,
-      modelId: params.data.modelId,
-      enabled: body.data.enabled,
-    });
+    if (body.data.enabled !== undefined) {
+      await services.setModelEnabled({
+        actorPlatformRole: actor.platformRole,
+        actorUserId: actor.userId,
+        modelId: params.data.modelId,
+        enabled: body.data.enabled,
+      });
+    }
+    if (body.data.jsonOutputMode !== undefined) {
+      await services.setModelJsonMode({
+        actorPlatformRole: actor.platformRole,
+        actorUserId: actor.userId,
+        modelId: params.data.modelId,
+        mode: body.data.jsonOutputMode,
+      });
+    }
     return { status: "ok" };
   });
 

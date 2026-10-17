@@ -53,6 +53,23 @@ export interface MemoryScopeStatus {
   chapterCoverage: number[];
   lastError: string | null;
   attempts: number;
+  /** NF-WF-053: stored summary state of the current head row. */
+  summaryStatus: MemorySummaryStatus;
+  summaryError: string | null;
+}
+
+/** NF-WF-053: summary lifecycle of a MemoryProjection row (Invariant 6).
+ * Independent of MemoryBuildStatus — a FAILED summary never degrades
+ * structural availability. */
+export type MemorySummaryStatus = "SKIPPED" | "SUMMARIZING" | "FAILED" | "OK";
+
+/** NF-WF-053 §13.2: who/what produced the stored summary. */
+export interface MemorySummaryProvenance {
+  summarizerVersion: string;
+  modelProfile: string;
+  promptVersion: string;
+  /** Acting member recorded on the CURRENT selected Generation row. */
+  actorUserId: string | null;
 }
 
 export interface MemoryBlock {
@@ -63,8 +80,10 @@ export interface MemoryBlock {
   sourceRevisionNumber: number;
   chapterCoverage: number[];
   structural: StructuralMemory;
-  summary: null;
-  summaryStatus: "SKIPPED";
+  summary: string | null;
+  summaryStatus: MemorySummaryStatus;
+  summaryCoveredFactIds: string[];
+  summaryProvenance: MemorySummaryProvenance | null;
   provenance: { revisionId: string; builtAt: string };
 }
 
@@ -75,12 +94,19 @@ export interface RecallNovelResult {
   asOf: { revisionId: string; chapter: number | null };
 }
 
-/** BullMQ job payload for the memory-rebuild queue (F6). */
+/** BullMQ job payload for the memory-rebuild queue (F6).
+ * NF-WF-053 additive fields: `force`/`retryIntentId` are set ONLY by the
+ * explicit manual path (§8.2(1)); `actorUserId` records the enqueue-time
+ * actor for execute-time authorization (§14.2). */
 export interface MemoryRebuildJobData {
   workspaceId: string;
   novelId: string;
   scope: string;
   sourceRevisionId: string;
+  force?: boolean;
+  /** REQUIRED whenever force is true; one fresh UUID per accepted manual request. */
+  retryIntentId?: string;
+  actorUserId?: string;
 }
 
 /** NF-WF-052: per-scope exclusion reasons for the L5 global union read.
@@ -112,7 +138,8 @@ export interface GlobalMemoryProvenance {
   sagaId: string;
 }
 
-/** NF-WF-052: one included arc-scope entry (structural-only, Q1). */
+/** NF-WF-052: one included arc-scope entry (structural-only, Q1).
+ * NF-WF-053: gains the four summary fields (§13.2). */
 export interface ArcMemoryEntry {
   arcScope: string;
   sagaId: string;
@@ -121,8 +148,10 @@ export interface ArcMemoryEntry {
   sourceRevisionNumber: number;
   chapterCoverage: number[];
   structural: StructuralMemory;
-  summary: null;
-  summaryStatus: "SKIPPED";
+  summary: string | null;
+  summaryStatus: MemorySummaryStatus;
+  summaryCoveredFactIds: string[];
+  summaryProvenance: MemorySummaryProvenance | null;
   provenance: GlobalMemoryProvenance;
 }
 
@@ -162,3 +191,44 @@ export interface GlobalMemoryResult {
   asOf: { revisionId: string; chapter: null };
   arcScopesMax: number;
 }
+
+/**
+ * NF-WF-053 §6: summarizer port invoked by `processRebuild` AFTER the
+ * structural build/upsert and OUTSIDE any database transaction. The port
+ * performs the model call (through the normal generate/manager/gateway
+ * path) and returns the RAW model output; validation happens in
+ * `@novelforge/memory` (fail-closed, before any summary write).
+ */
+export interface ArcSummarizerRequest {
+  workspaceId: string;
+  novelId: string;
+  scope: string;
+  /** MemoryProjection row id — the Generation artifactId. */
+  rowId: string;
+  structural: StructuralMemory;
+  /** Enqueue-time actor; re-authorized at execution by the generate gate. */
+  actorUserId: string;
+}
+
+/** Raw (unvalidated) model output plus durable call attribution. */
+export interface ArcSummarizerRawOutput {
+  content: string;
+  generationId: string;
+  modelProfile: string;
+  promptVersion: string;
+}
+
+export interface MemorySummarizerPort {
+  summarize(req: ArcSummarizerRequest): Promise<ArcSummarizerRawOutput>;
+}
+
+/** NF-WF-053 §13.1: registered entity used for the no-uncovered-entity
+ * closure check. */
+export interface RegisteredEntityName {
+  id: string;
+  name: string;
+}
+
+export type ArcSummaryValidationResult =
+  | { valid: true; summary: string; coveredFactIds: string[] }
+  | { valid: false; reason: string };

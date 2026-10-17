@@ -33,11 +33,18 @@ const novelParams = z.object({
   novelId: z.string().uuid(),
 });
 
-const rebuildBody = z.object({
-  scope: z.string().optional(),
-  revisionId: z.string().uuid().optional(),
-  simulation: z.boolean().optional(),
-});
+const rebuildBody = z
+  .object({
+    scope: z.string().optional(),
+    revisionId: z.string().uuid().optional(),
+    simulation: z.boolean().optional(),
+    // NF-WF-053 §8.1a(3): forced retry requires an explicit scope; the
+    // refusal is also re-checked in triggerRebuild.
+    force: z.boolean().optional(),
+  })
+  .refine((b) => !(b.force === true && b.scope === undefined), {
+    message: "force requires an explicit scope",
+  });
 
 const asOfQuery = z.object({
   chapter: z.coerce.number().int().positive().optional(),

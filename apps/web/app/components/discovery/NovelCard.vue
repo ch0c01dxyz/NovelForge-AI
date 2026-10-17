@@ -31,7 +31,7 @@ function formatDate(iso: string): string {
 <template>
   <NuxtLink
     :to="`/read/${encodeURIComponent(props.novel.slug)}`"
-    class="group block rounded-lg border border-nf-border bg-nf-bg-1 p-5 shadow-nf-sm transition-colors hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
+    class="group block rounded-lg border border-nf-border-focus bg-nf-bg-1 p-5 shadow-nf-sm transition-colors hover:bg-nf-bg-2 focus-visible:nf-focus"
     :aria-label="props.novel.title"
   >
     <div class="nf-overline">{{ t("discover.novelOverline") }}</div>

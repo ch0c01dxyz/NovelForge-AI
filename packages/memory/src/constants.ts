@@ -56,3 +56,49 @@ export function parseScope(scope: string): { kind: "chapter" | "arc"; id: string
 export function memoryRebuildJobId(novelId: string, scope: string, sourceRevisionId: string): string {
   return `memory-rebuild-${createHash("sha256").update(JSON.stringify([novelId, scope, sourceRevisionId])).digest("hex")}`;
 }
+
+/**
+ * NF-WF-053 §8.1a: force-specific transport identity for manual forced
+ * retries. Includes the retry intent so a fresh intent is a fresh jobId —
+ * BullMQ's retained-job duplicate suppression can never silently drop a
+ * NEW forced request. BullMQ-level redelivery re-presents the SAME job
+ * (same intent), funneling into the row-local consumed-intent check.
+ */
+export function memoryForcedRebuildJobId(
+  novelId: string,
+  scope: string,
+  sourceRevisionId: string,
+  retryIntentId: string,
+): string {
+  return `memory-rebuild-forced-${createHash("sha256").update(JSON.stringify([novelId, scope, sourceRevisionId, retryIntentId])).digest("hex")}`;
+}
+
+/** NF-WF-053: summarizer cache-key component (Invariant 6 item 6). */
+export const SUMMARIZER_VERSION = "arc-sum-v1";
+
+/** NF-WF-053: prompt template version, persisted on row + Generation. */
+export const SUMMARIZER_PROMPT_VERSION = "arc-sum-prompt-v1";
+
+/**
+ * NF-WF-053 §11.5: per-logical-call gateway attempt cap for summaries,
+ * passed to generate as `maxAttempts`. Sized to cover the author's seven
+ * configured text candidates so later fallbacks stay reachable; a smaller
+ * value would silently truncate the candidate plan.
+ */
+export const MEMORY_SUMMARY_MAX_ATTEMPTS = 7;
+
+/**
+ * NF-WF-053 §9.4: age bound for one live claim (crashed-claimant
+ * recovery). Bounds the duplicate-call window of ONE claim only, not the
+ * cumulative number of gateway calls (§11.3 honesty).
+ */
+export const MEMORY_SUMMARY_CLAIM_TTL_MS = 10 * 60_000;
+
+/** NF-WF-053 §13.1: validated summary text length ceiling. */
+export const MEMORY_SUMMARY_MAX_CHARS = 6000;
+
+/** NF-WF-053 §13.1: required section headings in the generated summary. */
+export const ARC_SUMMARY_SECTION_HEADINGS = ["## Arc state", "## Threads", "## Promises"] as const;
+
+/** NF-WF-053 §12.1: Generation.task pin for arc summary calls. */
+export const MEMORY_ARC_SUMMARY_TASK = "MEMORY_ARC_SUMMARY";

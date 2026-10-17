@@ -60,11 +60,12 @@ export function createGatewayRegistry(
       const mappings = await db.modelProfileMapping.findMany({
         where: { profile, enabled: true, model: { enabled: true, gateway: { enabled: true } } },
         orderBy: { priority: "asc" },
-        select: { model: { select: { modelId: true, gatewayId: true } } },
+        select: { model: { select: { modelId: true, gatewayId: true, capabilities: true } } },
       });
       return mappings.map((m) => ({
         gatewayId: m.model.gatewayId,
         modelId: m.model.modelId,
+        capabilities: m.model.capabilities,
       }));
     },
 

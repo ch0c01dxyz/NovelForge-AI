@@ -7,13 +7,22 @@
  * badge is the entire credential surface.
  */
 import { useLocale } from "../../composables/useLocale";
+import { usePagedList } from "../../composables/usePagedList";
 import type { GatewayView } from "../../composables/usePlatformAdmin";
+import AdminPager from "./AdminPager.vue";
 
-defineProps<{
+const { t } = useLocale();
+
+const props = defineProps<{
   gateways: GatewayView[];
   loading: boolean;
   error: string | null;
 }>();
+
+const { query, page, pageCount, paged, total } = usePagedList<GatewayView>(
+  () => props.gateways,
+  (g, q) => `${g.name} ${g.baseUrl} ${g.health}`.toLowerCase().includes(q),
+);
 
 const emit = defineEmits<{
   (e: "add"): void;
@@ -24,8 +33,6 @@ const emit = defineEmits<{
   (e: "sync-models", id: string): void;
   (e: "health-check"): void;
 }>();
-
-const { t } = useLocale();
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
@@ -63,9 +70,25 @@ function formatDate(value: string | null): string {
       </div>
     </div>
 
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <label class="text-[12px] font-semibold text-nf-text">
+        {{ t("platformAdmin.search.label") }}
+        <input
+          v-model="query"
+          type="search"
+          class="ml-2 w-56 rounded-lg border border-nf-border bg-nf-bg-0 px-2 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
+          :placeholder="t('platformAdmin.search.placeholder')"
+          data-testid="gateway-search"
+        />
+      </label>
+    </div>
+
     <p v-if="loading" class="text-[13px] text-nf-text-dim">…</p>
     <p v-else-if="error" class="text-[13px] text-nf-warn" role="alert">{{ error }}</p>
-    <div v-else class="overflow-x-auto rounded-xl border border-nf-border">
+    <p v-else-if="gateways.length > 0 && total === 0" class="text-[13px] text-nf-text-dim">
+      {{ t("platformAdmin.search.noMatch") }}
+    </p>
+    <div v-else-if="gateways.length > 0" class="overflow-x-auto rounded-xl border border-nf-border">
       <table class="w-full text-left text-[13px]">
         <thead>
           <tr class="border-b border-nf-border bg-nf-bg-2 text-nf-text-dim">
@@ -81,7 +104,7 @@ function formatDate(value: string | null): string {
         </thead>
         <tbody>
           <tr
-            v-for="g in gateways"
+            v-for="g in paged"
             :key="g.id"
             class="border-b border-nf-border last:border-0"
             :data-testid="`gateway-row-${g.id}`"
@@ -148,5 +171,11 @@ function formatDate(value: string | null): string {
         </tbody>
       </table>
     </div>
+    <AdminPager
+      :page="page"
+      :page-count="pageCount"
+      :total="total"
+      @update:page="(p) => (page = p)"
+    />
   </section>
 </template>

@@ -1,5 +1,56 @@
 # Current Project State
 
+## Admin revision final verification — 2026-10-18
+
+Author authorized review, relevant personal testing, then commit/push if sound.
+Independent review identified two blockers in the previously reported revision:
+sync discovered is numeric, not an array; toast error background was undefined
+and white success text lacked contrast. Both repaired and regression-proven;
+see the CLOSED admin review entry in ISSUES-AND-GAPS. Final focused run:
+5 files / 44 tests PASS (catalog, action toasts, platform-admin axe, locale,
+admin composable). jsdom axe cannot measure canvas color contrast; real
+Chromium measured success10.54:1,error9.57:1 on opaque surfaces instead.
+Final vue-tsc --noEmit and scoped TypeScript ESLint both exit0; .vue templates
+are covered by typecheck/rendered checks, not the repo's TS/JS-only lint scope.
+
+Real configured gateway model discovery returned200 and discovered2960; toast
+displayed that number. Browser also verified five tabs, 20-row model paging,
+query resetting page2 to1, no-match state, en/id and real401 request-error
+toast after logout. No page errors. Existing enabled flags and nf:observed
+markers preserved. Models were actually refreshed and sync audit recorded;
+the older no-sync statement below describes only that prior acceptance.
+Novel/chapter counts stayed0/0, temporary session removed (41 before/after).
+No database reset or LLM prose generation performed. Independent final review
+APPROVE. Known limit: client-side pagination; Audit filters only its fetched
+server-capped50entries. Private final receipt/screenshots under local-accounts/.
+
+## Platform-admin pagination/search/toast/capability revision — 2026-10-17 (uncommitted)
+
+Author-requested admin page revision (`/admin`, all five tabs). Implemented:
+client-side filter + 20-row pagination on Gateways, Models, Profiles, Routing
+and Audit (shared `usePagedList` composable + `AdminPager.vue`; localized
+search/no-match/pager keys, en+id; server lists unchanged — upgrade path
+documented in-code); hand-rolled toast stack (no new dependency) on the
+Gateways actions — "Check health" toasts green/red per gateway result and
+"Sync models" toasts green with discovered count / red on failure; Models tab
+context window localized via `Intl.NumberFormat` and capability chips with
+localized labels including the observed `nf:json_object=ok|incompatible`
+markers. Verification: new focused suites (`ModelCatalog.test.ts` 5,
+`pages/admin/index.test.ts` 5 toast cases) plus the platform-admin axe suite
+10 → 20/20 PASS; full web suite 96 files / 611 tests PASS; `vue-tsc --noEmit`
+exit0; scoped ESLint 0 errors (`.vue` outside flat-config scope by existing
+convention). Real Chromium acceptance on 127.0.0.1:3001 through a short-lived
+minted SUPER_ADMIN session (one `sessions` row, inserted and deleted; count
+41 → 42 → 41 read back): five tabs, gateway search+pager, models 3010 rows →
+page 1 of 151, search "deepseek" 200 rows, capability search "vision" 1671,
+chips (Vision/PDF/JSON mode) and formatted `1,000,000` context cell, audit
+pager page 1 of 3 (50 rows server-capped) with working text filter, health
+toast "Akanesia-Router: healthy (25 ms)" green. Footprint: exactly two
+audited `gateways.health-checked` rows (both successful); no sync-models run,
+no story/config data changed, no commit/push. Acceptance scripts and
+screenshots under the ignored `.nf-batch-worktrees/` (`nf055-acceptance.py`,
+`nf055-search-check.py`, `nf055-shots/`).
+
 ## NF-WF-054 completed; story data reset executed — 2026-10-17
 
 Home create CTA, three-step wizard, scoped workspace list and role-gated admin

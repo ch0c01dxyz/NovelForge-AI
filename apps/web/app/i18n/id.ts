@@ -1852,6 +1852,25 @@ export const id = {
       routing: "Routing",
       audit: "Log audit",
     },
+    search: {
+      label: "Cari",
+      placeholder: "Filter kata kunci…",
+      noMatch: "Tidak ada baris yang cocok dengan filter.",
+    },
+    pager: {
+      label: "Paginasi tabel",
+      prev: "Sebelumnya",
+      next: "Berikutnya",
+      status: "Halaman {page} dari {pages} · {total} baris",
+    },
+    toasts: {
+      healthOk: "{name}: sehat ({ms} ms)",
+      healthFail: "{name}: pemeriksaan kesehatan gagal",
+      healthError: "Pemeriksaan kesehatan tidak dapat dijalankan.",
+      syncOk: "{name}: {count} model tersinkron",
+      syncFail: "Sinkronisasi model gagal.",
+      dismiss: "Tutup notifikasi",
+    },
     gateways: {
       heading: "Gateway AI",
       description:
@@ -1915,6 +1934,21 @@ export const id = {
         enabled: "Aktif",
       },
       empty: "Belum ada model. Sinkronkan gateway untuk menemukan modelnya.",
+      cap: {
+        chat: "Obrolan",
+        vision: "Visi",
+        imageOutput: "Output gambar",
+        pdf: "PDF",
+        tools: "Alat",
+        reasoning: "Penalaran",
+        search: "Pencarian",
+        videoInput: "Input video",
+        audioInput: "Input audio",
+        thinkingCanDisable: "Berpikir (dapat dimatikan)",
+        thinkingEffortSupported: "Upaya berpikir",
+        nf_json_object_ok: "Mode JSON ✓",
+        nf_json_object_incompatible: "Mode JSON ✗",
+      },
     },
     profiles: {
       heading: "Pemetaan profil",

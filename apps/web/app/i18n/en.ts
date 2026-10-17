@@ -1852,6 +1852,25 @@ export const en = {
       routing: "Routing",
       audit: "Audit log",
     },
+    search: {
+      label: "Search",
+      placeholder: "Filter by keyword…",
+      noMatch: "No rows match the filter.",
+    },
+    pager: {
+      label: "Table pagination",
+      prev: "Previous",
+      next: "Next",
+      status: "Page {page} of {pages} · {total} rows",
+    },
+    toasts: {
+      healthOk: "{name}: healthy ({ms} ms)",
+      healthFail: "{name}: health check failed",
+      healthError: "Health check could not run.",
+      syncOk: "{name}: {count} models synced",
+      syncFail: "Model sync failed.",
+      dismiss: "Dismiss notification",
+    },
     gateways: {
       heading: "AI gateways",
       description:
@@ -1915,6 +1934,21 @@ export const en = {
         enabled: "Enabled",
       },
       empty: "No models yet. Sync a gateway to discover its models.",
+      cap: {
+        chat: "Chat",
+        vision: "Vision",
+        imageOutput: "Image output",
+        pdf: "PDF",
+        tools: "Tools",
+        reasoning: "Reasoning",
+        search: "Search",
+        videoInput: "Video input",
+        audioInput: "Audio input",
+        thinkingCanDisable: "Thinking (toggleable)",
+        thinkingEffortSupported: "Thinking effort",
+        nf_json_object_ok: "JSON mode ✓",
+        nf_json_object_incompatible: "JSON mode ✗",
+      },
     },
     profiles: {
       heading: "Profile mappings",

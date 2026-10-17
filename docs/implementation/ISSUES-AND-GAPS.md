@@ -1,5 +1,28 @@
 # Technical Issues and Implementation Gaps
 
+## Admin revision review blockers — 2026-10-18
+
+Owner: platform-admin pagination/search/toast revision. Independent review found
+that the sync success toast reads discovered.length, while the real service
+returns discovered:number. The pre-existing composable annotation and new test
+fixture incorrectly describe an array, masking the missing count. It also found
+white-on-nf-ok toast text below normal-text contrast requirements and an
+undefined nf-danger error background. Fix the shared contract/caller/fixture
+and use existing opaque surfaces with readable semantic foregrounds. Close
+with focused regressions, actual computed browser styling and exact-diff review.
+
+Resolution — 2026-10-18: CLOSED. Corrected the frontend numeric contract,
+toast consumer and 0/3 regression fixtures. The actual numeric fixture failed
+before the fix (literal {count}) and passed afterward. Replaced undefined/error
+fill and white success ink with opaque existing surface and readable green/red
+foregrounds. Five focused suites44tests passed. Real configured-gateway sync
+returned200 {discovered:2960}; actual toast matched. Chromium computed contrast:
+success10.54:1,error9.57:1. Error case used a real401 after explicit logout,
+not an induced provider outage. Independent exact-diff review APPROVE after
+both fixes. No story mutation; temporary session removed; existing model
+enabled flags and application-observed nf:markers preserved. Browser receipt
+and screenshots remain private in local-accounts/nf055-review-receipt.json.
+
 NF054 post-reset verification addendum — 2026-10-17: the returned harness
 report disclosed missing authenticated library acceptance. Coordinator verified
 the actual author through the Nuxt proxy: /api/novels200 [], /api/models403,

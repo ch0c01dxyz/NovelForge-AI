@@ -19,6 +19,7 @@ import {
   type UpdateGatewayInput,
 } from "../../composables/usePlatformAdmin";
 import { useLocale } from "../../composables/useLocale";
+import { usePagedList } from "../../composables/usePagedList";
 import GatewayList from "../../components/platform-admin/GatewayList.vue";
 import GatewayForm, {
   type GatewayFormMode,
@@ -26,6 +27,7 @@ import GatewayForm, {
 import ModelCatalog from "../../components/platform-admin/ModelCatalog.vue";
 import ProfileMappings from "../../components/platform-admin/ProfileMappings.vue";
 import RoutingOverview from "../../components/platform-admin/RoutingOverview.vue";
+import AdminPager from "../../components/platform-admin/AdminPager.vue";
 
 const { t } = useLocale();
 const admin = usePlatformAdmin();
@@ -57,6 +59,44 @@ const auditRows = ref<PlatformAuditLogEntry[]>([]);
 const auditLoading = ref(false);
 const auditError = ref<string | null>(null);
 const auditAction = ref("");
+const { query: auditQuery, page: auditPage, pageCount: auditPageCount, paged: auditPaged, total: auditTotal } =
+  usePagedList<PlatformAuditLogEntry>(
+    auditRows,
+    (row, q) =>
+      `${row.action} ${row.actorEmail ?? ""} ${row.actorUserId ?? ""} ${row.entityType}`
+        .toLowerCase()
+        .includes(q),
+  );
+
+/**
+ * Toast notifications for the gateway actions (health check, model
+ * sync). Success toasts render green, failure toasts red; each auto
+ * dismisses. No toast dependency — a fixed stack of rows is the whole
+ * feature.
+ */
+interface AdminToast {
+  id: number;
+  kind: "success" | "error";
+  key: string;
+  params?: Record<string, string | number>;
+}
+const toasts = ref<AdminToast[]>([]);
+let toastSeq = 0;
+const TOAST_TTL_MS = 6000;
+
+function pushToast(
+  kind: AdminToast["kind"],
+  key: string,
+  params?: Record<string, string | number>,
+): void {
+  const id = ++toastSeq;
+  toasts.value.push({ id, kind, key, params });
+  setTimeout(() => dismissToast(id), TOAST_TTL_MS);
+}
+
+function dismissToast(id: number): void {
+  toasts.value = toasts.value.filter((toast) => toast.id !== id);
+}
 
 const formMode = ref<GatewayFormMode | null>(null);
 const formGateway = ref<GatewayView | null>(null);
@@ -209,20 +249,35 @@ async function toggleGateway(id: string, enabled: boolean) {
 async function syncModels(id: string) {
   actionError.value = null;
   try {
-    await admin.syncModels(id);
+    const res = await admin.syncModels(id);
     await Promise.all([refreshModels(), refreshAudit()]);
+    const name = gateways.value.find((g) => g.id === id)?.name ?? id;
+    pushToast("success", "platformAdmin.toasts.syncOk", {
+      name,
+      count: res.discovered,
+    });
   } catch (err) {
     actionError.value = errText(err);
+    pushToast("error", "platformAdmin.toasts.syncFail");
   }
 }
 
 async function healthCheck() {
   actionError.value = null;
   try {
-    await admin.healthCheck();
+    const results = await admin.healthCheck();
     await Promise.all([refreshGateways(), refreshAudit()]);
+    for (const r of results) {
+      const name = gateways.value.find((g) => g.id === r.gatewayId)?.name ?? r.gatewayId;
+      pushToast(
+        r.healthy ? "success" : "error",
+        r.healthy ? "platformAdmin.toasts.healthOk" : "platformAdmin.toasts.healthFail",
+        { name, ms: r.latencyMs },
+      );
+    }
   } catch (err) {
     actionError.value = errText(err);
+    pushToast("error", "platformAdmin.toasts.healthError");
   }
 }
 
@@ -366,7 +421,7 @@ onMounted(async () => {
           {{ t("platformAdmin.audit.heading") }}
         </h2>
         <p class="mb-3 text-[13px] text-nf-text-dim">{{ t("platformAdmin.audit.description") }}</p>
-        <div class="mb-3">
+        <div class="mb-3 flex flex-wrap items-center gap-4">
           <label class="text-[12px] font-semibold text-nf-text">
             {{ t("platformAdmin.audit.filterAll") }}
             <select
@@ -386,11 +441,24 @@ onMounted(async () => {
               <option value="models.sync-failed">models.sync-failed</option>
             </select>
           </label>
+          <label class="text-[12px] font-semibold text-nf-text">
+            {{ t("platformAdmin.search.label") }}
+            <input
+              v-model="auditQuery"
+              type="search"
+              class="ml-2 w-56 rounded-lg border border-nf-border bg-nf-bg-0 px-2 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
+              :placeholder="t('platformAdmin.search.placeholder')"
+              data-testid="audit-search"
+            />
+          </label>
         </div>
         <p v-if="auditLoading" class="text-[13px] text-nf-text-dim">…</p>
         <p v-else-if="auditError" class="text-[13px] text-nf-warn" role="alert">{{ auditError }}</p>
         <p v-else-if="auditRows.length === 0" class="text-[13px] text-nf-text-dim">
           {{ t("platformAdmin.audit.empty") }}
+        </p>
+        <p v-else-if="auditTotal === 0" class="text-[13px] text-nf-text-dim">
+          {{ t("platformAdmin.search.noMatch") }}
         </p>
         <div v-else class="overflow-x-auto rounded-xl border border-nf-border">
           <table class="w-full text-left text-[13px]">
@@ -404,7 +472,7 @@ onMounted(async () => {
             </thead>
             <tbody>
               <tr
-                v-for="row in auditRows"
+                v-for="row in auditPaged"
                 :key="row.id"
                 class="border-b border-nf-border last:border-0"
               >
@@ -416,6 +484,12 @@ onMounted(async () => {
             </tbody>
           </table>
         </div>
+        <AdminPager
+          :page="auditPage"
+          :page-count="auditPageCount"
+          :total="auditTotal"
+          @update:page="(p) => (auditPage = p)"
+        />
       </section>
     </div>
 
@@ -458,6 +532,30 @@ onMounted(async () => {
             {{ t("platformAdmin.gateways.delete") }}
           </button>
         </div>
+      </div>
+    </div>
+
+    <div
+      class="fixed right-4 top-4 z-[60] flex w-80 flex-col gap-2"
+      aria-live="polite"
+      data-testid="toast-stack"
+    >
+      <div
+        v-for="toast in toasts"
+        :key="toast.id"
+        role="status"
+        class="flex items-start justify-between gap-2 rounded-xl border bg-nf-bg-1 px-3.5 py-2.5 text-[13px] font-medium shadow-nf-md"
+        :class="toast.kind === 'success' ? 'border-nf-ok text-nf-ok' : 'border-red-400 text-red-300'"
+        :data-testid="`toast-${toast.kind}`"
+      >
+        <p>{{ t(toast.key, toast.params) }}</p>
+        <button
+          class="shrink-0 rounded px-1 text-[14px] leading-none focus-visible:nf-focus"
+          :aria-label="t('platformAdmin.toasts.dismiss')"
+          @click="dismissToast(toast.id)"
+        >
+          ✕
+        </button>
       </div>
     </div>
   </div>

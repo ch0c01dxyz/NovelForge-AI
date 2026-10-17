@@ -130,7 +130,7 @@ export function usePlatformAdmin() {
 
   async function syncModels(
     gatewayId: string,
-  ): Promise<{ discovered: Array<{ modelId: string }> }> {
+  ): Promise<{ discovered: number }> {
     return api(`/gateways/${gatewayId}/sync-models`, { method: "POST" });
   }
 

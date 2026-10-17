@@ -1,5 +1,32 @@
 # Current Project State
 
+## NF-WF-054 completed; story data reset executed — 2026-10-17
+
+Home create CTA, three-step wizard, scoped workspace list and role-gated admin
+navigation implemented locally on base367b8b9. Authorized account separation is
+verified. The focus-restoration delta passed 12/12 focused tests, scoped
+typecheck and ESLint, and an independent read-only exact-diff review returned
+APPROVE with no required change (actual Chromium focus verification retained as
+the behavioral evidence). The author-approved all-novel/story reset then ran on
+`novelforge_acceptance_050b` after a fresh full backup
+(`nf054-post-acceptance.dump`, SHA256 dd426e44…3419f1aa, TOC 861 entries,
+restore-proof clone 28/75/5/7) and a clone rehearsal of
+`nf054-reset-plan.sql`. Live post-state: zero rows in all 77 story/derived
+tables except one workspace-scoped `novel_id IS NULL` configuration-check
+generation (not story data); preserved fingerprints unchanged (users=7,
+workspaces=5, memberships=6, sessions=40, audit_logs=782, ai_gateways=1,
+ai_models=2498, model_profile_mappings=43); five BullMQ queues idle before and
+after; completed queue history and Redis keys preserved. API `/ready` 200,
+Nuxt 200. Subsequent coordinator read-back closed the API/browser boundary:
+actual author session through the Nuxt proxy returned GET /api/novels200 []
+and admin models403; Chromium displayed the empty library and create CTA with
+no admin entry. A short-lived verification session was removed afterward;
+session count returned to40, no password was needed and no novel was created.
+Private receipt:local-accounts/post-reset-library-receipt.json. Feature
+remains uncommitted at HEAD367b8b9; no new commit/push/deploy authorization.
+Engram checkpoint saved under the next harness's own binding; prior hook
+UNBOUND episodes are historical.
+
 ## Local artifact categories and privacy protection — 2026-10-17
 
 The author authorized organization, suitable local commits and verified-safe

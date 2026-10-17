@@ -1,5 +1,60 @@
 # Technical Issues and Implementation Gaps
 
+NF054 post-reset verification addendum — 2026-10-17: the returned harness
+report disclosed missing authenticated library acceptance. Coordinator verified
+the actual author through the Nuxt proxy: /api/novels200 [], /api/models403,
+and actual Chromium empty state/create CTA with no admin entry. Temporary
+verification session removed; sessions returned to40. No password retained,
+novel creation, reset replay or commit. This closes that evidence boundary;
+retained reset/clone evidence is not claimed as newly rerun.
+
+## NF054 author onboarding/navigation and memory-hook interruption — 2026-10-17
+
+Observed home page only lists novels and tells the author to use the API to
+create one. Existing platform admin UI has no home navigation entry. Owner:
+NF-WF-054; impact: missing discoverable author/admin workflows despite component
+and automated-release evidence. Approved remedy: create wizard and role-gated
+navigation using existing server creation/authorization plus scoped workspace
+listing. Close only with actual UI/API evidence and separate exact-diff review.
+
+Runtime memory hook also reported spawnSync engram.exe ETIMEDOUT / UNBOUND
+during this task. No attributed memory writes after that event; private file
+handoff preserved under the ignored local-accounts artifact directory. Existing
+memories are context only. After host reconfirmation, checkpoint382 saved;
+subsequent conflict review encountered another timeout and writes blocked again.
+The separate UI worktree initially lacked .nuxt/tsconfig.json; existing Nuxt
+prepare resolved this prerequisite and focused UI/locale tests passed30/30.
+
+Follow-up: backend24tests, UI30tests, scoped lint and backend/UI typechecks
+passed. Independent source review approved with a keyboard focus nit; corrected
+and verified in actual Chromium plus12focused tests. Resolution update —
+2026-10-17 (next harness): IMPLEMENTED / VERIFIED / CLOSED. The focus
+restoration delta (11 lines in apps/web/app/pages/index.vue) passed 12/12
+focused tests, vue-tsc exit0 and scoped ESLint exit0; an independent read-only
+exact-diff review byte-compared the delta against the pre-fix worktree copy and
+returned APPROVE with no required change (observation only: no unit test pins
+the focus restore; actual Chromium had already verified the behavior). The
+author-approved all-novel/story reset executed on novelforge_acceptance_050b
+after a fresh full backup (nf054-post-acceptance.dump, 653036 bytes, SHA256
+dd426e4487dbc1db45591b9f9c724e5688135382a69f2251736a76b83419f1aa, pg_restore
+TOC 861 entries) and a clone rehearsal (restore proof 28/75/5/7; plan proven
+with zero story rows and preserved fingerprints; one rehearsal run surfaced a
+chapter_versions.novel_id error that was fixed before any live execution).
+Live post-state: zero rows in all 77 story/derived tables except one
+workspace-scoped novel_id-NULL AUTHOR_MODEL_FALLBACK_CONFIGURATION_CHECK
+generation plus its attempt (not story data, retained); users=7, workspaces=5,
+memberships=6, sessions=40, audit_logs=782, author_follows=1, ai_gateways=1,
+ai_models=2498, model_profile_mappings=43, notification_preferences=0,
+_prisma_migrations=46 all unchanged; five BullMQ queues empty on
+wait/active/delayed before and after; completed queue history and Redis keys
+preserved; API /ready 200 and Nuxt 200. Limitation: author-session
+GET /api/novels was not exercised because no credential is retained; the empty
+author library follows from zero novel rows in every workspace. The memory-hook
+ETIMEDOUT/UNBOUND episodes ended: this session's host-confirmed binding
+(01a14432-1f35-7527-835f-e757e70f28e9) saved and read back checkpoint383. No
+commit/push; the feature remains uncommitted at HEAD367b8b9. Rollback path:
+pg_restore nf054-post-acceptance.dump into a fresh database.
+
 ## Nuxt local startup duplicate auto-import warnings — 2026-10-17
 
 Resolution update — 2026-10-17: IMPLEMENTED / VERIFIED. Removed redundant

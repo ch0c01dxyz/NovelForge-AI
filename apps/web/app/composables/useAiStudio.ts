@@ -287,5 +287,3 @@ export function useAiStudio() {
     getWorkspaceRole,
   };
 }
-
-export { ApiError };

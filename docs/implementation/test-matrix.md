@@ -1,5 +1,45 @@
 # Test Matrix
 
+## Windows local cleanup — 2026-10-17
+
+Artifact: published74572cca plus six-file source/config cleanup and preserved
+documentation changes; no new commit. No repeated release battery.
+
+| Check | Observed result |
+| --- | --- |
+| Real Nuxt prepare | exit0; no duplicate-import warnings; generated imports have canonical ApiError/useApi and WorkspaceRole/useAiStudio owners |
+| Three existing composable suites | 3 files /18 tests PASS: useAiStudio, usePlatformAdmin, useReceipts |
+| Web vue-tsc --noEmit | exit0 |
+| Original-checkout pnpm lint | exit0 with local evidence folders preserved |
+| ESLint path assertions | evidence/memory ignored; API/web/worker source not ignored |
+| Running local HTTP | sign-in200; same-origin models proxy401 UNAUTHENTICATED |
+
+No authenticated browser journey, locale-specific changes, gateway request,
+data mutation or new hosted CI was performed. Prior release counts are not
+relabelled as a new run. Separate exact-diff review in the cleanup receipt.
+
+## NF023/NF039 final-published-revision battery at `74572cca` — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF023-PUBLISHED-REVISION-ACCEPTANCE-PROMPT.md`; full report
+`.nf-batch-worktrees/NF023-FINALREV-RELEASE-REPORT.md`, logs `.nf-batch-worktrees/nf023-finalrev-logs/`.
+
+| Stage | Receipt |
+|---|---|
+| Artifact & CI | Tested `74572cccaf45fa94e5459f2b2bdaed4346ce271e` == origin/main; exact-head CI run 39015506803 OBSERVED completed/success via GitHub API read-back (parent run not substituted) |
+| Isolation | Owned detached worktree `C:\Users\ch0c0\Downloads\nf-verify-74572cca`, clean, exact commit before/after; frozen-lockfile install (pnpm 12.5.1, node 24.14.1); private env = documented live runtime contract (nf-pg-5433/`novelforge_acceptance_050b` base; author Redis :6399 db0 177 keys unchanged; suites' real-BullMQ surface = disposable compose :6379 db0 `bull:*`; :6399 db15 confirmed empty, unused, no redirect invented) |
+| 1 `pnpm lint` (clean checkout) | exit 0, 08:24:34→08:25:08Z |
+| 2 api `tsc --noEmit` | exit 0, 08:25:15→08:25:56Z |
+| 3 web `vue-tsc --noEmit` | exit 0, 08:26:00→08:26:37Z |
+| 4 API non-E2E `--project unit --no-file-parallelism` | exit 0, 08:51:10→09:10:09Z, **76/76 files, 1331/1331 tests**, 0 skipped |
+| 5 full web vitest | exit 0, 09:10:19→09:12:19Z, **93/93 files, 589/589 tests**, 0 skipped |
+| 6 dedicated `pnpm e2e` | exit 0, 09:12:28→09:23:20Z, **3/3 files, 21/21 tests**, lock uncontended (1–2 ms), single disposable `novelforge_test_e2e` |
+| 7 all axe files | exit 0, 09:23:59→09:24:27Z, **21/21 files, 93/93 tests** (`vitest list axe` = exactly the repo's 21 `*.axe.test.ts`; no zero-test selector) |
+| Reconciliation | 76 non-E2E + 3 e2e = 79 = all `apps/api/src/**/*.test.ts`; web 93 = full current include; stage 7 re-proves the axe subset separately per amendment |
+| Stage-4 env-blocked attempts (RETAINED, disclosed) | Attempt 1: stale author root `.env` → auth-drift 5432 host, 67 collection failures, exit 1. Attempt 2: 74/76 files, 1309/1309 tests, 2 suites blocked by shell-export no-op leaving `DATABASE_URL` unset. Recorded receipt = attempt 3 clean full re-run; no product/test edits at any point |
+| Retained evidence reused | 023A migrate-from-zero 36/36 + no-op; backup/restore 5/5; tenant-isolation 14/14 (also re-proven inside stage 4); GAP-062 typed refusal (inside stage 4); real-gateway rollout/cache-hit/rebuild receipts; hosted CI at exact head — none re-presented as new local runs |
+| Not a gate / remaining | GAP-051 human screen-reader DEFERRED_BY_AUTHOR_DECISION (never PASS); live outage/429 + beyond-first-hop JSON multi-hop PENDING (live-dependent); real all-ineligible 409 and live CAS timing NOT required; ADR-0017 PROPOSED/non-gate; GAP-125 OPEN (worktree isolation ≠ fix); target deployment, story publication, author release sign-off distinct and not authorized |
+| Automated outcome | **NF023/NF039 final-published-revision automated battery: PASS** — sequential, stop-on-failure, zero failed, zero skipped |
+
 ## NF053 package refresh + NF023/NF039 missing-evidence map — 2026-10-17
 
 Executed `.nf-batch-worktrees/NF053-PACKAGE-REFRESH-AND-NF023-GAPS-PROMPT.md`

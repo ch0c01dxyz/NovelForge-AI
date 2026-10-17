@@ -1,5 +1,37 @@
 # Technical Issues and Implementation Gaps
 
+## Nuxt local startup duplicate auto-import warnings — 2026-10-17
+
+Resolution update — 2026-10-17: IMPLEMENTED / VERIFIED. Removed redundant
+ApiError re-exports from useAiStudio/usePlatformAdmin; DefinitionDetail now
+imports the unchanged canonical class directly from useApi. Receipts imports
+the existing WorkspaceRole type from useAiStudio instead of exporting a
+duplicate; its test uses the same type owner. No role matrix, HTTP behavior,
+translation, or error-constructor implementation changed.
+
+Real `nuxt prepare` exit0 without duplicate warnings; generated imports.d.ts
+resolves ApiError only to useApi and WorkspaceRole only to useAiStudio.
+Three focused composable files:18/18 tests PASS; web vue-tsc exit0.
+Running sign-in HTTP200 and same-origin models proxy401 UNAUTHENTICATED.
+This closes the observed warning; original unknown functional impact remains
+unknown, not a retroactive claim of an observed functional repair.
+Separate exact-diff review is recorded in the local cleanup receipt.
+
+Owner scope: Windows local-use runtime follow-up. Observed during the existing
+frontend startup: Nuxt reports duplicate ApiError exports across useApi,
+useAiStudio and usePlatformAdmin, and WorkspaceRole across useAiStudio and
+useReceipts; automatic selection favors usePlatformAdmin/useReceipts in the
+captured warnings. Evidence: task-owned
+`.nf-batch-worktrees/windows-local-web-20261017-165238.err.log`.
+Impact: import ambiguity warning; actual client-flow consequences UNKNOWN,
+not an observed functional failure. No workaround or source edit applied.
+HTTP root/sign-in return200, API proxy preserves401 for unauthenticated
+access; Vite/Nitro compiled. Those observations do not prove all client flows.
+Next action if a related runtime defect is observed: trace actual imports
+and caller use before the smallest responsible fix; do not run speculative
+cleanup or repeat the successful release battery. Closure requires explicit
+import-resolution evidence and relevant focused regression if code changes.
+
 ## NF023 restart receipt evidence precision — 2026-10-17
 
 Owner: NF023/NF039 operational handoff. The runtime refresh receipt's statement
@@ -7630,6 +7662,17 @@ plus the frozen 47-path uncommitted artifact; separate read-only reviewer actor
 deploy performed or authorized by this record.
 
 ## GAP-125 — repo `pnpm lint` fails on the dev host because local evidence directories are not eslint-ignored (2026-10-17, MINOR, environment/tooling)
+
+Resolution update — 2026-10-17: RESOLVED in the current working artifact.
+Actual config is `eslint.config.js`; the `.mjs` spelling below is historical
+documentation error. Added only root `.nf-batch-worktrees/**` and
+`.harness-memory/**` to existing global ignores. No rule or application-source
+scope weakened. `pnpm lint` now exits0 in the ORIGINAL checkout with local
+evidence still present. ESLint API assertions confirm both evidence paths
+ignored and API/web/worker source paths NOT ignored. output.txt requires no
+new rule because it is not a configured JavaScript/TypeScript input.
+Closure is the original-checkout pass, not isolation into a clean worktree.
+Separate exact-diff review is recorded in the local cleanup receipt.
 
 Found while executing NF023 green step 1 at the current artifact (HEAD
 `4227594…` + preserved WIP). OBSERVED: `pnpm lint` exits 1 with 205 errors /

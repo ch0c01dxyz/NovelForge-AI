@@ -16,8 +16,8 @@ import {
   canReadReceipts,
   canReadEvaluations,
   canReadAuditTrail,
-  type WorkspaceRole,
 } from "./useReceipts";
+import type { WorkspaceRole } from "./useAiStudio";
 
 const ROLES: WorkspaceRole[] = ["OWNER", "ADMIN", "AUTHOR", "EDITOR", "VIEWER"];
 

@@ -4,7 +4,7 @@
  * SUPER_ADMIN-only routes (the server enforces; this layer is a view).
  * No business logic here — the composable only shapes requests.
  */
-import { useApi, ApiError } from "./useApi";
+import { useApi } from "./useApi";
 
 export type PlatformRole = "SUPER_ADMIN" | null;
 
@@ -196,5 +196,3 @@ export function usePlatformAdmin() {
     listAuditLog,
   };
 }
-
-export { ApiError };

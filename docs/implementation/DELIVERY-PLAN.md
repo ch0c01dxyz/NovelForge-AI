@@ -1,5 +1,41 @@
 # NovelForge Workflow Delivery Plan
 
+Windows cleanup update — 2026-10-17: the author selected Nuxt warning cleanup,
+GAP125 and pending progress records. The two bounded fixes are implemented
+and focused-verified on the current working artifact; see CURRENT/test-matrix
+and issue resolution annotations. They are no longer open implementation
+tasks. Historical local-follow-up lists below retain their original scope.
+The exact small delta and preserved records remain uncommitted at this
+boundary; no new push/deployment permission is inferred.
+
+## Current dispatch correction: published and verified Windows-local artifact — 2026-10-17
+
+This update supersedes historical dispatch/HEAD statements below. Published
+revision: `74572cccaf45fa94e5459f2b2bdaed4346ce271e`; exact-head CI39015506803
+SUCCESS (213 files/2609 tests). NF023/NF039 seven-stage final-revision
+automated battery PASS, independently report-reviewed APPROVE. NF053 and D2
+integration are complete. Do not redispatch their implementation, working
+configuration rollout, runtime refresh or successful acceptance checks.
+
+Author target: Windows local use now; server/domain later when the author
+has a server. Existing local UI/API/worker are available with recorded HTTP
+readiness. Current bounded follow-ups: Nuxt duplicate-auto-import warnings
+(observed warning, client effect UNKNOWN); GAP125 local-evidence lint debt;
+uncommitted progress records awaiting a separately authorized disposition.
+Windows autostart is an optional usability improvement, not an unmet release
+criterion or a newly authorized feature.
+
+Live outage/429 and beyond-first-hop JSON failover remain live-dependent
+evidence limits. GAP051 remains author-deferred, never PASS; ADR0017 remains
+PROPOSED/non-gate. Server deployment and story publication are not current
+local implementation tasks. NF002E remains conditional on an actual designed
+consumer; do not dispatch speculative event infrastructure. Old NF024
+GAP100/101 blocker labels are historical: both issues closed through027/028.
+
+This establishes the current workstream status, not an exhaustive independent
+recertification of every historical capability-ledger row or author release
+sign-off. No new commit/push/deploy authority follows from this correction.
+
 D2 execution update — 2026-10-17: the author approved main-tree integration
 and the exact three-line border patch is now applied, 19 focused tests PASS,
 separate exact review APPROVE. Earlier pending-D2 entries below are historical.

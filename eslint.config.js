@@ -16,6 +16,8 @@ export default tseslint.config(
       "pnpm-lock.yaml",
       "receipts/**",
       "review-receipts/**",
+      ".nf-batch-worktrees/**",
+      ".harness-memory/**",
     ],
   },
   js.configs.recommended,

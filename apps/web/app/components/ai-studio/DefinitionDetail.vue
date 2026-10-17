@@ -9,10 +9,10 @@
 import { ref, computed, watch, onMounted, nextTick } from "vue";
 import {
   useAiStudio,
-  ApiError,
   type DefinitionKind,
   type DefinitionVersionRow,
 } from "../../composables/useAiStudio";
+import { ApiError } from "../../composables/useApi";
 import { useLocale } from "../../composables/useLocale";
 import VersionHistory from "./VersionHistory.vue";
 

@@ -1,4 +1,5 @@
 import { useApi } from "./useApi";
+import type { WorkspaceRole } from "./useAiStudio";
 
 /**
  * Thin fetch wrapper over the receipts routes (NF-WF-018C). No business
@@ -10,8 +11,6 @@ import { useApi } from "./useApi";
  * and (GAP-067) `GET .../novels/:novelId/final-text-reviews`. The
  * generation ledger rides the frozen routes.
  */
-
-export type WorkspaceRole = "OWNER" | "ADMIN" | "AUTHOR" | "EDITOR" | "VIEWER";
 
 export interface GenerationRow {
   id: string;

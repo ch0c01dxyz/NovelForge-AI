@@ -1,5 +1,69 @@
 # Current Project State
 
+## Windows local cleanup verified — 2026-10-17
+
+Executed the author's selected follow-ups on HEAD74572cca plus preserved
+documentation WIP: canonicalized Nuxt auto-import export owners and excluded
+only local evidence folders from lint. Observed: Nuxt prepare exit0 without
+duplicate warnings; generated imports map ApiError to useApi and WorkspaceRole
+to useAiStudio;18 focused composable tests PASS; web vue-tsc exit0; original
+checkout pnpm lint exit0. ESLint assertions preserve API/web/worker coverage.
+Local sign-in200 and models proxy401 observed without authenticated story
+mutation. See the two issue-register resolution updates and test matrix.
+
+Earlier seven-stage release/hostedCI receipts remain historical evidence for
+74572cca; this small source/config delta is verified by the focused checks,
+not a new claim of hosted CI or complete release-battery execution.
+All earlier record updates remain preserved. No new commit/push/deploy has
+been performed. Exact-diff review and Git disposition are recorded in
+`.nf-batch-worktrees/WINDOWS-LOCAL-CLEANUP-RECEIPT.md`.
+
+## Author target decision: Windows local use first — 2026-10-17
+
+The author chose Windows local use; server/domain deployment is deferred
+until they have a server. It is not a current local-use blocker or remote
+deployment authorization. Retain the completed NF023/NF039 automated evidence.
+
+Coordinator found API :3000 healthy but no frontend listener on :3001,
+then started the existing Nuxt dev entrypoint hidden from apps/web, bound
+to 127.0.0.1:3001 (PID37132 at this boundary). HTTP read-back: root200,
+sign-in200 with Nuxt root, /api/models401 UNAUTHENTICATED through the existing
+same-origin proxy. API /ready reports database/Redis up; existing API/worker,
+Docker/data and stash preserved. No browser-authenticated journey or repeat
+release battery was performed. Nuxt import-collision warnings are recorded
+in ISSUES-AND-GAPS; HTTP startup is not a claim of a warning-free build.
+Local handoff: `.nf-batch-worktrees/WINDOWS-LOCAL-USE-HANDOFF.md`.
+No automatic Windows-startup service or new commit/push was configured.
+
+## NF023/NF039 final-published-revision automated battery GREEN at `74572cca` — 2026-10-17
+
+Executed `.nf-batch-worktrees/NF023-PUBLISHED-REVISION-ACCEPTANCE-PROMPT.md` on the published NF053
+artifact `74572cccaf45fa94e5459f2b2bdaed4346ce271e` (origin/main verified equal; exact-head CI run
+39015506803 read back COMPLETED/SUCCESS; parent-run substitution avoided; stash and untracked local
+evidence untouched). Verification ran in an owned detached worktree
+`C:\Users\ch0c0\Downloads\nf-verify-74572cca` (clean, exact commit, frozen-lockfile install,
+worktree-private `.env` aligned to the documented live runtime contract nf-pg-5433/
+`novelforge_acceptance_050b`; author Redis :6399 db0 177 keys before/after; real-BullMQ suites bound
+the established disposable compose :6379 db0 `bull:*` surface; no queue purge; no stack change).
+Seven-stage sequential battery (stop-on-failure honored), all exit 0, zero skipped tests:
+1 `pnpm lint` 0; 2 api `tsc --noEmit` 0; 3 web `vue-tsc --noEmit` 0; 4 API `unit` project
+`--no-file-parallelism` 76/76 files, 1331/1331 tests; 5 full web suite 93/93 files, 589/589 tests;
+6 dedicated `pnpm e2e` 3/3 files, 21/21 tests (GAP-076 lock uncontended, single
+`novelforge_test_e2e`); 7 all 21 `*.axe.test.ts` files 21/21, 93/93 (8 `a11y/` + 12 `app/a11y/` +
+`ScaleReviewPanel.axe.test.ts`; `vitest list axe` confirmed exactly these). Reconciliation:
+76 non-E2E + 3 e2e = 79 = all API test files. Two environment-blocked stage-4 attempts are retained
+honestly (stale author root `.env` pointing at the known auth-drift 5432 instance; then a shell
+export no-op leaving `DATABASE_URL` unset for the two suites reading `process.env` directly); the
+recorded stage-4 receipt is the third, clean full-suite run. No product/test file edited at any
+point. Report: `.nf-batch-worktrees/NF023-FINALREV-RELEASE-REPORT.md`; logs:
+`.nf-batch-worktrees/nf023-finalrev-logs/`; separate read-only report reviewer: see the report's
+§8 verdict file. Automated release evidence only — remaining gates unchanged in kind: GAP-051
+human screen-reader DEFERRED_BY_AUTHOR_DECISION (never PASS); live-dependent outage/429 and
+beyond-first-hop JSON multi-hop failover PENDING; ADR-0017 PROPOSED/non-gate; GAP-125 remains OPEN
+(stage 1 passed via worktree isolation, not a GAP-125 fix); target deployment, story publication
+and author release sign-off distinct and not authorized/performed. All new records uncommitted;
+no commit/push/merge/deploy/canon mutation by this task.
+
 ## Coordinator: delivery package refreshed; NF023 local green steps closed at this artifact — 2026-10-17
 
 Executed `.nf-batch-worktrees/NF053-PACKAGE-REFRESH-AND-NF023-GAPS-PROMPT.md`

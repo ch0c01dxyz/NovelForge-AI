@@ -13,7 +13,7 @@
       </span>
     </div>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="endgame-debt-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="endgame-debt-error">
       {{ t("endgame.debtError") }}
     </p>
 

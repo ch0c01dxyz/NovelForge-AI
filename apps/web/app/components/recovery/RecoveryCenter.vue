@@ -18,7 +18,7 @@
       </button>
     </div>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="recovery-load-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="recovery-load-error">
       {{ t("recovery.loadError") }}
     </p>
 
@@ -147,7 +147,7 @@
               class="mt-1 w-full rounded-lg border border-nf-border-strong bg-nf-bg-2 px-3 py-2 text-[13px] text-nf-text focus-visible:nf-focus"
             />
           </label>
-          <p v-if="createError" role="alert" class="mt-2 text-[13px] text-red-300" data-testid="recovery-create-error">
+          <p v-if="createError" role="alert" class="mt-2 text-[13px] text-nf-error" data-testid="recovery-create-error">
             {{ createError }}
           </p>
           <div class="mt-4 flex justify-end gap-2">
@@ -191,7 +191,7 @@
             <span class="block text-[12px] text-nf-text-dim">{{ t("recovery.autoCheckpointHint") }}</span>
           </span>
         </label>
-        <p v-if="switchError" role="alert" class="mt-2 text-[13px] text-red-300" data-testid="recovery-switch-error">
+        <p v-if="switchError" role="alert" class="mt-2 text-[13px] text-nf-error" data-testid="recovery-switch-error">
           {{ switchError }}
         </p>
         <div class="mt-4 flex justify-end gap-2">

@@ -108,7 +108,7 @@
           v-if="status === 'error'"
           role="alert"
           data-testid="import-error"
-          class="mt-3 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-2 text-[13px] text-red-200"
+          class="mt-3 rounded-lg border border-nf-error/60 bg-nf-error/15 px-3 py-2 text-[13px] text-nf-error"
         >
           {{ errorMessage }}
         </p>

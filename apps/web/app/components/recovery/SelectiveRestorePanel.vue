@@ -87,7 +87,7 @@
       >
         {{ previewing ? t("recovery.previewing") : t("recovery.previewRestore") }}
       </button>
-      <p v-if="error" role="alert" data-testid="selective-error" class="text-[13px] text-red-300">
+      <p v-if="error" role="alert" data-testid="selective-error" class="text-[13px] text-nf-error">
         {{ error }}
       </p>
     </div>
@@ -107,7 +107,7 @@
         >
           <span
             class="rounded-full border border-nf-border-strong px-2 py-0.5 text-[11px] font-medium"
-            :class="c.kind === 'ORPHAN_REFERENCE' ? 'text-red-300' : 'text-amber-300'"
+            :class="c.kind === 'ORPHAN_REFERENCE' ? 'text-nf-error' : 'text-nf-warn'"
           >
             {{ c.kind === "ORPHAN_REFERENCE" ? t("recovery.orphanReference") : t("recovery.staleDependent") }}
           </span>
@@ -127,7 +127,7 @@
         />
         <span class="text-[13px] text-nf-text">{{ t("recovery.acknowledge") }}</span>
       </label>
-      <p v-if="needsAck && !acknowledged" class="mt-1 text-[12px] text-amber-300" data-testid="selective-ack-hint">
+      <p v-if="needsAck && !acknowledged" class="mt-1 text-[12px] text-nf-warn" data-testid="selective-ack-hint">
         {{ t("recovery.acknowledgeRequired") }}
       </p>
 
@@ -136,7 +136,7 @@
           type="button"
           data-testid="selective-apply-btn"
           :disabled="applying || applied || (needsAck && !acknowledged)"
-          class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-white hover:opacity-90 focus-visible:nf-focus disabled:opacity-50"
+          class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-nf-accent-ink hover:opacity-90 focus-visible:nf-focus disabled:opacity-50"
           @click="onApply"
         >
           {{ applying ? t("recovery.applying") : t("recovery.applyRestore") }}
@@ -144,7 +144,7 @@
       </div>
     </div>
 
-    <p v-if="applied" role="status" data-testid="selective-applied" class="mt-3 text-[13px] text-green-300">
+    <p v-if="applied" role="status" data-testid="selective-applied" class="mt-3 text-[13px] text-nf-ok">
       {{ t("recovery.applied") }}
     </p>
   </section>

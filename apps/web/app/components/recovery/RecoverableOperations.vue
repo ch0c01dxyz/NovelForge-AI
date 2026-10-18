@@ -11,7 +11,7 @@
     <div v-if="loading" class="mt-3 text-[13px] text-nf-text-dim" data-testid="recoverable-loading">
       {{ t("common.loading") }}
     </div>
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="recoverable-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="recoverable-error">
       {{ loadError }}
     </p>
 
@@ -55,10 +55,10 @@
             {{ rollingBackId === c.id ? t("recovery.rollingBack") : t("recovery.rollback") }}
           </button>
         </div>
-        <p v-if="rollbackErrorId === c.id" role="alert" class="mt-2 text-[13px] text-red-300" :data-testid="`recoverable-error-${c.id}`">
+        <p v-if="rollbackErrorId === c.id" role="alert" class="mt-2 text-[13px] text-nf-error" :data-testid="`recoverable-error-${c.id}`">
           {{ rollbackError }}
         </p>
-        <p v-if="rolledBackId === c.id" class="mt-2 text-[13px] text-green-300" :data-testid="`recoverable-done-${c.id}`">
+        <p v-if="rolledBackId === c.id" class="mt-2 text-[13px] text-nf-ok" :data-testid="`recoverable-done-${c.id}`">
           {{ t("recovery.rollbackApplied") }}
         </p>
       </li>
@@ -94,7 +94,7 @@
           <button
             type="button"
             data-testid="rollback-confirm-ok"
-            class="rounded-lg border border-red-800 bg-red-950 px-4 py-2 text-[13px] font-semibold text-red-200 hover:bg-red-900 focus-visible:nf-focus"
+            class="rounded-lg border border-nf-error bg-nf-error/10 px-4 py-2 text-[13px] font-semibold text-nf-error hover:bg-nf-error/20 focus-visible:nf-focus"
             @click="doRollback"
           >
             {{ t("recovery.rollback") }}

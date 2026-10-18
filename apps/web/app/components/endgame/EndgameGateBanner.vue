@@ -2,7 +2,7 @@
   <section
     :aria-label="t('endgame.gateTitle')"
     class="rounded-xl border p-5"
-    :class="gate.verdict === 'READY' ? 'border-emerald-400/40 bg-emerald-400/5' : 'border-amber-400/40 bg-amber-400/5'"
+    :class="gate.verdict === 'READY' ? 'border-nf-ok/40 bg-nf-ok/5' : 'border-nf-warn/40 bg-nf-warn/5'"
     data-testid="endgame-gate-banner"
   >
     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -12,8 +12,8 @@
           class="rounded-full border px-3 py-1 text-[13px] font-semibold"
           :class="
             gate.verdict === 'READY'
-              ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-200'
-              : 'border-amber-400/50 bg-amber-400/10 text-amber-200'
+              ? 'border-nf-ok/50 bg-nf-ok/10 text-nf-ok'
+              : 'border-nf-warn/50 bg-nf-warn/10 text-nf-warn'
           "
         >
           {{ t(`endgame.gateVerdict.${gate.verdict}`) }}
@@ -47,7 +47,7 @@
         class="rounded-lg border border-nf-border bg-nf-bg-2 p-3 text-[13px]"
       >
         <span class="font-semibold text-nf-text">{{ item.threadTitle }}</span>
-        <span class="ml-2 rounded-full border border-red-400/40 bg-red-400/10 px-2 py-0.5 text-[11px] font-medium text-red-200">
+        <span class="ml-2 rounded-full border border-nf-error/40 bg-nf-error/10 px-2 py-0.5 text-[11px] font-medium text-nf-error">
           {{ t(`endgame.statusLabels.${item.status}`) }}
         </span>
         <p v-if="item.criteria" class="mt-1 text-[12px] text-nf-text-dim">
@@ -56,7 +56,7 @@
       </li>
     </ul>
 
-    <p v-if="approveError" role="alert" class="mt-2 text-[13px] text-red-300" data-testid="endgame-approve-error">
+    <p v-if="approveError" role="alert" class="mt-2 text-[13px] text-nf-error" data-testid="endgame-approve-error">
       {{ approveError }}
     </p>
   </section>

@@ -96,7 +96,7 @@
         </label>
       </div>
 
-      <p v-if="createError" role="alert" class="mt-2 text-[13px] text-red-300" data-testid="whatif-create-error">
+      <p v-if="createError" role="alert" class="mt-2 text-[13px] text-nf-error" data-testid="whatif-create-error">
         {{ createError }}
       </p>
 
@@ -105,7 +105,7 @@
           type="button"
           data-testid="whatif-create-submit"
           :disabled="!canCreate"
-          class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-50 focus-visible:nf-focus"
+          class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-nf-accent-ink hover:opacity-90 disabled:opacity-50 focus-visible:nf-focus"
           @click="createAndRun"
         >
           {{ t("whatif.createAndRun") }}
@@ -122,7 +122,7 @@
 
     <!-- Comparison list -->
     <div class="mt-4" data-testid="whatif-items">
-      <p v-if="loadError" role="alert" class="text-[13px] text-red-300" data-testid="whatif-list-error">
+      <p v-if="loadError" role="alert" class="text-[13px] text-nf-error" data-testid="whatif-list-error">
         {{ t("whatif.listError") }}
       </p>
       <p v-else-if="comparisons.length === 0 && !loading" class="text-[13px] text-nf-text-dim" data-testid="whatif-no-items">
@@ -195,7 +195,7 @@
               <p
                 v-else-if="trajectoriesError[c.id]"
                 role="alert"
-                class="mt-1 text-[13px] text-red-300"
+                class="mt-1 text-[13px] text-nf-error"
               >
                 {{ trajectoriesError[c.id] }}
               </p>
@@ -378,13 +378,13 @@ const canCreate = computed(
 function statusClass(status: string): string {
   switch (status) {
     case "COMPLETED":
-      return "bg-green-900/30 text-green-300";
+      return "bg-nf-ok/10 text-nf-ok";
     case "RUNNING":
-      return "bg-blue-900/30 text-blue-300";
+      return "bg-nf-info/10 text-nf-info";
     case "INCOMPLETE_BUDGET_EXHAUSTED":
-      return "bg-amber-900/30 text-amber-300";
+      return "bg-nf-warn/10 text-nf-warn";
     case "ABORTED":
-      return "bg-red-900/30 text-red-300";
+      return "bg-nf-error/10 text-nf-error";
     default:
       return "bg-nf-bg-3 text-nf-text-dim";
   }

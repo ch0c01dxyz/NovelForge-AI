@@ -27,7 +27,7 @@
       </button>
     </div>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="cb-list-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="cb-list-error">
       {{ t("endgame.callbacks.listError") }}
     </p>
 
@@ -56,7 +56,7 @@
           :data-testid="`cb-item-${cb.id}`"
           class="mt-2 rounded-lg border p-4"
           :class="cb.status === 'PENDING'
-            ? 'border-amber-500/60 bg-amber-500/10'
+            ? 'border-nf-warn/60 bg-nf-warn/10'
             : 'border-nf-border bg-nf-bg-2'"
         >
           <div class="flex items-center justify-between gap-3">
@@ -64,8 +64,8 @@
               :data-testid="`cb-status-${cb.id}`"
               class="rounded-full border px-2 py-0.5 text-[11px] font-medium"
               :class="cb.status === 'PENDING'
-                ? 'border-amber-500/60 text-amber-200'
-                : 'border-emerald-500/60 text-emerald-200'"
+                ? 'border-nf-warn/60 text-nf-warn'
+                : 'border-nf-ok/60 text-nf-ok'"
             >
               {{ cb.status === 'PENDING' ? t("endgame.callbacks.unpaidBadge") : t("endgame.callbacks.paidBadge") }}
             </span>

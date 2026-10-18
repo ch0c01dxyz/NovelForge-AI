@@ -22,6 +22,23 @@ function mountDialog(extra: Record<string, unknown> = {}) {
 }
 
 describe("ConfirmDialog", () => {
+  it("keeps Tab inside confirmation and disables dismissal while busy", async () => {
+    const w = mountDialog();
+    await w.vm.$nextTick();
+    const cancel = w.get('[data-testid="confirm-cancel"]').element as HTMLButtonElement;
+    const confirm = w.get('[data-testid="confirm-ok"]').element as HTMLButtonElement;
+    confirm.focus();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(cancel);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+    expect(document.activeElement).toBe(confirm);
+    await w.setProps({ busy: true, error: "Still saving" });
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    expect(w.emitted("cancel")).toBeUndefined();
+    expect(w.get('[role="alert"]').text()).toBe("Still saving");
+    expect(confirm.disabled).toBe(true);
+    w.unmount();
+  });
   it("renders the title, body, and both labels", () => {
     const w = mountDialog();
     expect(w.text()).toContain("Delete this saga?");
@@ -59,6 +76,23 @@ describe("ConfirmDialog", () => {
     w.unmount();
   });
 
+  it("does not intercept Escape while closed, so layered surfaces keep it", async () => {
+    // Regression (workspace management): the document-level capture listener
+    // lives for the component's whole lifetime; while `open` is false it
+    // must neither emit nor stop other handlers' Escape.
+    const w = mountDialog({ open: false });
+    const bubbles = new KeyboardEvent("keydown", { key: "Escape", bubbles: true });
+    let reached = true;
+    document.addEventListener("keydown", () => {
+      reached = true;
+    });
+    document.dispatchEvent(bubbles);
+    expect(w.emitted("cancel")).toBeUndefined();
+    expect(reached).toBe(true);
+    document.removeEventListener("keydown", () => {});
+    w.unmount();
+  });
+
   it("renders nothing when closed", () => {
     const w = mountDialog({ open: false });
     expect(w.html()).toBe("<!--v-if-->");
@@ -67,7 +101,7 @@ describe("ConfirmDialog", () => {
 
   it("applies the danger style when danger is set", () => {
     const w = mountDialog({ danger: true });
-    expect(w.find("[data-testid='confirm-ok']").classes().join(" ")).toContain("red-");
+    expect(w.find("[data-testid='confirm-ok']").classes().join(" ")).toContain("nf-error");
     w.unmount();
   });
 });

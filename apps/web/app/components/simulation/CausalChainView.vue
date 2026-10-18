@@ -19,7 +19,7 @@
       </button>
     </div>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="sim-causal-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="sim-causal-error">
       {{ t("simulation.loadError") }}
     </p>
 

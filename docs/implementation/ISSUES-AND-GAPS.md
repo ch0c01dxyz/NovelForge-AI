@@ -1,5 +1,73 @@
 # Technical Issues and Implementation Gaps
 
+## Workspace management final review blockers — 2026-10-18
+
+Owner: current workspace-management review. Independent source review found
+novel emptiness and OWNER authorization checked before the workspace lock:
+concurrent novel creation can be cascaded away and revoked ownership can still
+delete. Check both inside the locked transaction before writes. Audit updates
+must commit atomically with rename/delete; deletion must not silently erase
+novel-independent definitions/references. Existing FK commentary needs correction.
+
+Frontend findings: pending create reads mutable form values; initial GET can
+overwrite a created row; close remains active during mutation; network/5xx
+offers unsafe immediate retry; delete refusals are hidden behind confirmation
+and history protection is mislabeled slug conflict. Newly modal manager/wizard
+lack native modal isolation/focus containment. Fix responsible layers with
+focused regressions, real disposable-DB API/browser proof and separate review.
+
+Browser follow-up: native showModal correctly isolated the background, but the
+sequential-focus boundary assertion failed during Tab traversal from the initial
+heading. Reuse a shared explicit Tab-loop helper with native inert isolation;
+test actual modal/nested-confirmation keyboard behavior before completion.
+
+Final lint discovered the new Git-ignored .nf-artifacts evidence directory is
+still scanned by ESLint, reproducing the local-tooling scope problem covered by
+GAP-125 for another artifact root. Exclude only this private root using the
+existing global-ignore pattern; retain API/web/worker lint coverage and verify
+the existing lint-scope regression test. This is tooling scope, not application
+source lint suppression.
+
+Resolution — 2026-10-18: CLOSED. Lock-first permission/emptiness checks and
+atomic audits verified with actual PostgreSQL contention and trigger-failure
+regressions; novel-independent definitions preserved. UI regressions cover
+pending snapshots/load guards/ambiguous refusal/history copy/error placement.
+Real isolated API/browser verified native background isolation plus Tab loops,
+nested confirmations, create/rename/delete and visible protected-history409.
+Backend and frontend final independent reviews APPROVE. API38tests; web631tests
+plus37affected tests after the shared focus helper; final typechecks/lint pass.
+ESLint private-root regression and worker-boundary tests3PASS.
+
+GAP-126 rendered-evidence resolution: authenticated five-tab admin, gateway form,
+real Monokai health and numeric model-sync2980 toast, and15route screenshots
+including fixture-populated writer/public reader now observed through an owned
+disposable API/DB. Actual401error toast contrast5.69:1. No live story/account
+changes; published state is a labeled visual fixture, not approval acceptance.
+This closes the reported missing admin/data-route rendered evidence, not every
+possible state or human screen-reader acceptance. Native select popup capture
+and native browser chrome200%zoom remain unclaimed; CSS200%scaling was measured.
+
+## NF056 coordinator evidence-boundary correction — 2026-10-18
+
+Owner: NF-WF-056/GAP-126 follow-up. Returned harness report explicitly leaves
+authenticated admin/toast and data-bearing page rendering unverified; global
+tokens and retained613tests do not prove complete all-page acceptance. Missing
+retained passwords does not by itself block real author/admin verification:
+prior NF054/NF055 helpers used short-lived server-side sessions for existing
+actors without changing accounts/roles, then removed those sessions. An owned
+disposable DB with existing fixtures can exercise story pages without writing
+the live database. These are proposed next acceptance paths, not executed here.
+The retained 200%-layout screenshot uses a reduced viewport; actual zoom still
+needs explicit evidence. Inspect native radio/checkbox accent consistency too:
+the coordinator-inspected wizard screenshot has a blue selected radio within
+the purple theme; establish computed styling before deciding any repair.
+
+Current coordinator MCP get_run read-back for the retained OpenDesign run
+failed with Transport closed. Earlier succeeded-run provenance remains retained
+evidence, not freshly observed status. Do not regenerate or claim a new run.
+Next: recover MCP transport when available, finish the route/control/toast matrix
+and independent final review. GAP-126 remains open; no commit/push authorized.
+
 ## Admin revision review blockers — 2026-10-18
 
 Owner: platform-admin pagination/search/toast revision. Independent review found
@@ -7776,3 +7844,36 @@ CI are unaffected.
   task's no-application-change boundary.
 - **Closure check:** `pnpm lint` exit 0 on a dev host with the local
   evidence directories present, or an agreed documented CI-scope-only rule.
+
+## GAP-126 — NF056 live SUPER_ADMIN-gated UI evidence not re-verified this session (2026-10-18, MINOR, verification limit)
+
+NF-WF-056 (global Monokai Pro polish) migrated every raw palette color in
+`apps/web/app` to semantic `--color-nf-*` tokens (Monokai Pro Classic) and
+polished controls, focus, placeholders, native selects and the admin toast
+stack. Full live-browser verification of the SUPER_ADMIN-gated surfaces
+(admin five tabs, gateway forms/dialogs, model-sync `{discovered:N}`
+success/error toast pixels) was NOT possible: the platform admin credential
+is intentionally not retained anywhere (GAP-054-era account setup used
+no-echo stdin; `.nf-batch-worktrees/local-accounts/HANDOFF.md` confirms the
+secret is not stored), and creating/altering admin accounts for a design
+task is forbidden by the task contract. `/admin` as a non-admin session was
+screenshot-verified and shows the server-enforced forbidden state, so server
+authorization is intact.
+
+Compensating evidence actually performed: full web vitest 613/613 (incl.
+platform-admin toast-count tests and 24 axe suites), `vue-tsc --noEmit`
+exit 0, scoped ESLint exit 0, computed-token contrast table (29 pairings,
+min text 4.64:1, min boundary 4.21:1), live screenshots of home/wizard/
+sign-in/browse/library/notifications/admin-forbidden/workspace-error-shell
+at desktop, mobile 390px and 200%-layout widths in both locales, keyboard
+focus ring measured `2px solid rgb(186,176,245)`/2px offset.
+
+- **Owner task:** next authorized admin session (e.g. NF055-style review)
+  re-shoots the admin tab/toast screenshots under Monokai and closes this
+  entry; no product change expected.
+- **Impact:** documentation/evidence only; no product defect identified in
+  the migrated admin markup (same tokens verified elsewhere live).
+- **Next action:** author runs one admin session and eyeballs the five tabs
+  + toasts, or dispatches a credentialed harness.
+- **Closure check:** dated screenshot evidence of the five admin tabs and
+  success/error toasts on the Monokai palette appended to NF056 evidence.

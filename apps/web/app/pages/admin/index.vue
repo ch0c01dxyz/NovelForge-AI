@@ -525,7 +525,7 @@ onMounted(async () => {
             {{ t("platformAdmin.gateways.form.cancel") }}
           </button>
           <button
-            class="rounded-lg bg-nf-warn/90 px-3.5 py-1.5 text-[13px] font-semibold text-white hover:bg-nf-warn focus-visible:nf-focus"
+            class="rounded-lg bg-nf-error px-3.5 py-1.5 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-error/90 focus-visible:nf-focus"
             data-testid="confirm-delete-gateway"
             @click="confirmDelete"
           >
@@ -543,12 +543,17 @@ onMounted(async () => {
       <div
         v-for="toast in toasts"
         :key="toast.id"
-        role="status"
+        :role="toast.kind === 'error' ? 'alert' : 'status'"
         class="flex items-start justify-between gap-2 rounded-xl border bg-nf-bg-1 px-3.5 py-2.5 text-[13px] font-medium shadow-nf-md"
-        :class="toast.kind === 'success' ? 'border-nf-ok text-nf-ok' : 'border-red-400 text-red-300'"
+        :class="toast.kind === 'success' ? 'border-nf-ok text-nf-ok' : 'border-nf-error text-nf-error'"
         :data-testid="`toast-${toast.kind}`"
       >
-        <p>{{ t(toast.key, toast.params) }}</p>
+        <span
+          class="mt-1.5 size-2 shrink-0 rounded-full"
+          :class="toast.kind === 'success' ? 'bg-nf-ok' : 'bg-nf-error'"
+          aria-hidden="true"
+        ></span>
+        <p class="min-w-0 flex-1 break-words">{{ t(toast.key, toast.params) }}</p>
         <button
           class="shrink-0 rounded px-1 text-[14px] leading-none focus-visible:nf-focus"
           :aria-label="t('platformAdmin.toasts.dismiss')"

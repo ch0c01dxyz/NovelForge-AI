@@ -34,3 +34,6 @@ review-receipts/
 /.nf-batch-worktrees/
 # Imported harness output can contain private author input or runtime details.
 /output.txt
+
+# NF056 local evidence (screenshots, receipts)
+.nf-artifacts/

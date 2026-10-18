@@ -131,11 +131,11 @@
               <legend class="mb-1 text-[12px] text-nf-text-dim">{{ t("workspace.world.editor.objectKind") }}</legend>
               <div class="flex gap-3" role="radiogroup" :aria-label="t('workspace.world.editor.objectKind')">
                 <label class="flex items-center gap-1.5 text-[13px] text-nf-text">
-                  <input v-model="createForm.objectMode" type="radio" value="text" class="accent-[#f97316]" />
+                  <input v-model="createForm.objectMode" type="radio" value="text" class="accent-nf-accent" />
                   {{ t("workspace.world.editor.objectKindText") }}
                 </label>
                 <label class="flex items-center gap-1.5 text-[13px] text-nf-text">
-                  <input v-model="createForm.objectMode" type="radio" value="entity" class="accent-[#f97316]" />
+                  <input v-model="createForm.objectMode" type="radio" value="entity" class="accent-nf-accent" />
                   {{ t("workspace.world.editor.objectKindEntity") }}
                 </label>
               </div>

@@ -2,12 +2,12 @@
   <div>
     <div class="flex gap-3" role="radiogroup" :aria-label="t('workspace.world.editor.citationKind')">
       <label class="flex items-center gap-1.5 text-[13px] text-nf-text">
-        <input :checked="model.kind === 'CHAPTER'" type="radio" value="CHAPTER" class="accent-[#f97316]"
+        <input :checked="model.kind === 'CHAPTER'" type="radio" value="CHAPTER" class="accent-nf-accent"
           @change="update('kind', 'CHAPTER')" />
         {{ t("workspace.world.editor.citationKindChapter") }}
       </label>
       <label class="flex items-center gap-1.5 text-[13px] text-nf-text">
-        <input :checked="model.kind === 'REFERENCE'" type="radio" value="REFERENCE" class="accent-[#f97316]"
+        <input :checked="model.kind === 'REFERENCE'" type="radio" value="REFERENCE" class="accent-nf-accent"
           @change="update('kind', 'REFERENCE')" />
         {{ t("workspace.world.editor.citationKindReference") }}
       </label>

@@ -1115,7 +1115,7 @@ function statusClass(status: ChecklistItem["status"]): string {
     case "pass":
       return "border-nf-ok/40 bg-nf-ok/10 text-nf-ok";
     case "fail":
-      return "border-nf-danger/40 bg-nf-danger/10 text-nf-danger";
+      return "border-nf-error/40 bg-nf-error/10 text-nf-error";
     case "warn":
       return "border-nf-warn/40 bg-nf-warn/10 text-nf-warn";
     default:
@@ -1163,9 +1163,9 @@ function statusClass(status: ChecklistItem["status"]): string {
       <div
         v-else-if="loadState === 'error'"
         role="alert"
-        class="rounded-lg border border-nf-danger/40 bg-nf-danger/10 p-3"
+        class="rounded-lg border border-nf-error/40 bg-nf-error/10 p-3"
       >
-        <p class="text-[12.5px] text-nf-danger">{{ loadError }}</p>
+        <p class="text-[12.5px] text-nf-error">{{ loadError }}</p>
         <button
           type="button"
           class="mt-2 rounded-lg border border-nf-border-strong px-3 py-1.5 text-[12.5px] font-medium text-nf-text hover:bg-nf-bg-2 focus-visible:nf-focus"
@@ -1231,7 +1231,7 @@ function statusClass(status: ChecklistItem["status"]): string {
           <p v-if="review" class="mt-2 text-[12.5px]">
             <span
               class="inline-block rounded-full border px-2.5 py-0.5 font-medium"
-              :class="review.blocking ? 'border-nf-danger/40 bg-nf-danger/10 text-nf-danger' : 'border-nf-ok/40 bg-nf-ok/10 text-nf-ok'"
+              :class="review.blocking ? 'border-nf-error/40 bg-nf-error/10 text-nf-error' : 'border-nf-ok/40 bg-nf-ok/10 text-nf-ok'"
             >
               {{ stateLabel }}
             </span>
@@ -1270,7 +1270,7 @@ function statusClass(status: ChecklistItem["status"]): string {
           <p
             v-else-if="evidenceError"
             role="alert"
-            class="mt-2 text-[12.5px] text-nf-danger"
+            class="mt-2 text-[12.5px] text-nf-error"
           >
             {{ evidenceError }}
           </p>
@@ -1505,7 +1505,7 @@ function statusClass(status: ChecklistItem["status"]): string {
           <p
             v-if="s3Error"
             role="alert"
-            class="mt-2 text-[12.5px] text-nf-danger"
+            class="mt-2 text-[12.5px] text-nf-error"
           >
             {{ s3Error }}
           </p>
@@ -1532,7 +1532,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                 class="rounded-md border p-2.5"
                 :class="p.stale
                   ? 'border-nf-warn/40 bg-nf-warn/10'
-                  : 'border-nf-border bg-nf-bg'"
+                  : 'border-nf-border bg-nf-bg-1'"
               >
                 <p
                   v-if="p.stale"
@@ -1619,7 +1619,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                 <li
                   v-for="(a, ai2) in s3Advice"
                   :key="ai2"
-                  class="rounded-md border border-nf-border bg-nf-bg p-2.5 text-[12.5px] leading-relaxed"
+                  class="rounded-md border border-nf-border bg-nf-bg-1 p-2.5 text-[12.5px] leading-relaxed"
                 >
                   <p class="font-medium">{{ a.code }}</p>
                   <p class="mt-1">{{ a.explanation }}</p>
@@ -1653,7 +1653,7 @@ function statusClass(status: ChecklistItem["status"]): string {
           <p
             v-else-if="proposalsError"
             role="alert"
-            class="mt-2 text-[12.5px] text-nf-danger"
+            class="mt-2 text-[12.5px] text-nf-error"
           >
             {{ proposalsError }}
           </p>
@@ -1673,7 +1673,7 @@ function statusClass(status: ChecklistItem["status"]): string {
                   :class="p.outcome.action === 'APPROVE'
                     ? 'border-nf-ok/40 bg-nf-ok/10 text-nf-ok'
                     : p.outcome.action === 'REJECT'
-                      ? 'border-nf-danger/40 bg-nf-danger/10 text-nf-danger'
+                      ? 'border-nf-error/40 bg-nf-error/10 text-nf-error'
                       : 'border-nf-warn/40 bg-nf-warn/10 text-nf-warn'"
                 >
                   {{ t(`workspace.narrative.scaleReview.proposals.action.${p.outcome.action}`) }}

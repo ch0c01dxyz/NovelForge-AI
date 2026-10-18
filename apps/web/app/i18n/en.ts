@@ -40,7 +40,22 @@ export const en = {
   "createError": "Creation was rejected. Check your details and retry.",
   "navigationError": "Your webnovel was saved, but its workspace could not be opened. Use the link below.",
   "openNovel": "Open saved webnovel",
-  "backHome": "Back to your webnovels"
+  "backHome": "Back to your webnovels",
+  "manageWorkspaces": "Manage workspaces",
+  "wsManagerTitle": "Workspaces",
+  "wsCreateTitle": "New workspace",
+  "wsCreate": "Create workspace",
+  "wsEmpty": "No workspaces yet. Create one with the form above.",
+  "wsNovelCount": "{count} novels",
+  "wsRename": "Rename",
+  "wsDelete": "Delete",
+  "wsDeleteConfirmTitle": "Delete workspace",
+  "wsDeleteConfirm": "Delete “{name}”? This cannot be undone.",
+  "wsDeleteBlocked": "Delete the novels in this workspace first.",
+  "wsSlugConflict": "That workspace address is already in use. Choose another address.",
+  "wsError": "The change was rejected. Check the details and retry.",
+  "wsHistoryBlocked": "This workspace still contains definitions, references, or protected history. Keep it until those records can be safely moved or removed.",
+  "wsAmbiguous": "The request outcome is unknown and may already be saved. Close and reopen this dialog to inspect the workspace list before starting another change. This form will not repeat the request."
 },
   usage: {
     title: "Usage analytics", description: "Gateway-reported usage recorded by NovelForge. Quota management stays in your LLM Gateway.",

@@ -5,7 +5,7 @@
       <p class="mt-1 text-[13px] text-nf-text-dim">{{ t("endgame.subtitle") }}</p>
     </header>
 
-    <p v-if="forbidden" role="alert" class="rounded-xl border border-red-400/40 bg-red-400/5 p-5 text-[13px] text-red-200" data-testid="endgame-forbidden">
+    <p v-if="forbidden" role="alert" class="rounded-xl border border-nf-error/40 bg-nf-error/5 p-5 text-[13px] text-nf-error" data-testid="endgame-forbidden">
       {{ t("endgame.forbidden") }}
     </p>
 

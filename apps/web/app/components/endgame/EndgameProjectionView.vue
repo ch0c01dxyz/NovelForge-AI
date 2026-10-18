@@ -38,7 +38,7 @@
       {{ t("endgame.projection.subtitle") }}
     </p>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="endgame-projection-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="endgame-projection-error">
       {{ loadError }}
     </p>
 
@@ -126,10 +126,10 @@
         <div v-if="result" class="mt-5 border-t border-nf-border pt-4" data-testid="endgame-projection-result">
           <div
             class="rounded-lg border px-4 py-3"
-            :class="result.projectedGate === 'READY' ? 'border-green-700 bg-green-950/40' : 'border-amber-700 bg-amber-950/40'"
+            :class="result.projectedGate === 'READY' ? 'border-nf-ok bg-nf-ok/15' : 'border-nf-warn bg-nf-warn/15'"
             data-testid="endgame-projection-gate"
           >
-            <p class="text-[14px] font-semibold" :class="result.projectedGate === 'READY' ? 'text-green-300' : 'text-amber-300'">
+            <p class="text-[14px] font-semibold" :class="result.projectedGate === 'READY' ? 'text-nf-ok' : 'text-nf-warn'">
               {{
                 result.projectedGate === "READY"
                   ? t("endgame.projection.gateReady")
@@ -166,7 +166,7 @@
                 <li
                   v-for="e in result.openMusts"
                   :key="e.threadId"
-                  class="text-[13px] text-amber-300"
+                  class="text-[13px] text-nf-warn"
                   :data-testid="`endgame-open-must-${e.threadId}`"
                 >
                   <span class="font-mono text-[12px]">{{ e.threadId }}</span>
@@ -224,15 +224,15 @@ const selectableEntries = computed(() =>
 function statusClass(status: EndgameLedgerEntry["status"]): string {
   switch (status) {
     case "MUST":
-      return "border-red-700 text-red-300";
+      return "border-nf-error text-nf-error";
     case "SHOULD":
-      return "border-amber-700 text-amber-300";
+      return "border-nf-warn text-nf-warn";
     case "MAY":
-      return "border-sky-700 text-sky-300";
+      return "border-nf-info text-nf-info";
     case "OPEN":
       return "border-nf-border-strong text-nf-text-dim";
     case "SEQUEL":
-      return "border-violet-700 text-violet-300";
+      return "border-nf-accent text-nf-accent-hi";
   }
 }
 

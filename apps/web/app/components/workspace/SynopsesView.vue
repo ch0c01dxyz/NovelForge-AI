@@ -15,7 +15,7 @@
           v-model="includeArchived"
           type="checkbox"
           data-testid="synopses-include-archived"
-          class="h-4 w-4 accent-[#f97316] focus-visible:nf-focus"
+          class="h-4 w-4 accent-nf-accent focus-visible:nf-focus"
           @change="load"
         />
         {{ t("workspace.planning.synopses.showArchived") }}

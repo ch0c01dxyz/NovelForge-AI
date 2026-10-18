@@ -152,8 +152,8 @@ describe("workspace choices for author onboarding", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toHaveLength(2);
     expect(response.json()).toEqual(expect.arrayContaining([
-      { id: writable.id, name: "Writing", slug: "writing", role: "AUTHOR", canCreateNovel: true },
-      { id: readonly.id, name: "Reading", slug: "reading", role: "VIEWER", canCreateNovel: false },
+      { id: writable.id, name: "Writing", slug: "writing", role: "AUTHOR", canCreateNovel: true, canRename: false, canDelete: false, novelCount: 0 },
+      { id: readonly.id, name: "Reading", slug: "reading", role: "VIEWER", canCreateNovel: false, canRename: false, canDelete: false, novelCount: 0 },
     ]));
   });
 

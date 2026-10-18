@@ -27,7 +27,7 @@
       </button>
     </div>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="legacy-list-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="legacy-list-error">
       {{ t("endgame.legacy.listError") }}
     </p>
 

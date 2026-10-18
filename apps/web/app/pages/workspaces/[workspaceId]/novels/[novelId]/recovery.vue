@@ -21,7 +21,7 @@
           </label>
           <button type="submit" :disabled="creating || !checkedOut || !checkpointLabel.trim()" class="rounded-lg border border-nf-border-strong bg-nf-bg-3 px-4 py-2 text-[13px] focus-visible:nf-focus disabled:opacity-50">{{ t("recovery.createCheckpoint") }}</button>
         </form>
-        <p v-if="createError" role="alert" class="mt-2 text-[13px] text-red-300">{{ createError }}</p>
+        <p v-if="createError" role="alert" class="mt-2 text-[13px] text-nf-error">{{ createError }}</p>
         <label class="mt-4 block text-[13px] text-nf-text">
           {{ t("recovery.selectCheckpoint") }}
           <select v-model="checkpointId" data-testid="recovery-checkpoint-select" class="mt-1 block w-full rounded-lg border border-nf-border-strong bg-nf-bg-2 px-3 py-2 focus-visible:nf-focus">

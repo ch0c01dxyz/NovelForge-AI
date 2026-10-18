@@ -11,10 +11,12 @@
     >
       <h2 class="text-[15px] font-semibold text-nf-text">{{ title }}</h2>
       <p class="mt-2 text-[13px] leading-relaxed text-nf-text-dim">{{ body }}</p>
+      <p v-if="error" role="alert" class="mt-2 text-[13px] text-nf-error">{{ error }}</p>
       <div class="mt-4 flex justify-end gap-2">
         <button
           type="button"
           data-testid="confirm-cancel"
+          :disabled="busy"
           class="rounded-lg border border-nf-border-strong px-4 py-2 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
           @click="onCancel"
         >
@@ -23,9 +25,10 @@
         <button
           type="button"
           data-testid="confirm-ok"
+          :disabled="busy"
           :class="
             danger
-              ? 'rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-2 text-[13px] font-semibold text-red-200 hover:bg-red-950/70 focus-visible:nf-focus'
+              ? 'rounded-lg border border-nf-error/60 bg-nf-error/15 px-4 py-2 text-[13px] font-semibold text-nf-error hover:bg-nf-error/25 focus-visible:nf-focus'
               : 'rounded-lg border border-nf-border-strong bg-nf-bg-3 px-4 py-2 text-[13px] font-semibold text-nf-text hover:bg-nf-bg-2 focus-visible:nf-focus'
           "
           @click="onConfirm"
@@ -47,6 +50,7 @@
  * useLocale() keys. Esc dismisses; focus returns to the opener.
  */
 import { onMounted, onUnmounted, ref, watch, nextTick } from "vue";
+import { trapDialogFocus } from "../../utils/trapDialogFocus";
 
 const props = defineProps<{
   open: boolean;
@@ -56,6 +60,8 @@ const props = defineProps<{
   cancelLabel: string;
   /** Danger styling for destructive confirmations (delete, supersede). */
   danger?: boolean;
+  busy?: boolean;
+  error?: string;
 }>();
 
 const emit = defineEmits<{
@@ -67,17 +73,28 @@ const dialogRef = ref<HTMLElement | null>(null);
 const opener = ref<HTMLElement | null>(null);
 
 function onCancel() {
+  if (props.busy) return;
   emit("cancel");
 }
 
 function onConfirm() {
+  if (props.busy) return;
   emit("confirm");
 }
 
 function onKeydown(e: KeyboardEvent) {
+  if (!props.open) return;
   if (e.key === "Escape") {
+    // Only intercept while this dialog is actually open: the document-level
+    // capture listener stays attached for the component's whole lifetime, so
+    // an unguarded stopPropagation would swallow Escape meant for any other
+    // layered surface (e.g. a manager dialog hosting this confirm).
+    if (!props.open) return;
     e.stopPropagation();
-    emit("cancel");
+    e.preventDefault();
+    onCancel();
+  } else if (e.key === "Tab") {
+    trapDialogFocus(e, dialogRef.value);
   }
 }
 
@@ -92,7 +109,7 @@ watch(
       opener.value = null;
     }
   },
-  { flush: "post" },
+  { flush: "post", immediate: true },
 );
 
 onMounted(() => document.addEventListener("keydown", onKeydown, true));

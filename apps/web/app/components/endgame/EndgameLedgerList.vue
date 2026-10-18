@@ -18,7 +18,7 @@
       </button>
     </div>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="endgame-ledger-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="endgame-ledger-error">
       {{ t("endgame.listError") }}
     </p>
 
@@ -135,15 +135,15 @@ const filtered = computed(() =>
 function statusBadgeClass(status: EndgameClosureStatus): string {
   switch (status) {
     case "MUST":
-      return "border-red-400/40 bg-red-400/10 text-red-200";
+      return "border-nf-error/40 bg-nf-error/10 text-nf-error";
     case "SHOULD":
-      return "border-amber-400/40 bg-amber-400/10 text-amber-200";
+      return "border-nf-warn/40 bg-nf-warn/10 text-nf-warn";
     case "MAY":
-      return "border-sky-400/40 bg-sky-400/10 text-sky-200";
+      return "border-nf-info/40 bg-nf-info/10 text-nf-info";
     case "OPEN":
       return "border-nf-border-strong bg-nf-bg-3 text-nf-text-dim";
     case "SEQUEL":
-      return "border-violet-400/40 bg-violet-400/10 text-violet-200";
+      return "border-nf-accent/40 bg-nf-accent/10 text-nf-accent-hi";
   }
 }
 </script>

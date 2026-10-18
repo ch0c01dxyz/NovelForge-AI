@@ -291,7 +291,7 @@ defineExpose({ refresh });
           <button
             class="rounded-lg px-3.5 py-1.5 text-[13px] font-semibold focus-visible:nf-focus disabled:opacity-50"
             data-autofocus
-            :class="dialogMode === 'approve' ? 'bg-nf-accent text-nf-accent-ink hover:bg-nf-accent-hi' : 'bg-nf-warn/90 text-white hover:bg-nf-warn'"
+            :class="dialogMode === 'approve' ? 'bg-nf-accent text-nf-accent-ink hover:bg-nf-accent-hi' : 'bg-nf-warn text-nf-accent-ink hover:bg-nf-warn/90'"
             :disabled="!canConfirm() || deciding"
             @click="confirmDecision"
           >

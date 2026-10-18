@@ -40,7 +40,22 @@ export const id = {
   "createError": "Pembuatan ditolak. Periksa detail dan coba lagi.",
   "navigationError": "Webnovel sudah disimpan, tetapi ruang kerjanya tidak dapat dibuka. Gunakan tautan di bawah.",
   "openNovel": "Buka webnovel tersimpan",
-  "backHome": "Kembali ke webnovel Anda"
+  "backHome": "Kembali ke webnovel Anda",
+  "manageWorkspaces": "Kelola workspace",
+  "wsManagerTitle": "Workspace",
+  "wsCreateTitle": "Workspace baru",
+  "wsCreate": "Buat workspace",
+  "wsEmpty": "Belum ada workspace. Buat lewat formulir di atas.",
+  "wsNovelCount": "{count} novel",
+  "wsRename": "Ganti nama",
+  "wsDelete": "Hapus",
+  "wsDeleteConfirmTitle": "Hapus workspace",
+  "wsDeleteConfirm": "Hapus “{name}”? Tindakan ini tidak dapat dibatalkan.",
+  "wsDeleteBlocked": "Hapus dulu novel di dalam workspace ini.",
+  "wsSlugConflict": "Alamat workspace itu sudah dipakai. Pilih alamat lain.",
+  "wsError": "Perubahan ditolak. Periksa isian lalu coba lagi.",
+  "wsHistoryBlocked": "Ruang kerja ini masih berisi definisi, referensi, atau riwayat yang dilindungi. Pertahankan sampai data tersebut dapat dipindahkan atau dihapus dengan aman.",
+  "wsAmbiguous": "Hasil permintaan belum diketahui dan mungkin sudah tersimpan. Tutup lalu buka kembali dialog untuk memeriksa daftar ruang kerja sebelum melakukan perubahan lain. Formulir ini tidak akan mengulang permintaan."
 },
   usage: {
     title: "Analitik penggunaan", description: "Penggunaan yang dilaporkan gateway dan dicatat NovelForge. Pengaturan kuota tetap di LLM Gateway Anda.",

@@ -18,7 +18,7 @@
       </button>
     </div>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="sim-run-list-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="sim-run-list-error">
       {{ t("simulation.listError") }}
     </p>
 
@@ -147,7 +147,7 @@ function statusBadgeClass(status: SimulationRunStatus): string {
     case "COMPLETED":
       return "border-nf-border-strong bg-nf-bg-3 text-nf-text-dim";
     case "ABORTED":
-      return "border-red-400/40 bg-red-400/10 text-red-300";
+      return "border-nf-error/40 bg-nf-error/10 text-nf-error";
     default:
       return "border-nf-border-strong bg-nf-bg-3 text-nf-text-dim";
   }

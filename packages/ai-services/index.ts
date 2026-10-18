@@ -50,6 +50,7 @@ export {
   ConflictError,
   ForbiddenError,
   NotFoundError,
+  WorkspaceDeleteError,
   createPlatformServices,
   type PlatformServices,
 } from "./src/platform.ts";

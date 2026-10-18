@@ -118,7 +118,7 @@
               </div>
             </details>
             <label v-if="p.conflictKind" class="mt-2 flex items-start gap-2 text-[12px] text-nf-warn">
-              <input v-model="approveForm.ackConflict" type="checkbox" class="mt-0.5 accent-[#f97316] focus-visible:nf-focus" />
+              <input v-model="approveForm.ackConflict" type="checkbox" class="mt-0.5 accent-nf-accent focus-visible:nf-focus" />
               {{ t("workspace.canon.proposals.supersedeAcknowledge") }}
             </label>
             <p v-if="actionError" role="alert" class="mt-1.5 text-[13px] text-nf-warn">{{ actionError }}</p>

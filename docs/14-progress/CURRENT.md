@@ -1,5 +1,170 @@
 # Current Project State
 
+## Final Monokai/workspace review and verification — 2026-10-18
+
+The author authorized inspection, concrete fixes, then commit/push of current
+changes. Two independent read-only reviewers found and re-reviewed fixes for
+workspace deletion races (novel insertion and revoked ownership), atomic
+rename/delete auditing, protection of novel-independent definitions/references,
+pending-form identity, initial-list races, ambiguous outcomes, visible deletion
+errors and modal keyboard isolation. Shared explicit Tab containment supplements
+native showModal background isolation; radio/checkbox accents use Monokai.
+
+Root checks: full web97files/631tests PASS before the final shared Tab helper;
+affected3files/37tests PASS after it. API3files/38tests PASS on disposable DBs,
+including actual PostgreSQL lock interleavings and audit-failure rollback.
+API/ai-services/web typechecks exit0. Root lint exit0 after excluding only the
+private .nf-artifacts directory;3ESLint boundary/scope regressions PASS, preserving
+API/web/worker coverage. jsdom canvas warnings do not prove rendered contrast.
+
+Actual Chromium used an isolated real API on3002 and disposable
+novelforge_test_ws_mgmt via transparent request forwarding; responses were not
+mocked. Verified15route families including a fixture-populated writer and
+public chapter, real workspace create/rename/delete, protected-history409,
+modal/nested-confirm keyboard loops, five admin tabs, actual gateway health
+and actual model discovery2980 with matching toast. Error401 after explicit
+logout rendered at5.69:1 contrast. Screenshots for the writer, AI Studio,
+mobile/id manager, gateway/toast and confirmation were inspected. The published
+chapter state is an explicit disposable visual fixture, not author approval or
+publication-workflow acceptance. No LLM prose generation. CSS zoom200% doubled
+the measured control height; native browser chrome zoom is not claimed.
+
+Live counts preserved:2users/4sessions/2workspaces/2memberships/0novels/0chapters.
+Only the verified live API was refreshed24784->43232 to activate reviewed fixes;
+ready200 and authenticated read-only workspace list200. Temporary verification
+session removed; worker, Nuxt and Docker unchanged. No reset/account cleanup
+was repeated. Current receipts: .nf-artifacts/nf056/final-browser-receipt.json,
+final-browser-extra-receipt.json and review-api-activation.json (private).
+Source reviews APPROVE; see tasks/NF-WF-057-workspace-management-review.md.
+
+## Workspace ownership transfer + demo-user cleanup (live data, author-directed) — 2026-10-18
+
+Author-directed live-data administration on
+`nf-pg-5433/novelforge_acceptance_050b`:
+
+1. **Ownership transfer** — `050b-acceptance-ws-c` moved from the tester
+   account `nf050b.authorc+20261011@test.local` to
+   the designated administrator account via the audited product path (membership
+   AUTHOR→OWNER promotion, then old-owner demotion to AUTHOR — two
+   `member.role-changed` audit rows) plus a conditional `workspaces.owner_id`
+   update (out-of-band, ADR-0005-precedented) so the owner column matches the
+   membership truth.
+2. **Demo-user deletion** — author then ordered deletion of all demo users;
+   only the designated administrator and separate author accounts are real. Deleted in one
+   ON_ERROR_STOP transaction: 3 empty demo workspaces (`nf-050b-acceptance-ws`,
+   `050b-acceptance-ws-r2`, `050b-workspace-b` — verified 0 novels/canon
+   facts/workflow runs/chapters first), with retained history detached not
+   erased (21 workspace-scoped + 761 actor-scoped audit rows and 2 generation
+   rows → NULL tenant/actor, preserved anonymized), authorc's remaining
+   AUTHOR membership in the transferred workspace, and the 5
+   `@test.local` users (sessions cascade).
+
+Verified post-state: exactly 2 users remain; 2 workspaces —
+`050b-acceptance-ws-c` (designated administrator owner) and
+`nf054-live-1792234844032` (separate author owner); 2 memberships; 0
+novels (unchanged since the NF054 story reset); 0 orphaned workspace-scoped
+audit rows. RBAC reflected live: the demoted tester session now reads
+`role: AUTHOR, canRename/canDelete: false` on the transferred workspace;
+its sessions are deleted, so the tester browser session is invalid — the
+author signs in with the designated owner account to manage the workspace.
+
+## Workspace management (create/rename/delete) — implemented, verified live, NOT committed — 2026-10-18
+
+Author request: workspace creation + edit/delete for authors, entry button
+placed next to "Create webnovel". Implemented on top of the uncommitted
+NF056 tree (0 staged).
+
+Backend: `packages/ai-services/src/platform.ts` — `updateWorkspace`
+(`workspace:update` = OWNER/ADMIN; display name only, slug immutable;
+audited `workspace.updated`), `deleteWorkspace` (`workspace:delete` =
+OWNER-only; refuses non-empty with typed `WorkspaceDeleteError` → 409
+`WORKSPACE_NOT_EMPTY`; detaches nullable Restrict-FK history — audit rows +
+generation analytics keep existing with `workspaceId: null` — then deletes;
+audited `workspace.deleted` with null tenant boundary);
+`WorkspaceListView` += `canRename`/`canDelete`/`novelCount`.
+`apps/api/src/platform-routes.ts`: `PATCH` + `DELETE /api/workspaces/:id`
+(zod-validated; typed-refusal mapping before the generic ConflictError
+branch). No migration: delete is gated on empty workspaces, so the novel
+cascade is unreachable and retained history is detached, never erased.
+
+Frontend: `WorkspaceManagerDialog.vue` (create form with auto-derived
+editable slug; per-row rename inline + delete through the shared
+`ConfirmDialog`; actions permission-hidden via the server-derived flags;
+409/403 mapped to en/id copy); home `index.vue` "Manage workspaces" button
+beside "Create webnovel" (aria-haspopup/expanded, focus returns on close);
+i18n `authorHome.ws*` keys en+id. `ConfirmDialog` fix: its document-level
+Escape capture listener now ignores events while `open=false` (it was
+swallowing Escape for any layered surface hosting it — regression-tested).
+
+Verification: `tsc --noEmit` + `vue-tsc --noEmit` exit 0; API integration
+`workspace-management.test.ts` 9/9 (dedicated `novelforge_test_ws_mgmt` db)
++ platform-admin suite updated for the extended view (21/21 combined);
+web suite **97 files / 623 tests pass**; ESLint clean on all changed files;
+live Chromium E2E on the real app: created `NF Feature Check` (slug
+auto-derived `nf-feature-check`), renamed it, deleted it via confirm —
+net-zero data, evidence `.nf-artifacts/nf056/shots/ws-mgmt-button.png` +
+`ws-manager-e2e.png`; Escape closes the dialog and focus returns to the
+opener button.
+
+Environment note: the stale root `.env` (`DATABASE_URL` → 5432 with invalid
+password, flagged "may be stale" in the NF056 prompt) was confirmed broken;
+the dev API now runs from this session (`nf-api-3000-v4`, pid 10476,
+:3000) against `nf-pg-5433/novelforge_acceptance_050b` — the historical
+working database — with credentials taken privately from the container
+definition. The author's previous API process (started before the workspace
+routes existed) was stopped to load the new code; web dev server untouched.
+
+Follow-up (same day): `NewNovelWizard` now renders as a modal (same
+backdrop/Escape/focus pattern as the workspace manager dialog); Escape is
+guarded against dismissal while a request is `busy`/`ambiguous`/`completed`
+so ambiguous outcomes stay visible. Home tests 16/16 (modal render +
+localized label + close). Live-browser proof of this modal is gated by the
+demo-session cleanup above (no retained real-account credential) — same
+limit class as GAP-126; the wrapper is identical to the live-verified
+workspace manager modal.
+
+## NF-WF-056 Monokai Pro UI polish — implemented, verification complete, NOT committed — 2026-10-18
+
+Global Monokai Pro Classic migration of `apps/web` (44 tracked files
+modified = 43 reviewed + `.gitignore` from review finding #3; 0 staged). Tokens in `main.css` `@theme` + `docs/design/DESIGN-TOKENS.md`
+(now authoritative for the app UI; historical stone/orange annotated
+superseded). Provenance: official Monokai Pro hues, cross-checked against
+the official site and extension-derived mirrors; derived shades reconciled
+with the commissioned OpenDesign generation (project
+`novelforge-monokai-polish-5c6e`, run `ad5da719-1622-40cc-8f4e-83a4658b8b16`,
+agent `codex` local, deliverable `index.html`: 24 tokens, 54 control states,
+7 notification specimens, 9 page families, 61 measured pairings pass).
+Scope: all 15 pages' families, 126 components' raw palette utilities (136
+occurrences → semantic tokens), undefined-token defects fixed
+(`nf-danger` ×7 sites, bare `bg-nf-bg` ×3, missing `-dim`/`-border` tokens
+added, `shadow-nf-lg` token added for 7 pre-existing no-op usages),
+`text-white`/`bg-white`/hardcoded `accent-[#f97316]` eliminated, toast
+stack polished (status dot, wrap, error=`role=alert`), destructive confirm
+buttons moved to `bg-nf-error` + ink text, dark `color-scheme`, placeholder
+and focus baselines, native-select chevron.
+
+Verified: `vue-tsc --noEmit` exit 0; full web vitest 613/613 (2 class-pinned
+tests updated to token names); scoped ESLint exit 0; computed contrast table
+29 pairings — min text 4.64:1 (`faint`/bg-3), min boundary 4.21:1
+(`border`/bg-2), all ≥ 4.5/3.0 thresholds; live Chromium screenshots at
+desktop/390px/200%-layout widths, en+id, keyboard focus ring measured
+`2px solid #BAB0F5`/2px, no layout clipping. Screenshots:
+`.nf-artifacts/nf056/shots/`. NF055 guards intact (toast count semantics,
+`{discovered:number}` tests pass, no undefined tokens — the sweep that found
+and fixed the pre-existing `nf-danger`/`bg-nf-bg` no-ops).
+
+Limits: live SUPER_ADMIN surfaces (admin tabs/toast pixels) and data-bearing
+reader/workspace pages not re-shot live — no retained admin credential and
+no live-data population allowed; GAP-126 records the closure path. Native
+select popup is platform-drawn dark (`color-scheme`); `select option`
+styling applies only where the platform honors it. Independent final exact-diff review (read-only, separate actor):
+**APPROVE_WITH_FINDINGS, no blockers**; findings #2–#4 (doc contradiction,
+`.nf-artifacts/` gitignore, diff-count bookkeeping) fixed, finding #1
+(visible programmatic-focus ring on the wizard heading) accepted as
+a11y-positive. Verdict + rationale: the task contract, Outcome section.
+No commit/push — author review required before separate publication
+authorization.
+
 ## Admin revision final verification — 2026-10-18
 
 Author authorized review, relevant personal testing, then commit/push if sound.

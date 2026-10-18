@@ -176,7 +176,7 @@
             class="mt-1 w-full max-w-lg rounded-lg border border-nf-border-strong bg-nf-bg-2 px-3 py-2 text-[13px] text-nf-text focus-visible:nf-focus"
           />
         </div>
-        <p v-if="decisionError" role="alert" class="mt-2 text-[13px] text-red-300" data-testid="sim-walkthrough-decision-error">
+        <p v-if="decisionError" role="alert" class="mt-2 text-[13px] text-nf-error" data-testid="sim-walkthrough-decision-error">
           {{ decisionError }}
         </p>
         <div class="mt-4 flex gap-2">
@@ -396,7 +396,7 @@ const TickChart = defineComponent({
           markers.push(
             h("line", {
               x1: x(idx), x2: x(idx), y1: PAD, y2: H - PAD,
-              stroke: "#fbbf24", "stroke-dasharray": "4 3", "stroke-width": 1.5,
+              stroke: "#FFD866", "stroke-dasharray": "4 3", "stroke-width": 1.5,
             }),
           );
       }
@@ -406,7 +406,7 @@ const TickChart = defineComponent({
           markers.push(
             h("line", {
               x1: x(idx), x2: x(idx), y1: PAD, y2: H - PAD,
-              stroke: "#f97316", "stroke-dasharray": "4 3", "stroke-width": 1.5,
+              stroke: "#AB9DF2", "stroke-dasharray": "4 3", "stroke-width": 1.5,
             }),
           );
       }
@@ -424,20 +424,20 @@ const TickChart = defineComponent({
             },
             [
               ...markers,
-              h("path", { d: popPath, fill: "none", stroke: "#4ade80", "stroke-width": 2 }),
-              h("path", { d: fsPath, fill: "none", stroke: "#38bdf8", "stroke-width": 2, "stroke-dasharray": "6 3" }),
+              h("path", { d: popPath, fill: "none", stroke: "#A9DC76", "stroke-width": 2 }),
+              h("path", { d: fsPath, fill: "none", stroke: "#78DCE8", "stroke-width": 2, "stroke-dasharray": "6 3" }),
               ...p.ticks.map((tk, i) =>
-                h("circle", { cx: x(i), cy: yPop(tk.stateAfter.population), r: 3, fill: "#4ade80" }),
+                h("circle", { cx: x(i), cy: yPop(tk.stateAfter.population), r: 3, fill: "#A9DC76" }),
               ),
             ],
           ),
           h("figcaption", { class: "mt-2 flex gap-4 text-[12px] text-nf-text-dim" }, [
             h("span", { class: "flex items-center gap-1" }, [
-              h("span", { class: "inline-block h-0.5 w-4 bg-[#4ade80]" }),
+              h("span", { class: "inline-block h-0.5 w-4 bg-nf-ok" }),
               tt("simulation.walkthrough.population"),
             ]),
             h("span", { class: "flex items-center gap-1" }, [
-              h("span", { class: "inline-block h-0.5 w-4 bg-[#38bdf8]" }),
+              h("span", { class: "inline-block h-0.5 w-4 bg-nf-info" }),
               tt("simulation.walkthrough.foodSecurity"),
             ]),
           ]),

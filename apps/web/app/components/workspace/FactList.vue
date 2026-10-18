@@ -8,7 +8,7 @@
         <input
           v-model="includeSuperseded"
           type="checkbox"
-          class="h-3.5 w-3.5 accent-[#f97316] focus-visible:nf-focus"
+          class="h-3.5 w-3.5 accent-nf-accent focus-visible:nf-focus"
           @change="load"
         />
         {{ t("workspace.world.facts.includeSuperseded") }}

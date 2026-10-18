@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref } from "vue";
 import { ApiError, useApi } from "../../composables/useApi";
 import { useLocale } from "../../composables/useLocale";
+import { trapDialogFocus } from "../../utils/trapDialogFocus";
 
 interface Workspace {
   id: string;
@@ -29,6 +30,7 @@ const errorKey = ref("");
 const createdWorkspaceId = ref("");
 const ambiguous = ref(false);
 const completed = ref(false);
+const dialog = ref<HTMLDialogElement | null>(null);
 const eligible = computed(() => workspaces.value.filter((w) => w.canCreateNovel));
 const validSlug = (value: string) => value.length <= 80 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 const workspaceValid = computed(() =>
@@ -63,9 +65,17 @@ async function loadWorkspaces() {
   }
 }
 onMounted(() => {
+  dialog.value?.showModal?.();
   heading.value?.focus();
   void loadWorkspaces();
 });
+/** Escape dismisses the modal, but never mid-flight: while a request is
+ * unresolved (busy) or its outcome ambiguous (a workspace/novel may already
+ * be saved), dismissal would hide state the author must see. */
+function onEscape() {
+  if (!busy.value && !ambiguous.value && !completed.value) emit("close");
+}
+
 async function move(next: number) {
   if (
     busy.value ||
@@ -127,11 +137,20 @@ async function create() {
 </script>
 
 <template>
-  <section
-    aria-labelledby="new-novel-heading"
-    class="mt-6 rounded-xl border border-nf-border bg-nf-bg-1 p-5 sm:p-6"
+  <dialog
+    ref="dialog"
+    class="m-auto w-full max-w-xl bg-transparent p-4 text-nf-text backdrop:bg-black/50"
+    role="dialog"
+    aria-modal="true"
+    :aria-label="t('authorHome.create')"
     :aria-busy="loading || busy"
+    @cancel.prevent="onEscape"
+    @keydown="trapDialogFocus($event, dialog)"
   >
+    <section
+      aria-labelledby="new-novel-heading"
+      class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-nf-border bg-nf-bg-1 p-5 shadow-nf-lg sm:p-6"
+    >
     <div class="flex items-start justify-between gap-4">
       <h2
         id="new-novel-heading"
@@ -292,5 +311,6 @@ async function create() {
         </button>
       </div>
     </form>
-  </section>
+    </section>
+  </dialog>
 </template>

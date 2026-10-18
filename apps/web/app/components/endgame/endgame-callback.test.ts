@@ -95,8 +95,8 @@ describe("EndgameCallbackList", () => {
     });
     expect(wrapper.find('[data-testid="cb-item-cb-1"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="cb-item-cb-2"]').exists()).toBe(true);
-    // Unpaid item gets the amber highlight class.
-    expect(wrapper.find('[data-testid="cb-item-cb-1"]').classes().join(" ")).toContain("amber");
+    // Unpaid item gets the warning highlight class.
+    expect(wrapper.find('[data-testid="cb-item-cb-1"]').classes().join(" ")).toContain("nf-warn");
     expect(wrapper.find('[data-testid="cb-status-cb-1"]').text()).toContain("unpaidBadge");
     expect(wrapper.find('[data-testid="cb-status-cb-2"]').text()).toContain("paidBadge");
   });

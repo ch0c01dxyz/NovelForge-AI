@@ -41,6 +41,21 @@ export class ConflictError extends Error {
 }
 
 /**
+ * Workspace management (2026-10-18): a workspace deletion the caller cannot force. The reason travels in
+ * the response envelope's `error` field (same position as the typed
+ * MemoryError/PolicyError refusals) so the workspace manager dialog can map
+ * "delete the novels first" distinctly from a generic conflict.
+ */
+export class WorkspaceDeleteError extends ConflictError {
+  constructor(
+    readonly reason: "WORKSPACE_NOT_EMPTY" | "WORKSPACE_HAS_REFERENCED_HISTORY",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
  * An upstream dependency (an LLM gateway) was unreachable or failed.
  * Distinct from ConflictError: the request was valid, the *upstream* is
  * the problem, which is a 502 — not a 409 and not a 500.
@@ -85,6 +100,20 @@ export interface PlatformServices {
   }): Promise<{ id: string }>;
 
   getWorkspace(actorUserId: string, workspaceId: string): Promise<WorkspaceView>;
+
+  /** Workspace management (2026-10-18): rename (display name only — slug is immutable identity). */
+  updateWorkspace(input: {
+    actorUserId: string;
+    workspaceId: string;
+    name: string;
+  }): Promise<{ id: string; name: string; slug: string }>;
+
+  /**
+   * Workspace management (2026-10-18): delete an empty workspace (OWNER only). Novels block deletion;
+   * retained history (audit rows, generation analytics) is detached, never
+   * erased.
+   */
+  deleteWorkspace(input: { actorUserId: string; workspaceId: string }): Promise<void>;
 
   addMember(input: {
     actorUserId: string;
@@ -143,6 +172,12 @@ export interface WorkspaceListView {
   slug: string;
   role: Role;
   canCreateNovel: boolean;
+  /** Workspace management (2026-10-18): role may rename the workspace (workspace:update). */
+  canRename: boolean;
+  /** Workspace management (2026-10-18): role may delete the workspace (workspace:delete — OWNER only). */
+  canDelete: boolean;
+  /** Workspace management (2026-10-18): deletion is refused while non-empty; the dialog disables it. */
+  novelCount: number;
 }
 
 export interface MemberView {
@@ -239,14 +274,94 @@ export function createPlatformServices(deps: {
     async listWorkspaces(actorUserId) {
       const memberships = await db.membership.findMany({
         where: { userId: actorUserId },
-        select: { role: true, workspace: { select: { id: true, name: true, slug: true } } },
+        select: {
+          role: true,
+          workspace: { select: { id: true, name: true, slug: true, _count: { select: { novels: true } } } },
+        },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
       return memberships.map(({ role, workspace }) => ({
-        ...workspace,
+        id: workspace.id,
+        name: workspace.name,
+        slug: workspace.slug,
         role,
         canCreateNovel: can(role, "novel:create"),
+        canRename: can(role, "workspace:update"),
+        canDelete: can(role, "workspace:delete"),
+        novelCount: workspace._count.novels,
       }));
+    },
+
+    async updateWorkspace({ actorUserId, workspaceId, name }) {
+      await requireCapabilityIn(actorUserId, workspaceId, "workspace:update");
+      try {
+        return await db.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId} FOR UPDATE`;
+          const member = await tx.membership.findUnique({
+            where: { workspaceId_userId: { workspaceId, userId: actorUserId } },
+          });
+          if (!member) throw new NotFoundError("workspace");
+          requireCapability(member.role, "workspace:update");
+          const ws = await tx.workspace.update({
+            where: { id: workspaceId }, data: { name },
+            select: { id: true, name: true, slug: true },
+          });
+          await tx.auditLog.create({ data: {
+            actorUserId, workspaceId, action: "workspace.updated",
+            entityType: "Workspace", entityId: workspaceId, payload: { name },
+          } });
+          return ws;
+        });
+      } catch (e) {
+        // P2025: the record to update did not exist. Same 404 for a
+        // non-member — the capability gate above already refused those.
+        if ((e as { code?: string })?.code === "P2025") throw new NotFoundError("workspace");
+        throw e;
+      }
+    },
+
+    async deleteWorkspace({ actorUserId, workspaceId }) {
+      await requireCapabilityIn(actorUserId, workspaceId, "workspace:delete");
+      try {
+        await db.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId} FOR UPDATE`;
+          const member = await tx.membership.findUnique({
+            where: { workspaceId_userId: { workspaceId, userId: actorUserId } },
+          });
+          if (!member) throw new NotFoundError("workspace");
+          requireCapability(member.role, "workspace:delete");
+          const ws = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+          // Lock before checking: FK inserts and membership changes serialize here.
+          if (await tx.novel.count({ where: { workspaceId } })) {
+            throw new WorkspaceDeleteError("WORKSPACE_NOT_EMPTY", "delete the novels in this workspace first");
+          }
+          // Definitions and references can exist without novels; never cascade them silently.
+          const resources = await tx.workspace.findUniqueOrThrow({
+            where: { id: workspaceId },
+            select: { _count: { select: { agents: true, skills: true, workflows: true, references: true } } },
+          });
+          if (Object.values(resources._count).some((count) => count > 0)) {
+            throw new WorkspaceDeleteError("WORKSPACE_HAS_REFERENCED_HISTORY", "workspace still contains definitions or references");
+          }
+          // Explicit detachment also covers generation analytics, which have no workspace FK.
+          await tx.auditLog.updateMany({ where: { workspaceId }, data: { workspaceId: null } });
+          await tx.generation.updateMany({ where: { workspaceId }, data: { workspaceId: null } });
+          await tx.workspace.delete({ where: { id: workspaceId } });
+          await tx.auditLog.create({ data: {
+            actorUserId, action: "workspace.deleted", entityType: "Workspace",
+            entityId: workspaceId, payload: { slug: ws.slug },
+          } });
+        });
+      } catch (e) {
+        const code = (e as { code?: string })?.code;
+        if (code === "P2003" || code === "P2039") {
+          throw new WorkspaceDeleteError(
+            "WORKSPACE_HAS_REFERENCED_HISTORY",
+            "workspace history still references this workspace",
+          );
+        }
+        throw e;
+      }
     },
 
     async getWorkspace(actorUserId, workspaceId) {

@@ -23,7 +23,7 @@
       {{ t("simulation.debugger.noRun") }}
     </p>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="sim-debug-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="sim-debug-error">
       {{ t("simulation.loadError") }}
     </p>
 
@@ -55,7 +55,7 @@
         </span>
       </div>
 
-      <p v-if="actionError" role="alert" class="text-[13px] text-red-300" data-testid="sim-debug-action-error">
+      <p v-if="actionError" role="alert" class="text-[13px] text-nf-error" data-testid="sim-debug-action-error">
         {{ actionError }}
       </p>
 
@@ -240,7 +240,7 @@
           :class="
             replayResult.fidelity.matches
               ? 'border-nf-ok/40 bg-nf-ok/10 text-nf-ok'
-              : 'border-red-400/40 bg-red-400/10 text-red-300'
+              : 'border-nf-error/40 bg-nf-error/10 text-nf-error'
           "
         >
           {{
@@ -543,7 +543,7 @@ function statusBadgeClass(status: SimulationRunStatus): string {
     case "COMPLETED":
       return "border-nf-border-strong bg-nf-bg-3 text-nf-text-dim";
     case "ABORTED":
-      return "border-red-400/40 bg-red-400/10 text-red-300";
+      return "border-nf-error/40 bg-nf-error/10 text-nf-error";
     default:
       return "border-nf-border-strong bg-nf-bg-3 text-nf-text-dim";
   }

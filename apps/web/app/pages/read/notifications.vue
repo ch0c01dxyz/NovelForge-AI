@@ -265,7 +265,7 @@ useHead({ meta: [{ name: "robots", content: "noindex" }] });
               @click="toggleMaster"
             >
               <span
-                class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
+                class="absolute top-0.5 h-5 w-5 rounded-full bg-nf-text shadow transition-transform"
                 :class="masterOn ? 'translate-x-[22px]' : 'translate-x-0.5'"
                 aria-hidden="true"
               />
@@ -307,7 +307,7 @@ useHead({ meta: [{ name: "robots", content: "noindex" }] });
               @click="toggleType(ty)"
             >
               <span
-                class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform"
+                class="absolute top-0.5 h-5 w-5 rounded-full bg-nf-text shadow transition-transform"
                 :class="preferences[ty] ? 'translate-x-[22px]' : 'translate-x-0.5'"
                 aria-hidden="true"
               />

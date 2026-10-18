@@ -59,7 +59,7 @@ function scaleStateLabel(row: FinalTextReviewRow): string {
 
 function scaleStateClass(row: FinalTextReviewRow): string {
   if (!row.scaleReview) return "bg-nf-bg-2 text-nf-text-dim";
-  if (row.scaleReview.blocking) return "bg-nf-danger/15 text-nf-danger";
+  if (row.scaleReview.blocking) return "bg-nf-error/15 text-nf-error";
   return "bg-nf-ok/15 text-nf-ok";
 }
 

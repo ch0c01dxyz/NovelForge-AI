@@ -19,7 +19,7 @@
       </button>
     </div>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="sim-detail-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="sim-detail-error">
       {{ t("simulation.loadError") }}
     </p>
 
@@ -95,14 +95,14 @@
           type="button"
           data-testid="sim-action-abort"
           :disabled="acting"
-          class="rounded-lg border border-red-400/40 px-3.5 py-1.5 text-[13px] text-red-300 hover:bg-red-400/10 focus-visible:nf-focus disabled:opacity-50"
+          class="rounded-lg border border-nf-error/40 px-3.5 py-1.5 text-[13px] text-nf-error hover:bg-nf-error/10 focus-visible:nf-focus disabled:opacity-50"
           @click="doAction('abort')"
         >
           {{ t("simulation.actions.abort") }}
         </button>
       </div>
 
-      <p v-if="actionError" role="alert" class="mt-2 text-[13px] text-red-300" data-testid="sim-action-error">
+      <p v-if="actionError" role="alert" class="mt-2 text-[13px] text-nf-error" data-testid="sim-action-error">
         {{ actionError }}
       </p>
 
@@ -302,7 +302,7 @@ function statusBadgeClass(status: SimulationRunStatus): string {
     case "COMPLETED":
       return "border-nf-border-strong bg-nf-bg-3 text-nf-text-dim";
     case "ABORTED":
-      return "border-red-400/40 bg-red-400/10 text-red-300";
+      return "border-nf-error/40 bg-nf-error/10 text-nf-error";
     default:
       return "border-nf-border-strong bg-nf-bg-3 text-nf-text-dim";
   }

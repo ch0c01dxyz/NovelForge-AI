@@ -66,7 +66,7 @@
           />
         </div>
 
-        <p v-if="error" role="alert" class="text-[13px] text-red-300" data-testid="sim-create-error">
+        <p v-if="error" role="alert" class="text-[13px] text-nf-error" data-testid="sim-create-error">
           {{ error }}
         </p>
 

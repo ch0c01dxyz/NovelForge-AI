@@ -17,6 +17,7 @@ export default tseslint.config(
       "receipts/**",
       "review-receipts/**",
       ".nf-batch-worktrees/**",
+      ".nf-artifacts/**",
       ".harness-memory/**",
     ],
   },

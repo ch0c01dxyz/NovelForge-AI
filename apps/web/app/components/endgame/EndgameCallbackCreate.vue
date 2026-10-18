@@ -67,7 +67,7 @@
         </div>
       </div>
 
-      <p v-if="error" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="cb-create-error">
+      <p v-if="error" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="cb-create-error">
         {{ error }}
       </p>
 

@@ -3,6 +3,7 @@ import { nextTick, onMounted, ref } from "vue";
 import { ApiError, useApi } from "../composables/useApi";
 import { useLocale } from "../composables/useLocale";
 import NewNovelWizard from "../components/author/NewNovelWizard.vue";
+import WorkspaceManagerDialog from "../components/author/WorkspaceManagerDialog.vue";
 interface Novel {
   id: string;
   workspaceId: string;
@@ -19,6 +20,8 @@ const platformRole = ref<string | null>(null);
 const authenticated = ref(false);
 const wizardOpen = ref(false);
 const createButton = ref<HTMLButtonElement | null>(null);
+const managerOpen = ref(false);
+const managerButton = ref<HTMLButtonElement | null>(null);
 const signingOut = ref(false);
 const createdPath = ref("");
 async function load() {
@@ -48,6 +51,11 @@ async function closeWizard() {
   wizardOpen.value = false;
   await nextTick();
   createButton.value?.focus();
+}
+async function closeManager() {
+  managerOpen.value = false;
+  await nextTick();
+  managerButton.value?.focus();
 }
 async function created(workspaceId: string, novelId: string) {
   createdPath.value = `/workspaces/${workspaceId}/novels/${novelId}`;
@@ -119,18 +127,33 @@ async function signOut() {
           <h1 class="font-nf-literary text-2xl font-semibold">{{ t("authorHome.title") }}</h1>
           <p class="mt-2 text-sm text-nf-text-dim">{{ t("authorHome.intro") }}</p>
         </div>
-        <button
-          v-if="authenticated"
-          ref="createButton"
-          :disabled="wizardOpen"
-          :aria-expanded="wizardOpen"
-          class="rounded-lg bg-nf-accent px-4 py-2.5 text-sm font-semibold text-nf-accent-ink focus-visible:nf-focus disabled:opacity-50"
-          @click="wizardOpen = true"
-        >
-          {{ t("authorHome.create") }}
-        </button>
+        <div class="flex max-w-full flex-wrap items-center gap-2">
+          <button
+            v-if="authenticated"
+            ref="managerButton"
+            :disabled="wizardOpen || managerOpen"
+            :aria-expanded="managerOpen"
+            aria-haspopup="dialog"
+            class="rounded-lg border border-nf-border-strong px-4 py-2.5 text-sm text-nf-text-dim hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50"
+            data-testid="manage-workspaces"
+            @click="managerOpen = true"
+          >
+            {{ t("authorHome.manageWorkspaces") }}
+          </button>
+          <button
+            v-if="authenticated"
+            ref="createButton"
+            :disabled="wizardOpen || managerOpen"
+            :aria-expanded="wizardOpen"
+            class="rounded-lg bg-nf-accent px-4 py-2.5 text-sm font-semibold text-nf-accent-ink focus-visible:nf-focus disabled:opacity-50"
+            @click="wizardOpen = true"
+          >
+            {{ t("authorHome.create") }}
+          </button>
+        </div>
       </div>
       <NewNovelWizard v-if="wizardOpen" @close="closeWizard" @created="created" />
+      <WorkspaceManagerDialog v-if="managerOpen" @close="closeManager" />
       <p v-if="loading" role="status" class="mt-6 text-sm text-nf-text-dim">
         {{ t("common.loading") }}
       </p>

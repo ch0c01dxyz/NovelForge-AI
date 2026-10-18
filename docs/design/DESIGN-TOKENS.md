@@ -2,11 +2,74 @@
 
 Source of truth: `docs/design/writer-workspace/index.html` (OpenDesign-refined mockup, 2026-09-24). OpenDesign project: `novelforge-writer-workspace-5378`.
 
-## Core identity
+> **ACTIVE — NF-WF-056 amendment (2026-10-18, scoped author decision):** the
+> author explicitly requested a global Monokai Pro UI/UX polish of all pages.
+> The stone-family surfaces and the restricted orange accent below are
+> **superseded historical authority** for the application UI; they remain
+> recorded here for provenance and must not be re-applied. The active palette
+> is Monokai Pro Classic (see "Monokai Pro Classic tokens" section). Layout,
+> typography voices, spacing, state rules, and the literary reader experience
+> are unchanged by this amendment. Interpretation and provenance:
+> `tasks/NF-WF-056-monokai-pro-ui-polish-contract.md`.
+
+## Monokai Pro Classic tokens (active since NF-WF-056)
+
+Official Monokai Pro hues (bg `#2D2A2E`, deep `#221F22`/`#19181A`, fg
+`#FCFCFA`, red `#FF6188`, orange `#FC9867`, yellow `#FFD866`, green
+`#A9DC76`, blue `#78DCE8`, purple `#AB9DF2`), applied through the same
+semantic `--color-nf-*` token names. Depth direction (canvas deepest →
+raised lighter) is preserved from the original design; the editor/canvas
+well uses the deepest official dark so manuscript prose keeps maximum calm.
+
+Derived values below were **reconciled with the commissioned OpenDesign
+system** (project `novelforge-monokai-polish-5c6e`, run
+`ad5da719-1622-40cc-8f4e-83a4658b8b16`, deliverable `index.html`, whose 61
+measured pairings all pass); the application keeps translucent `-dim`
+tints and its existing compact control density (13px UI, 26–32px controls)
+instead of the specimen's 44px controls, and `--color-nf-border-focus`
+stays neutral (GAP-051 D2 role) rather than the specimen's accent boundary.
+
+| Token | Value | Use / derived from |
+|---|---|---|
+| `--color-nf-bg-0` | `#19181A` | app canvas + editor well (official deep) |
+| `--color-nf-bg-1` | `#221F22` | raised panels (official dark-2) |
+| `--color-nf-bg-2` | `#2D2A2E` | cards, inputs (official background) |
+| `--color-nf-bg-3` | `#39363A` | hover step (derived: lighten bg-2) |
+| `--color-nf-border` | `#8E8B8E` | control boundaries + hairlines; ≥4:1 on bg-0..bg-2 (derived neutral) |
+| `--color-nf-border-strong` | `#A9A7AA` | hover/strong boundaries (derived neutral) |
+| `--color-nf-border-focus` | `#A9A7AA` | persistent discovery control boundary (GAP-051 D2 role) |
+| `--color-nf-text` | `#FCFCFA` | primary text (official fg; 13.8:1 on bg-0) |
+| `--color-nf-text-dim` | `#BDBBBE` | secondary; ≥4.5:1 on bg-0..bg-3 (derived neutral) |
+| `--color-nf-text-faint` | `#A3A1A3` | metadata/labels/placeholders; ≥4.5:1 on bg-0..bg-3 (derived neutral) |
+| `--color-nf-accent` | `#AB9DF2` | purple: active nav, primary CTA, AI affordances (official) |
+| `--color-nf-accent-hi` | `#BAB0F5` | text-safe purple, focus outlines (derived lighten accent) |
+| `--color-nf-accent-ink` | `#19181A` | text on accent/destructive fills (official deep) |
+| `--color-nf-accent-dim` | `rgba(171,157,242,0.12)` | accent tint fills |
+| `--color-nf-accent-border` | `rgba(171,157,242,0.38)` | accent-tinted borders |
+| `--color-nf-ok` | `#A9DC76` | success (official green) |
+| `--color-nf-ok-dim` | `rgba(169,220,118,0.10)` | success tint |
+| `--color-nf-warn` | `#FFD866` | warning (official yellow) |
+| `--color-nf-warn-dim` | `rgba(255,216,102,0.08)` | warning callout bg |
+| `--color-nf-error` | `#FF6188` | error/destructive (official red; 6.2:1 on bg-0) |
+| `--color-nf-error-dim` | `rgba(255,97,136,0.10)` | error tint |
+| `--color-nf-info` | `#78DCE8` | info/links (official blue) |
+| `--color-nf-info-dim` | `rgba(120,220,232,0.10)` | info tint |
+
+Official orange `#FC9867` is **reference palette only — no semantic role**
+(per the generated system); it is deliberately absent from the tokens.
+Pairing policy: error text sits on bg-0..bg-2 only (on bg-3 it drops below
+4.5:1); `--color-nf-text-faint`/`-dim` verified bg-0..bg-3; filled accent
+and destructive fills always use `--color-nf-accent-ink` text.
+
+Contrast floors (verified against computed values in-browser during
+NF-WF-056): normal text ≥ 4.5:1, large text ≥ 3:1, control boundaries and
+focus ≥ 3:1 on the surface where the element sits.
+
+## Core identity (historical, pre-NF-WF-056)
 
 Dark background, orange accent. Stone-family surface ladder for depth; orange reserved for active state, primary CTA, and every AI affordance. Two type voices: UI chrome (sans) vs manuscript prose (literary serif).
 
-## Surfaces (stone family, deepest → highest)
+## Surfaces (stone family, deepest → highest) — SUPERSEDED by the Monokai Pro tables above (NF-WF-056)
 
 | Token | Value | Use |
 |---|---|---|
@@ -34,7 +97,7 @@ contrast on bg-0, bg-1 and bg-2; do not extend to other surfaces by assumption.
 | `--text-dim` | `#a8a29e` | secondary |
 | `--text-faint` | `#79716b` | metadata/labels |
 
-## Accent — orange (RESTRICTED)
+## Accent — orange (RESTRICTED) — SUPERSEDED (NF-WF-056): orange is reference palette only — no semantic role and no token; primary accent is purple `--color-nf-accent` #AB9DF2
 
 Orange marks exactly three things: active nav state, the primary CTA, and AI affordances (each carrying the sparkle glyph). Nothing else is orange.
 

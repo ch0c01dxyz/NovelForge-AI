@@ -85,6 +85,53 @@ describe("author home and creation", () => {
       expect(w.find('a[href="/admin"]').exists()).toBe(false);
     },
   );
+  it.each(["en", "id"] as const)(
+    "places the localized manage-workspaces control next to the create CTA in %s",
+    async (locale) => {
+      useLocale().setLocale(locale);
+      const w = mounted(Home);
+      await flushPromises();
+      const manage = w.get('[data-testid="manage-workspaces"]');
+      expect(manage.text()).toBe(
+        locale === "en" ? "Manage workspaces" : "Kelola workspace",
+      );
+      // Sits beside (precedes) the create CTA in the same action group.
+      const create = w
+        .findAll("button")
+        .find((b) => b.text() === (locale === "en" ? "Create webnovel" : "Buat webnovel"))!;
+      expect(create).toBeDefined();
+      expect(
+        manage.element.compareDocumentPosition(create.element) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      await manage.trigger("click");
+      await flushPromises();
+      expect(w.find('[role="dialog"]').exists()).toBe(true);
+      expect(w.get('[data-testid="ws-close"]').text()).toBeTruthy();
+    },
+  );
+  it.each(["en", "id"] as const)(
+    "opens create-webnovel as a modal dialog in %s",
+    async (locale) => {
+      useLocale().setLocale(locale);
+      const w = mounted(Home);
+      await flushPromises();
+      await w
+        .findAll("button")
+        .find((b) => b.text() === (locale === "en" ? "Create webnovel" : "Buat webnovel"))!
+        .trigger("click");
+      await flushPromises();
+      const dlg = w.find('[role="dialog"][aria-modal="true"]');
+      expect(dlg.exists()).toBe(true);
+      expect(dlg.attributes("aria-label")).toBe(
+        locale === "en" ? "Create webnovel" : "Buat webnovel",
+      );
+      // The wizard's own close affordance dismisses the modal.
+      await dlg.find("form ~ * button, section button").trigger("click");
+      await flushPromises();
+      expect(w.find('[role="dialog"]').exists()).toBe(false);
+    },
+  );
   it("fails closed when session lookup fails and redirects unauthenticated authors", async () => {
     api.mockRejectedValue(new ApiError("UNAUTHORIZED", 401));
     const w = mounted(Home);

@@ -11,7 +11,7 @@
       <h2 class="text-[16px] font-semibold text-nf-text">{{ t("endgame.createTitle") }}</h2>
       <p class="mt-1 text-[13px] text-nf-text-dim">{{ t("endgame.createHint") }}</p>
 
-      <p v-if="error" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="endgame-create-error">
+      <p v-if="error" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="endgame-create-error">
         {{ error }}
       </p>
 

@@ -16,6 +16,7 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
+  WorkspaceDeleteError,
   type PlatformServices,
 } from "@novelforge/ai-services";
 import { InvalidDefinitionError } from "./services/definitions.ts";
@@ -61,6 +62,11 @@ const slug = z
 const createWorkspaceBody = z.object({
   name: z.string().trim().min(1).max(120),
   slug,
+});
+// Workspace management (2026-10-18): renames change the display name only — the slug is immutable
+// identity (same rule as the novel rename surface).
+const renameWorkspaceBody = z.object({
+  name: z.string().trim().min(1).max(120),
 });
 const createNovelBody = z.object({
   title: z.string().trim().min(1).max(200),
@@ -242,6 +248,13 @@ export async function registerPlatformRoutes(
     if (error instanceof EndgameCallbackError) {
       return reply.code(error.statusCode).send({ error: error.code });
     }
+    // Workspace management (2026-10-18): workspace-deletion refusals carry the machine reason in the
+    // error field (WORKSPACE_NOT_EMPTY / WORKSPACE_HAS_REFERENCED_HISTORY)
+    // so the workspace manager dialog can give actionable copy. Checked
+    // BEFORE the generic ConflictError branch (it extends ConflictError).
+    if (error instanceof WorkspaceDeleteError) {
+      return reply.code(409).send({ error: error.reason });
+    }
     if (error instanceof ConflictError) {
       return reply.code(409).send({
         error: "CONFLICT",
@@ -330,6 +343,29 @@ export async function registerPlatformRoutes(
     if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
     const ws = await services.getWorkspace(actorUserId, params.data.workspaceId);
     return ws;
+  });
+
+  app.patch("/api/workspaces/:workspaceId", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    const parsed = renameWorkspaceBody.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.updateWorkspace({
+      actorUserId,
+      workspaceId: params.data.workspaceId,
+      name: parsed.data.name,
+    });
+  });
+
+  app.delete("/api/workspaces/:workspaceId", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    await services.deleteWorkspace({ actorUserId, workspaceId: params.data.workspaceId });
+    return { status: "ok" };
   });
 
   // --- Members ---

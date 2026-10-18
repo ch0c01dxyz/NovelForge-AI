@@ -282,7 +282,7 @@ function verdictClass(verdict: string): string {
     case "DUPLICATE":
       return "border-nf-text-faint/40 bg-nf-bg-2 text-nf-text-faint";
     default:
-      return "border-nf-danger/40 bg-nf-danger/10 text-nf-danger";
+      return "border-nf-error/40 bg-nf-error/10 text-nf-error";
   }
 }
 
@@ -458,7 +458,7 @@ void loadEntities();
         </ol>
       </div>
 
-      <div v-if="error" role="alert" class="rounded-lg border border-nf-danger/40 bg-nf-danger/10 px-3 py-2 text-[12.5px] text-nf-danger">
+      <div v-if="error" role="alert" class="rounded-lg border border-nf-error/40 bg-nf-error/10 px-3 py-2 text-[12.5px] text-nf-error">
         {{ error }}
         <button
           v-if="errorCode === 'STALE_APPLICATION'"

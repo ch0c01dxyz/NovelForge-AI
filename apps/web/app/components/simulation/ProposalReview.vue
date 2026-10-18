@@ -8,7 +8,7 @@
       {{ t("simulation.proposal.title") }}
     </h2>
 
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="sim-proposal-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="sim-proposal-error">
       {{ t("simulation.loadError") }}
     </p>
 
@@ -98,7 +98,7 @@
           :data-testid="`sim-proposal-rationale-${proposal.id}`"
           class="mt-1 w-full rounded-lg border border-nf-border-strong bg-nf-bg-0 px-3 py-2 text-[13px] text-nf-text focus-visible:nf-focus"
         />
-        <p v-if="decisionErrors[proposal.id]" role="alert" class="mt-2 text-[13px] text-red-300" :data-testid="`sim-proposal-decide-error-${proposal.id}`">
+        <p v-if="decisionErrors[proposal.id]" role="alert" class="mt-2 text-[13px] text-nf-error" :data-testid="`sim-proposal-decide-error-${proposal.id}`">
           {{ decisionErrors[proposal.id] }}
         </p>
         <div class="mt-2 flex gap-2">

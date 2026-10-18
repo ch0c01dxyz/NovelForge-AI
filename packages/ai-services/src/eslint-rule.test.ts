@@ -8,6 +8,12 @@ const eslint = new ESLint({ cwd: root });
 const filePath = "apps/worker/src/__boundary-check__.ts";
 
 describe("ESLint no-restricted-imports (NF-WF-026)", () => {
+  it("ignores private evidence tooling while keeping application source in scope", async () => {
+    expect(await eslint.isPathIgnored(".nf-artifacts/nf056/check.mjs")).toBe(true);
+    for (const source of ["apps/api/src/app.ts", "apps/web/app/composables/useApi.ts", "apps/worker/src/index.ts"]) {
+      expect(await eslint.isPathIgnored(source)).toBe(false);
+    }
+  }, 30_000);
   it("flags apps/worker importing from apps/api/src", async () => {
     const results = await eslint.lintText(
       'import { createAiServices } from "../../api/src/services/ai.ts"; export const x = createAiServices;',

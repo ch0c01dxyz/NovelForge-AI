@@ -45,7 +45,7 @@
     <div v-if="loading" class="mt-3 text-[13px] text-nf-text-dim" data-testid="merge-preview-loading">
       {{ t("common.loading") }}
     </div>
-    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-red-300" data-testid="merge-preview-error">
+    <p v-if="loadError" role="alert" class="mt-3 text-[13px] text-nf-error" data-testid="merge-preview-error">
       {{ loadError }}
     </p>
 
@@ -58,19 +58,19 @@
         </div>
         <div class="flex gap-1">
           <dt class="text-nf-text-dim">{{ t("recovery.mergeConflicts") }}:</dt>
-          <dd class="font-semibold" :class="preview.summary.conflict > 0 ? 'text-red-300' : 'text-nf-text'">
+          <dd class="font-semibold" :class="preview.summary.conflict > 0 ? 'text-nf-error' : 'text-nf-text'">
             {{ preview.summary.conflict }}
           </dd>
         </div>
         <div class="flex gap-1">
           <dt class="text-nf-text-dim">{{ t("recovery.mergeDeletedModified") }}:</dt>
-          <dd class="font-semibold" :class="preview.summary.deletedModified > 0 ? 'text-red-300' : 'text-nf-text'">
+          <dd class="font-semibold" :class="preview.summary.deletedModified > 0 ? 'text-nf-error' : 'text-nf-text'">
             {{ preview.summary.deletedModified }}
           </dd>
         </div>
         <div class="flex gap-1">
           <dt class="text-nf-text-dim">{{ t("recovery.mergeOrphanRisk") }}:</dt>
-          <dd class="font-semibold" :class="preview.summary.orphanRisk > 0 ? 'text-amber-300' : 'text-nf-text'">
+          <dd class="font-semibold" :class="preview.summary.orphanRisk > 0 ? 'text-nf-warn' : 'text-nf-text'">
             {{ preview.summary.orphanRisk }}
           </dd>
         </div>
@@ -105,7 +105,7 @@
                   {{ c.kind }}
                 </span>
               </div>
-              <p v-if="c.warning" class="mt-1 text-[12px] text-amber-300" role="note">
+              <p v-if="c.warning" class="mt-1 text-[12px] text-nf-warn" role="note">
                 {{ c.warning }}
               </p>
               <!-- NF-WF-024C: semantic rule citation for narrowed conflicts -->
@@ -148,15 +148,15 @@
         <p
           v-else
           role="alert"
-          class="text-[13px] text-red-300"
+          class="text-[13px] text-nf-error"
           data-testid="merge-cannot-apply"
         >
           {{ t("recovery.mergeCannotApply") }}
         </p>
-        <p v-if="applyError" role="alert" class="mt-2 text-[13px] text-red-300" data-testid="merge-apply-error">
+        <p v-if="applyError" role="alert" class="mt-2 text-[13px] text-nf-error" data-testid="merge-apply-error">
           {{ applyError }}
         </p>
-        <p v-if="applied" class="mt-2 text-[13px] text-green-300" data-testid="merge-applied">
+        <p v-if="applied" class="mt-2 text-[13px] text-nf-ok" data-testid="merge-applied">
           {{ t("recovery.mergeApplied") }}
         </p>
         <button
@@ -256,9 +256,9 @@ function kindClass(kind: MergeChange["kind"]): string {
   switch (kind) {
     case "CONFLICT":
     case "DELETED_MODIFIED":
-      return "bg-red-950 text-red-300 border border-red-800";
+      return "bg-nf-error/10 text-nf-error border border-nf-error";
     case "ORPHAN_RISK":
-      return "bg-amber-950 text-amber-300 border border-amber-800";
+      return "bg-nf-warn/10 text-nf-warn border border-nf-warn";
     default:
       return "bg-nf-bg-3 text-nf-text-dim border border-nf-border-strong";
   }

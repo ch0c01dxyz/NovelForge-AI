@@ -35,6 +35,10 @@ const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build",
 const MIGRATIONS_DIR = path.join(DB_PACKAGE_ROOT, "prisma", "migrations");
 const SCHEMA_PRISMA = path.join(DB_PACKAGE_ROOT, "prisma", "schema.prisma");
 const MIGRATION_050A = "20261008_nf_wf_050a_scale_evidence";
+/** Ordered after 050A but independent of its tables and read by the HEAD
+ * Prisma client during seeding (novels.audience) — kept in both temp homes
+ * so the pre-050A baseline schema matches the deployed client. */
+const KEEP_MIGRATIONS = new Set(["20261018_novel_audience"]);
 
 if (!process.env.DATABASE_URL) {
   try {
@@ -72,8 +76,9 @@ function makeTempPrismaHome(with050A: boolean): TempPrismaHome {
   fs.cpSync(MIGRATIONS_DIR, migrationsDir, { recursive: true });
   // Pin both private homes to the historical cutoff; later migrations may
   // depend on 050A tables and must not enter the pre-050A baseline.
+  // EXCEPTION: KEEP_MIGRATIONS rides along (module scope, see top).
   for (const entry of fs.readdirSync(migrationsDir, { withFileTypes: true })) {
-    if (entry.isDirectory() && entry.name > MIGRATION_050A) {
+    if (entry.isDirectory() && entry.name > MIGRATION_050A && !KEEP_MIGRATIONS.has(entry.name)) {
       fs.rmSync(path.join(migrationsDir, entry.name), { recursive: true, force: true });
     }
   }
@@ -372,6 +377,8 @@ describe("migration: populated baseline via Prisma ledger", () => {
     // suites running `prisma migrate deploy` against the live tree are
     // unaffected, and runner interruption cannot displace tracked files.
     const liveBefore = liveMigrationsFingerprint();
+    const liveNames = fs.readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
     const baselineHome = makeTempPrismaHome(false);
     const upgradeHome = makeTempPrismaHome(true);
     expect(
@@ -384,10 +391,16 @@ describe("migration: populated baseline via Prisma ledger", () => {
     ).toBe(true);
     const migrationNames = (dir: string) => fs.readdirSync(dir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+    // Baseline = live minus migrations newer than the cutoff (except
+    // KEEP_MIGRATIONS, see module scope) minus 050A itself; upgrade adds
+    // only 050A back.
+    const expectedBaseline = liveNames.filter(
+      (n) => n !== MIGRATION_050A && (n < MIGRATION_050A || KEEP_MIGRATIONS.has(n)),
+    );
     const baselineNames = migrationNames(baselineHome.migrationsDir);
-    expect(baselineNames.every((name) => name < MIGRATION_050A)).toBe(true);
+    expect(baselineNames).toEqual(expectedBaseline);
     expect(migrationNames(upgradeHome.migrationsDir)).toEqual(
-      [...baselineNames, MIGRATION_050A].sort(),
+      [...expectedBaseline, MIGRATION_050A].sort(),
     );
 
     const client = new pg.Client({ connectionString: TEST_URL });
@@ -399,7 +412,7 @@ describe("migration: populated baseline via Prisma ledger", () => {
       prismaMigrateDeployAt(baselineHome.root);
 
       const ledgerBefore = await ledgerRows(client);
-      expect(ledgerBefore.length).toBe(41);
+      expect(ledgerBefore.length).toBe(expectedBaseline.length);
       expect(ledgerBefore.some((r) => r.migration_name === MIGRATION_050A)).toBe(false);
 
       // 050A objects must not exist yet.

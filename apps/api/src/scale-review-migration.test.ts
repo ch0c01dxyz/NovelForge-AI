@@ -39,6 +39,10 @@ const PRISMA_CLI = path.join(DB_PACKAGE_ROOT, "node_modules", "prisma", "build",
 const MIGRATIONS_DIR = path.join(DB_PACKAGE_ROOT, "prisma", "migrations");
 const SCHEMA_PRISMA = path.join(DB_PACKAGE_ROOT, "prisma", "schema.prisma");
 const MIGRATION_050B = "20261008_nf_wf_050b_scale_decisions";
+/** Ordered after 050B but independent of its tables and read by the HEAD
+ * Prisma client during seeding (novels.audience) — kept in both temp homes
+ * so the pre-050B baseline schema matches the deployed client. */
+const KEEP_MIGRATIONS = new Set(["20261018_novel_audience"]);
 
 if (!process.env.DATABASE_URL) {
   try {
@@ -77,8 +81,9 @@ function makeTempPrismaHome(with050B: boolean): TempPrismaHome {
   const migrationsDir = path.join(root, "migrations");
   fs.cpSync(MIGRATIONS_DIR, migrationsDir, { recursive: true });
   // Keep both private homes at the historical 050B cutoff.
+  // EXCEPTION: KEEP_MIGRATIONS rides along (module scope, see top).
   for (const entry of fs.readdirSync(migrationsDir, { withFileTypes: true })) {
-    if (entry.isDirectory() && entry.name > MIGRATION_050B) {
+    if (entry.isDirectory() && entry.name > MIGRATION_050B && !KEEP_MIGRATIONS.has(entry.name)) {
       fs.rmSync(path.join(migrationsDir, entry.name), { recursive: true, force: true });
     }
   }
@@ -403,8 +408,11 @@ describe("migration: populated baseline via Prisma ledger", () => {
     await freshDatabase();
 
     // Baseline INCLUDES 050A (050B FKs reference scale_evidence_sets) but
-    // EXCLUDES 050B. Upgrade adds 050B.
+    // EXCLUDES 050B. Upgrade adds 050B. KEEP-pinned later migrations ride
+    // along (see makeTempPrismaHome) so the HEAD client schema matches.
     const liveBefore = liveMigrationsFingerprint();
+    const liveNames = fs.readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
     const baselineHome = makeTempPrismaHome(false);
     const upgradeHome = makeTempPrismaHome(true);
     expect(
@@ -426,8 +434,11 @@ describe("migration: populated baseline via Prisma ledger", () => {
       prismaMigrateDeployAt(baselineHome.root);
 
       const ledgerBefore = await ledgerRows(client);
-      expect(ledgerBefore.every((r) => r.migration_name < MIGRATION_050B)).toBe(true);
-      expect(ledgerBefore.some((r) => r.migration_name === MIGRATION_050B)).toBe(false);
+      expect(ledgerBefore.every((r) => r.migration_name !== MIGRATION_050B)).toBe(true);
+      const expectedBaseline = liveNames.filter(
+        (n) => n !== MIGRATION_050B && (n < MIGRATION_050B || KEEP_MIGRATIONS.has(n)),
+      );
+      expect(ledgerBefore.length).toBe(expectedBaseline.length);
       expect(ledgerBefore.some((r) => r.migration_name === "20261008_nf_wf_050a_scale_evidence")).toBe(true);
 
       // 050B objects must not exist yet.
@@ -523,8 +534,12 @@ describe("migration: populated baseline via Prisma ledger", () => {
       prismaMigrateDeployAt(upgradeHome.root);
 
       // 5. Ledger proof: exactly one new row (050B); all baseline rows byte-identical.
+      //    Audience (KEEP_MIGRATIONS) may exceed 050B lexicographically — only
+      //    050B-or-older rows and keepers are expected.
       const ledgerAfter = await ledgerRows(client);
-      expect(ledgerAfter.every((r) => r.migration_name <= MIGRATION_050B)).toBe(true);
+      expect(
+        ledgerAfter.every((r) => r.migration_name <= MIGRATION_050B || KEEP_MIGRATIONS.has(r.migration_name)),
+      ).toBe(true);
       expect(ledgerAfter.length).toBe(ledgerBefore.length + 1);
       const beforeByName = new Map(ledgerBefore.map((r) => [r.migration_name, r]));
       for (const row of ledgerAfter) {

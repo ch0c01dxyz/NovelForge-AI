@@ -1,5 +1,38 @@
 # Current Project State
 
+## Kaisar dari Masa Depan: character development connected — 2026-10-20
+
+Continuing the gap list. Character states, knowledge, and arcs created for
+the Kaisar cast via the audited API, all grounded in the author-approved
+Bab 1-9 drafts, the 14 canon facts, and canonized lore:
+
+- **Character states** (7 rows): Don Juan (ch1-3 reinkarnasi; ch4-9
+  perjuangan 7 hari sampai komitmen meja makan), Sofian (ch1-3; ch4-9
+  ancaman jual → meja makan), Husein (ch1-5; ch6-9 budi 4 ikan), Ketua
+  Penagih Hutang (ch4-9 tenggat aktif). Tokoh jauh (Raja Wajradhara,
+  Yuwaraja, Kaisar Wanita, Atasan) sengaja tanpa state — belum muncul
+  di Bab 1-9; menambahkan state sekarang berarti mengarang.
+- **Character knowledge** (25 rows, 25/25 expected pairs): Don Juan 13
+  (semua facts — pengalaman langsung/ingatan dunia lama), Sofian 5,
+  Husein 3, Ketua Penagih 2 (hutang+tenggat), Atasan 2 (kejahatannya
+  sendiri). Semua stance KNOWN dengan source beragam (REMEMBERED/
+  LEARNED_IN_WORLD/EXPERIMENTED); tokoh jauh tidak diberi knowledge —
+  mereka belum tahu apa pun dari Bab 1-9.
+- **Character arcs** (3, ACTIVE, dengan disclosure wajib "[rekonstruksi
+  Bab 1-9, belum direview author]" di judul sesuai aturan
+  ISSUES-AND-GAPS — arc status enum tidak punya DRAFT): Don Juan (6
+  milestones ch2→9), Sofian (3, ch4→9), Husein (3, ch6→8). Total 12
+  milestones, semua beranchoring ke bab nyata.
+
+SQL verified: 7 states, 25 knowledge (25/25 expected pairs present),
+3 arcs + 12 milestones. Sessions temporer dihapus (1 sesi lama milik
+proses lain dibiarkan).
+
+Sisa gap Kaisar: cover (BLOCKED — butuh aset gambar author), references
+(butuh materi author), narrative policies + planning horizon (pilihan
+policy author), endgame ledger (thread utama kini tersedia; dihubungkan
+saat author menyatakan arc berjalan selesai).
+
 ## Kaisar dari Masa Depan: story threads + promises connected — 2026-10-20
 
 Continuing the Kaisar gap list (post-Solo-deletion). Three story threads and

@@ -8470,3 +8470,18 @@ below; fallback handoff per AGENTS.md §14:
 - Closure check: re-save this checkpoint to Engram when the runtime
   binding is restored; docs/14-progress/CURRENT.md section 'Kaisar dari
   Masa Depan: story threads + promises connected' is the current authority.
+
+## Engram runtime unbound — file handoff for Kaisar character-development checkpoint — 2026-10-20
+
+Second Engram-unbound fallback handoff (same session-family as the
+2026-10-20 threads/promises handoff above):
+
+- Kaisar character development applied: 7 character_states, 25
+  character_knowledge rows (25/25 expected pairs, all KNOWN with varied
+  sources; distant-timeline characters deliberately left empty — they do
+  not appear in Bab 1-9), 3 ACTIVE arcs with mandatory reconstruction
+  disclosure in titles + 12 chapter-anchored milestones (DJ 6 / SF 3 /
+  HU 3). All via audited API; SQL verified; no invented events.
+- Closure check: re-save to Engram when the runtime binding is restored.
+  Authority of record: docs/14-progress/CURRENT.md section 'Kaisar dari
+  Masa Depan: character development connected'.

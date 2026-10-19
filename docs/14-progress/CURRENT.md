@@ -1,5 +1,80 @@
 # Current Project State
 
+## Solo Leveling endgame connected — ending gate READY (author sign-off) — 2026-10-19
+
+Author instruction: the endgame domain was not connected to Solo Leveling
+(`bdab82a0`, ws-c) and the novel is tamat. Connected through the NF-WF-022
+condition-based flow (no forced ending; author sign-off only), entirely via
+the audited API with a temporary author session (deleted after):
+
+1. One author-directed story thread created — OBJECTIVE, importance 5:
+   "Alur utama — Perjalanan Sung Jin-Woo (tamat)", introduced at chapter 1,
+   then set RESOLVED at chapter 270. This is the real main storyline of the
+   imported manuscript, not fabricated filler; the endgame ledger requires
+   a thread anchor and the extraction had produced none.
+2. Endgame ledger entry (MUST) created against that thread with the
+   closure criteria "alur utama tuntas; epilog Bab 270 menutup perjalanan
+   tanpa utang naratif terbuka" and the author instruction as rationale.
+3. Ending gate approved by the author's account → verdict READY
+   (`blockingItems: []`, approvedById `5c0005c6…`, approvedAt
+   2026-10-19T19:03:49Z). Debt report: zero unclosed MUSTs, zero unpaid
+   callbacks, zero open threads, zero sequel hooks.
+
+SQL + audit verified: endgame_ledger 1, endgame_gate_approval 1, thread
+RESOLVED; audit trail story.thread-opened → story.thread-status-changed →
+endgame.ledger.created → endgame.gate.approved under the author's user id.
+Gate state is append-only approvals; the ledger status remains
+author-editable. Novel status stays ACTIVE — the enum (DRAFT/ACTIVE/
+ARCHIVED) has no "completed" value; tamat is recorded by the READY ending
+gate, which is the designed representation.
+
+## Approved workspace authoring program; implementation planned — 2026-10-20
+
+Author approved chapter controls/manual+AI creation/title+notes, rename/delete,
+model selection, profile mapping actions, whole-novel all-or-nothing publication,
+cover generation and workspace Studio customization. Additions:1–9 generated
+cover candidates and recommendation badges; individual agent/AI-skill model
+preferences with workflow default; manual or selected-model AI definition drafts.
+No application implementation or runtime acceptance for these additions yet.
+
+Accepted design: docs/superpowers/specs/
+2026-10-20-workspace-chapter-lifecycle-design.md. Proposed execution plan:
+docs/superpowers/plans/2026-10-20-workspace-authoring-program.md, linking chapter,
+routing/Studio, cover and ownership-policy slices. Native execution recommended;
+plan review/method selection pending. Every slice retains independent exact-diff
+review, real configured gateway acceptance and disposable mutation-test data.
+
+Workspace cap: author requested one owned workspace for ordinary authors and
+no novel cap, owner/admin exempt. Exact exemption awaits clarification because
+all creators become membership OWNER and only SUPER_ADMIN exists globally.
+No membership/role/data changes inferred; existing workspaces preserved. Image
+provider capability also remains unverified; adapter/storage/worker acceptance
+must be real. Both limitations are explicit in ISSUES and the plans. Prior
+homepage/navigation source remains uncommitted and preserved at baseline7a5cac3.
+
+## Author homepage and tool navigation polish — 2026-10-19
+
+Implemented compact grid/list library cards, reference-aligned account/profile/
+logout and language dropdowns, styled Admin CTA, shared icon return links,
+workspace Tools SVG caret and consistent Recovery controls. Studio preserves
+the source novel through a validated query; direct visits return to the library.
+Own-session API projection selects only displayName/email after authentication.
+
+Evidence: 58 focused web tests, six native auth tests, web/API typechecks,
+scoped lint and diff check pass. Separate exact-source review APPROVE; app scope
+SHA256 d6627c8d592e9e243c343adcfad7a5d1e345ee3d4f6de35b0601d5f92d2576b8.
+Native scratch + live Chromium en1440/id390 verify profile, dropdown geometry/
+focus, grid/list and seven clicked return journeys. Live inspection performs
+no API writes and retains identical novel/chapter row hashes; temporary auth
+sessions removed. API reloaded safely; Docker and worker retained.
+
+Requested OpenDesign MCP is unavailable (two reads: Transport closed); no remote
+design output is claimed. Local authoritative reference and rendered inspection
+used. Existing Studio blank empty-list panel is recorded in ISSUES for follow-up.
+See tasks/author-home-and-workspace-navigation-polish.md and ignored
+.nf-artifacts/home-polish-{browser,live}-receipt.json. No commit/push or human
+screen-reader acceptance claimed.
+
 ## Backup pocket: encrypted snapshots, restore drill, passphrase custody — 2026-10-19
 
 Commit `f1317f3` originally pushed plaintext pg_dump snapshots; the author

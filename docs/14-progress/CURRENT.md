@@ -1,5 +1,35 @@
 # Current Project State
 
+## Solo Leveling deleted (author-directed) — pre-delete backup secured — 2026-10-20
+
+The author asked to delete the "Solo Leveling" webnovel (`bdab82a0`, ws-c)
+after the many changes. Safety sequence before the destructive step:
+
+1. Fresh whole-database backup taken first:
+   `backup/pre-delete-2026-10-20.dump.enc` (pg_dump -Fc → AES-256-CBC
+   PBKDF2 600k, passphrase `backup/.passwd`); round-trip decrypt verified
+   (`PGDMP` header). It is NOT committed to git (untracked) — author may
+   commit via LFS or keep local. It captures the full post-endgame/
+   post-grammar-correction state (270 chapters, 90 characters, 217 facts,
+   315 proposals, endgame gate, all today's work).
+2. `DELETE /novels/:id` via API → 409 CONFLICT by design: canon facts are
+   RESTRICT on novel delete and no fact-DELETE route exists (only retract),
+   so the API path cannot complete for a novel carrying facts. The
+   ConflictError message documents the intended resolution.
+3. With the author's explicit instruction and the backup secured, the
+   deletion completed via author-authorized SQL in one transaction, in
+   FK-safe order: character_knowledge (14) → canon_facts (217) →
+   scale/publication/story_events (273) → novels (1, cascade for the
+   rest). Zero orphan chapter_versions after; `Sung/Seong Jin-Woo`
+   duplicate character rows removed with the novel.
+
+Verified after: 0 novels/chapters/characters/entities referencing the id;
+Kaisar novel untouched (9 chapters). Workspace ws-c now carries only
+"Kaisar dari Masa Depan". Recovery path: decrypt
+`pre-delete-2026-10-20.dump.enc` with `backup/.passwd` and pg_restore into
+a fresh database (runbook procedure) — restores the novel exactly as it
+was before deletion.
+
 ## Solo Leveling grammar audit phase 2 applied (poin 1-2, Bab 1-10) — 2026-10-20
 
 Phase-1 audit (~460 findings) reported; the author ordered poin 1-2 first.

@@ -1,7 +1,7 @@
 <template>
-  <main class="mx-auto max-w-5xl space-y-6 px-4 py-6" data-testid="recovery-page">
-    <header class="flex items-center justify-between gap-3">
-      <h1 class="text-[22px] font-semibold text-nf-text">{{ t("recovery.title") }}</h1>
+  <main class="mx-auto max-w-5xl space-y-6 px-5 py-10 sm:px-8" data-testid="recovery-page">
+    <header class="flex flex-wrap items-center justify-between gap-3">
+      <h1 class="font-nf-literary text-[30px] font-semibold text-nf-text">{{ t("recovery.title") }}</h1>
       <NuxtLink :to="base" class="text-[13px] text-nf-text-dim underline focus-visible:nf-focus">{{ t("recovery.backToWorkspace") }}</NuxtLink>
     </header>
     <p v-if="loading" role="status">{{ t("common.loading") }}</p>

@@ -1,7 +1,7 @@
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-6" data-testid="endgame-panel">
+  <div class="mx-auto max-w-5xl px-5 py-10 sm:px-8" data-testid="endgame-panel">
     <header class="mb-6">
-      <h1 class="text-[22px] font-semibold text-nf-text">{{ t("endgame.title") }}</h1>
+      <h1 class="font-nf-literary text-[30px] font-semibold text-nf-text">{{ t("endgame.title") }}</h1>
       <p class="mt-1 text-[13px] text-nf-text-dim">{{ t("endgame.subtitle") }}</p>
     </header>
 

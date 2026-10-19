@@ -27,6 +27,13 @@ enum NovelStatus {
   ARCHIVED
 }
 
+/// Reader-facing content rating for a novel (author-set; NULL = unset).
+enum Audience {
+  teen
+  mature
+  adult
+}
+
 /// Platform-level role. Deliberately separate from MembershipRole: a
 /// workspace OWNER must not be able to manage global LLM gateway
 /// credentials just by creating a workspace (ADR-0004/ADR-0005).
@@ -243,6 +250,9 @@ model Novel {
   /// apps/api/src/discovery/genres.ts).
   /// Private writing preferences live in NarrativeDnaProfile (not exposed).
   genres      String[]       @default([])
+  /// Author-set reader-facing content rating (workspace management slice,
+  /// 2026-10-18). NULL reads as "not specified" and renders nowhere.
+  audience    Audience?
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
   settings    NovelSettings?

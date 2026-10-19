@@ -1,12 +1,12 @@
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-6" data-testid="simulation-center">
+  <div class="mx-auto max-w-5xl px-5 py-10 sm:px-8" data-testid="simulation-center">
     <header class="mb-6">
-      <h1 class="text-[22px] font-semibold text-nf-text">{{ t("simulation.title") }}</h1>
+      <h1 class="font-nf-literary text-[30px] font-semibold text-nf-text">{{ t("simulation.title") }}</h1>
       <p class="mt-1 text-[13px] text-nf-text-dim">{{ t("simulation.subtitle") }}</p>
     </header>
 
     <!-- Tabs -->
-    <div class="mb-6 flex gap-1 border-b border-nf-border" role="tablist" :aria-label="t('simulation.title')">
+    <div class="mb-6 flex flex-wrap gap-1 border-b border-nf-border" role="tablist" :aria-label="t('simulation.title')">
       <button
         v-for="tab in tabs"
         :key="tab.key"

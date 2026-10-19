@@ -615,9 +615,39 @@ export const id = {
     apocalypse: "Apokalips",
     slice_of_life: "Slice of Life",
   },
+  audience: {
+    teen: "Remaja",
+    mature: "Mature",
+    adult: "Dewasa",
+  },
+  // Tooltip copy per genre key — condensed from
+  // docs/implementation/genre-taxonomy.md (NF-WF-014 Q3 research);
+  // fantasy wording supplied verbatim by the author.
+  genreDesc: {
+    fantasy: "Cocok untuk webnovel yang berlatar di dunia paralel, kerajaan sihir, dimensi lain, atau Bumi versi alternatif yang terinspirasi dari mitologi dan cerita rakyat.",
+    high_fantasy: "Dunia sekunder yang sepenuhnya rekaan — kerajaan, ras mitologi, dan sihir yang terjalin dalam tatanan dunia, dengan taruhan berskala besar.",
+    urban_fantasy: "Sihir dan hal supranatural di tengah kota modern — dunia tersembunyi di balik keseharian.",
+    progression_fantasy: "Protagonis tumbuh semakin kuat secara terukur — latihan, tonggak, dan rival adalah penggerak cerita.",
+    xianxia: "Kultivasi menuju keabadian — sekte, Dao, dan taruhan kosmik dalam fantasi tinggi Tiongkok.",
+    wuxia: "Pendekar di dunia persilatan: kehormatan, dendam, dan politik sekte dengan batas kekuatan satu masa hidup.",
+    litrpg: "Mekanika RPG eksplisit — level, stat, skill, quest — yang menjadi tema utama cerita.",
+    science_fiction: "Masa depan berbasis sains dan teknologi — luar angkasa, AI, perjalanan waktu, masyarakat baru.",
+    romance: "Hubungan romantis sebagai fokus utama — chemistry, konflik, dan perkembangan cinta.",
+    family: "Kehangatan dan konflik keluarga — pernikahan, pengasuhan, warisan, atau found family.",
+    action: "Konflik fisik bertempo cepat — pertarungan, kejar-kejaran, adrenalin tanpa henti.",
+    adventure: "Perjalanan menembus tempat asing — eksplorasi, quest, dan penemuan di setiap babak.",
+    mystery: "Teka-teki sentral yang mengundang pembaca memecahkannya bersama sang protagonis.",
+    thriller: "Ketegangan berkelanjutan — ancaman yang terus naik dan hitungan mundur.",
+    horror: "Bertujuan menakutkan — hantu, kengerian, dan bertahan hidup dari hal tak lazim.",
+    historical: "Berlatar masa lalu nyata — politik, perang, dan budaya era sejarah.",
+    apocalypse: "Dunia runtuh dan bertahan hidup — zombi, bencana, atau kiamat sistem.",
+    slice_of_life: "Keseharian biasa yang hangat — momen kecil yang bermakna tanpa plot besar.",
+  },
   workspace: {
+    tools: "Alat workspace",
     nav: {
       story: "Cerita",
+      discovery: "Detail novel",
       characters: "Karakter",
       relationships: "Relasi",
       world: "Dunia & Lore",
@@ -627,6 +657,15 @@ export const id = {
       planning: "Perencanaan",
       narrative: "Narasi",
       health: "Kesehatan & Memori",
+    },
+    discovery: {
+      genresLabel: "Genre",
+      genresHint: "Pilih hingga {n} — tampil di Jelajah dan halaman novel.",
+      audienceLabel: "Target audiens",
+      audienceNone: "Belum diatur",
+      loadError: "Detail novel gagal dimuat. Silakan coba lagi.",
+      saveError: "Tidak semua perubahan dapat dikonfirmasi. Sebagian detail mungkin sudah tersimpan. Periksa nilainya lalu coba lagi.",
+      forbidden: "Peran Anda di workspace ini tidak dapat mengubah detail ini.",
     },
     research: {
       panel: {
@@ -1057,6 +1096,7 @@ export const id = {
     },
     world: {
       errors: { network: "Gagal memuat. Periksa koneksi dan coba lagi." },
+      tabs: { entities: "Entitas", facts: "Fakta kanon" },
       entities: {
         title: "Entitas cerita",
         new: "Entitas baru",
@@ -1084,6 +1124,7 @@ export const id = {
         form: {
           kind: "Jenis",
           name: "Nama",
+          namePlaceholder: "Nama entitas",
           key: "Kunci (opsional)",
           keyHint: "Huruf kecil, angka, dan tanda hubung, maks 64 karakter.",
           keyInvalid: "Kunci harus cocok ^[a-z0-9][a-z0-9-]{0,63}$.",
@@ -1118,23 +1159,28 @@ export const id = {
         entitiesLoading: "Memuat entitas…",
         entityRequired: "Pilih entitas.",
         predicate: "Predikat",
+        predicatePlaceholder: "mis. memegang",
         predicateRequired: "Predikat wajib diisi.",
         objectKind: "Objek",
         objectKindText: "Teks",
         objectKindEntity: "Entitas",
         objectEntity: "Entitas objek",
+        objectTextPlaceholder: "mis. kompas tua",
         objectRequired: "Berikan objek teks atau objek entitas.",
         statement: "Pernyataan (opsional)",
+        statementPlaceholder: "Opsional — pernyataan lengkap sebagaimana seharusnya dibaca",
         validFromChapter: "Berlaku dari bab (opsional)",
-        validUntilChapter: "Berlaku sampai bab (opsional)",
-        windowInvalid: "Bab berlaku-sampai tidak boleh sebelum berlaku-dari.",
-        availableFromChapter: "Tersedia dari bab (opsional)",
-        citation: "Sitasi bukti (wajib)",
+        validUntilChapter: "Berlaku hingga bab (opsional)",
+        windowInvalid: "Berlaku-hingga tidak boleh sebelum berlaku-dari.",
+        availableFromChapter: "Terlihat dari bab (opsional)",
+        citation: "Kutipan bukti (wajib)",
         citationKindChapter: "Versi bab",
         citationKindReference: "Versi referensi",
         versionId: "ID versi",
+        versionIdPlaceholder: "Tempel ID versi",
         quote: "Kutipan",
-        quoteHint: "Kutipan harus sama persis dengan konten tersimpan — salin kata per kata.",
+        quotePlaceholder: "Salin kalimat yang dikutip secara persis",
+        quoteHint: "Kutipan harus sama persis dengan konten tersimpan — salin apa adanya.",
         start: "Awal",
         end: "Akhir",
         factConflict: "Fakta aktif sudah ada untuk subjek dan predikat ini.",
@@ -1150,9 +1196,10 @@ export const id = {
     },
     canon: {
       errors: {
-        network: "Gagal memuat. Periksa koneksi dan coba lagi.",
-        INVALID_INPUT: "Beberapa isian tidak valid.",
+        network: "Tidak dapat memuat. Periksa koneksi lalu coba lagi.",
+        INVALID_INPUT: "Beberapa kolom tidak valid.",
       },
+      tabs: { facts: "Fakta", proposals: "Proposal", applications: "Aplikasi" },
       proposals: {
         title: "Usulan",
         empty: "Tidak ada usulan.",
@@ -1177,6 +1224,7 @@ export const id = {
       applications: {
         title: "Aplikasi",
         applicationId: "ID aplikasi",
+        applicationIdPlaceholder: "Tempel ID aplikasi",
         load: "Muat",
         loading: "Memuat…",
         noList: "Aplikasi tidak memiliki tampilan daftar — tempel ID aplikasi untuk meninjaunya.",
@@ -1205,6 +1253,7 @@ export const id = {
         hiddenFromReaders: "Disembunyikan dari pembaca",
         form: {
           description: "Deskripsi",
+          descriptionPlaceholder: "Apa yang terjadi",
           chapterId: "ID bab (opsional)",
           availableFromChapter: "Tersedia dari bab (opsional)",
           chapterHint: "Berbasis 0. Dikosongkan berarti tidak terlihat pembaca.",
@@ -1219,7 +1268,8 @@ export const id = {
         hiddenFromReaders: "Disembunyikan dari pembaca",
         form: {
           description: "Deskripsi",
-          availableFromChapter: "Tersedia dari bab (opsional)",
+          descriptionPlaceholder: "Apa yang dicatat entri ini",
+          availableFromChapter: "Terlihat dari bab (opsional)",
           chapterHint: "Berbasis 0. Dikosongkan berarti tidak terlihat pembaca.",
           chapterInvalid: "Masukkan bilangan bulat non-negatif.",
         },
@@ -1297,7 +1347,7 @@ export const id = {
         delete: "Hapus",
         deleteConfirmTitle: "Hapus sinopsis",
         deleteConfirmBody: "Hapus sinopsis ini? Tindakan ini tidak dapat dibatalkan.",
-        form: { content: "Konten" },
+        form: { content: "Konten", contentPlaceholder: "Tulis sinopsisnya" },
       },
       sagas: {
         create: "Saga baru",
@@ -1355,7 +1405,8 @@ export const id = {
         },
         form: {
           content: "Konten (JSON)",
-          contentHint: "Objek JSON apa pun — disimpan kata per kata.",
+          contentPlaceholder: '{"acts": [...]}',
+          contentHint: "Objek JSON apa pun — disimpan apa adanya.",
           contentInvalid: "Konten harus JSON valid, bukan null.",
           note: "Catatan (opsional)",
         },
@@ -1368,6 +1419,7 @@ export const id = {
         saved: "Horizon tersimpan.",
         form: {
           policy: "Kebijakan (JSON)",
+          policyPlaceholder: '{"maxDetailedChapters": 5}',
           policyHint: "Nilai JSON apa pun — disimpan kata per kata.",
           policyInvalid: "Kebijakan harus JSON valid.",
         },

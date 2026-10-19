@@ -50,6 +50,8 @@ export interface DiscoveryNovel {
   slug: string;
   author: { id: string; displayName: string };
   genres: string[];
+  /** Reader-facing content rating; null = author has not set one. */
+  audience: string | null;
   publishedChapterCount: number;
   firstPublishedAt: string;
   lastPublishedAt: string;
@@ -145,6 +147,7 @@ interface ListedRow {
   title: string;
   slug: string;
   genres: string[];
+  audience: string | null;
   authorId: string;
   authorName: string;
   publishedChapterCount: number;
@@ -264,7 +267,7 @@ export function createPublicDiscoveryServices({ db }: { db: NovelForgeDb }) {
 
       const sql = `
         WITH l AS (
-          SELECT n.id, n.title, n.slug, n.genres,
+          SELECT n.id, n.title, n.slug, n.genres, n.audience,
                  u.id AS "authorId", u.display_name AS "authorName",
                  COUNT(p.id) FILTER (WHERE p.status = 'PUBLISHED')::int AS "publishedChapterCount",
                  MIN(p.published_at) FILTER (WHERE p.status = 'PUBLISHED') AS "firstPublishedAt",
@@ -301,6 +304,7 @@ export function createPublicDiscoveryServices({ db }: { db: NovelForgeDb }) {
           slug: r.slug,
           author: { id: r.authorId, displayName: r.authorName },
           genres: r.genres ?? [],
+          audience: r.audience ?? null,
           publishedChapterCount: r.publishedChapterCount,
           firstPublishedAt: r.firstPublishedAt.toISOString(),
           lastPublishedAt: r.lastPublishedAt.toISOString(),
@@ -471,6 +475,35 @@ export function createPublicDiscoveryServices({ db }: { db: NovelForgeDb }) {
         select: { genres: true },
       });
       return { genres: updated.genres };
+    },
+
+    /**
+     * Author-set reader-facing content rating (workspace management slice,
+     * 2026-10-18). `null` clears it. Same capability and refusal shape as
+     * setNovelGenres; the value is validated against the Audience enum by
+     * the route's Zod schema before this runs — the non-null re-check here
+     * is a backstop for direct service callers.
+     */
+    async setNovelAudience({
+      actorUserId,
+      workspaceId,
+      novelId,
+      audience,
+    }: {
+      actorUserId: string;
+      workspaceId: string;
+      novelId: string;
+      audience: "teen" | "mature" | "adult" | null;
+    }): Promise<{ audience: string | null }> {
+      await gate(workspaceId, novelId, actorUserId, "novel:update");
+      if (audience !== null && !["teen", "mature", "adult"].includes(audience)) {
+        throw new Error("INVALID_AUDIENCE");
+      }
+      const updated = await db.novel.update({
+        where: { id: novelId },
+        data: { audience },
+      });
+      return { audience: updated.audience ?? null };
     },
   };
 }

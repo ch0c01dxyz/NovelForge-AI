@@ -193,6 +193,10 @@ export interface NovelView {
   title: string;
   slug: string;
   status: string;
+  /** Reader-facing discovery taxonomy (max 5 canonical keys). */
+  genres: string[];
+  /** Reader-facing content rating; null = not set. */
+  audience: string | null;
 }
 
 export function createPlatformServices(deps: {
@@ -652,6 +656,8 @@ export function createPlatformServices(deps: {
         title: novel.title,
         slug: novel.slug,
         status: novel.status,
+        genres: novel.genres,
+        audience: novel.audience ?? null,
       };
     },
 
@@ -667,6 +673,8 @@ export function createPlatformServices(deps: {
           title: n.title,
           slug: n.slug,
           status: n.status,
+          genres: n.genres,
+          audience: n.audience ?? null,
         })),
       );
     },
@@ -683,6 +691,8 @@ export function createPlatformServices(deps: {
         title: n.title,
         slug: n.slug,
         status: n.status,
+        genres: n.genres,
+        audience: n.audience ?? null,
       }));
     },
   };

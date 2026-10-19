@@ -6,43 +6,43 @@
  * Semantic nf-* names, not global theme overrides, so intent survives.
  */
 @theme {
-  /* Surfaces — Monokai Pro Classic ladder, deepest → highest (NF-WF-056).
-   * Provenance + derived-shade notes: docs/design/DESIGN-TOKENS.md. */
-  --color-nf-bg-0: #19181a;
-  --color-nf-bg-1: #221f22;
-  --color-nf-bg-2: #2d2a2e;
-  --color-nf-bg-3: #39363a;
-  --color-nf-border: #8e8b8e;
-  --color-nf-border-strong: #a9a7aa;
-  /* Author-approved discovery control boundaries (GAP-051 D2 role). */
-  --color-nf-border-focus: #a9a7aa;
+  /* NF-WF-058: restore the author's exact writer-workspace reference. */
+  --color-nf-bg-0: #0c0a09;
+  --color-nf-bg-1: #161412;
+  --color-nf-bg-2: #201d1b;
+  --color-nf-bg-3: #2a2725;
+  --color-nf-border: #33302d;
+  --color-nf-border-strong: #48443f;
+  /* Controls need a visible boundary; structural hairlines stay subtle. */
+  --color-nf-border-focus: #79716b;
 
   /* Ink */
-  --color-nf-text: #fcfcfa;
-  --color-nf-text-dim: #bdbbbe;
-  --color-nf-text-faint: #a3a1a3;
+  --color-nf-text: #f0eeec;
+  --color-nf-text-dim: #a8a29e;
+  /* Lift the reference's #79716b for readable small labels on cards. */
+  --color-nf-text-faint: #a8a29e;
 
-  /* Accent — purple primary: active state, primary CTA, AI affordances.
-   * Official orange #FC9867 stays reference-only (no semantic role). */
-  --color-nf-accent: #ab9df2;
-  --color-nf-accent-hi: #bab0f5; /* text-safe on dark */
-  --color-nf-accent-ink: #19181a; /* text on accent/destructive fills */
-  --color-nf-accent-dim: rgba(171, 157, 242, 0.12); /* accent tint fills */
-  --color-nf-accent-border: rgba(171, 157, 242, 0.38);
+  /* Orange is reserved for primary actions, active state and AI. */
+  --color-nf-accent: #f97316;
+  --color-nf-accent-hi: #fb923c;
+  --color-nf-accent-ink: #1c1207;
+  --color-nf-accent-dim: rgba(249, 115, 22, 0.11);
+  --color-nf-accent-border: rgba(249, 115, 22, 0.38);
 
   /* Semantics */
-  --color-nf-ok: #a9dc76;
-  --color-nf-warn: #ffd866;
-  --color-nf-error: #ff6188;
-  --color-nf-info: #78dce8;
-  --color-nf-ok-dim: rgba(169, 220, 118, 0.1);
-  --color-nf-warn-dim: rgba(255, 216, 102, 0.08);
-  --color-nf-error-dim: rgba(255, 97, 136, 0.1);
-  --color-nf-info-dim: rgba(120, 220, 232, 0.1);
+  --color-nf-ok: #4ade80;
+  --color-nf-warn: #fbbf24;
+  --color-nf-error: #f87171;
+  --color-nf-info: #7dd3fc;
+  --color-nf-ok-dim: rgba(74, 222, 128, 0.1);
+  --color-nf-warn-dim: rgba(251, 191, 36, 0.09);
+  --color-nf-error-dim: rgba(248, 113, 113, 0.1);
+  --color-nf-info-dim: rgba(125, 211, 252, 0.1);
 
   /* Type voices */
   --font-nf-ui: "Segoe UI", -apple-system, system-ui, "Helvetica Neue", Arial, sans-serif;
-  --font-nf-literary: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Times New Roman", serif;
+  --font-nf-literary:
+    Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Times New Roman", serif;
 
   /* Shadows */
   --shadow-nf-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
@@ -54,10 +54,12 @@ body {
   background: var(--color-nf-bg-0);
   color: var(--color-nf-text);
   font-family: var(--font-nf-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 /*
- * NF-WF-056 (Monokai Pro polish): the whole application is dark, so native
+ * The whole application is dark, so native
  * widgets (select popups, autofills, scrollbars, date pickers) render in
  * their dark scheme and form control states stay legible.
  */
@@ -98,11 +100,11 @@ textarea[aria-invalid="true"] {
   border-color: var(--color-nf-error);
 }
 
-/* Native selects: consistent Monokai chevron; the popup itself follows
+/* Native selects: reference chevron; the popup itself follows
  * `color-scheme: dark` (platform-drawn, not stylable beyond this). */
 select {
   appearance: none;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%23a3a1a3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%23a8a29e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-size: 12px 12px;
   background-repeat: no-repeat;
   background-position: right 0.5rem center;
@@ -111,6 +113,332 @@ select {
 select option {
   background-color: var(--color-nf-bg-1);
   color: var(--color-nf-text);
+}
+
+/* Shared reference controls. Utility classes still own layout and semantic
+ * variants; these rules own the consistent interactive treatment. */
+::selection {
+  background: var(--color-nf-accent-dim);
+  color: var(--color-nf-text);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-nf-border-strong) transparent;
+}
+button,
+a,
+summary,
+input,
+textarea,
+select {
+  transition:
+    color 150ms,
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+button,
+summary {
+  cursor: pointer;
+}
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+button {
+  min-height: 24px;
+}
+button[class~="border"],
+summary[class~="border"],
+a[class~="border"] {
+  box-shadow: var(--shadow-nf-sm);
+}
+button[class~="border"]:enabled:hover,
+summary[class~="border"]:hover {
+  border-color: var(--color-nf-border-focus);
+}
+button[class~="bg-nf-accent"],
+a[class~="bg-nf-accent"] {
+  box-shadow:
+    inset 0 -1px 0 rgb(0 0 0 / 20%),
+    0 1px 3px rgb(249 115 22 / 25%);
+}
+button[class~="bg-nf-accent"]:enabled:hover,
+a[class~="bg-nf-accent"]:hover {
+  background-color: var(--color-nf-accent-hi);
+  box-shadow: 0 2px 10px rgb(249 115 22 / 25%);
+}
+button:enabled:active {
+  filter: brightness(0.94);
+}
+:is(
+  input:not(
+    [type="checkbox"],
+    [type="radio"],
+    [type="range"],
+    [type="hidden"],
+    [type="file"],
+    [type="submit"],
+    [type="button"],
+    [type="color"]
+  ),
+  textarea,
+  select
+) {
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--color-nf-border-focus);
+  border-radius: 8px;
+  background-color: var(--color-nf-bg-0);
+  color: var(--color-nf-text);
+  padding-block: 7px;
+  padding-inline-start: 11px;
+  font-family: var(--font-nf-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 15%);
+}
+input:not([type="checkbox"], [type="radio"]),
+textarea {
+  padding-inline-end: 11px;
+}
+textarea {
+  resize: vertical;
+  min-height: 92px;
+}
+:is(input, textarea, select):enabled:hover {
+  border-color: var(--color-nf-text-dim);
+}
+:is(input, textarea, select):focus-visible {
+  border-color: var(--color-nf-accent-hi);
+  box-shadow: 0 0 0 3px var(--color-nf-accent-dim);
+}
+:is(input, textarea, select)[aria-invalid="true"] {
+  border-color: var(--color-nf-error);
+}
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+input[type="range"] {
+  accent-color: var(--color-nf-accent);
+}
+input[type="file"]::file-selector-button {
+  border: 1px solid var(--color-nf-border-focus);
+  border-radius: 8px;
+  background: var(--color-nf-bg-2);
+  color: var(--color-nf-text);
+  padding: 7px 12px;
+  margin-right: 12px;
+  cursor: pointer;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+thead {
+  background: var(--color-nf-bg-2);
+}
+th {
+  color: var(--color-nf-text-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+th,
+td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-nf-border);
+}
+tbody tr {
+  transition: background-color 150ms;
+}
+tbody tr:hover,
+tbody tr:focus-within {
+  background: var(--color-nf-bg-2);
+}
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+dialog,
+[role="dialog"],
+[role="alertdialog"] {
+  box-shadow: var(--shadow-nf-lg);
+}
+dialog,
+[role="alertdialog"] {
+  background-color: var(--color-nf-bg-2);
+}
+dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+  backdrop-filter: blur(3px);
+}
+.nf-menu {
+  position: relative;
+}
+.nf-menu > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nf-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.nf-menu > summary::after {
+  content: "⌄";
+  color: var(--color-nf-text-dim);
+}
+.nf-menu[open] > summary {
+  background: var(--color-nf-bg-2);
+  color: var(--color-nf-text);
+}
+.nf-menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: 240px;
+  max-width: calc(100vw - 32px);
+  max-height: 70dvh;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--color-nf-border-strong);
+  border-radius: 10px;
+  background: var(--color-nf-bg-2);
+  box-shadow: var(--shadow-nf-lg);
+}
+.nf-menu-panel > a,
+.nf-menu-panel > button {
+  display: flex;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: start;
+  box-shadow: none;
+}
+.nf-menu-panel > a:hover,
+.nf-menu-panel > button:hover {
+  background: var(--color-nf-bg-3);
+}
+.nf-toast {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-nf-border-strong);
+  border-left: 3px solid var(--nf-toast-signal);
+  border-radius: 10px;
+  background: var(--color-nf-bg-2);
+  color: var(--color-nf-text);
+  box-shadow: var(--shadow-nf-lg);
+  animation: nf-toast-enter 180ms ease-out;
+}
+.nf-toast-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--nf-toast-signal);
+  background: color-mix(in srgb, var(--nf-toast-signal) 12%, transparent);
+}
+@keyframes nf-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.nf-chapters-toggle,
+.nf-menu-panel > .nf-generation-toggle,
+.nf-menu-panel > .nf-mobile-action {
+  display: none;
+}
+.nf-library-card {
+  min-height: 160px;
+  transition:
+    border-color 150ms,
+    background-color 150ms,
+    box-shadow 150ms;
+}
+.nf-library-card:hover {
+  box-shadow: var(--shadow-nf-md);
+}
+@media (max-width: 1279px) {
+  .nf-menu-panel > .nf-generation-toggle {
+    display: flex;
+  }
+  .nf-writer-grid[data-generation-open="true"] > .nf-writer-generation {
+    display: block;
+    grid-column: 1 / -1;
+    max-height: 35dvh;
+    border-top: 1px solid var(--color-nf-border);
+  }
+  .nf-writer-grid {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+}
+@media (max-width: 1023px) {
+  .nf-writer-shell {
+    grid-template-rows: auto minmax(0, 1fr) 30px;
+  }
+  .nf-writer-header {
+    flex-wrap: wrap;
+    min-height: 56px;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .nf-chapters-toggle {
+    display: inline-flex;
+  }
+  .nf-writer-grid {
+    display: flex;
+    flex-direction: column;
+  }
+  .nf-writer-grid > main {
+    flex: 1;
+    min-height: 0;
+  }
+  .nf-writer-grid[data-chapters-open="true"] > .nf-writer-chapters {
+    display: block;
+    max-height: 35dvh;
+    flex: none;
+    border-bottom: 1px solid var(--color-nf-border);
+  }
+  .nf-writer-grid > .nf-writer-generation {
+    flex: none;
+  }
+}
+@media (max-width: 639px) {
+  .nf-menu-panel { left: 0; right: auto; }
+  .nf-writer-header > [data-writer-action="planning"],
+  .nf-writer-header > [data-writer-action="save"] { display: none; }
+  .nf-writer-header > .nf-menu,
+  .nf-writer-header > .nf-chapters-toggle,
+  .nf-writer-header > [data-writer-action="language"] { order: 1; }
+  .nf-menu-panel > .nf-mobile-action { display: flex; }
+  input:not([type="checkbox"], [type="radio"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+  th,
+  td {
+    padding: 10px;
+  }
 }
 
 /* Focus style per DESIGN-TOKENS.md state rules: 2px accent-hi outline. */

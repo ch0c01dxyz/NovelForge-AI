@@ -69,6 +69,10 @@ const genresBody = z.object({
     .pipe(z.array(genreKey).max(MAX_GENRES_PER_NOVEL)),
 });
 
+const audienceBody = z.object({
+  audience: z.enum(["teen", "mature", "adult"]).nullable(),
+});
+
 export interface PublicDiscoveryRoutesOptions {
   auth: AuthService;
   services: PublicDiscoveryServices;
@@ -119,6 +123,38 @@ export function registerPublicDiscoveryRoutes(
       throw e;
     }
   });
+
+  /**
+   * PATCH /api/workspaces/:workspaceId/novels/:novelId/audience — the
+   * author-set reader-facing content rating (`novel:update` capability;
+   * null clears). Unknown novel/non-member → 404; without the
+   * capability → 403; unknown value → 400.
+   */
+  app.patch(
+    "/api/workspaces/:workspaceId/novels/:novelId/audience",
+    async (request, reply) => {
+      const actorUserId = await requireActor(request, reply);
+      if (!actorUserId) return;
+      const params = novelParams.safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = audienceBody.safeParse(request.body);
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      try {
+        const result = await services.setNovelAudience({
+          actorUserId,
+          workspaceId: params.data.workspaceId,
+          novelId: params.data.novelId,
+          audience: body.data.audience,
+        });
+        return reply.code(200).send(result);
+      } catch (e) {
+        if (e instanceof Error && e.message === "INVALID_AUDIENCE") {
+          return reply.code(400).send({ error: "INVALID_INPUT" });
+        }
+        throw e;
+      }
+    },
+  );
 
   /**
    * GET /api/public/genres — genre facets: every taxonomy key carried

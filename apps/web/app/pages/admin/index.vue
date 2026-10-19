@@ -328,9 +328,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl px-4 py-6">
+  <div class="mx-auto max-w-6xl px-5 py-10 sm:px-8">
     <NuxtLink to="/" class="mb-4 inline-block text-sm text-nf-text-dim underline focus-visible:nf-focus">{{ t("authorHome.backHome") }}</NuxtLink>
-    <h1 class="mb-4 text-[20px] font-semibold text-nf-text">
+    <h1 class="mb-6 font-nf-literary text-[30px] font-semibold text-nf-text">
       {{ t("platformAdmin.title") }}
     </h1>
 
@@ -349,7 +349,7 @@ onMounted(async () => {
 
     <div v-else>
       <div
-        class="mb-4 flex gap-1 border-b border-nf-border"
+        class="mb-6 flex flex-wrap gap-1 border-b border-nf-border"
         role="tablist"
         aria-label="Platform administration"
       >
@@ -536,7 +536,7 @@ onMounted(async () => {
     </div>
 
     <div
-      class="fixed right-4 top-4 z-[60] flex w-80 flex-col gap-2"
+      class="fixed right-4 top-4 z-[60] flex w-[360px] max-w-[calc(100vw-32px)] flex-col gap-2"
       aria-live="polite"
       data-testid="toast-stack"
     >
@@ -544,16 +544,15 @@ onMounted(async () => {
         v-for="toast in toasts"
         :key="toast.id"
         :role="toast.kind === 'error' ? 'alert' : 'status'"
-        class="flex items-start justify-between gap-2 rounded-xl border bg-nf-bg-1 px-3.5 py-2.5 text-[13px] font-medium shadow-nf-md"
-        :class="toast.kind === 'success' ? 'border-nf-ok text-nf-ok' : 'border-nf-error text-nf-error'"
+        class="nf-toast flex items-start justify-between gap-3 px-4 py-3 text-[13px] font-medium"
+        :style="{ '--nf-toast-signal': toast.kind === 'success' ? 'var(--color-nf-ok)' : 'var(--color-nf-error)' }"
         :data-testid="`toast-${toast.kind}`"
       >
         <span
-          class="mt-1.5 size-2 shrink-0 rounded-full"
-          :class="toast.kind === 'success' ? 'bg-nf-ok' : 'bg-nf-error'"
+          class="nf-toast-icon"
           aria-hidden="true"
-        ></span>
-        <p class="min-w-0 flex-1 break-words">{{ t(toast.key, toast.params) }}</p>
+        >{{ toast.kind === 'success' ? '✓' : '!' }}</span>
+        <p class="min-w-0 flex-1 break-words pt-0.5">{{ t(toast.key, toast.params) }}</p>
         <button
           class="shrink-0 rounded px-1 text-[14px] leading-none focus-visible:nf-focus"
           :aria-label="t('platformAdmin.toasts.dismiss')"

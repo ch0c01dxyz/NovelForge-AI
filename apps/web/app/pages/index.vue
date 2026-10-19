@@ -121,11 +121,12 @@ async function signOut() {
         </button>
       </nav>
     </header>
-    <main class="mx-auto max-w-3xl px-5 py-10">
+    <main class="mx-auto max-w-[1120px] px-5 py-10 sm:px-10 sm:py-14">
       <div class="flex flex-wrap items-start justify-between gap-5">
         <div>
-          <h1 class="font-nf-literary text-2xl font-semibold">{{ t("authorHome.title") }}</h1>
-          <p class="mt-2 text-sm text-nf-text-dim">{{ t("authorHome.intro") }}</p>
+          <div class="nf-section-label mb-3">NovelForge · {{ t("authorHome.workspace") }}</div>
+          <h1 class="font-nf-literary text-[32px] font-semibold tracking-tight">{{ t("authorHome.title") }}</h1>
+          <p class="mt-3 max-w-lg text-sm leading-relaxed text-nf-text-dim">{{ t("authorHome.intro") }}</p>
         </div>
         <div class="flex max-w-full flex-wrap items-center gap-2">
           <button
@@ -173,21 +174,23 @@ async function signOut() {
           {{ t("common.retry") }}
         </button>
       </div>
-      <p
+      <section
         v-else-if="!novels.length"
-        class="mt-8 rounded-xl border border-nf-border bg-nf-bg-1 p-6 text-sm text-nf-text-dim"
+        class="mt-10 flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-nf-border-strong bg-nf-bg-1 px-8 py-12 text-center"
       >
-        {{ t("authorHome.empty") }}
-      </p>
-      <ul v-else class="mt-6 flex flex-col gap-2">
+        <svg class="mb-5 size-10 text-nf-text-dim" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M16 8C12 5 7 5 3 6v20c4-1 9-1 13 2 4-3 9-3 13-2V6c-4-1-9-1-13 2Zm0 0v20M7 11h5m-5 5h5m8-5h5m-5 5h5" /></svg>
+        <p class="max-w-md text-sm leading-7 text-nf-text-dim">{{ t("authorHome.empty") }}</p>
+      </section>
+      <ul v-else class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <li v-for="n in novels" :key="n.id">
           <NuxtLink
             :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
-            class="flex items-center gap-3 rounded-xl border border-nf-border bg-nf-bg-1 px-4 py-3 hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
-            ><span class="min-w-0 break-words font-nf-literary text-[15px] font-semibold">{{
+            class="nf-library-card flex h-full flex-col items-start gap-5 rounded-xl border border-nf-border bg-nf-bg-1 p-5 hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
+            ><span class="grid size-9 place-items-center rounded-lg border border-nf-border-strong bg-nf-bg-0 font-nf-literary text-lg text-nf-text-dim" aria-hidden="true">{{ n.title.slice(0, 1) }}</span>
+            <span class="min-w-0 break-words font-nf-literary text-xl font-semibold">{{
               n.title
             }}</span
-            ><span class="ml-auto text-xs text-nf-text-dim">{{
+            ><span class="mt-auto rounded border border-nf-border bg-nf-bg-0 px-2 py-0.5 text-[11px] text-nf-text-dim">{{
               t(
                 n.status === "DRAFT"
                   ? "authorHome.statusDraft"

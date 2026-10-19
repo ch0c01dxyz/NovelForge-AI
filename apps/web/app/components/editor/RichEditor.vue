@@ -102,7 +102,14 @@ watch(
   min-height: 24rem;
 }
 :deep(.nf-editor-prose p) {
-  margin: 0 0 1em;
+  margin: 0 0 1.35em;
+}
+:deep(.nf-editor-prose > p:first-child::first-letter) {
+  float: left;
+  font-size: 58px;
+  line-height: 0.82;
+  padding: 6px 10px 0 0;
+  font-weight: 600;
 }
 :deep(.nf-editor-prose h2) {
   font-size: 1.35em;

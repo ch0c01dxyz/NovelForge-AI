@@ -1,10 +1,17 @@
 <script setup lang="ts">
-/**
- * Root component. With a pages/ directory present, Nuxt routes through
- * <NuxtPage/>; the per-page layout lives in each page component.
- */
+import SiteHeader from "./components/ui/SiteHeader.vue";
+const route = useRoute();
+// The author home, writer and AI Studio already own their application header.
+const hasOwnHeader = computed(
+  () =>
+    ["/", "/sign-in"].includes(route.path) ||
+    /^\/workspaces\/[^/]+\/(ai-studio|novels\/[^/]+)\/?$/.test(route.path),
+);
 </script>
 
 <template>
-  <NuxtPage />
+  <div>
+    <SiteHeader v-if="!hasOwnHeader" />
+    <NuxtPage />
+  </div>
 </template>

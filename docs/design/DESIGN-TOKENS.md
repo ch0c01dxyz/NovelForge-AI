@@ -2,7 +2,26 @@
 
 Source of truth: `docs/design/writer-workspace/index.html` (OpenDesign-refined mockup, 2026-09-24). OpenDesign project: `novelforge-writer-workspace-5378`.
 
-> **ACTIVE — NF-WF-056 amendment (2026-10-18, scoped author decision):** the
+> **ACTIVE — NF-WF-058 reference restoration (2026-10-18):** the author
+> explicitly rejected the Monokai result and selected the original
+> `writer-workspace/index.html` for the whole application. Its stone surfaces,
+> reserved orange accent, compact controls, literary typography and subtle
+> structural borders are authoritative again. NF-WF-056 below is historical.
+> Runtime mapping: `apps/web/app/assets/css/main.css`. Preserve native control
+> semantics, visible focus, loading/error/disabled states and en/id resources.
+>
+> Documented accessibility accommodations: faint small labels use `#a8a29e`
+> instead of `#79716b`; interactive input boundaries use `#79716b`, while
+> decorative panel hairlines retain `#33302d`. Error `#f87171` and info
+> `#7dd3fc` extend the reference's green/amber semantics. Form fields use
+> 8px corners, 36px minimum height, canvas-dark input wells and 13px UI text
+> (16px on narrow screens). Dialogs, dropdowns and toasts use the card surface.
+> Native select popups remain OS-rendered. Writer desktop geometry is
+> 52px header / 264px navigation / flexible editor / 312px context / 30px footer.
+> Additional workspace routes live in a keyboard-accessible dropdown; narrow
+> screens expose chapter/context panels through explicit toggles.
+
+> **HISTORICAL — NF-WF-056 amendment (superseded by NF-WF-058):** the
 > author explicitly requested a global Monokai Pro UI/UX polish of all pages.
 > The stone-family surfaces and the restricted orange accent below are
 > **superseded historical authority** for the application UI; they remain
@@ -12,7 +31,7 @@ Source of truth: `docs/design/writer-workspace/index.html` (OpenDesign-refined m
 > are unchanged by this amendment. Interpretation and provenance:
 > `tasks/NF-WF-056-monokai-pro-ui-polish-contract.md`.
 
-## Monokai Pro Classic tokens (active since NF-WF-056)
+## Monokai Pro Classic tokens (historical NF-WF-056)
 
 Official Monokai Pro hues (bg `#2D2A2E`, deep `#221F22`/`#19181A`, fg
 `#FCFCFA`, red `#FF6188`, orange `#FC9867`, yellow `#FFD866`, green
@@ -65,11 +84,11 @@ Contrast floors (verified against computed values in-browser during
 NF-WF-056): normal text ≥ 4.5:1, large text ≥ 3:1, control boundaries and
 focus ≥ 3:1 on the surface where the element sits.
 
-## Core identity (historical, pre-NF-WF-056)
+## Core identity (restored by NF-WF-058)
 
 Dark background, orange accent. Stone-family surface ladder for depth; orange reserved for active state, primary CTA, and every AI affordance. Two type voices: UI chrome (sans) vs manuscript prose (literary serif).
 
-## Surfaces (stone family, deepest → highest) — SUPERSEDED by the Monokai Pro tables above (NF-WF-056)
+## Surfaces (stone family, deepest → highest) — active NF-WF-058
 
 | Token | Value | Use |
 |---|---|---|
@@ -97,7 +116,7 @@ contrast on bg-0, bg-1 and bg-2; do not extend to other surfaces by assumption.
 | `--text-dim` | `#a8a29e` | secondary |
 | `--text-faint` | `#79716b` | metadata/labels |
 
-## Accent — orange (RESTRICTED) — SUPERSEDED (NF-WF-056): orange is reference palette only — no semantic role and no token; primary accent is purple `--color-nf-accent` #AB9DF2
+## Accent — orange (restricted, restored by NF-WF-058)
 
 Orange marks exactly three things: active nav state, the primary CTA, and AI affordances (each carrying the sparkle glyph). Nothing else is orange.
 

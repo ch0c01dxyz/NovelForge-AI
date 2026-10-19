@@ -615,9 +615,38 @@ export const en = {
     apocalypse: "Apocalypse",
     slice_of_life: "Slice of Life",
   },
+  audience: {
+    teen: "Teen",
+    mature: "Mature",
+    adult: "Adult",
+  },
+  // Tooltip copy per genre key — condensed from
+  // docs/implementation/genre-taxonomy.md (NF-WF-014 Q3 research).
+  genreDesc: {
+    fantasy: "Parallel worlds, magic kingdoms, other dimensions, or an alternate Earth inspired by myth and folklore.",
+    high_fantasy: "An entirely invented secondary world with magic, mythical races, and large-scale stakes.",
+    urban_fantasy: "Magic hidden inside the modern world — the impossible operating behind the everyday.",
+    progression_fantasy: "The protagonist measurably grows stronger — training, milestones, and rivals drive the story.",
+    xianxia: "Cultivation toward immortality — sects, the Dao, and cosmic stakes in Chinese high fantasy.",
+    wuxia: "Martial heroes of the jianghu: honor, revenge, and sect politics within one lifetime's power.",
+    litrpg: "Explicit RPG mechanics — levels, stats, skills, quests — as the story's main theme.",
+    science_fiction: "Futures built on science and technology — space, AI, time travel, new societies.",
+    romance: "Romantic relationships take center stage — chemistry, conflict, and the growth of love.",
+    family: "Family warmth and conflict — marriage, parenting, legacy, or found family.",
+    action: "Fast-paced physical conflict — fights, chases, relentless adrenaline.",
+    adventure: "Journeys through unfamiliar places — exploration, quests, and discovery.",
+    mystery: "A central puzzle the reader solves alongside the protagonist.",
+    thriller: "Sustained suspense — rising threats and ticking clocks.",
+    horror: "Built to frighten — ghosts, dread, and survival against the uncanny.",
+    historical: "Set in a well-defined real past — politics, wars, and culture of another era.",
+    apocalypse: "A collapsed world and survival — zombies, disasters, or the system-apocalypse.",
+    slice_of_life: "Warm everyday life — small meaningful moments without a grand plot.",
+  },
   workspace: {
+    tools: "Workspace tools",
     nav: {
       story: "Story",
+      discovery: "Novel details",
       characters: "Characters",
       relationships: "Relationships",
       world: "World & Lore",
@@ -627,6 +656,15 @@ export const en = {
       planning: "Planning",
       narrative: "Narrative",
       health: "Health & Memory",
+    },
+    discovery: {
+      genresLabel: "Genres",
+      genresHint: "Pick up to {n} — shown on Browse and the novel page.",
+      audienceLabel: "Target audience",
+      audienceNone: "Not set",
+      loadError: "Could not load the novel details. Please retry.",
+      saveError: "The changes could not all be confirmed. Some details may already be saved. Review the values and retry.",
+      forbidden: "Your role in this workspace cannot change these details.",
     },
     research: {
       panel: {
@@ -1057,6 +1095,7 @@ export const en = {
     },
     world: {
       errors: { network: "Could not load. Check your connection and retry." },
+      tabs: { entities: "Entities", facts: "Canon facts" },
       entities: {
         title: "Story entities",
         new: "New entity",
@@ -1084,6 +1123,7 @@ export const en = {
         form: {
           kind: "Kind",
           name: "Name",
+          namePlaceholder: "Entity name",
           key: "Key (optional)",
           keyHint: "Lowercase letters, digits and dashes, up to 64 characters.",
           keyInvalid: "The key must match ^[a-z0-9][a-z0-9-]{0,63}$.",
@@ -1118,13 +1158,16 @@ export const en = {
         entitiesLoading: "Loading entities…",
         entityRequired: "Choose an entity.",
         predicate: "Predicate",
+        predicatePlaceholder: "e.g. wields",
         predicateRequired: "A predicate is required.",
         objectKind: "Object",
         objectKindText: "Text",
         objectKindEntity: "Entity",
         objectEntity: "Object entity",
+        objectTextPlaceholder: "e.g. the old compass",
         objectRequired: "Provide a text object or an entity object.",
         statement: "Statement (optional)",
+        statementPlaceholder: "Optional — the full claim as it should read",
         validFromChapter: "Valid from chapter (optional)",
         validUntilChapter: "Valid until chapter (optional)",
         windowInvalid: "Valid-until must not be before valid-from.",
@@ -1133,7 +1176,9 @@ export const en = {
         citationKindChapter: "Chapter version",
         citationKindReference: "Reference version",
         versionId: "Version ID",
+        versionIdPlaceholder: "Paste the version ID",
         quote: "Quote",
+        quotePlaceholder: "Copy the exact cited sentence",
         quoteHint: "The quote must match the stored content exactly — copy it verbatim.",
         start: "Start",
         end: "End",
@@ -1153,6 +1198,7 @@ export const en = {
         network: "Could not load. Check your connection and retry.",
         INVALID_INPUT: "Some fields are invalid.",
       },
+      tabs: { facts: "Facts", proposals: "Proposals", applications: "Applications" },
       proposals: {
         title: "Proposals",
         empty: "No proposals.",
@@ -1177,6 +1223,7 @@ export const en = {
       applications: {
         title: "Applications",
         applicationId: "Application ID",
+        applicationIdPlaceholder: "Paste an application ID",
         load: "Load",
         loading: "Loading…",
         noList: "Applications have no list view — paste an application ID to review it.",
@@ -1205,6 +1252,7 @@ export const en = {
         hiddenFromReaders: "Hidden from readers",
         form: {
           description: "Description",
+          descriptionPlaceholder: "What happened",
           chapterId: "Chapter ID (optional)",
           availableFromChapter: "Available from chapter (optional)",
           chapterHint: "0-based. Omitted means not reader-visible.",
@@ -1219,6 +1267,7 @@ export const en = {
         hiddenFromReaders: "Hidden from readers",
         form: {
           description: "Description",
+          descriptionPlaceholder: "What this entry records",
           availableFromChapter: "Available from chapter (optional)",
           chapterHint: "0-based. Omitted means not reader-visible.",
           chapterInvalid: "Enter a non-negative integer.",
@@ -1297,7 +1346,7 @@ export const en = {
         delete: "Delete",
         deleteConfirmTitle: "Delete synopsis",
         deleteConfirmBody: "Delete this synopsis? This cannot be undone.",
-        form: { content: "Content" },
+        form: { content: "Content", contentPlaceholder: "Write the synopsis" },
       },
       sagas: {
         create: "New saga",
@@ -1355,6 +1404,7 @@ export const en = {
         },
         form: {
           content: "Content (JSON)",
+          contentPlaceholder: '{"acts": [...]}',
           contentHint: "Any JSON object — stored verbatim.",
           contentInvalid: "Content must be valid JSON, not null.",
           note: "Note (optional)",
@@ -1368,6 +1418,7 @@ export const en = {
         saved: "Horizon saved.",
         form: {
           policy: "Policy (JSON)",
+          policyPlaceholder: '{"maxDetailedChapters": 5}',
           policyHint: "Any JSON value — stored verbatim.",
           policyInvalid: "Policy must be valid JSON.",
         },

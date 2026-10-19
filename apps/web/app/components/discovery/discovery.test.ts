@@ -90,6 +90,15 @@ describe("NovelCard", () => {
     });
     expect(w.find('[aria-label="Genres"]').exists()).toBe(false);
   });
+
+  it("renders the audience rating when no genres are set", () => {
+    const w = mount(NovelCard, {
+      props: { novel: { ...novel, genres: [], audience: "adult" } },
+      global: { stubs },
+    });
+    expect(w.text()).toContain("audience.adult");
+    w.unmount();
+  });
 });
 
 describe("GenreChips", () => {

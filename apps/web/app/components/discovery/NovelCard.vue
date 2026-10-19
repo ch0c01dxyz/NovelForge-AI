@@ -15,6 +15,8 @@ export interface NovelCardNovel {
   slug: string;
   author: { id: string; displayName: string };
   genres: string[];
+  /** Reader-facing content rating; null = not set, renders nothing. */
+  audience?: string | null;
   publishedChapterCount: number;
   firstPublishedAt: string;
   lastPublishedAt: string;
@@ -41,7 +43,7 @@ function formatDate(iso: string): string {
     <p class="mt-1 text-[13px] text-nf-text-dim">
       {{ t("reader.byAuthor") }} {{ props.novel.author.displayName }}
     </p>
-    <div v-if="props.novel.genres.length > 0" class="mt-3 flex flex-wrap gap-1.5" aria-label="Genres">
+    <div v-if="props.novel.genres.length > 0 || props.novel.audience" class="mt-3 flex flex-wrap gap-1.5" aria-label="Genres">
       <span
         v-for="g in props.novel.genres"
         :key="g"
@@ -49,6 +51,11 @@ function formatDate(iso: string): string {
       >
         {{ t(`genre.${g}`) }}
       </span>
+      <span
+        v-if="props.novel.audience"
+        class="rounded-full border border-nf-warn/40 px-2.5 py-0.5 text-[12px] text-nf-warn"
+        >{{ t(`audience.${props.novel.audience}`) }}</span
+      >
     </div>
     <p class="mt-3 text-[13px] tabular-nums text-nf-text-dim">
       {{ t("reader.chapterCount", { n: props.novel.publishedChapterCount }) }}

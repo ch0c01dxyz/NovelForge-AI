@@ -871,3 +871,82 @@ describe("GET /api/public/search on sanitized-HTML chapter content (NF-WF-017C)"
     expect(hits.length).toBe(1);
   });
 });
+
+/** Set audience via the member route (exercises the Zod contract). */
+async function setAudience(
+  cookie: string | undefined,
+  workspaceId: string,
+  novelId: string,
+  audience: string | null,
+) {
+  return api(
+    "PATCH",
+    `/api/workspaces/${workspaceId}/novels/${novelId}/audience`,
+    cookie,
+    { audience },
+  );
+}
+
+describe("PATCH /api/workspaces/:workspaceId/novels/:novelId/audience (member)", () => {
+  it("sets, changes, and clears the audience", async () => {
+    const owner = await seedUser("owner2@example.com");
+    const ws = await seedWorkspace(owner.userId, "ws-aud");
+    const novelId = await seedNovel(owner.userId, ws, "aud-novel");
+
+    const set = await setAudience(owner.cookie, ws, novelId, "teen");
+    expect(set.status).toBe(200);
+    expect(set.json["audience"]).toBe("teen");
+
+    // Change (the edit path — same route, full replace semantics).
+    const change = await setAudience(owner.cookie, ws, novelId, "adult");
+    expect(change.status).toBe(200);
+    expect(change.json["audience"]).toBe("adult");
+
+    const cleared = await setAudience(owner.cookie, ws, novelId, null);
+    expect(cleared.status).toBe(200);
+    expect(cleared.json["audience"]).toBeNull();
+  });
+
+  it("rejects unknown values with 400", async () => {
+    const owner = await seedUser("owner3@example.com");
+    const ws = await seedWorkspace(owner.userId, "ws-aud2");
+    const novelId = await seedNovel(owner.userId, ws, "aud2");
+    const bad = await setAudience(owner.cookie, ws, novelId, "everyone");
+    expect(bad.status).toBe(400);
+    expect(bad.json["error"]).toBe("INVALID_INPUT");
+  });
+
+  it("requires auth (401), capability (403), membership (404)", async () => {
+    const owner = await seedUser("owner4@example.com");
+    const ws = await seedWorkspace(owner.userId, "ws-aud3");
+    const novelId = await seedNovel(owner.userId, ws, "aud3");
+    const viewer = await seedViewerMember(ws);
+
+    const noAuth = await setAudience(undefined, ws, novelId, "teen");
+    expect(noAuth.status).toBe(401);
+    expect(noAuth.json["error"]).toBe("UNAUTHENTICATED");
+
+    const viewerRes = await setAudience(viewer.cookie, ws, novelId, "teen");
+    expect(viewerRes.status).toBe(403);
+    expect(viewerRes.json["error"]).toBe("FORBIDDEN");
+
+    const outsider = await seedUser("outsider-aud@example.com");
+    const outsiderRes = await setAudience(outsider.cookie, ws, novelId, "teen");
+    expect(outsiderRes.status).toBe(404);
+    expect(outsiderRes.json["error"]).toBe("NOT_FOUND");
+  });
+
+  it("flows the stored audience into the public listing payload", async () => {
+    const owner = await seedUser("owner5@example.com");
+    const ws = await seedWorkspace(owner.userId, "ws-aud4");
+    const { novelId } = await seedPublishedNovel(owner, ws, "aud-pub", "Audience content.");
+    await setAudience(owner.cookie, ws, novelId, "mature");
+
+    const res = await api("GET", "/api/public/novels");
+    expect(res.status).toBe(200);
+    const novel = (res.json["novels"] as Array<{ slug: string; audience: string | null }>).find(
+      (n) => n.slug === "aud-pub",
+    );
+    expect(novel?.audience).toBe("mature");
+  });
+});

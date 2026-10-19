@@ -1,5 +1,50 @@
 # Current Project State
 
+## Authorized combined publication — 2026-10-19
+
+The author explicitly authorized commit and push of NF-WF-058 and all other
+current changes. The included discovery slice adds author-managed genres and
+nullable teen/mature/adult audience, genre tooltips and additional en/id copy.
+Independent review found and verified repairs for pending metadata-save races
+and hidden audience-only badges. API3files/46tests and affected web2files/16tests
+PASS; API/ai-services/web typechecks and global/scoped lint PASS. Actual isolated
+API/browser verified UI write/read-back and public audience-only rendering,
+without changing the author's live novel. Final publication checks and Git
+identity are recorded in the task and Engram handoff.
+
+The Audience migration is additive and was verified on dedicated databases.
+Reverting application code can leave the nullable column/type in place;
+dropping them would discard ratings and is not part of this publication.
+Private tooling, screenshots, backups and raw output remain Git-ignored.
+
+Final combined checks: full web100files/642tests PASS, API3files/46tests PASS,
+final Nuxt production build PASS, and both independent source reviews APPROVE.
+The transient Engram hook timeout recovered through a normal attributed retry;
+checkpoint416 saved and read back. The combined30-file change is ready for the
+explicitly authorized commit/push; Git and final Engram handoff own its identity.
+
+## Reference design restoration — 2026-10-19
+
+The author explicitly selected `docs/design/writer-workspace/index.html` over
+the Monokai redesign. NF-WF-058 restores its stone/orange surfaces, typography,
+compact controls, subtle borders and desktop editor proportions throughout the
+application. Shared form/table/dialog/dropdown/toast states, author cards,
+supporting-page headers and narrow writer navigation are implemented.
+Pre-existing discovery/audience changes remain preserved and separate.
+
+Independent source review APPROVE. Real isolated API/browser verification
+covered15desktop and15narrow route families,5admin tabs, gateway health toast,
+EN/ID390px editor panels, focus/Escape, reduced motion and corrected dropdown
+bounds at320/390/768px. Full web638passes plus final focused4passes after a
+test-harness correction; typecheck/scoped lint and final production build pass. See
+`tasks/NF-WF-058-reference-design-restoration.md` for exact evidence and limits.
+
+OpenDesign MCP connection was recovered and the actual original/companion
+bundles retrieved. The commissioned refinement failed at a provider usage
+limit after producing usable artifacts; no successful run is claimed.
+The source reference is unchanged. Live data preserved, including the author's
+new novel; no reset, commit, push or deployment in this task.
+
 ## Final Monokai/workspace review and verification — 2026-10-18
 
 The author authorized inspection, concrete fixes, then commit/push of current
@@ -108,11 +153,16 @@ opener button.
 
 Environment note: the stale root `.env` (`DATABASE_URL` → 5432 with invalid
 password, flagged "may be stale" in the NF056 prompt) was confirmed broken;
-the dev API now runs from this session (`nf-api-3000-v4`, pid 10476,
+the dev API now runs from this session (`nf-api-3000-v6`, pid 46988,
 :3000) against `nf-pg-5433/novelforge_acceptance_050b` — the historical
 working database — with credentials taken privately from the container
 definition. The author's previous API process (started before the workspace
 routes existed) was stopped to load the new code; web dev server untouched.
+Ops follow-up: after the audience column shipped, the API had to be
+restarted once more (v6) because the previously loaded Prisma client predated
+`prisma generate` — every novel `findUnique` 500'd on the unknown
+`novels.audience` field until the regenerated client was loaded
+(`tenant-isolation` 7/7 re-run as proof).
 
 Follow-up (same day): `NewNovelWizard` now renders as a modal (same
 backdrop/Escape/focus pattern as the workspace manager dialog); Escape is
@@ -122,6 +172,46 @@ localized label + close). Live-browser proof of this modal is gated by the
 demo-session cleanup above (no retained real-account credential) — same
 limit class as GAP-126; the wrapper is identical to the live-verified
 workspace manager modal.
+
+## Novel genres + target audience (author-set, reader-facing) — implemented, NOT committed — 2026-10-18
+
+Author follow-up: genre and target-audience management for novels. The
+genre backend existed (NF-WF-014 PATCH `/genres`) but had no author UI;
+audience did not exist at all.
+
+- Schema: `Audience` enum (`teen`/`mature`/`adult`) + nullable
+  `novels.audience`; migration
+  `20261018_novel_audience/migration.sql` (additive, idempotent-guarded;
+  NULL = unset, renders nowhere). Prisma client regenerated.
+- API: `PATCH /api/workspaces/:ws/novels/:n/audience`
+  (`novel:update`; null clears; unknown value 400; 403/404 per RBAC via the
+  shared gate) + `setNovelAudience` in the public-discovery services;
+  `audience` flows into the anonymous listing payload (`DiscoveryNovel`);
+  `getNovel` now returns `genres` + `audience` to members.
+- Web: workspace drawer gains a "Novel details" (`discovery`) panel —
+  `NovelDiscoveryEditor.vue`: 18 canonical genre chips (max 5, cap
+  disables unselected chips), audience select (incl. "Not set" to clear),
+  full-replace save through both PATCH routes (so edit = same flow as
+  add), 403/400 mapped to en/id copy, saved-state timer cleaned up on
+  unmount; `NovelCard` renders the audience label beside genres.
+
+Verification: `public-discovery.test.ts` 22/22 (5 new audience tests:
+set/change/clear, invalid 400, 401/403/404, public payload flow; migration
+applies via the suite's fresh-DB `migrate deploy`), editor component tests
+4/4, author-home 16/16 (wizard modal), `prisma validate` clean, vue-tsc +
+tsc exit 0, ESLint 0 errors on changed files. Limits: browser walk-through
+of the editor still gated by GAP-126 (no retained real-account credential);
+audience is set-only for now (no reader-side filter).
+
+Follow-up (same day, author-reported): 17 missing en/id keys under
+`workspace.{world,canon,timeline,planning}` (tab labels, form placeholders
+for fact editor/entity form/timeline forms/synopses/outline
+versions/horizon, canon application ID placeholder) added to both locales;
+locale parity now differs only by `review.showFullHash`, which is a
+deliberate en-fallback fixture (comment in id.ts) and stays. Two typecheck
+errors from the audience slice fixed (NovelView completeness in
+`listNovels`/`listNovelsForUser`; VTU `exists()` assertion). Author-home +
+useLocale + editor suites 38/38 after the additions.
 
 ## NF-WF-056 Monokai Pro UI polish — implemented, verification complete, NOT committed — 2026-10-18
 

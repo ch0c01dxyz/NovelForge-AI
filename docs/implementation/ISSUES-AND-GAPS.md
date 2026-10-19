@@ -1,5 +1,98 @@
 # Technical Issues and Implementation Gaps
 
+## Combined publication Engram hook timeout — 2026-10-19
+
+The runtime-confirmed session attempted a publication-phase checkpoint, but the
+PreToolUse hook blocked mem_save with `engram.exe ETIMEDOUT`. No save is claimed.
+Owner: current publication task. Continue independent Git verification using
+the task/CURRENT fallback; retry the normal attributed summary before handoff.
+Do not change hooks, session identity or registration to bypass this failure.
+
+Resolution — normal attributed retry succeeded as checkpoint416 and read-back
+confirmed the saved content. No identity, hook or registration changes were made.
+
+## Discovery publication review — 2026-10-19
+
+OPEN; owner: current authorized commit/push review. Independent review found
+NovelDiscoveryEditor allows edits while two PATCHes are pending, then replaces
+those edits with responses. Fail-fast Promise.all also unlocks Save while a
+sibling request can still write, allowing overlapping retries. Disable editing
+while saving and await both settlements; show an honest partial-save error.
+NovelCard also hides valid audience-only ratings when no genres are set.
+Fix the wrapper condition and add delayed-response and audience-only regressions
+before publication. Backend authorization and additive nullable migration had
+no independent-review blocker; current disposable-DB checks remain required.
+
+Resolution — CLOSED after independent re-review APPROVE. Both fieldsets and
+handlers lock while saving; allSettled waits for both PATCHes before unlocking,
+and en/id error copy acknowledges possible partial persistence. Audience-only
+cards render their rating. Focused2files/16tests PASS, API3files/46tests PASS on
+dedicated scratch databases with the additive migration. Actual author UI/API
+saved genres/audience and read them back, then cleared genres and verified the
+remaining Adult badge on public Browse. No browser JS errors; live counts
+unchanged. API/ai-services/web typechecks and lint PASS. The pending-save
+regressions use controlled delayed component dependencies; they are separate
+from actual API/browser evidence. Private receipts: .nf-artifacts/nf058/.
+
+## NF-WF-058 — Reference mismatch and OpenDesign connection — 2026-10-18
+
+OPEN. The author rejects the Monokai result and selects the original writer
+workspace HTML as the exact design reference. Current bright global boundaries,
+purple accent and inconsistent control states diverge from it. Owner: NF-WF-058.
+Restore the reference system across all UI surfaces with rendered verification.
+OpenDesign MCP get_project and list_agents currently return `Transport closed`.
+Investigate the installed MCP transport; retain the supplied local artifact as
+source evidence, and do not claim a successful design run without a receipt.
+Closure requires actual MCP evidence plus implemented and inspected UI coverage.
+
+Independent NF-WF-058 review found two integration defects before completion:
+closing the workspace dropdown after a keyboard toggle leaves focus hidden;
+the menu button selector overrides the desktop-only generation-toggle hiding.
+Restore trigger focus for same-page actions that retain focus inside the menu,
+and use the same scoped selector for responsive visibility. Verify both in the
+component regression and actual browser before closure.
+
+Verification tooling notes: root has no tsx dependency; Node 24 needs
+`--experimental-transform-types` for existing TypeScript parameter properties.
+The first browser attempt used a nonexistent `ws-create-name` selector; the
+actual existing selector is `ws-new-name`. Correct the harness and rerun;
+neither startup/locator failure is product acceptance evidence.
+
+Actual browser verification found Escape swallowed by the existing closed
+WorkspaceDrawer document capture listener before ActionMenu could receive it.
+Guard that listener with the drawer's open state; regression must prove Escape
+reaches another surface while the drawer is mounted but closed. OpenDesign
+run 7fd95c1e-2d0e-4ebf-bd29-f037156b8f69 ended failed at the provider usage limit
+after writing reference-system.html and a preview screenshot. Those are partial
+design artifacts, not a successful run or final generated implementation notes.
+
+Subsequent MCP bundle read also recovered implementation-notes.md; it is an
+actual generated artifact, while the run still has terminal status `failed`.
+The final web suite initially had638passes/1failure because the new drawer
+unit test omitted Nuxt locale setup (`useCookie is not defined`). Isolate its
+label dependency using the repository's existing component-test pattern;
+real browser locale/focus evidence remains separate.
+
+Narrow-screen sweep: all15page families fit390px, but the new dropdown panel
+extended96px beyond the left viewport edge at320/390px because desktop right
+alignment was retained after header wrapping. Anchor the dropdown to its trigger's
+left edge below640px and recheck actual panel bounds at320/390/768px. This is a
+rendered finding; document scrollWidth alone did not detect left-side clipping.
+
+Resolution — 2026-10-19: implementation and integration defects CLOSED with
+independent source approval, real browser15desktop/15narrow route coverage,
+final320/390/768px dropdown geometry and focused4tests PASS. Actual MCP access
+was recovered without host config changes. The refinement run's provider
+usage-limit failure remains a documented tooling limitation; recovered HTML,
+notes and preview are usable artifacts, not evidence of run success. See
+NF-WF-058 for scope, preserved live data and verification boundaries.
+
+Report tooling: the first semantic report validation correctly refused UI PASS
+without an explicitly observed screenshot entry. Added the actually inspected
+final menu screenshot and hash; semantic validation now passes. Python jsonschema
+is absent on this host; use the existing installed AJV8 Draft2020 validator for
+structural validation, without installing packages or weakening the schema.
+
 ## Workspace management final review blockers — 2026-10-18
 
 Owner: current workspace-management review. Independent source review found

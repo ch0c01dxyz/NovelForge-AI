@@ -14,6 +14,9 @@
  * apply bar. Every surface drives the real NF-WF-004/005/006 backend.
  */
 import { shallowRef } from "vue";
+import ActionMenu from "../../../../../components/ui/ActionMenu.vue";
+const chapterNavigationOpen = ref(false);
+const generationRailOpen = ref(false);
 import { useChapterGeneration } from "../../../../../composables/useChapterGeneration";
 import { useWorkflowRuns, type RunView } from "../../../../../composables/useWorkflowRuns";
 import { useLocale } from "../../../../../composables/useLocale";
@@ -55,6 +58,7 @@ import ImportDialog from "../../../../../components/import-export/ImportDialog.v
 import ExportPicker from "../../../../../components/import-export/ExportPicker.vue";
 // ---------- NF-WF-016 workspace panels ----------
 import WorkspaceDrawer from "../../../../../components/workspace/WorkspaceDrawer.vue";
+import NovelDiscoveryEditor from "../../../../../components/workspace/NovelDiscoveryEditor.vue";
 import CharacterPanel from "../../../../../components/workspace/CharacterPanel.vue";
 import RelationshipPanel from "../../../../../components/workspace/RelationshipPanel.vue";
 import WorldPanel from "../../../../../components/workspace/WorldPanel.vue";
@@ -725,6 +729,7 @@ async function onMoveScene(payload: {
 // header outline button opens planning. No AI calls here — the panels are
 // deterministic authoring UI over the frozen routes.
 type WorkspacePanelKey =
+  | "discovery"
   | "characters"
   | "relationships"
   | "world"
@@ -745,6 +750,7 @@ async function onImported() {
 }
 
 const workspaceNavItems: { key: WorkspacePanelKey; labelKey: string }[] = [
+  { key: "discovery", labelKey: "workspace.nav.discovery" },
   { key: "characters", labelKey: "workspace.nav.characters" },
   { key: "relationships", labelKey: "workspace.nav.relationships" },
   { key: "world", labelKey: "workspace.nav.world" },
@@ -858,9 +864,9 @@ async function publish() {
 </script>
 
 <template>
-  <div class="grid h-dvh grid-rows-[52px_1fr_30px] bg-nf-bg-0 text-nf-text">
+  <div class="nf-writer-shell grid h-dvh grid-rows-[52px_1fr_30px] bg-nf-bg-0 text-nf-text">
     <header
-      class="flex items-center gap-5 border-b border-nf-border bg-nf-bg-1 px-5 shadow-nf-sm"
+      class="nf-writer-header flex items-center gap-3.5 border-b border-nf-border bg-nf-bg-1 px-5 shadow-nf-sm"
     >
       <NuxtLink
         to="/"
@@ -872,16 +878,22 @@ async function publish() {
         >
         NovelForge
       </NuxtLink>
-      <div class="flex-1" />
+      <span class="hidden min-w-0 flex-1 truncate border-l border-nf-border pl-4 text-[13px] text-nf-text-dim md:block">{{ activeChapter?.title }}</span>
+      <div class="flex-1 md:hidden" />
+      <button class="nf-chapters-toggle rounded-lg border border-nf-border-strong px-3 py-1.5 text-[13px]" :aria-expanded="chapterNavigationOpen" aria-controls="writer-chapters" @click="chapterNavigationOpen = !chapterNavigationOpen">{{ t("chapters.title") }}</button>
       <!-- NF-WF-016: the header outline button opens the planning panel
            (design mockup outline-btn :601). -->
       <button
         class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
         :aria-label="t('workspace.nav.planning')"
+        data-writer-action="planning"
         @click="openWorkspacePanel('planning')"
       >
         {{ t("workspace.nav.planning") }}
       </button>
+      <ActionMenu :label="t('workspace.tools')">
+      <button class="nf-mobile-action text-nf-text-dim" @click="openWorkspacePanel('planning')">{{ t("workspace.nav.planning") }}</button>
+      <button class="nf-mobile-action text-nf-text-dim" :disabled="saveState === 'saved'" @click="saveNow">{{ t("common.save") }}</button>
       <!-- NF-WF-018A: AI Studio link — hidden for VIEWER (role-gated,
            progressive enhancement; the server enforces). -->
       <NuxtLink
@@ -943,10 +955,13 @@ async function publish() {
       >
         {{ t("endgame.title") }}
       </NuxtLink>
+      <button class="nf-generation-toggle text-nf-text-dim" :aria-expanded="generationRailOpen" aria-controls="writer-generation" @click="generationRailOpen = !generationRailOpen">{{ t("generation.title") }}</button>
+      </ActionMenu>
       <div
         class="flex items-center gap-1 rounded-lg border border-nf-border p-0.5 text-[12px]"
         role="group"
         aria-label="Language"
+        data-writer-action="language"
       >
         <button
           v-for="l in (['en', 'id'] as const)"
@@ -962,6 +977,7 @@ async function publish() {
       <button
         class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus disabled:opacity-50"
         :disabled="saveState === 'saved'"
+        data-writer-action="save"
         @click="saveNow"
       >
         {{ t("common.save") }}
@@ -976,9 +992,11 @@ async function publish() {
     </header>
 
     <div
-      class="grid min-h-0 grid-cols-1 lg:grid-cols-[264px_1fr] xl:grid-cols-[264px_1fr_340px]"
+      class="nf-writer-grid grid min-h-0 grid-cols-1 lg:grid-cols-[264px_1fr] xl:grid-cols-[264px_1fr_312px]"
+      :data-chapters-open="chapterNavigationOpen"
+      :data-generation-open="generationRailOpen"
     >
-      <nav class="hidden overflow-y-auto border-r border-nf-border bg-nf-bg-1 p-4 lg:block">
+      <nav id="writer-chapters" :aria-label="t('chapters.title')" class="nf-writer-chapters hidden overflow-y-auto border-r border-nf-border bg-nf-bg-1 px-2.5 py-4 lg:block">
         <div class="mb-2 flex items-center justify-between px-2.5 pb-2">
           <span
             class="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint"
@@ -1139,7 +1157,7 @@ async function publish() {
             />
           </div>
 
-          <div v-if="activeChapter" class="mx-auto max-w-[700px] px-6 py-10 lg:px-10">
+          <div v-if="activeChapter" class="mx-auto max-w-[700px] px-6 pb-24 pt-[52px] lg:px-10">
             <div
               class="mb-2.5 flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-nf-accent-hi"
             >
@@ -1244,7 +1262,9 @@ async function publish() {
       </main>
 
       <aside
-        class="hidden overflow-y-auto border-l border-nf-border bg-nf-bg-1 px-4 py-5 xl:block"
+        id="writer-generation"
+        :aria-label="t('generation.title')"
+        class="nf-writer-generation hidden overflow-y-auto border-l border-nf-border bg-nf-bg-1 px-4 py-5 xl:block"
       >
         <GenerationPanel
           ref="generationPanel"
@@ -1348,6 +1368,11 @@ async function publish() {
       />
       <CanonReviewPanel
         v-else-if="workspacePanel === 'canon'"
+        :workspace-id="workspaceId"
+        :novel-id="novelId"
+      />
+      <NovelDiscoveryEditor
+        v-else-if="workspacePanel === 'discovery'"
         :workspace-id="workspaceId"
         :novel-id="novelId"
       />

@@ -62,6 +62,7 @@ const panelRef = ref<HTMLElement | null>(null);
 const opener = ref<HTMLElement | null>(null);
 
 function onKeydown(e: KeyboardEvent) {
+  if (!props.open) return;
   if (e.key === "Escape") {
     e.stopPropagation();
     emit("close");

@@ -17,6 +17,8 @@ import {
   ForbiddenError,
   NotFoundError,
   WorkspaceDeleteError,
+  InvalidNovelCoverError,
+  MAX_COVER_BASE64_LENGTH,
   type PlatformServices,
 } from "@novelforge/ai-services";
 import { InvalidDefinitionError } from "./services/definitions.ts";
@@ -105,6 +107,9 @@ export async function registerPlatformRoutes(
 ): Promise<void> {
   // Map service-layer errors to HTTP once, for all platform routes.
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof InvalidNovelCoverError) {
+      return reply.code(400).send({ error: error.code, message: error.message });
+    }
     // Two authorization axes (ADR-0005): workspace capabilities and
     // platform administration. Both deny with 403, so both must be
     // mapped here — an unmapped one would surface as a 500.
@@ -423,6 +428,31 @@ export async function registerPlatformRoutes(
   );
 
   // --- Novels ---
+  app.put("/api/workspaces/:workspaceId/novels/:novelId/cover", { bodyLimit: 750_000 }, async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = novelParams.safeParse(request.params);
+    const body = z.object({
+      mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+      dataBase64: z.string().min(1).max(MAX_COVER_BASE64_LENGTH),
+      sourceName: z.string().min(1).max(200).optional(),
+    }).strict().safeParse(request.body);
+    if (!params.success || !body.success) return reply.code(400).send({ error: "INVALID_NOVEL_COVER", message: "invalid cover request" });
+    return services.putNovelCover({ actorUserId, ...params.data, ...body.data });
+  });
+
+  app.get("/api/workspaces/:workspaceId/novels/:novelId/cover", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = novelParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "BAD_REQUEST" });
+    const cover = await services.getNovelCover(actorUserId, params.data.workspaceId, params.data.novelId);
+    return reply.type(cover.mimeType)
+      .header("X-Content-Type-Options", "nosniff")
+      .header("Cache-Control", "private, no-store")
+      .header("Content-Disposition", "inline")
+      .send(Buffer.from(cover.dataBase64, "base64"));
+  });
   app.get("/api/novels", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;

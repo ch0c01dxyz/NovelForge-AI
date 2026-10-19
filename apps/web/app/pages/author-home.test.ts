@@ -59,6 +59,18 @@ async function fillNew(w: VueWrapper) {
 }
 
 describe("author home and creation", () => {
+  it("renders the authenticated cover URL without exposing image data and keeps the title fallback", async () => {
+    const coverUrl = "/api/workspaces/w/novels/n/cover?v=hash";
+    api.mockImplementation(async path => path === "/auth/session" ? { userId: "a", platformRole: null } : path === "/novels" ? [
+      { id: "n", workspaceId: "w", title: "Covered novel", status: "DRAFT", coverUrl },
+      { id: "m", workspaceId: "w", title: "Uncovered novel", status: "DRAFT" },
+    ] : []);
+    const w = mounted(Home);
+    await flushPromises();
+    expect(w.get("img").attributes()).toMatchObject({ src: coverUrl, alt: "", loading: "lazy" });
+    expect(w.findAll("img")).toHaveLength(1);
+    expect(w.get('a[href="/workspaces/w/novels/m"]').text()).toContain("U");
+  });
   it.each(["en", "id"] as const)(
     "shows the localized CTA and actual-role admin link in %s",
     async (locale) => {

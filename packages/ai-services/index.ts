@@ -174,3 +174,4 @@ export {
   type ReviewGateTx,
   type ProofCompletenessResult,
 } from "./src/final-text-review-gate.ts";
+export { InvalidNovelCoverError, MAX_COVER_BASE64_LENGTH } from "./src/novel-cover.ts";

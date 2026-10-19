@@ -51,6 +51,7 @@ const loading = ref(true);
 const loadError = ref(false);
 const genres = ref<string[]>([]);
 const audience = ref<string | null>(null);
+const coverUrl = ref<string | null>(null);
 const saveState = ref<"idle" | "saving" | "saved">("idle");
 const errorKey = ref("");
 let savedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -60,9 +61,11 @@ onMounted(async () => {
     const novel = await api<{
       genres: string[];
       audience: string | null;
+      coverUrl?: string;
     }>(base.value);
     genres.value = novel.genres ?? [];
     audience.value = novel.audience ?? null;
+    coverUrl.value = novel.coverUrl ?? null;
   } catch {
     loadError.value = true;
   } finally {
@@ -138,6 +141,7 @@ onUnmounted(() => {
       </button>
     </div>
     <template v-else>
+      <img v-if="coverUrl" :src="coverUrl" alt="" class="mb-4 aspect-[2/3] w-32 rounded-lg border border-nf-border object-cover" />
       <fieldset :disabled="saveState === 'saving'">
         <legend class="text-[13px] font-semibold text-nf-text">
           {{ t("workspace.discovery.genresLabel") }}

@@ -10,6 +10,7 @@ interface Novel {
   title: string;
   slug: string;
   status: string;
+  coverUrl?: string;
 }
 const { api } = useApi();
 const { t, locale, setLocale } = useLocale();
@@ -186,7 +187,8 @@ async function signOut() {
           <NuxtLink
             :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
             class="nf-library-card flex h-full flex-col items-start gap-5 rounded-xl border border-nf-border bg-nf-bg-1 p-5 hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
-            ><span class="grid size-9 place-items-center rounded-lg border border-nf-border-strong bg-nf-bg-0 font-nf-literary text-lg text-nf-text-dim" aria-hidden="true">{{ n.title.slice(0, 1) }}</span>
+            ><img v-if="n.coverUrl" :src="n.coverUrl" alt="" class="aspect-[2/3] w-24 rounded-lg border border-nf-border object-cover" loading="lazy" />
+            <span v-else class="grid size-9 place-items-center rounded-lg border border-nf-border-strong bg-nf-bg-0 font-nf-literary text-lg text-nf-text-dim" aria-hidden="true">{{ n.title.slice(0, 1) }}</span>
             <span class="min-w-0 break-words font-nf-literary text-xl font-semibold">{{
               n.title
             }}</span

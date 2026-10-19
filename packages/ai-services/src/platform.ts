@@ -15,6 +15,7 @@ import {
   type Role,
 } from "@novelforge/auth/authorization";
 import type { AuditService } from "./audit.ts";
+import { validateNovelCover, novelCoverUrl, type NovelCover } from "./novel-cover.ts";
 
 export class NotFoundError extends Error {
   readonly code = "NOT_FOUND" as const;
@@ -91,6 +92,9 @@ export function isExclusionViolation(e: unknown): boolean {
 }
 
 export interface PlatformServices {
+  putNovelCover(input: { actorUserId: string; workspaceId: string; novelId: string;
+    mimeType: string; dataBase64: string; sourceName?: string }): Promise<{ coverUrl: string; sha256: string }>;
+  getNovelCover(actorUserId: string, workspaceId: string, novelId: string): Promise<NovelCover>;
   listWorkspaces(actorUserId: string): Promise<WorkspaceListView[]>;
 
   createWorkspace(input: {
@@ -197,6 +201,7 @@ export interface NovelView {
   genres: string[];
   /** Reader-facing content rating; null = not set. */
   audience: string | null;
+  coverUrl?: string;
 }
 
 export function createPlatformServices(deps: {
@@ -243,7 +248,55 @@ export function createPlatformServices(deps: {
     return novel;
   }
 
+  async function coverUrls<T extends { id: string; workspaceId: string }>(novels: T[]): Promise<(T & { coverUrl?: string })[]> {
+    if (!novels.length) return novels;
+    // Select only the hash: library responses never load the image payload.
+    const hashes = await db.$queryRaw<{ novelId: string; sha256: string | null }[]>`
+      SELECT novel_id AS "novelId", settings->'cover'->>'sha256' AS sha256
+      FROM novel_settings WHERE novel_id = ANY(${novels.map(n => n.id)}::uuid[])`;
+    const byId = new Map(hashes.map(h => [h.novelId, h.sha256]));
+    return novels.map(n => {
+      const hash = byId.get(n.id);
+      return { ...n, ...(hash && /^[a-f0-9]{64}$/.test(hash) ? { coverUrl: novelCoverUrl(n.workspaceId, n.id, hash) } : {}) };
+    });
+  }
+
   return {
+    async putNovelCover(input) {
+      const { actorUserId, workspaceId, novelId } = input;
+      await requireCapabilityIn(actorUserId, workspaceId, "novel:update");
+      await requireNovelInWorkspace(novelId, workspaceId);
+      const cover = validateNovelCover(input);
+      await db.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId}::uuid FOR SHARE`;
+        await tx.$queryRaw`SELECT id FROM novels WHERE id = ${novelId}::uuid FOR NO KEY UPDATE`;
+        const member = await tx.membership.findUnique({ where: { workspaceId_userId: { workspaceId, userId: actorUserId } } });
+        if (!member) throw new NotFoundError("workspace");
+        requireCapability(member.role, "novel:update");
+        const novel = await tx.novel.findFirst({ where: { id: novelId, workspaceId } });
+        if (!novel) throw new NotFoundError("novel");
+        const row = await tx.novelSettings.findUnique({ where: { novelId } });
+        const base = row?.settings && typeof row.settings === "object" && !Array.isArray(row.settings) ? row.settings : {};
+        const settings = { ...base, cover: { ...cover } };
+        await tx.novelSettings.upsert({ where: { novelId }, create: { novelId, settings }, update: { settings } });
+        const previousCover = base.cover;
+        const previousSha256 = previousCover && typeof previousCover === "object" && !Array.isArray(previousCover) && typeof previousCover.sha256 === "string" ? previousCover.sha256 : null;
+        await tx.auditLog.create({ data: { actorUserId, workspaceId, action: "novel.cover-updated", entityType: "Novel", entityId: novelId,
+          payload: { sha256: cover.sha256, previousSha256, mimeType: cover.mimeType, bytes: Buffer.from(cover.dataBase64, "base64").length } } });
+      });
+      return { coverUrl: novelCoverUrl(workspaceId, novelId, cover.sha256), sha256: cover.sha256 };
+    },
+
+    async getNovelCover(actorUserId, workspaceId, novelId) {
+      await requireCapabilityIn(actorUserId, workspaceId, "novel:read");
+      await requireNovelInWorkspace(novelId, workspaceId);
+      const row = await db.novelSettings.findUnique({ where: { novelId } });
+      const settings = row?.settings;
+      const cover = settings && typeof settings === "object" && !Array.isArray(settings) ? settings.cover : null;
+      if (!cover || typeof cover !== "object" || Array.isArray(cover) || typeof cover.mimeType !== "string" || typeof cover.dataBase64 !== "string") throw new NotFoundError("cover");
+      return validateNovelCover({ mimeType: cover.mimeType, dataBase64: cover.dataBase64 });
+    },
+
     async createWorkspace({ actorUserId, name, slug }) {
       const existing = await db.workspace.findUnique({ where: { slug } });
       if (existing) throw new ConflictError("workspace slug already exists");
@@ -650,7 +703,7 @@ export function createPlatformServices(deps: {
       // the claimed workspace.
       await requireCapabilityIn(actorUserId, workspaceId, "novel:read");
       const novel = await requireNovelInWorkspace(novelId, workspaceId);
-      return {
+      const [view] = await coverUrls([{
         id: novel.id,
         workspaceId: novel.workspaceId,
         title: novel.title,
@@ -658,7 +711,8 @@ export function createPlatformServices(deps: {
         status: novel.status,
         genres: novel.genres,
         audience: novel.audience ?? null,
-      };
+      }]);
+      return view!;
     },
 
     async listNovelsForUser(actorUserId) {
@@ -666,7 +720,7 @@ export function createPlatformServices(deps: {
         where: { userId: actorUserId },
         include: { workspace: { include: { novels: true } } },
       });
-      return memberships.flatMap((m) =>
+      return coverUrls(memberships.flatMap((m) =>
         m.workspace.novels.map((n) => ({
           id: n.id,
           workspaceId: n.workspaceId,
@@ -676,7 +730,7 @@ export function createPlatformServices(deps: {
           genres: n.genres,
           audience: n.audience ?? null,
         })),
-      );
+      ));
     },
 
     async listNovels(actorUserId, workspaceId) {
@@ -685,7 +739,7 @@ export function createPlatformServices(deps: {
         where: { workspaceId },
         orderBy: { createdAt: "asc" },
       });
-      return novels.map((n) => ({
+      return coverUrls(novels.map((n) => ({
         id: n.id,
         workspaceId: n.workspaceId,
         title: n.title,
@@ -693,7 +747,7 @@ export function createPlatformServices(deps: {
         status: n.status,
         genres: n.genres,
         audience: n.audience ?? null,
-      }));
+      })));
     },
   };
 }

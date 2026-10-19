@@ -213,6 +213,68 @@ errors from the audience slice fixed (NovelView completeness in
 `listNovels`/`listNovelsForUser`; VTU `exists()` assertion). Author-home +
 useLocale + editor suites 38/38 after the additions.
 
+## Lore seeding for "Kaisar dari Masa Depan" + consistency review — 2026-10-19
+
+Author-directed content seeding into novel
+`e36d568b` (ws-c, DRAFT) via the real API with a temporary session for the
+author's real account (session row deleted after; harness pattern).
+Created: 5 characters (Don Juan/Juan Cleverton, Sofian Magani, Husein
+Pratama, Ketua Penagih Hutang, Atasan Juan Cleverton), 10 world entities
+(4 LOCATION, 2 ORGANIZATION, 2 ITEM, 2 CONCEPT), 1 saga "Babak 1 —
+Kebangkitan di Maspati" + 9 ordered outline beats (CHAPTER_GROUP interim —
+SCENE/CHAPTER require real chapter/scene links that do not exist yet), 4
+timeline entries, 1 MONOGAMY bond (Don Juan × Sofian), 3 stances (ENEMY ×2,
+ALLY ×1), and a Narrative DNA profile (tone, protagonist, romance, style,
+era/conflict/currency/bureaucracy notes). Throwaway scripts deleted.
+
+Consistency review (author-requested): currency math, names, era, timeline
+vs outline, and bond/stance graph all consistent with the author's
+material. Reported (not auto-fixed): (a) synopsis typo "insyinyur";
+(b) open question — Wajradhara's supreme ruler is called both "Raja"
+("pihak Raja langsung" forming Bhayangkara Surya) and "Sri Maharaja Diraja
+(Kaisar Nusantara)" while the novel title targets "Kaisar"; (c) novel
+genres/audience still unset — recommendation offered, awaiting author pick;
+(d) debt-collector group abstracted as a single "Ketua Penagih Hutang"
+character; (e) canon facts intentionally not created — they require a
+chapter/reference-version citation and the novel has no chapters yet.
+Receipt of this review lives here; single-issue register not needed (no
+product defect).
+
+Author revision round 2 (2026-10-19, applied): (1) synopsis typo fixed —
+"insyinyur" → "insinyur" (delete+recreate; the API has no synopsis update
+route). (2) Naming corrected: "Sri Maharaja Diraja (Kaisar Nusantara)" is
+the Kekaisaran Mahasagara title, not Wajradhara's — Wajradhara is led by a
+Raja (own structure); bureaucracy concept entity renamed to "Struktur
+Pemerintahan Wajradhara & Kekaisaran Mahasagara". (3) Genres set
+{fantasy, high_fantasy, historical, progression_fantasy} + audience
+**adult** (adult scenes appear semi-censored as "adegan dihilangkan").
+(4) Debt-collector abstraction approved. (5) Outline beats enriched
+(proses/kejadian/narasi + in-scene dialogue), dialogue/culture canonized in
+DNA: Dusun Maspati villagers mostly polite (husband-wife respect; ~7/10
+women well-mannered, old culture), other dusuns + the debt collectors
+differ (ENEMY stances; that dusun will be wiped out by the protagonist);
+New lore canonized in characters + DNA: Raja Wajradhara = good-hearted but
+foolish, quick to anger (unlike his predecessor), influenced by the
+Yuwaraja; Yuwaraja = equally foolish, actually neutral/ignorant, tempted by
+imperial spies; BOTH will be killed directly by the protagonist in a
+far-future chapter that auto-triggers once the protagonist's achievements/
+innovations (life + war) mature and he has foiled the spies'/empire's long
+plans. Mahasagara is ruled by a Kaisar Wanita (beautiful, gentle, firm,
+cold-blooded) who will eventually become the protagonist's selir — not
+killed. Aetherion's re-creation is a far-future arc (when protagonist is
+Raja→Kaisar). The boss character appears only in the prologue (elsewhere
+only as memory).
+
+Ops notes: character delete via API failed with an empty-body JSON DELETE
+(Fastify 400) — script fixed to omit content-type/body on DELETE. After
+characters were deleted, the old bond remained empty and was rebuilt on the
+new ids; the mis-scoped bureaucracy entity was deleted and recreated with
+the corrected name. Final state verified in SQL: 8 characters, 18 entities
+(8 CHARACTER mirroring the characters — added so canon facts about them are
+authorable —, 4 LOCATION, 2 ORGANIZATION, 2 ITEM, 2 CONCEPT), 9 outline
+beats, 4 timeline entries, 1 bond, 6 stances, genres + audience set, 0
+lingering sessions.
+
 ## NF-WF-056 Monokai Pro UI polish — implemented, verification complete, NOT committed — 2026-10-18
 
 Global Monokai Pro Classic migration of `apps/web` (44 tracked files

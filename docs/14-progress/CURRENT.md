@@ -1,5 +1,21 @@
 # Current Project State
 
+## CI repair: migration baselines keep the audience migration — 2026-10-19
+
+CI on main had been red since the audience migration landed: the 050A/050B
+scale-migration tests build historical baselines that dropped every
+migration newer than their cutoff, including the independent
+`20261018_novel_audience`, while the HEAD Prisma client reads
+`novels.audience` while seeding — ColumnNotFound on the baseline deploy.
+Fix (commit `fb73668`): both tests keep a KEEP_MIGRATIONS set (independent
+of the cutoff tables) in their temp homes and derive baseline/ledger
+expectations from the live migration set instead of fixed counts (41/42).
+16/16 migration tests PASS locally on the acceptance cluster; web suite
+(41 workspace + 17 author-home) and typecheck/lint PASS. Pushed runs:
+`39264165487` CI success (17m58s, all jobs green) at HEAD `fb73668`; the
+older in-flight run for the pre-fix commit was auto-cancelled by GitHub as
+a higher-priority run superseded it.
+
 ## Health & Memory panel and author-home library revisions — 2026-10-19
 
 Author-requested UI revisions, verified in the real browser (authenticated

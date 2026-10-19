@@ -1,5 +1,162 @@
 # Technical Issues and Implementation Gaps
 
+## Admin model mapping actions and audit boundary — 2026-10-20
+
+IN PROGRESS; owner: workspace-authoring-program routing task1. Add explicit
+internal modelRef identity, authorized eligible-model catalog and row enable/
+disable/removal controls. Removal affects one mapping only and retains model/
+usage records. Existing mapping PUT commits before audit.record, so audit
+failure can leave an unrecorded routing change. Native trigger regression must
+prove rollback; move configuration write and truthful actual enabled/priority
+audit into one transaction. No provider quota is inferred or calculated.
+
+## Chapter action localization check — 2026-10-20
+
+RESOLVED in source; owner: workspace-authoring-program chapter slice. New
+ChapterActions referenced common.delete, absent from both locale resources.
+Add explicit en/id labels and verify actual rendered action names in native
+browser; do not treat a machine key rendered on screen as localized success.
+
+## Chapter lifecycle mutation verification — 2026-10-20
+
+IN PROGRESS; owner: workspace-authoring-program chapter slice. Rename must
+invalidate exact-version reviews and retain old/new title history. Appends
+an immutable same-prose version when content exists, stores title transition
+in version note/revision message/atomic audit; an explicit rename back is a new
+mutation. Generic snapshot restore keeps manuscript rows PINNED and is not
+claimed to rewind titles. Empty drafts retain null content versions.
+
+Deletion source checked status before its transaction, permitting a stale
+published-state observation while waiting for the mutation lock. Recheck under
+the shared novel/branch lock and compare optional confirmation title/version;
+retain existing evidence FK refusals. Native concurrency/rollback/UI checks
+must close this entry; no published data deletion is authorized for testing.
+
+Independent review found a UI race: the editor stays editable during the detail
+GET before rename/delete confirmation. A one-time save check before that GET
+does not protect newer local edits. Recheck save safety immediately before the
+confirmed mutation and retain exact title/version pins; a newly saved version
+must cause stale confirmation refusal, not deletion of unsaved text. Parameterized
+rename/delete regression checks the second save-safety gate before any write.
+
+Further source-backed review found two shared races, reproduced by new tests:
+selectChapter assigned the next activeId before its GET, leaving previous
+content/version editable under the new ID; and confirmed chapter POST followed
+by a failed4xx list read re-enabled creation, permitting duplicate POST. Keep
+old chapter/buffer paired until selection completes, disable editing/mutations
+while loading, and preserve any late input by cancelling that selection.
+Separate known creation from follow-up reads and never replay its POST.
+
+## Workspace ownership exemption ambiguity — 2026-10-20
+
+OPEN; owner: workspace-authoring-program policy slice. The author approved the
+feature design and added max1 owned workspace for ordinary authors, unlimited
+novels, and owner/admin exemption. Observed createWorkspace assigns OWNER to
+every creator; PlatformRole currently contains only SUPER_ADMIN. Exempting
+workspace OWNER membership would make the ordinary-author cap ineffective.
+An explicit focused clarification is pending; no account role, privilege grant,
+limit implementation or cleanup is inferred. Preserve existing workspaces and
+distinguish owned count from invited memberships. Next: record the intended
+account-level exemption and implement a locked server policy across creation/
+ownership transfer plus stale-UI refusal. Closure: concurrency, exemptions,
+existing over-limit data preservation and unlimited novel creation verified.
+See docs/superpowers/plans/2026-10-20-workspace-ownership-policy.md. Other
+approved feature slices remain independent of this question.
+
+Clarification RESOLVED by author: unlimited exemption applies to SUPER_ADMIN.
+Native execution plan approved. Implement policy using ownerId count and
+current platformRole, retaining all existing data. Enforcement/verification
+remain in progress; clarification closure does not claim implementation.
+
+Implementation review: after a successful workspace deletion, a failed policy
+refresh must display an unavailable/read-retry state, not a known ownership-cap
+message. Preserve successful deletion and never replay it to refresh policy.
+Stale create409 must disable the rejected new-workspace mode and allow existing
+workspace reuse. Reviewer withdrew an initial missing-locale-key suspicion:
+authorHome.workspaceError exists. Targeted regressions cover actual findings.
+
+## Workspace chapter lifecycle and model-selection gaps — 2026-10-20
+
+OPEN; owner: workspace-chapter-lifecycle design. Author screenshot and source
+confirm icon-only sidebar actions and prompt-based chapter creation. No chapter
+rename route was found in inspected manuscript routes; guarded DELETE exists
+but is absent from writer UI. Current Publish only targets active chapter.
+Author model preference is not present in inspected generation/orchestrator/
+manager inputs. Admin mapping PUT supports enabled=false but the profile table
+has no row action; its modelId is a provider string, not the model reference
+required to address a mapping unambiguously across gateways. Do not infer
+delete/profile routing support from that display identifier.
+
+Impact: chapter authoring and model control are not exposed as requested;
+whole-novel publishing needs explicit safe batch semantics, not a client loop
+that can leave unreported partial publication. OpenDesign get_active_context
+again failed Transport closed. No application mutation or new test claim this
+turn. Design proposal: docs/superpowers/specs/
+2026-10-20-workspace-chapter-lifecycle-design.md. Next: author review, then
+implementation plan and focused native/real-gateway verification. Closure:
+all proposal acceptance checks and separate exact-diff review, preserving
+publication, evidence-retention, authorization and recovery guards.
+
+Discussion findings: checked-in chapter draft schema has optional title, so
+generated-title completeness requires strengthening that mode's validated
+output. Novel cover storage exists but inspected AIGateway has no image
+generation contract; image-capable runtime availability remains unknown.
+Studio management is OWNER/ADMIN scoped; UI lacks complete empty-to-create
+CRUD and the existing template seed writes PLATFORM scope. Reusing it unchanged
+would violate the requested workspace-only setup. Record proposed extensions
+in the design addendum; no seeding, permission change or image generation was
+executed. Closure must include real image capability and cross-workspace proof
+if those extensions are approved, not merely populated decorative definitions.
+
+Author approval follow-up: the author approved the complete design/addendum
+and requested count1–9 covers, recommendation badges, model preferences per
+agent/skill/workflow and selected-model AI definition drafting. Design is now
+APPROVED, implementation is still PLANNED. Root prepared the parent program
+and four slice plans under docs/superpowers/plans/2026-10-20-*. They preserve
+earlier WIP and separate runtime image capability from source/UI claims.
+Workspace exemption is tracked in the separate clarification entry above.
+Plan review/execution-method selection precedes application edits; no new
+application, schema, data, provider call or test result is claimed this turn.
+
+## Author home and workspace navigation design gaps — 2026-10-19
+
+OPEN; owner: author-home-and-workspace-navigation-polish. Home grid/list cards
+use an oversized shared min-height and unrelated per-ID cover hues; header
+account/admin and tool return navigation diverge from the foundational design.
+Some tool pages lack return links; Tools caret is a font glyph. Reuse shared
+controls/icons, preserve role/data flows and test all named routes/en-id.
+Account profile must not link to public author404for unpublished accounts.
+OpenDesign Cloud MCP attempts get_active_context/list_projects fail Transport
+closed; no remote design evidence is claimed. Continue with local authoritative
+template and browser proof; report that requested connector limitation.
+
+Verification notes: web test types rejected `.get().exists()` (get already
+asserts existence); use `.find().exists()` in the new regression. Separate
+review found mobile global dropdown left anchoring can overflow the new
+right-aligned account/language controls. Scope right alignment for those
+menus and verify their opened geometry at390px. No authorization changes.
+
+Live verification initially assumed every tool uses SiteHeader. AI Studio
+retains its own workspace header and has no language-menu control; the browser
+timed out on that nonexistent selector after five successful return journeys.
+Scope the opened-language check to actual shared-header surfaces and retain
+Studio's required return-link check. No product error was suppressed.
+
+Resolution — UI implementation CLOSED; OpenDesign connector remains unavailable.
+58 focused web tests and six native auth tests pass; web/API types, scoped lint
+and diff check pass. Separate exact-source review APPROVE (23 app files;
+SHA256 d6627c8d592e9e243c343adcfad7a5d1e345ee3d4f6de35b0601d5f92d2576b8).
+Native scratch browser verifies profile/logout and en/id responsive menus.
+Live read-only browser verifies actual covers/profile, opened global dropdowns
+and seven clicked return journeys, with no page errors or API writes. Novel
+and chapter row hashes are unchanged. No human screen-reader acceptance claimed.
+
+Retained pre-existing limitation: AI Studio's empty definition list has no
+explicit empty-state message (DefinitionList.vue renders an empty ul). Actual
+workspace and scratch views show this blank panel; this navigation/style task
+does not establish that the workspace has configured definitions. Follow-up:
+add a localized empty-state message and prove populated/empty list behavior.
+
 ## Review navigation verification notes — 2026-10-19
 
 IN PROGRESS; owner: solo-planning-and-publish-review. Explicit Save must await
@@ -8291,3 +8448,25 @@ focus ring measured `2px solid rgb(186,176,245)`/2px offset.
   + toasts, or dispatches a credentialed harness.
 - **Closure check:** dated screenshot evidence of the five admin tabs and
   success/error toasts on the Monokai palette appended to NF056 evidence.
+
+## Engram runtime unbound — file handoff for Kaisar threads/promises checkpoint — 2026-10-20
+
+Engram mem_save rejected (no verified runtime binding) for the checkpoint
+below; fallback handoff per AGENTS.md §14:
+
+- Kaisar dari Masa Depan (e36d568b, ws-c): 3 story threads + 3 promises
+  created via audited API, all grounded in author-approved Bab 1-9 drafts
+  and canonized lore (no invented events). Threads: utang 7 hari (OBJECTIVE
+  imp5 ch4), musuh dusun penagih+tetangga (CONFLICT imp4 ch4), kebangkitan
+  Maspati/Aetherion (OBJECTIVE imp5 ch6). Promises: komitmen meja makan
+  ch9 (imp4), tenggat 7 hari/ancaman jual Sofian ch4 (imp5), barter 4 ikan
+  ke Pak Husein ch8 (imp3). SQL verified 3+3 persisted.
+- API host process restarted as nf-api-3000-v11 (acceptance 5433 / redis
+  6399 env contract) after a full stop.
+- Remaining Kaisar gaps: cover (BLOCKED — author image asset), character
+  states/arcs/knowledge (source-cited pass pending), references (author
+  material), narrative policies/planning horizon (author picks), endgame
+  ledger (satisfiable later via main thread when author declares ending).
+- Closure check: re-save this checkpoint to Engram when the runtime
+  binding is restored; docs/14-progress/CURRENT.md section 'Kaisar dari
+  Masa Depan: story threads + promises connected' is the current authority.

@@ -1,5 +1,33 @@
 # Current Project State
 
+## Kaisar dari Masa Depan: story threads + promises connected — 2026-10-20
+
+Continuing the Kaisar gap list (post-Solo-deletion). Three story threads and
+three story promises created via the audited API (temporary author session,
+deleted after), all grounded in the author-approved Bab 1-9 drafts and
+canonized lore — no invented events:
+
+- Threads (OBJECTIVE/CONFLICT): "Lunasi utang keluarga sebelum tenggat
+  tujuh hari" (imp 5, ch4), "Musuh dusun: penagih hutang + tetangga yang
+  meremehkan" (CONFLICT, imp 4, ch4), "Kebangkitan Maspati: ilmu Aetherion
+  untuk kehidupan desa" (imp 5, ch6) — each with payoff intent anchored to
+  Bab 8-9.
+- Promises: "Yang makan banyak, bayar banyak" (ch9 dinner commitment,
+  imp 4), "Tenggat tujuh hari: lunas atau Sofian dijual" (ch4, imp 5,
+  payoff: panen ikan Bab 8 / verifikasi Bab 9), "Barter ikan pertama
+  dengan Pak Husein" (ch8, imp 3).
+
+SQL verified: 3 threads + 3 promises persisted. Note: the API host process
+had fully stopped (port 3000 refused); restarted as `nf-api-3000-v11`
+(same env contract: acceptance 5433 / redis 6399). Remaining Kaisar gaps:
+cover (BLOCKED — needs an author-supplied image asset), character
+states/arcs/knowledge (needs the character-development follow-up with
+source citations), references (needs author material), narrative
+policies/planning horizon (author policy picks), endgame ledger (needs
+real threads → now satisfiable: the main-objective thread can anchor a
+MUST entry when the author declares an ending; the story is ongoing, so
+not done now).
+
 ## Solo Leveling deleted (author-directed) — pre-delete backup secured — 2026-10-20
 
 The author asked to delete the "Solo Leveling" webnovel (`bdab82a0`, ws-c)

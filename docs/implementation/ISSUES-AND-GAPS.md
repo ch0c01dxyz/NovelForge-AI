@@ -1,5 +1,132 @@
 # Technical Issues and Implementation Gaps
 
+## NF-WF-059 character-development follow-up — 2026-10-19
+
+IN PROGRESS; owner: the authorized character-development follow-up. Existing
+character observations, immutable manuscript citations and native arc/knowledge
+services will be reused. The private preparation helper initially had an
+unclosed object literal and failed parsing before executing any database call.
+Correct it and run a syntax check before preparation. Knowledge acquisition and
+arc resolution require explicit source support; source completion alone proves
+neither. Native arcs lack DRAFT status: reconstructed, unreviewed indexes must
+disclose their status in titles/notes and must not assert an invented ending.
+
+Preparation also detected a current chapter-version ID newer than the original
+import receipt. It stopped before enrichment writes. Treat current versions as
+source truth: inspect actual content changes and remap only quotations that
+still verify against the current immutable version. Preserve the newer author
+work; do not restore version1 or reuse stale source hashes as current evidence.
+
+## NF-WF-059 structured-data completeness follow-up — 2026-10-19
+
+OPEN; owner: NF-WF-059 follow-up inventory. The completed import/initial
+extraction does not establish complete structured story intelligence. Live
+read-only inventory confirms270chapters,90characters,266states,275entities,
+148verbatim excerpt facts,315PROPOSED claims,270outline nodes,270story events,
+5references and one generic retrospective saga. There are zero reference
+chunks and memory projections; zero structured relationship stances/bonds,
+character knowledge/arcs, timeline entries/causal edges, threads/promises,
+narrative DNA/policies, outline versions/planning horizon and endgame records.
+157relationship observations exist in reference text only.203retained notes
+comprise187model-noted ambiguities and16excluded name-not-found records.
+
+Impact: manuscript reading is supported, but full structured intelligence and
+AI retrieval readiness have not been established. Some authoring policies and
+endgame structures may be optional for a finished private reading import.
+Recommended next work: index source/reference material and build revision-bound
+memory, then source-grounded temporal relationships/timeline/character arcs.
+Keep semantic-candidate decisions and policy choices separate from extraction;
+do not fabricate author approval or official arc names. Closure requires actual
+domain read-back, source-bound evidence and applicable retrieval/browser checks.
+Private evidence: `.nf-artifacts/nf059/completeness-receipt.json`. No story data
+was changed by this inventory. The current audience is teen; do not overwrite
+live metadata with the earlier import receipt's initially unset audience.
+
+## NF-WF-059 completed-novel import — 2026-10-19
+
+Completeness follow-up: a read-only inventory helper initially assumed every
+story table has novelId. RelationshipStance is instead scoped through its
+character relations. The failed count changed no story data; inspect actual
+schema paths before retrying. This inventory distinguishes completed manuscript
+import from unpopulated structured enrichment domains and human acceptance.
+Chunk is likewise scoped through referenceVersion.reference, not a direct
+novelId column; use that actual relationship for the reference-index inventory.
+
+OPEN; owner: NF-WF-059. Actual source contains270ordered Markdown chapters,
+info.json and JPEG cover. Existing cover storage/display is missing; bounded
+implementation is isolated in work/nf059-cover. NovelSettings is configuration
+excluded from story snapshots, so retain original cover/DB backup for its recovery.
+The private import helper initially referenced sanitizeChapterHtml from the
+validation package; actual export is apps/api/src/services/manuscript.ts.
+Startup failed before any live write. Correct the import and verify every
+stored version against that exact existing sanitizer/normalizer.
+
+Real extraction discovery: the first gateway response was recorded SUCCEEDED
+at transport level but contained invalid JSON. The private extractor rejected
+it before applying records and requested one bounded schema repair. The public
+generic generation route does not expose the service's existing outputMode
+option. Use the existing audited createAiServices/registry seam for subsequent
+structured extraction when needed, rather than bypassing the gateway adapter
+or treating transport success as valid data. Keep invalid outputs private and
+unapplied; preserve all actual generation/attempt evidence.
+
+The long private extraction caller hit Node fetch's300second header timeout
+while the application's configured gateway timeout is600seconds; the API can
+still own active generation records after the caller disconnects. Do not
+replay those ambiguous tasks blindly or restart the active API. Inspect their
+actual outcome and use the existing audited service seam (no intermediate
+HTTP timeout) plus smaller bounded batches for subsequent extraction. No
+source records were applied from invalid/unconfirmed extraction output.
+
+The second extractor stopped on invalid JSON, paraphrased quotes and an extra
+chapter outside its input batch. Three validated batches are retained; rejected
+outputs remain unapplied. Replace model-copied quotations with stable source
+passage IDs resolved locally to exact manuscript text, validate batch coverage
+and evidence ownership, and retain generated interpretations as candidate canon.
+This changes citation transport, not the requirement for actual source evidence.
+
+Inspection of the first passage splitter found its regex could retain only the
+tail of a long single-line chapter. V3 summaries are therefore not evidence of
+full-chapter coverage and remain unapplied. Correct the splitter, assert joined
+passages equal the entire source text, and repeat only affected extraction;
+the three V2 batches used complete text and remain reusable. Some gateway
+outputs also ignored system-only instructions; repeat the explicit structured
+task in the user message and continue rejecting non-conforming responses.
+
+The first browser helper asserted the destination URL before Nuxt client-side
+navigation settled. The authenticated cover GET and home image already passed;
+wait for the actual novel URL before evaluating destination content. This is a
+verification-helper timing error, not observed product data loss.
+
+A subsequent helper assumed the novel title is present in the writer shell;
+source inspection confirms that shell displays the active chapter title instead.
+Verify the actual editor, destination IDs and authenticated chapter API rather
+than inventing a title-display requirement. Keep failed verbose browser output
+private because accessibility dumps can contain manuscript text.
+
+The final read-only verification helper initially used an assumed Prisma
+reference model name and failed before any verification-completion claim.
+Resolve the actual model from schema/retrieval callers and rerun that helper;
+the completed, receipted enrichment writes must not be replayed.
+
+Extended browser checks must select the character States tab before expecting
+its working-character selector; the default Characters tab intentionally has
+no such selector. Source inspection resolved that helper-only assumption.
+
+Resolution — CLOSED for NF-WF-059 implementation/import. The isolated minimal
+cover implementation was reviewed by a separate actor and root checks passed:
+12validator +4dedicated-database API +23web tests, API/web typechecks and scoped
+ESLint. Full-source V4 extraction asserts lossless passage splitting; all270
+chapter summaries and every applied citation were validated against immutable
+versions.315semantic claims remain PROPOSED, not human-approved;148literal
+excerpts retain exact version/span evidence. Live browser confirms actual cover,
+characters/world/canon access without approval actions. Original nine-chapter
+author novel preserved. Pre-import backup was restore-proven in a disposable
+clone; final checkpoint was read back. Reference versions, like cover settings,
+are outside story snapshots, so retain source files plus database backups.
+Semantic author review remains a distinct acceptance outcome, not a technical
+failure or a fabricated sign-off. See NF-WF-059 and CURRENT for retained evidence.
+
 ## Combined publication Engram hook timeout — 2026-10-19
 
 The runtime-confirmed session attempted a publication-phase checkpoint, but the

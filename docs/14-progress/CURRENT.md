@@ -1,5 +1,51 @@
 # Current Project State
 
+## NF-WF-059 private source import verified — 2026-10-19
+
+Completeness clarification after the author's follow-up: the import and bounded
+initial extraction are verified; full structured story intelligence remains
+incomplete. Live inventory finds no reference chunks/memory projections,
+structured relationships, timeline/causal edges, character arcs/knowledge,
+threads/promises, narrative DNA or endgame records. Relationships exist as
+157reference observations;315semantic claims remain PROPOSED. The generic saga
+and270editable outline nodes are not a reconstructed approved arc structure.
+See ISSUES-AND-GAPS, NF-WF-059 structured-data completeness follow-up. No story
+mutations or candidate approvals were authorized or executed by this inventory.
+
+Imported Solo Leveling from the author's ignored local source directory into
+the explicitly selected primary MySpaces workspace, preserving source author
+attribution and Indonesian manuscript/derived descriptions. The separate
+existing Kaisar novel, including its concurrent nine-chapter author work,
+remained unchanged during enrichment. No public publication or author approval
+was inferred from the import or database actor IDs.
+
+Read-back verified270chapters /493625words with original immutable version1
+content hashes, source synopsis/metadata, original JPEG cover,90characters,
+266chapter-scoped character observations,275story entities (including158world
+groups),148verbatim source excerpts with validated immutable-version spans,
+315PROPOSED semantic candidates,270retrospective outline nodes,270linked story
+events and5source/reference documents. Relationship/lore descriptions and
+203uncertainty notes remain explicitly attributed extraction material. No
+outline is approved; no generated interpretation was promoted by an invented
+human decision. This is a bounded extraction, not proof of exhaustive semantics.
+
+The minimal authenticated cover configuration/display path is integrated and
+independently reviewed by the integration owner against the isolated worker's
+diff. Root verification: cover validator12tests, cover API4tests on a dedicated
+database, affected web23tests, scoped ESLint and API/web typechecks PASS.
+Authenticated live browser verified the exact cover bytes/image, primary
+workspace editor,270chapter API result,90character selector, world entities,
+canon excerpts and pending proposals; no page errors or approval actions.
+
+Pre-import backup restore succeeded in a dedicated disposable database, then
+the clone was dropped. Pre/post enrichment checkpoints were created; final
+checkpoint `46fda59f-5797-4144-b27b-b62ab453eda5` was read back. Private receipts,
+source, raw outputs, screenshots and pre/post database backups remain ignored.
+References and cover settings are excluded from story snapshots: retain their
+original files and database backups. Never restore a whole database over newer
+unrelated author work automatically. See task NF-WF-059 for recovery evidence.
+No commit, push, database reset or Docker replacement was performed.
+
 ## Authorized combined publication — 2026-10-19
 
 The author explicitly authorized commit and push of NF-WF-058 and all other
@@ -274,6 +320,45 @@ the corrected name. Final state verified in SQL: 8 characters, 18 entities
 authorable —, 4 LOCATION, 2 ORGANIZATION, 2 ITEM, 2 CONCEPT), 9 outline
 beats, 4 timeline entries, 1 bond, 6 stances, genres + audience set, 0
 lingering sessions.
+
+
+## Chapter drafts 1-9 seeded for "Kaisar dari Masa Depan" — 2026-10-19
+
+Author requested refined chapter drafts (diperhalus: proses, kejadian,
+narasi) from the approved outline. 9 chapters created via live API
+(POST /chapters then PUT /chapters/:id with content + expectedVersion:null)
+as HTML paragraphs (Tiptap format): Bab 1 Malam Sangganya (Aetherion
+presentation + world reaction), Bab 2 Lab yang Terbakar (funder betrayal +
+death + lab fire), Bab 3 Dapur (reincarnation + memory-transfer sequence +
+Sofian reunion + door knock), Bab 4 Tujuh Hari (debt collectors, in-scene
+dialogue verbatim, mental combat simulation, sickle intimidation,
+7-day deadline), Bab 5 Aku Bukanlah Don Juan (canonical dialogue verbatim,
+environment survey + asset/constraint inventory), Bab 6 Rumput Tuba
+(taste-test protocol, botany identification, neighbor mockery, Husein
+scene, sesquiterpene dialdehyde explanation), Bab 7 Pelumpuh Ikan (paste
+recipe process, 2-fish test, mass river dispersal), Bab 8 Kolam Kecil
+(35-fish harvest, pond build, fish revival, 4-fish payment to Husein),
+Bab 9 Janji di Meja Makan (canonical dinner dialogue, night scene ending
+with "(Adegan dihilangkan.)"). Author's established dialogue lines are
+preserved verbatim; adult-scene elision marker kept.
+
+SQL-verified: 9 chapters, 1 version each, latest=1; verbatim dialogue and
+the elision marker present in the right chapters. Ops: chapter create
+response version is not 0 — save with expectedVersion:null; save loop made
+idempotent by title to avoid duplicate chapters on rerun. Service note:
+the supervised API wrapper (pnpm) exited while the node child kept the
+port; orphan killed, API restarted as nf-api-3000-v8 on the acceptance DB
+(5433/novelforge_acceptance_050b, Redis 6399/0), probe: /api/auth/session
+→ 401 (alive). Not committed.
+
+
+Scene nodes seeded for chapters 1-9 (2026-10-19, author-approved next
+detail): 33 scenes total via POST /chapters/:id/scenes (structural anchors
+only — title + summary + number, no content, no versioning per NF-WF-015).
+Per-chapter counts: 3/3/4/4/4/4/4/4/3. Scene titles and summaries are in
+Indonesian, same author-directed manuscript scope as the outline beats and
+chapters. Idempotent: chapters with existing scenes are skipped. SQL-
+verified counts; throwaway script deleted. Not committed.
 
 ## NF-WF-056 Monokai Pro UI polish — implemented, verification complete, NOT committed — 2026-10-18
 

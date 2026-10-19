@@ -1,5 +1,38 @@
 # Current Project State
 
+## Backup pocket: encrypted snapshots, restore drill, passphrase custody — 2026-10-19
+
+Commit `f1317f3` originally pushed plaintext pg_dump snapshots; the author
+then required encryption. Commit `ab2d204` removes the plaintext dumps from
+the git tree and replaces them with `backup/*.dump.enc` (AES-256-CBC,
+PBKDF2, 600k iterations, salt). The passphrase lives ONLY in
+`backup/.passwd` (55 chars, author-provided) and is Git-ignored
+(`backup/.passwd` line in `.gitignore`); it is NOT in the repo, LFS, or
+history of that file's directory. Recovering it requires the local file —
+recorded here as custody, not a value.
+
+Restore procedure (runbook-aligned, `BACKUP-RESTORE-RUNBOOK.md`):
+1. pull `backup/<name>-<date>.dump.enc`;
+2. `openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in <name>.dump.enc
+   -out <name>.dump -pass file:backup/.passwd`;
+3. verify header `PGDMP` + `pg_restore --list` TOC;
+4. create disposable target, `pg_restore --no-owner --username novelforge
+   -j 4 -d <target> <name>.dump`;
+5. compare `_prisma_migrations` counts + spot tables, then drop the drill DB.
+
+Restore drill 2026-10-19 (both dumps, disposable `nf_restore_drill` on the
+compose pair, then dropped): acceptance novels 2/2, chapters 279/279,
+characters 98/98; primary users 4/4, novels 4/4; `_prisma_migrations`
+47/47 — source vs restore identical. Temp decrypt files removed after.
+
+GitHub push cascade: `f1317f3` (compose+backups, LFS 131 MB),
+`ab2d204` (encrypted backups at rest) pushed; CI runs in cascade
+(`39282410881`, `39282780606`). Irrelevant to backups: LFS object of the
+first plaintext commit (`f1317f3`) stays visible in remote LFS history
+until GitHub GC — the encrypted replacement is authoritative. If the
+author wants plaintext LFS objects purged, that needs a support/history
+rewrite decision, not an ordinary push.
+
 ## docker-compose becomes the one-group NovelForge stack — 2026-10-19
 
 Author requested one group: `docker compose up -d` starts everything,

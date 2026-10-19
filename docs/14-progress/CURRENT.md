@@ -1,5 +1,33 @@
 # Current Project State
 
+## Solo Leveling grammar audit phase 2 applied (poin 1-2, Bab 1-10) — 2026-10-20
+
+Phase-1 audit (~460 findings) reported; the author ordered poin 1-2 first.
+Applied as NEW chapter versions via the audited API (PUT /chapters/:id with
+expectedVersion CAS; nothing overwritten — v-old remain in history):
+
+- Kanon nama (poin 1, author-decided): protagonist → `Jin-Woo`
+  (fixed Jin-Wuo 44, Jinwoon 1, Jin Woo 24, Jinwoo 14, Jin-woo 11);
+  healer → `Ju-Hee` (fixed Ju-Hui/Yu-Hui/Joo-hee/joohee);
+  `Yu-Rah` → `Yu-Ra` (perawat Choi Yu-Ra, ch10).
+- Tanda baca (poin 2): ellipsis dinormalisasi ke `...` (unicode `…` dan
+  runs ≥2 titik), spasi-sebelum-tanda-baca 43×, koma/titik tanpa spasi
+  21×, tanda baca di luar kutipan, kapital awal kalimat setelah titik
+  tunggal (ellipsis tetap lowercase — lanjutan kalimat).
+
+Post-check live read-back: 0 sisa anomali poin 1-2 di kesepuluh bab.
+Version map: ch1 → v6, ch2-10 → v2 (versi lama tetap tersimpan; non-
+destructive). NOTE: ch1 was PUBLISHED → unpublished first (lifecycle
+PUBLISHED → IN_REVIEW), status kini IN_REVIEW — author republishes from
+the UI after phase-2 completes. The corrected ch1 (v6) is NOT yet
+republished by design. Character DB still holds duplicate rows
+(`Seong Jin-Woo` vs `Sung Jin-Woo` vs `Jin Woo`; `Ju Hee`/`Ju-Hui`/
+`Lee Ju Hee`) — cleanup is a separate follow-up.
+
+Remaining audit items (NOT applied, awaiting author): poin 3 manual
+repairs (~40 lokasi kalimat orphan/mistranslation/A-kompor) dan poin 4
+sentence-splitting (6 kalimat >40 kata).
+
 ## Solo Leveling endgame connected — ending gate READY (author sign-off) — 2026-10-19
 
 Author instruction: the endgame domain was not connected to Solo Leveling

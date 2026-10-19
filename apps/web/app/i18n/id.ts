@@ -3,6 +3,8 @@
  * Missing keys fall back to English per key (see useLocale).
  */
 export const id = {
+  reviewScaleGap: "Selisih skala terhadap jangkauan yang diizinkan: {gap}.",
+  reviewIssues: {"title":"Review teks final","show":"Tunjukkan","failed":"Review gagal. Perbaiki temuan, lalu Simpan untuk memeriksa kembali.","stale":"Teks berubah. Simpan untuk review ulang sebelum menunjukkan posisi.","noTextPosition":"Temuan kebijakan atau data belum lengkap — tidak memiliki posisi teks terverifikasi.","unlocatable":"Posisi kutipan ini belum dapat dipastikan. Simpan dan review ulang; teks tidak diubah.","noDetails":"Review gagal tanpa temuan pada teks. Periksa kebijakan narasi yang berlaku.","scaleFix":"Perbaiki konflik pada kutipan atau tinjau kebijakan SCALE yang berlaku; simpan untuk memeriksa ulang."},
   authorHome: {
   "statusDraft": "Draf", "statusActive": "Aktif", "statusArchived": "Diarsipkan",
   "title": "Webnovel Anda",
@@ -77,6 +79,8 @@ export const id = {
     reload: "Muat ulang",
     save: "Simpan",
     saved: "Tersimpan",
+    reviewing: "Meninjau…",
+    savedAndReviewed: "Teks tersimpan. Review teks final selesai dengan hasil LULUS untuk versi ini.",
     dirty: "Ada perubahan belum tersimpan",
     saving: "Menyimpan…",
     conflict: "Konflik — dimuat ulang",
@@ -84,9 +88,14 @@ export const id = {
   header: {
     newChapter: "Bab baru",
     publish: "Terbitkan",
+    publishing: "Meninjau dan menerbitkan…",
   },
   chapters: {
     title: "Bab",
+    list: "Daftar bab",
+    sortLabel: "Urutan bab",
+    oldestFirst: "Terlama lebih dulu",
+    newestFirst: "Terbaru lebih dulu",
     empty: "Belum ada bab.",
     selectPrompt: "Pilih atau buat bab untuk mulai menulis.",
     editorPlaceholder: "Mulai bab…",
@@ -242,7 +251,7 @@ export const id = {
     publishFailed: "Penerbitan gagal.",
     publishForbidden: "Anda tidak memiliki izin untuk menerbitkan.",
     publishReviewStale:
-      "Teks berubah sejak review terakhir. Validasi ulang teks final, lalu terbitkan lagi.",
+      "Review teks final belum ada atau sudah kedaluwarsa. Periksa teks tersimpan dan kebijakan saat ini, lalu terbitkan lagi.",
     publishHardViolation:
       "Review teks final gagal. Perbaiki masalah yang ditandai dan review ulang sebelum menerbitkan.",
   },
@@ -1210,6 +1219,21 @@ export const id = {
         approving: "Menyetujui…",
         reject: "Tolak",
         rejecting: "Menolak…",
+        selectAll: "Pilih semua usulan tertunda yang ditampilkan",
+        selectProposal: "Pilih usulan: {statement}",
+        selectedCount: "{count} dipilih",
+        batchApprove: "Setujui pilihan",
+        batchReject: "Tolak pilihan",
+        batchNote: "Catatan penolakan bersama (opsional)",
+        batchConfirm: "Konfirmasi keputusan",
+        batchApproveConfirm: "Setujui {count} usulan terpilih sebagai kanon? Checkpoint pemulihan akan disimpan. Keputusan disimpan satu per satu; proses berhenti pada kendala pertama.",
+        batchRejectConfirm: "Tolak {count} usulan terpilih? Checkpoint pemulihan akan disimpan. Keputusan disimpan satu per satu; proses berhenti pada kendala pertama.",
+        batchConflict: "Usulan berkonflik dan subjek/predikat berulang perlu disetujui satu per satu. Pilihan tetap dapat ditolak.",
+        batchProgress: "{done} dari {total} diproses",
+        batchCheckpoint: "Checkpoint pemulihan: {id}",
+        batchStopped: "Proses dihentikan. Keberhasilan sebelumnya tetap tersimpan. Muat ulang dan periksa hasil yang belum pasti sebelum mencoba lagi.",
+        batchCheckpointFailed: "Checkpoint pemulihan belum dapat dikonfirmasi. Tidak ada keputusan yang dikirim.",
+        batchStatus: { approved: "Disetujui", rejected: "Ditolak", failed: "Gagal", unknown: "Hasil belum pasti — periksa sebelum mengulang", notProcessed: "Belum diproses" },
         rejectConfirm: "Tolak usulan ini?",
         rejectNote: "Catatan (opsional)",
         availableFromChapter: "Tersedia dari bab (opsional)",

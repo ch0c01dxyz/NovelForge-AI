@@ -3,6 +3,8 @@
  * Source of truth for every UI string; `id` falls back here per key.
  */
 export const en = {
+  reviewScaleGap: "Gap from the allowed scale reach: {gap}.",
+  reviewIssues: {"title":"Final-text review","show":"Show","failed":"Review failed. Fix the findings, then Save to review again.","stale":"Text changed. Save to review again before showing a location.","noTextPosition":"Policy or missing-data finding — no verified text position.","unlocatable":"This quote cannot be located unambiguously. Save and review again; the text has not been changed.","noDetails":"The review failed without a text-level finding. Check the current narrative policies.","scaleFix":"Revise the quoted conflict or review the applicable SCALE policy; save to check again."},
   authorHome: {
   "statusDraft": "Draft", "statusActive": "Active", "statusArchived": "Archived",
   "title": "Your webnovels",
@@ -77,6 +79,8 @@ export const en = {
     reload: "Reload",
     save: "Save",
     saved: "Saved",
+    reviewing: "Reviewing…",
+    savedAndReviewed: "Text saved. Final-text review completed with PASS for this version.",
     dirty: "Unsaved changes",
     saving: "Saving…",
     conflict: "Conflict — reloaded",
@@ -84,9 +88,14 @@ export const en = {
   header: {
     newChapter: "New chapter",
     publish: "Publish",
+    publishing: "Reviewing and publishing…",
   },
   chapters: {
     title: "Chapters",
+    list: "Chapter list",
+    sortLabel: "Chapter order",
+    oldestFirst: "Oldest first",
+    newestFirst: "Newest first",
     empty: "No chapters yet.",
     selectPrompt: "Select or create a chapter to start writing.",
     editorPlaceholder: "Begin the chapter…",
@@ -242,7 +251,7 @@ export const en = {
     publishFailed: "Publish failed.",
     publishForbidden: "You do not have permission to publish.",
     publishReviewStale:
-      "The text changed since the last review. Revalidate the final text, then publish again.",
+      "The final-text review is missing or out of date. Check the saved text and current policies, then publish again.",
     publishHardViolation:
       "The final-text review failed. Fix the flagged issues and re-review before publishing.",
   },
@@ -1209,6 +1218,21 @@ export const en = {
         approving: "Approving…",
         reject: "Reject",
         rejecting: "Rejecting…",
+        selectAll: "Select all displayed pending proposals",
+        selectProposal: "Select proposal: {statement}",
+        selectedCount: "{count} selected",
+        batchApprove: "Approve selected",
+        batchReject: "Reject selected",
+        batchNote: "Shared rejection note (optional)",
+        batchConfirm: "Confirm decisions",
+        batchApproveConfirm: "Approve {count} selected proposals as canon? A recovery checkpoint will be saved. Decisions commit individually; processing stops on the first problem.",
+        batchRejectConfirm: "Reject {count} selected proposals? A recovery checkpoint will be saved. Decisions commit individually; processing stops on the first problem.",
+        batchConflict: "Conflicting proposals and repeated subject/predicate slots require individual approval. You can still reject the selection.",
+        batchProgress: "{done} of {total} processed",
+        batchCheckpoint: "Recovery checkpoint: {id}",
+        batchStopped: "Processing stopped. Earlier successes remain saved. Reload and verify uncertain outcomes before trying again.",
+        batchCheckpointFailed: "The recovery checkpoint could not be confirmed. No decisions were sent.",
+        batchStatus: { approved: "Approved", rejected: "Rejected", failed: "Failed", unknown: "Outcome unknown — verify before retrying", notProcessed: "Not processed" },
         rejectConfirm: "Reject this proposal?",
         rejectNote: "Note (optional)",
         availableFromChapter: "Available from chapter (optional)",

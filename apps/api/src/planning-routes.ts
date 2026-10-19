@@ -52,6 +52,7 @@ const createOutlineDraftBody = z.object({
 
 const putHorizonBody = z.object({
   policy: z.unknown(),
+  expectedUpdatedAt: z.string().datetime().nullable().optional(),
 });
 
 /**

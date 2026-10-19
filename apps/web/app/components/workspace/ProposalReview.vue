@@ -8,6 +8,7 @@
         {{ t("workspace.canon.proposals.statusFilter") }}
         <select
           v-model="statusFilter"
+          :disabled="controlsLocked || loading"
           class="rounded-md border border-nf-border bg-nf-bg-2 px-2 py-1 text-[12px] text-nf-text focus-visible:nf-focus"
           @change="load"
         >
@@ -16,6 +17,33 @@
           </option>
         </select>
       </label>
+    </div>
+
+    <div v-if="pending.length && !loading && !error" class="mb-3 rounded-lg border border-nf-border-strong bg-nf-bg-1 p-3">
+      <label class="flex items-center gap-2 text-[13px] text-nf-text">
+        <input type="checkbox" data-testid="proposal-select-all" :checked="selected.length === pending.length" :indeterminate="selected.length > 0 && selected.length < pending.length" :disabled="controlsLocked" @change="toggleAll" />
+        {{ t("workspace.canon.proposals.selectAll") }}
+      </label>
+      <p class="mt-2 text-[12px] text-nf-text-dim">{{ t("workspace.canon.proposals.selectedCount", { count: selected.length }) }}</p>
+      <p v-if="approvalBlocked" class="mt-2 text-[12px] text-nf-warn">{{ t("workspace.canon.proposals.batchConflict") }}</p>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <button type="button" data-testid="proposal-batch-approve" :disabled="controlsLocked || !selected.length || approvalBlocked" class="rounded-md bg-nf-accent px-3 py-1.5 text-[13px] font-medium text-nf-accent-ink disabled:opacity-50 focus-visible:nf-focus" @click="openBatch('approve')">{{ t("workspace.canon.proposals.batchApprove") }}</button>
+        <button type="button" data-testid="proposal-batch-reject" :disabled="controlsLocked || !selected.length" class="rounded-md border border-nf-warn px-3 py-1.5 text-[13px] text-nf-warn disabled:opacity-50 focus-visible:nf-focus" @click="openBatch('reject')">{{ t("workspace.canon.proposals.batchReject") }}</button>
+      </div>
+      <label v-if="selected.length" class="mt-3 block text-[12px] text-nf-text-dim">{{ t("workspace.canon.proposals.batchNote") }}
+        <input v-model="batchNote" data-testid="proposal-batch-note" :disabled="controlsLocked" type="text" maxlength="2000" class="mt-1 w-full rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus" />
+      </label>
+    </div>
+    <div v-if="batchResults.length" data-testid="proposal-batch-results" class="mb-3 rounded-lg border border-nf-border p-3" :aria-busy="batchRunning">
+      <p role="status" class="text-[13px] text-nf-text">{{ t("workspace.canon.proposals.batchProgress", { done: batchResults.filter(r => r.status !== 'notProcessed').length, total: batchResults.length }) }}</p>
+      <p v-if="batchError" role="alert" class="mt-2 text-[13px] text-nf-warn">{{ batchError }}</p>
+      <p v-if="batchCheckpoint" class="mt-1 break-all text-[12px] text-nf-text-dim">{{ t("workspace.canon.proposals.batchCheckpoint", { id: batchCheckpoint }) }}</p>
+      <ul class="mt-2 max-h-56 space-y-2 overflow-y-auto">
+        <li v-for="result in batchResults" :key="result.id" class="text-[12px] text-nf-text-dim">
+          {{ result.statement }} — <span class="font-medium">{{ t(`workspace.canon.proposals.batchStatus.${result.status}`) }}</span>
+          <span v-if="result.error"> ({{ result.error }})</span>
+        </li>
+      </ul>
     </div>
 
     <div v-if="loading" class="py-6 text-center text-[13px] text-nf-text-dim" role="status">
@@ -41,6 +69,7 @@
         class="rounded-lg border border-nf-border bg-nf-bg-2 p-3"
       >
         <div class="flex items-start justify-between gap-2">
+          <input v-if="p.status === 'PROPOSED'" type="checkbox" :data-testid="`proposal-select-${p.id}`" :aria-label="t('workspace.canon.proposals.selectProposal', { statement: p.statement })" :checked="selectedIds.includes(p.id)" :disabled="controlsLocked" class="mt-1 shrink-0" @change="toggleSelection(p.id)" />
           <div class="min-w-0">
             <p class="text-[13px] text-nf-text">
               <span class="font-medium text-nf-accent-hi">{{ p.predicate }}</span>
@@ -67,11 +96,12 @@
           </span>
         </div>
 
-        <!-- Per-row decisions (bulk list, Q4). Only undecided proposals act. -->
+        <!-- Individual conflict review remains available outside a batch. -->
         <template v-if="p.status === 'PROPOSED'">
           <div v-if="deciding !== p.id" class="mt-2 flex gap-2">
             <button
               type="button"
+              :disabled="controlsLocked"
               class="rounded-md bg-nf-accent px-3 py-1 text-[12px] font-medium text-nf-accent-ink hover:brightness-110 focus-visible:nf-focus"
               @click="openApprove(p)"
             >
@@ -81,6 +111,7 @@
               type="button"
               class="rounded-md border border-nf-border px-3 py-1 text-[12px] text-nf-text-dim hover:border-nf-warn hover:text-nf-warn focus-visible:nf-focus"
               @click="openReject(p)"
+              :disabled="controlsLocked"
             >
               {{ t("workspace.canon.proposals.reject") }}
             </button>
@@ -133,6 +164,7 @@
               </button>
               <button
                 type="button"
+                :disabled="working"
                 class="rounded-md border border-nf-border px-3 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 focus-visible:nf-focus"
                 @click="cancelDecision"
               >
@@ -180,18 +212,17 @@
         </template>
       </li>
     </ul>
+    <ConfirmDialog :open="batchMode !== null" :title="t(batchMode === 'approve' ? 'workspace.canon.proposals.batchApprove' : 'workspace.canon.proposals.batchReject')" :body="batchRunning ? t('workspace.canon.proposals.batchProgress', { done: batchResults.filter(r => r.status !== 'notProcessed').length, total: batchTargets.length }) : t(batchMode === 'approve' ? 'workspace.canon.proposals.batchApproveConfirm' : 'workspace.canon.proposals.batchRejectConfirm', { count: batchTargets.length })" :confirm-label="t('workspace.canon.proposals.batchConfirm')" :cancel-label="t('common.cancel')" :danger="batchMode === 'reject'" :busy="batchRunning" @confirm="runBatch" @cancel="cancelBatch" />
   </section>
 </template>
 
 <script setup lang="ts">
 /**
- * Proposal review (NF-WF-016, Canon review): bulk list with per-row
- * approve/reject (Q4). Approve/reject are WORKSPACE-scoped (F4 pin).
- * conflictKind is surfaced; a conflicting claim needs explicit
- * acknowledgment before approval — nothing becomes canon silently
- * (services/canon.ts header rules 1-2).
+ * Individual review retains conflict acknowledgement. Explicit batch decisions
+ * use novel-scoped routes, native checkpoints and sequential revision CAS.
  */
-import { onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import ConfirmDialog from "./ConfirmDialog.vue";
 import { useApi, ApiError } from "../../composables/useApi";
 import { useLocale } from "../../composables/useLocale";
 import { UUID_RE, type CanonProposal } from "./canon-types";
@@ -215,6 +246,70 @@ const working = ref(false);
 const actionError = ref<string | null>(null);
 const rejectNote = ref("");
 const approveForm = ref({ availableFromChapter: "", expectedHeadRevisionId: "", ackConflict: false });
+const selectedIds = ref<string[]>([]);
+const pending = computed(() => proposals.value.filter(p => p.status === "PROPOSED"));
+const selected = computed(() => pending.value.filter(p => selectedIds.value.includes(p.id)));
+const batchMode = ref<"approve" | "reject" | null>(null);
+const batchTargets = ref<CanonProposal[]>([]);
+const batchRunning = ref(false);
+const batchNote = ref("");
+const batchError = ref<string | null>(null);
+const batchCheckpoint = ref<string | null>(null);
+type BatchStatus = "approved" | "rejected" | "failed" | "unknown" | "notProcessed";
+const batchResults = ref<{ id: string; statement: string; status: BatchStatus; error?: string }[]>([]);
+const controlsLocked = computed(() => working.value || batchRunning.value || batchMode.value !== null);
+const approvalBlocked = computed(() => {
+  const slots = selected.value.map(p => JSON.stringify([p.entityId, p.predicate]));
+  return selected.value.some(p => p.conflictKind !== null) || new Set(slots).size !== slots.length;
+});
+let disposed = false;
+let loadSequence = 0;
+
+function toggleSelection(id: string) {
+  if (controlsLocked.value) return;
+  selectedIds.value = selectedIds.value.includes(id) ? selectedIds.value.filter(x => x !== id) : [...selectedIds.value, id];
+}
+function toggleAll() {
+  if (controlsLocked.value) return;
+  selectedIds.value = selected.value.length === pending.value.length ? [] : pending.value.map(p => p.id);
+}
+function openBatch(mode: "approve" | "reject") {
+  if (controlsLocked.value || !selected.value.length || (mode === "approve" && approvalBlocked.value)) return;
+  cancelDecision();
+  batchTargets.value = selected.value.map(p => ({ ...p }));
+  batchMode.value = mode;
+}
+function cancelBatch() { if (!batchRunning.value) batchMode.value = null; }
+
+async function runBatch() {
+  if (!batchMode.value || batchRunning.value) return;
+  const mode = batchMode.value, targets = [...batchTargets.value], note = batchNote.value.trim();
+  const base = `/workspaces/${props.workspaceId}/novels/${props.novelId}`;
+  batchRunning.value = true;batchError.value = null;batchCheckpoint.value = null;
+  batchResults.value = targets.map(p => ({ id: p.id, statement: p.statement, status: "notProcessed" }));
+  try {
+    const checkpoint = await api<{ checkpointId: string; revisionId: string }>(base + "/checkpoints", { method: "POST", body: JSON.stringify({ label: `Before proposal batch ${mode}`, note: `${targets.length} explicitly selected proposals; atomic per item, stop on first error.` }) });
+    if (!UUID_RE.test(checkpoint.checkpointId) || !UUID_RE.test(checkpoint.revisionId)) throw new Error("Missing checkpoint identity or revision");
+    batchCheckpoint.value = checkpoint.checkpointId;
+    let head = checkpoint.revisionId;
+    for (let i = 0; i < targets.length && !disposed; i++) {
+      const p = targets[i]!, result = batchResults.value[i]!;
+      try {
+        const response = await api<{ revisionId: string } | undefined>(`${base}/canon/proposals/${p.id}/${mode}-batch-item`, { method: "POST", body: JSON.stringify({ expectedHeadRevisionId: head, ...(mode === "reject" && note ? { note } : {}) }) });
+        if (!response || !UUID_RE.test(response.revisionId)) { result.status = "unknown";batchError.value = t("workspace.canon.proposals.batchStopped");break; }
+        result.status = mode === "approve" ? "approved" : "rejected";
+        head = response.revisionId;
+      } catch (e) {
+        result.status = e instanceof ApiError && e.status >= 400 && e.status < 500 ? "failed" : "unknown";
+        result.error = errText(e);batchError.value = t("workspace.canon.proposals.batchStopped");break;
+      }
+    }
+  } catch (e) { batchError.value = t("workspace.canon.proposals.batchCheckpointFailed") + " " + errText(e); }
+  finally {
+    if (!disposed) await load();
+    batchRunning.value = false;batchMode.value = null;
+  }
+}
 
 function errText(e: unknown): string {
   if (e instanceof ApiError) {
@@ -237,21 +332,25 @@ function statusClass(status: string): string {
 }
 
 async function load() {
+  const sequence = ++loadSequence;
+  selectedIds.value = [];
   loading.value = true;
   error.value = null;
   try {
     const qs = new URLSearchParams({ status: statusFilter.value });
-    proposals.value = await api<CanonProposal[]>(
+    const loaded = await api<CanonProposal[]>(
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/canon/proposals?${qs}`,
     );
+    if (sequence === loadSequence && !disposed) proposals.value = loaded;
   } catch (e) {
-    error.value = errText(e);
+    if (sequence === loadSequence && !disposed) error.value = errText(e);
   } finally {
-    loading.value = false;
+    if (sequence === loadSequence && !disposed) loading.value = false;
   }
 }
 
 function openApprove(_p: CanonProposal) {
+  if (controlsLocked.value) return;
   deciding.value = _p.id;
   decisionMode.value = "approve";
   actionError.value = null;
@@ -259,6 +358,7 @@ function openApprove(_p: CanonProposal) {
 }
 
 function openReject(_p: CanonProposal) {
+  if (controlsLocked.value) return;
   deciding.value = _p.id;
   decisionMode.value = "reject";
   actionError.value = null;
@@ -266,6 +366,7 @@ function openReject(_p: CanonProposal) {
 }
 
 function cancelDecision() {
+  if (working.value) return;
   deciding.value = null;
   decisionMode.value = null;
   actionError.value = null;
@@ -273,6 +374,7 @@ function cancelDecision() {
 }
 
 async function approve(p: CanonProposal) {
+  if (working.value || batchRunning.value) return;
   actionError.value = null;
   const head = approveForm.value.expectedHeadRevisionId.trim();
   if (head && !UUID_RE.test(head)) {
@@ -310,6 +412,7 @@ async function approve(p: CanonProposal) {
 }
 
 async function reject(p: CanonProposal) {
+  if (working.value || batchRunning.value) return;
   actionError.value = null;
   working.value = true;
   try {
@@ -333,4 +436,5 @@ async function reject(p: CanonProposal) {
 }
 
 onMounted(() => load());
+onUnmounted(() => { disposed = true; });
 </script>

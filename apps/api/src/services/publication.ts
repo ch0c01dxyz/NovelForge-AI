@@ -46,7 +46,7 @@ import {
   requireCapability,
   type Capability,
 } from "@novelforge/auth/authorization";
-import { NotFoundError, ConflictError } from "@novelforge/ai-services";
+import { NotFoundError, ConflictError, PolicyError } from "@novelforge/ai-services";
 import { PublicationError } from "@novelforge/ai-services";
 import type { AuditService } from "@novelforge/ai-services";
 import { advanceForMutation, type RevisionTx } from "./revisions.ts";
@@ -100,7 +100,7 @@ export interface PublicationServices {
     input: SchedulePublicationInput,
   ): Promise<{ publicationId: string; scheduledFor: string }>;
   publishChapter(
-    input: ChapterScopeInput,
+    input: ChapterScopeInput & { expectedChapterVersionId?: string },
   ): Promise<{
     publicationId: string;
     pinnedVersionId: string;
@@ -428,7 +428,7 @@ export function createPublicationServices({
       return { publicationId: row.id, scheduledFor: at.toISOString() };
     },
 
-    async publishChapter({ actorUserId, workspaceId, novelId, chapterId }) {
+    async publishChapter({ actorUserId, workspaceId, novelId, chapterId, expectedChapterVersionId }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:publish");
       await assertOnMainBranch(novelId);
       const publicationId = randomUUID();
@@ -445,6 +445,9 @@ export function createPublicationServices({
           },
         });
         if (!chapter) throw new NotFoundError("chapter");
+        if (expectedChapterVersionId !== undefined && chapter.currentVersionId !== expectedChapterVersionId) {
+          throw new PolicyError("REVIEW_STALE", "the version selected for publication is no longer current");
+        }
         if (chapter.novel.status === "ARCHIVED") {
           throw new PublicationError(
             "NOVEL_ARCHIVED",

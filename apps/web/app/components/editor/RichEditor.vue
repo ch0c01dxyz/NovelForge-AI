@@ -19,12 +19,13 @@
 import { watch } from "vue";
 import { useEditor, EditorContent } from "@tiptap/vue-3";
 import { looksLikeHtml, plainTextToHtml } from "../../utils/htmlText";
-import type { Editor } from "@tiptap/core";
+import { Decoration, Extension, type Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 
 const props = defineProps<{
   modelValue: string;
   ariaLabel?: string;
+  reviewHighlight?: { from: number; to: number } | null;
 }>();
 
 const emit = defineEmits<{
@@ -37,6 +38,16 @@ let suppressEmit = false;
 
 const editor = useEditor({
   extensions: [
+    Extension.create({
+      name: "reviewHighlight",
+      addDecorations() {
+        return { create: ({ state }) => {
+          const range = props.reviewHighlight;
+          return range && range.from >= 0 && range.to <= state.doc.content.size && range.from < range.to
+            ? [Decoration.Inline(range.from, range.to, { class: "nf-review-highlight" })] : [];
+        } };
+      },
+    }),
     // Manuscript subset (Invariant 1): everything the server allowlist
     // keeps, nothing it strips. code/codeBlock (`<code>`, `<pre>`),
     // strike (`<s>`), underline (`<u>`) and links (`<a>`) are disabled
@@ -83,6 +94,7 @@ watch(
     }
   },
 );
+watch(() => props.reviewHighlight, () => editor.value?.commands.updateDecorations("reviewHighlight"));
 </script>
 
 <template>
@@ -90,6 +102,15 @@ watch(
 </template>
 
 <style scoped>
+:deep(.nf-review-highlight) {
+  background: var(--color-nf-accent-dim);
+  box-shadow: inset 2px 0 0 var(--color-nf-accent);
+  border-radius: 0 4px 4px 0;
+  padding: 2px 8px 2px 10px;
+  margin-left: -18px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
 /* Manuscript prose inside the ProseMirror view: the design's literary
    serif voice (17.5px/1.85, the textarea's measure). Design tokens via
    the Tailwind v4 theme variables (main.css @theme). */

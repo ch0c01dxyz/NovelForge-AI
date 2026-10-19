@@ -32,6 +32,8 @@ import {
   applySuggestion,
 } from "../../../../../utils/selectionResolve";
 import { countWords as countWordsStripped, stripHtmlTags } from "../../../../../utils/htmlText";
+import { locateReviewQuote, type ReviewTextTarget } from "../../../../../utils/reviewText";
+import FinalTextReviewPanel, { type FinalTextReviewResult } from "../../../../../components/workspace/FinalTextReviewPanel.vue";
 // GAP-120: runtime component imports. Nuxt registers components/ subdirectory
 // files with directory-prefixed names (GenerationApprovalDialog,
 // EditorRichEditor, …), so bare template names here need explicit imports.
@@ -127,11 +129,24 @@ const novelId = computed(() => String(route.params.novelId ?? ""));
 const base = computed(() => `/workspaces/${workspaceId.value}/novels/${novelId.value}`);
 
 const chapters = ref<ChapterSummary[]>([]);
+const chapterSort = ref<"oldest" | "newest">("oldest");
+const sortedChapters = computed(() =>
+  [...chapters.value].sort((a, b) =>
+    chapterSort.value === "newest" ? b.number - a.number : a.number - b.number,
+  ),
+);
 const activeId = ref<string | null>(null);
 const content = ref("");
 const version = ref<number | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
+const reviewAction = ref<"save" | "publish" | null>(null);
+const reviewNotice = ref<string | null>(null);
+const finalReview = ref<{ chapterId: string; version: number | null; text: string; result: FinalTextReviewResult } | null>(null);
+const reviewHighlight = ref<{ from: number; to: number } | null>(null);
+const reviewNavigationError = ref<string | null>(null);
+const finalReviewStale = computed(() => !!finalReview.value && (finalReview.value.chapterId !== activeId.value || finalReview.value.version !== version.value || finalReview.value.text !== content.value || saveState.value !== "saved"));
+watch([content, version, activeId], () => { reviewHighlight.value = null;reviewNavigationError.value = null;reviewNotice.value = null; });
 const saveState = ref<"saved" | "dirty" | "saving" | "conflict">("saved");
 
 const activeChapter = computed(
@@ -388,6 +403,8 @@ async function loadChapters() {
 }
 
 async function selectChapter(id: string) {
+  reviewNotice.value = null;
+  reviewHighlight.value = null;finalReview.value = null;reviewNavigationError.value = null;
   if (saveState.value === "dirty" && !saveInFlight) await saveNow();
   if (saveInFlight || saveState.value !== "saved") {
     error.value = t("recovery.saveBeforeLeaving");
@@ -464,9 +481,11 @@ async function createChapter() {
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 let saveInFlight = false;
+let saveCompletion: Promise<void> | null = null;
 // Monotonic token: only the newest selectChapter response may write state.
 let selectSeq = 0;
-onUnmounted(() => clearTimeout(timer));
+let disposed = false;
+onUnmounted(() => { disposed = true; clearTimeout(timer); });
 onBeforeRouteLeave(() => {
   if (!saveInFlight && saveState.value === "saved") return true;
   error.value = t("recovery.saveBeforeLeaving");
@@ -474,6 +493,8 @@ onBeforeRouteLeave(() => {
 });
 
 function onInput() {
+  reviewNotice.value = null;
+  reviewHighlight.value = null;reviewNavigationError.value = null;
   // NF-WF-015: autosave pauses while a version conflict is unresolved —
   // only the banner's explicit actions proceed.
   if (saveState.value === "conflict") return;
@@ -499,6 +520,9 @@ async function saveNow() {
   const savingContent = content.value;
   let newerEdits = false;
   saveInFlight = true;
+  let finishSave!: () => void;
+  const completion = new Promise<void>(resolve => { finishSave = resolve; });
+  saveCompletion = completion;
   clearTimeout(timer);
   saveState.value = "saving";
   try {
@@ -554,6 +578,8 @@ async function saveNow() {
     }
   } finally {
     saveInFlight = false;
+    finishSave();
+    if (saveCompletion === completion) saveCompletion = null;
     if (newerEdits && activeId.value === savingId) {
       clearTimeout(timer);
       timer = setTimeout(() => void saveNow(), 1500);
@@ -828,22 +854,67 @@ onMounted(async () => {
 });
 
 async function publish() {
+  await saveAndReview(true);
+}
+
+function showReviewText(target: ReviewTextTarget) {
+  if (!finalReview.value || finalReviewStale.value || !editorRef.value) return;
+  const range = locateReviewQuote(editorRef.value, finalReview.value.text, target.span, target.quote);
+  if (!range) { reviewNavigationError.value = t("reviewIssues.unlocatable");return; }
+  reviewNavigationError.value = null;
+  reviewHighlight.value = range;
+  generationRailOpen.value = false;
+  editorRef.value.chain().focus().setTextSelection(range).scrollIntoView().run();
+}
+
+async function saveAndReview(publishAfter = false) {
   const chapter = activeChapter.value;
-  if (!chapter) return;
-  if (saveState.value !== "saved") await saveNow();
-  // Never publish unsaved or conflicted text — the version on the server
-  // is what gets frozen, so a failed save must abort the publish.
-  if (saveState.value !== "saved") return;
+  if (!chapter || reviewAction.value) return;
+  const selected = selectSeq;
+  const novelBase = base.value;
+  reviewAction.value = publishAfter ? "publish" : "save";
+  reviewNotice.value = null;
+  error.value = null;
   try {
-    // NF-WF-013 (GAP-046): publish through the 012 release path, which
-    // creates the Publication row the public reader resolves. The
-    // extended review gate (GAP-045) guards this path, so 409 refusals
-    // get actionable messages.
-    await api(`${base.value}/chapters/${chapter.id}/publication/publish`, {
+    if (saveCompletion) await saveCompletion;
+    if (saveState.value !== "saved") await saveNow();
+    if (disposed || selected !== selectSeq || activeId.value !== chapter.id || base.value !== novelBase || saveState.value !== "saved") return;
+    const savedText = content.value, savedVersion = version.value;
+    const stillCurrent = () => !disposed && selected === selectSeq && activeId.value === chapter.id && base.value === novelBase && saveState.value === "saved" && content.value === savedText && version.value === savedVersion;
+    const chapterBase = `${novelBase}/chapters/${chapter.id}`;
+    const { context } = await api<{ context: { chapterVersion: { id: string; content: string }; currentVersionId: string | null } }>(`${chapterBase}/scale-review-context`);
+    if (!stillCurrent()) return;
+    if (!context.chapterVersion.id || context.chapterVersion.id !== context.currentVersionId || context.chapterVersion.content !== savedText) {
+      error.value = t("errors.publishReviewStale");
+      return;
+    }
+    // Native deterministic review creates the exact-version receipt; the
+    // publication transaction still rechecks every live policy/head pin.
+    const review = await api<FinalTextReviewResult>(`${chapterBase}/final-text-review`, {
       method: "POST",
+      body: JSON.stringify({ chapterVersionId: context.chapterVersion.id }),
     });
-    chapter.status = "PUBLISHED";
+    if (!stillCurrent()) return;
+    if (review.chapterVersionId === context.chapterVersion.id && (review.verdict === "PASS" || review.verdict === "FAIL")) {
+      finalReview.value = { chapterId: chapter.id, version: savedVersion, text: savedText, result: review };
+      reviewHighlight.value = null;reviewNavigationError.value = null;
+      if (review.verdict === "FAIL") generationRailOpen.value = true;
+    }
+    if (review.verdict !== "PASS" || review.chapterVersionId !== context.chapterVersion.id) {
+      error.value = t(review.verdict === "FAIL" ? "errors.publishHardViolation" : "errors.publishReviewStale");
+      return;
+    }
+    if (publishAfter) {
+      await api(`${chapterBase}/publication/publish`, {
+        method: "POST",
+        body: JSON.stringify({ expectedChapterVersionId: context.chapterVersion.id }),
+      });
+      chapter.status = "PUBLISHED";
+    } else {
+      reviewNotice.value = t("common.savedAndReviewed");
+    }
   } catch (e) {
+    if (disposed || selected !== selectSeq || activeId.value !== chapter.id || base.value !== novelBase) return;
     if (e instanceof ApiError) {
       if (e.status === 403) {
         error.value = t("errors.publishForbidden");
@@ -859,12 +930,14 @@ async function publish() {
       }
     }
     error.value = t("errors.publishFailed");
+  } finally {
+    reviewAction.value = null;
   }
 }
 </script>
 
 <template>
-  <div class="nf-writer-shell grid h-dvh grid-rows-[52px_1fr_30px] bg-nf-bg-0 text-nf-text">
+  <div class="nf-writer-shell grid h-dvh grid-cols-1 grid-rows-[52px_minmax(0,1fr)_30px] bg-nf-bg-0 text-nf-text">
     <header
       class="nf-writer-header flex items-center gap-3.5 border-b border-nf-border bg-nf-bg-1 px-5 shadow-nf-sm"
     >
@@ -893,7 +966,7 @@ async function publish() {
       </button>
       <ActionMenu :label="t('workspace.tools')">
       <button class="nf-mobile-action text-nf-text-dim" @click="openWorkspacePanel('planning')">{{ t("workspace.nav.planning") }}</button>
-      <button class="nf-mobile-action text-nf-text-dim" :disabled="saveState === 'saved'" @click="saveNow">{{ t("common.save") }}</button>
+      <button class="nf-mobile-action text-nf-text-dim" :disabled="!activeChapter || reviewAction !== null" @click="saveAndReview()">{{ t(reviewAction === 'save' ? 'common.reviewing' : 'common.save') }}</button>
       <!-- NF-WF-018A: AI Studio link — hidden for VIEWER (role-gated,
            progressive enhancement; the server enforces). -->
       <NuxtLink
@@ -976,27 +1049,28 @@ async function publish() {
       </div>
       <button
         class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus disabled:opacity-50"
-        :disabled="saveState === 'saved'"
+        :disabled="!activeChapter || reviewAction !== null"
         data-writer-action="save"
-        @click="saveNow"
+        @click="saveAndReview()"
       >
-        {{ t("common.save") }}
+        {{ t(reviewAction === 'save' ? 'common.reviewing' : 'common.save') }}
       </button>
       <button
         class="rounded-lg bg-nf-accent px-3.5 py-1.5 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
-        :disabled="!activeChapter || saveState === 'saving'"
+        :disabled="!activeChapter || saveState === 'saving' || reviewAction !== null"
+        data-testid="writer-publish"
         @click="publish"
       >
-        {{ t("header.publish") }}
+        {{ t(reviewAction === 'publish' ? "header.publishing" : "header.publish") }}
       </button>
     </header>
 
     <div
-      class="nf-writer-grid grid min-h-0 grid-cols-1 lg:grid-cols-[264px_1fr] xl:grid-cols-[264px_1fr_312px]"
+      class="nf-writer-grid grid min-h-0 grid-cols-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[264px_1fr] xl:grid-cols-[264px_1fr_312px]"
       :data-chapters-open="chapterNavigationOpen"
       :data-generation-open="generationRailOpen"
     >
-      <nav id="writer-chapters" :aria-label="t('chapters.title')" class="nf-writer-chapters hidden overflow-y-auto border-r border-nf-border bg-nf-bg-1 px-2.5 py-4 lg:block">
+      <nav id="writer-chapters" :aria-label="t('chapters.title')" class="nf-writer-chapters hidden min-h-0 max-h-full overflow-y-auto border-r border-nf-border bg-nf-bg-1 px-2.5 py-4 lg:block">
         <div class="mb-2 flex items-center justify-between px-2.5 pb-2">
           <span
             class="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint"
@@ -1028,28 +1102,39 @@ async function publish() {
             ⤓
           </button>
         </div>
-        <p v-if="loading" class="px-2.5 text-[13px] text-nf-text-faint">{{ t("common.loading") }}</p>
-        <p v-else-if="!chapters.length" class="px-2.5 text-[13px] text-nf-text-faint">
-          {{ t("chapters.empty") }}
-        </p>
-        <button
-          v-for="c in chapters"
-          :key="c.id"
-          class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] focus-visible:nf-focus"
-          :class="
-            c.id === activeId
-              ? 'border-l-2 border-nf-accent bg-nf-accent/10 font-semibold text-nf-accent-hi'
-              : 'text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text'
-          "
-          @click="selectChapter(c.id)"
-        >
-          <span class="truncate">{{ c.number }} — {{ c.title }}</span>
-          <span
-            class="ml-auto shrink-0 rounded bg-nf-bg-0 px-1.5 py-px text-[11px] tabular-nums text-nf-text-faint"
+        <div class="mb-3 px-2.5">
+          <label for="chapter-sort" class="mb-1 block text-[12px] text-nf-text-dim">{{ t("chapters.sortLabel") }}</label>
+          <select id="chapter-sort" v-model="chapterSort" data-testid="chapter-sort" class="w-full rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus">
+            <option value="oldest">{{ t("chapters.oldestFirst") }}</option>
+            <option value="newest">{{ t("chapters.newestFirst") }}</option>
+          </select>
+        </div>
+        <div data-testid="chapter-list" role="region" :aria-label="t('chapters.list')" tabindex="0" class="max-h-[20dvh] overflow-y-scroll overscroll-contain rounded-md [scrollbar-gutter:stable] focus-visible:nf-focus sm:max-h-[40dvh]">
+          <p v-if="loading" class="px-2.5 text-[13px] text-nf-text-faint">{{ t("common.loading") }}</p>
+          <p v-else-if="!chapters.length" class="px-2.5 text-[13px] text-nf-text-faint">
+            {{ t("chapters.empty") }}
+          </p>
+          <button
+            v-for="c in sortedChapters"
+            :key="c.id"
+            :data-chapter-number="c.number"
+            :aria-current="c.id === activeId ? 'true' : undefined"
+            class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] focus-visible:nf-focus"
+            :class="
+              c.id === activeId
+                ? 'border-l-2 border-nf-accent bg-nf-accent/10 font-semibold text-nf-accent-hi'
+                : 'text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text'
+            "
+            @click="selectChapter(c.id)"
           >
-            {{ c.wordCount.toLocaleString() }}
-          </span>
-        </button>
+            <span class="truncate">{{ c.number }} — {{ c.title }}</span>
+            <span
+              class="ml-auto shrink-0 rounded bg-nf-bg-0 px-1.5 py-px text-[11px] tabular-nums text-nf-text-faint"
+            >
+              {{ c.wordCount.toLocaleString() }}
+            </span>
+          </button>
+        </div>
         <!-- NF-WF-016: the story-structure nav (design mockup :655-663,
              extended per Invariant 7a) opens the authoring workspace
              panels in a drawer. -->
@@ -1070,7 +1155,7 @@ async function publish() {
         </button>
       </nav>
 
-      <main class="flex min-w-0 flex-col bg-nf-bg-0">
+      <main class="flex min-h-0 min-w-0 flex-col bg-nf-bg-0">
         <div class="flex items-center gap-2 border-b border-nf-border bg-nf-bg-1 px-6 py-2">
           <EditorToolbar :editor="editorRef" @rewrite-tone="() => runSelectionOperation('rewrite-tone')" />
           <div class="flex-1" />
@@ -1092,6 +1177,8 @@ async function publish() {
           >
             {{ error }}
           </p>
+
+          <p v-if="reviewNotice" role="status" data-testid="save-review-result" class="mx-auto mt-6 max-w-[700px] rounded-lg border border-nf-ok/40 bg-nf-ok/10 px-4 py-3 text-[13px] text-nf-ok">{{ reviewNotice }}</p>
 
           <!-- NF-WF-007 review area -->
           <div
@@ -1224,6 +1311,7 @@ async function publish() {
             <ClientOnly>
               <RichEditor
                 :model-value="content"
+                :review-highlight="reviewHighlight"
                 :aria-label="t('chapters.editorPlaceholder')"
                 @update:modelValue="onEditorInput"
                 @editor-ready="onEditorReady"
@@ -1266,6 +1354,7 @@ async function publish() {
         :aria-label="t('generation.title')"
         class="nf-writer-generation hidden overflow-y-auto border-l border-nf-border bg-nf-bg-1 px-4 py-5 xl:block"
       >
+        <FinalTextReviewPanel :review="finalReview?.chapterId === activeId ? finalReview.result : null" :stale="finalReviewStale" :navigation-error="reviewNavigationError" @show="showReviewText" />
         <GenerationPanel
           ref="generationPanel"
           :workspace-id="workspaceId"

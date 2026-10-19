@@ -1,5 +1,148 @@
 # Technical Issues and Implementation Gaps
 
+## Review navigation verification notes — 2026-10-19
+
+IN PROGRESS; owner: solo-planning-and-publish-review. Explicit Save must await
+an already running blur autosave, otherwise its review silently aborts. The
+shared workflow now waits for that operation; regression added. Native review
+findings without spans cannot support honest text navigation; display that
+limitation and target only exact-version, verified, uniquely located quotes.
+First scratch browser's blanket alert assertion also caught Generation's
+expected missing-template notice (fixture has no workflow catalog); scope the
+publish assertion to the writer's main area and retain fixture limitation.
+Native API typecheck rejected REVIEW_STALE as PublicationErrorCode; use the
+existing PolicyError type/mapping. No gate or actual error is suppressed.
+The next browser attempt targeted the desktop Save button at390px, where the
+approved layout puts Save in Tools. Use that actual mobile menu action;
+production header behavior is preserved.
+
+Resolution — CLOSED. Shared explicit Save waits for blur autosave; 42 focused
+web tests and real native browser verify review-before-publish and editable,
+nonpersistent highlights. The final native scratch run passes EN desktop/ID
+mobile and real SCALE refusal/re-review with persisted read-back. Reference
+styles visually inspected. Existing missing-template notice remains a declared
+fixture limitation. No invented location or suppressed publication failure.
+
+## Current Engram hook timeout — 2026-10-19
+
+OPEN; owner: solo-planning-and-publish-review. Host explicitly reports runtime
+UNBOUND because engram.exe spawnSync ETIMEDOUT. Attributed writes stopped;
+do not reuse the previously confirmed ID until fresh runtime confirmation.
+Keep concise handoff in the task/CURRENT and report memory-save limitations.
+Last successful memory434 records diagnosis; later Save/findings amendments
+and completion must be retained in source docs. No hook/security changes.
+
+Resolution — CLOSED. The host subsequently reconfirmed the active identity;
+only then did attributed writes resume. Checkpoint435 saved/read back with
+the later Save/findings amendments. Final verified handoff follows completion.
+
+## Solo Leveling planning data and missing publication review — 2026-10-19
+
+OPEN; owner: solo-planning-and-publish-review. Observed 270 imported DRAFT
+chapters and retrospective outline nodes, but no outline version/horizon or
+final-text receipt for any current version. Writer Publish calls publication
+directly, so the native gate correctly returns REVIEW_STALE. Existing error
+text wrongly presumes an earlier review existed. Create a retrospective draft
+and explicit horizon with checkpoint/backup; make the writer run native review
+before publication, retain exact-version/scope guards and HARD/SCALE refusal.
+No outline/canon approval or live publication inferred. Closure: focused
+negative tests, real scratch workflow, preserved live hashes and read-back.
+
+Additional observed contract mismatch: HorizonView treats the API response as a
+raw policy, but GET/PUT return `{policy, updatedAt}`. Editing the displayed
+wrapper submits nested policy and fails horizon validation. Fix the shared
+view to unwrap the real response; current component fixtures incorrectly model
+raw-policy responses and need regression coverage for the actual envelope.
+
+Source preflight refused an assumed equality before any live planning writes:
+chapter 1 current version 5 differs from imported version 1 (two Jin-Woo name
+corrections). Preserve the author's text. Freeze the retained summary with its
+original source hash plus current hash and explicit sourceChangedSinceSummary
+flag; do not label that summary re-extracted or approved. Other 269 chapters
+still match their cited summary sources. Private bounded diff receipt retained.
+
+Separate review found a publication intent race: after reviewing A, another
+actor can save/review B before the publication lock; a valid B receipt alone
+does not authorize this click to publish B. Add an optional expected version
+at the native boundary, checked under its existing lock, with a real database
+regression. Explicit author amendment also requires Save to run review without
+publication; preserve autosaved text and surface review failure separately.
+
+Resolution — CLOSED. Source-linked outline v1 remains DRAFT; horizon applied
+with atomic absence precondition. Pre-checkpoint/backup and post-apply hashes
+verify preserved manuscript/current versions, 315 proposals and original nodes.
+Native publication optionally pins expectedChapterVersionId under lock;
+stale reviewed-version intent refuses409 even when the other version has PASS.
+Horizon envelope unwrap and optional expectedUpdatedAt guard are tested.
+42 web / 26 native API tests, affected types/lint/diff and independent exact
+review PASS. Actual author UI Save runs a native PASS review without publishing;
+scratch browser verifies successful publication and genuine failure paths.
+See `tasks/solo-planning-and-publish-review.md` for receipts and limits.
+
+## Canon proposal batch decision gap — 2026-10-19
+
+OPEN; owner: canon-proposal-batch-decisions. ProposalReview has per-row actions
+only. Batch reuse must preserve native HIGH approval checkpoints, authorization,
+fresh conflict checks and revision CAS, not silently supersede repeated claims.
+Add opt-in server no-conflict enforcement and novel-scoped batch-item routes;
+return the actual committed revision for serial CAS chaining. Treat network/5xx
+failures as unknown because an audit/response failure can occur after commit.
+Lock sibling UI actions and stop safely on the first uncertain/failed item.
+Feature authorization is not approval of the author's existing live candidates.
+
+Review findings: rejection must chain head CAS too; malformed success receipts
+are unknown; both checkpoint identity and revision must validate before dispatch.
+The first scratch browser seed used `/entities` and received 404; the existing
+route is `/canon/entities`. Corrected private fixture only; no live data writes.
+Closure requires focused regressions, native API/browser evidence and separate
+review of the final diff.
+
+Resolution — CLOSED. 44 focused UI tests, 67 native PostgreSQL canon API tests,
+all 3 affected package typechecks, scoped lint and diff checks PASS. Separate
+exact-source review APPROVE after the three receipt/CAS fixes. Real browser
+scratch acceptance/read-back covers EN approval, ID mobile rejection and
+partial stop on new live conflict. Primary 315 proposal rows hash unchanged;
+local updated API ready 200, both new routes enforce required-head 400.
+See `tasks/canon-proposal-batch-decisions.md` for exact evidence/hashes.
+
+## Chapter-navigation Engram relation-review hook timeout — 2026-10-19
+
+OPEN; owner: writer-chapter-navigation. Checkpoint429 save succeeded, then the
+third mem_judge was blocked by PreToolUse engram.exe ETIMEDOUT. No success is
+claimed for that relation or a final summary until a normal retry/read-back.
+Keep the existing host identity/hooks; preserve concise task/CURRENT fallback.
+Application checks are complete and this bookkeeping failure did not alter data.
+
+Resolution — CLOSED. Normal relation retry succeeded; checkpoint429 and final
+summary430 were saved/read back with the unchanged host-confirmed identity.
+
+## Writer chapter navigation containment and order — 2026-10-19
+
+IN PROGRESS; owner: current chapter-navigation change. The existing sidebar
+places every chapter directly before story-tool buttons in one scrolling nav;
+large novels bury those tools after hundreds of rows. It has no oldest/newest
+control. Add a bounded independently scrollable chapter region, numeric
+ascending/descending presentation and en/id labels. Keep the underlying chapter
+array, selected chapter and unsaved buffer unchanged; no manuscript mutation.
+Use existing design tokens and narrow-screen panel behavior. Acceptance: numeric
+sort and dirty-buffer regression,270chapter browser proof at desktop/mobile,
+localized labels, keyboard scrolling and no document overflow or API writes.
+
+Live270chapter browser proof passed desktop containment/order but found390px
+Indonesian page width537px: the writer shell's implicit auto-sized grid column
+allowed the header/content intrinsic minimum to widen the document. Constrain
+that shared shell column with minmax(0,1fr), then rerun the same mobile proof;
+do not hide overflow or alter manuscript data to disguise the layout defect.
+
+Resolution — CLOSED. The constrained independent list and numeric copied-array
+ordering are implemented with en/id labels, keyboard focus and aria-current.
+Focused22tests/typecheck/scoped lint pass; independent exact-diff review APPROVE.
+Live270chapter proof at en1440/id1440/id390 verifies400/400/200px list heights,
+both sort directions, keyboard scrolling, active selection and zero document
+overflow/page errors/API writes. No manuscript or character-development data
+was changed. Retained evidence is in tasks/writer-chapter-navigation.md and the
+ignored browser receipt; no full CI rerun or human accessibility acceptance claim.
+
 ## NF-WF-059 character-development follow-up — 2026-10-19
 
 IN PROGRESS; owner: the authorized character-development follow-up. Existing
@@ -16,6 +159,50 @@ import receipt. It stopped before enrichment writes. Treat current versions as
 source truth: inspect actual content changes and remap only quotations that
 still verify against the current immutable version. Preserve the newer author
 work; do not restore version1 or reuse stale source hashes as current evidence.
+
+The first multi-character development responses sometimes omit target IDs or
+truncate JSON; transport success is not accepted as completed extraction. Keep
+those raw outputs private. Reuse only independently parseable, fully validated
+character objects, then repair missing targets individually with bounded real
+gateway calls. Separate review also found inferred motives and a remembering
+claim not supported by the cited passages; narrow/remove those before writes.
+Review all retained knowledge for actual knower and acquisition ownership.
+
+Some complete character objects omit a knowledge list despite supplying cited
+arcs. Retain the cited assessment with an explicit omitted-field uncertainty
+and zero applied knowledge; absence of that field is not evidence that the
+character knows nothing. Reject copied input objects lacking assessment fields,
+and never repair truncated JSON by inventing a missing object or quotation.
+
+Independent source-context review found dream sequences (chapters218/257),
+flashbacks, failed remembering and shared-title identity ambiguity that short
+citations alone did not expose. Remove affected arc/knowledge claims, preserve
+explicit uncertainty, and verify context around retained mental-state claims.
+Exact span validation proves quotation provenance, not semantic correctness.
+
+The independent review also identified the explicit time rewind in chapter243
+and earlier-career material in244. Do not connect those disclosures into a
+single implied life chronology or preserve memory across a reset without source
+support. Remove or separate affected milestones and preserve branch ambiguity.
+The private finalizer requires Node's --experimental-transform-types because it
+imports the existing runtime module; an initial strip-only invocation failed
+before any mutation, then the supported invocation passed validation.
+
+The existing arc UI displays milestones through its chapter-specific progress
+form after expansion, rather than directly on expand. The browser helper must
+exercise that actual GET-based progress control; do not invent a display contract
+or change the product merely to satisfy a helper assertion.
+
+Resolution — CLOSED for the authorized character-development slice. Separate
+review approved final plan98e043e0…c9f9a45b5 after50corrections. Native services
+applied74reconstruction arcs/268milestones/11chapter-local knowledge observations
+with exact immutable-version evidence and unique target identity. API/browser
+read-back PASS, no page errors/writes, native final checkpoint read back.
+270manuscript versions,266existing states,90characters,315PROPOSED candidate
+rows, novel metadata and unrelated novels match before/after hashes. No
+candidate approval, alias merge or invented cross-reset progression occurred.
+Bounded coverage and33entries without sufficiently supported arcs are retained
+explicitly; this does not close unrelated structured-data completeness gaps.
 
 ## NF-WF-059 structured-data completeness follow-up — 2026-10-19
 
@@ -41,6 +228,13 @@ domain read-back, source-bound evidence and applicable retrieval/browser checks.
 Private evidence: `.nf-artifacts/nf059/completeness-receipt.json`. No story data
 was changed by this inventory. The current audience is teen; do not overwrite
 live metadata with the earlier import receipt's initially unset audience.
+
+Subsequent authorized development update: the character-development leg now has
+74reviewed reconstruction arcs,268milestones and11chapter-local knowledge rows,
+verified separately above. Other inventory legs remain OPEN; the earlier zero
+counts retain their historical observation time and are not current assertions
+for character development. Git advanced concurrently to6d343d3; preserve that
+external work and do not infer permission for a new commit/push from it.
 
 ## NF-WF-059 completed-novel import — 2026-10-19
 

@@ -611,6 +611,66 @@ describe("canon facts and the one-live-value invariant", () => {
   });
 });
 
+describe("novel-scoped batch-item decisions", () => {
+  it("chains approval revisions, rejects a stale head and retains native checkpoints/audit", async () => {
+    const owner = await seedUser("batch-owner@example.test");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "batch-heads");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Batch actor");
+    const ids: string[] = [];
+    for (const predicate of ["role", "rank"]) ids.push((await propose(owner.cookie, workspaceId, novelId, { entityId, predicate, objectText: "source observation" })).body.id as string);
+    const base = `/api/workspaces/${workspaceId}/novels/${novelId}`;
+    const checkpoint = await app.inject({ method: "POST", url: base + "/checkpoints", headers: { cookie: owner.cookie }, payload: { label: "Before batch" } });
+    expect(checkpoint.statusCode).toBe(201);
+    const head = checkpoint.json().revisionId;
+    const approve = (id: string, revision: string) => app.inject({ method: "POST", url: base + `/canon/proposals/${id}/approve-batch-item`, headers: { cookie: owner.cookie }, payload: { expectedHeadRevisionId: revision } });
+    const first = await approve(ids[0]!, head);expect(first.statusCode, first.body).toBe(200);
+    expect(first.json().revisionId).toBe((await db.novelBranch.findFirstOrThrow({ where: { novelId, name: "main" } })).headRevisionId);
+    expect((await approve(ids[1]!, head)).statusCode).toBe(409);
+    const second = await approve(ids[1]!, first.json().revisionId);expect(second.statusCode, second.body).toBe(200);
+    expect(await db.canonFact.count({ where: { novelId } })).toBe(2);
+    expect(await db.checkpoint.count({ where: { novelId } })).toBeGreaterThanOrEqual(3);
+    expect(await db.auditLog.count({ where: { action: "canon.proposal-approved" } })).toBe(2);
+  });
+  it("refuses a newly discovered live claim without superseding or deciding it", async () => {
+    const owner = await seedUser("batch-conflict@example.test");const { workspaceId, novelId } = await seedWorkspace(owner.userId, "batch-conflict");
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Actor");
+    const proposal = await propose(owner.cookie, workspaceId, novelId, { entityId, predicate: "rank", objectText: "new", validFromChapter: 2 });
+    await createFact(owner.cookie, workspaceId, novelId, { entityId, predicate: "rank", objectText: "old", validFromChapter: 1 });
+    const head = (await db.novelBranch.findFirstOrThrow({ where: { novelId, name: "main" } })).headRevisionId;
+    const result = await app.inject({ method: "POST", url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/proposals/${proposal.body.id}/approve-batch-item`, headers: { cookie: owner.cookie }, payload: { expectedHeadRevisionId: head } });
+    expect(result.statusCode, result.body).toBe(409);
+    expect((await db.canonProposal.findUniqueOrThrow({ where: { id: proposal.body.id as string } })).status).toBe("PROPOSED");
+    expect(await db.canonFact.count({ where: { novelId, status: "ACTIVE" } })).toBe(1);
+    expect((await db.novelBranch.findFirstOrThrow({ where: { novelId, name: "main" } })).headRevisionId).toBe(head);
+  });
+  it("enforces authentication, capability, novel ownership and rejection status CAS", async () => {
+    const owner = await seedUser("batch-scope@example.test"),editor = await seedUser("batch-editor@example.test");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "batch-scope", { userId: editor.userId, role: "EDITOR" });
+    const other = await createPlatformServices({ db, audit: createAuditService(db) }).createNovel({ actorUserId: owner.userId, workspaceId, title: "Other", slug: "batch-other" });
+    const entityId = await createEntity(owner.cookie, workspaceId, novelId, "Actor");
+    const proposal = await propose(owner.cookie, workspaceId, novelId, { entityId, predicate: "role", objectText: "scoped" });
+    const next = await propose(owner.cookie, workspaceId, novelId, { entityId, predicate: "rank", objectText: "scoped" });
+    const head = (await db.novelBranch.findFirstOrThrow({ where: { novelId, name: "main" } })).headRevisionId;
+    for (const action of ["approve", "reject"]) {
+      const url = `/api/workspaces/${workspaceId}/novels/${novelId}/canon/proposals/${proposal.body.id}/${action}-batch-item`,payload = { expectedHeadRevisionId: head };
+      expect((await app.inject({ method: "POST", url, payload })).statusCode).toBe(401);
+      expect((await app.inject({ method: "POST", url, payload, headers: { cookie: editor.cookie } })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url: url.replace(novelId, other.id), payload, headers: { cookie: owner.cookie } })).statusCode).toBe(404);
+    }
+    const url = `/api/workspaces/${workspaceId}/novels/${novelId}/canon/proposals/${proposal.body.id}/reject-batch-item`;
+    expect((await app.inject({ method: "POST", url, headers: { cookie: owner.cookie }, payload: {} })).statusCode).toBe(400);
+    const rejected = await app.inject({ method: "POST", url, headers: { cookie: owner.cookie }, payload: { expectedHeadRevisionId: head, note: "source not sufficient" } });
+    expect(rejected.statusCode).toBe(200);
+    expect(rejected.json().revisionId).toBe((await db.novelBranch.findFirstOrThrow({ where: { novelId, name: "main" } })).headRevisionId);
+    expect((await app.inject({ method: "POST", url, headers: { cookie: owner.cookie }, payload: { expectedHeadRevisionId: rejected.json().revisionId } })).statusCode).toBe(409);
+    const nextUrl = url.replace(proposal.body.id as string, next.body.id as string);
+    expect((await app.inject({ method: "POST", url: nextUrl, headers: { cookie: owner.cookie }, payload: { expectedHeadRevisionId: head } })).statusCode).toBe(409);
+    expect((await db.canonProposal.findUniqueOrThrow({ where: { id: next.body.id as string } })).status).toBe("PROPOSED");
+    expect((await app.inject({ method: "POST", url: nextUrl, headers: { cookie: owner.cookie }, payload: { expectedHeadRevisionId: rejected.json().revisionId } })).statusCode).toBe(200);
+    expect(await db.canonFact.count({ where: { novelId } })).toBe(0);
+  });
+});
+
 describe("candidate canon is not silently committed (TESTING.md mandatory scenario)", () => {
   it("holds a conflicting proposal unapproved and leaves the live fact byte-identical", async () => {
     const owner = await seedUser("owner@example.com");

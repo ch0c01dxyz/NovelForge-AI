@@ -607,6 +607,8 @@ describe("planning routes", () => {
     });
     expect(put.statusCode, put.body).toBe(200);
     expect((put.json() as { policy: unknown }).policy).toEqual(policy);
+    const raced = await app!.inject({ method: "PUT", url: horizonUrl, headers: { cookie: owner.cookie }, payload: { policy: { bands: [{ maxDistance: null, detail: "FULL" }] }, expectedUpdatedAt: null } });
+    expect(raced.statusCode).toBe(409);
 
     got = (await app!.inject({
       method: "GET",

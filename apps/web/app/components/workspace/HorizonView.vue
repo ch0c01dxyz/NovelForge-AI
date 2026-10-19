@@ -64,7 +64,7 @@
 <script setup lang="ts">
 /**
  * HorizonView (NF-WF-016): planning-horizon read/update.
- * GET .../planning/horizon → policy object or null; PUT with { policy }.
+ * GET/PUT .../planning/horizon → { policy, updatedAt }; PUT with { policy }.
  * The policy is free-form JSON, so the editor is a JSON textarea with
  * parse-error handling — invalid JSON never reaches the server.
  */
@@ -83,6 +83,7 @@ const { t } = useLocale();
 const uid = `horizon-${Math.random().toString(36).slice(2)}`;
 
 const current = ref<unknown | null>(null);
+type HorizonResponse = { policy: unknown | null; updatedAt: string | null };
 const policyText = ref("");
 const loading = ref(true);
 const loadError = ref<string | null>(null);
@@ -106,7 +107,7 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    current.value = await api<unknown>(base());
+    current.value = (await api<HorizonResponse>(base())).policy;
     policyText.value = current.value === null ? "" : pretty(current.value);
   } catch (e) {
     loadError.value = planningErrorMessage(t, e);
@@ -136,10 +137,10 @@ async function submit(): Promise<void> {
   }
   saving.value = true;
   try {
-    current.value = await api<unknown>(base(), {
+    current.value = (await api<HorizonResponse>(base(), {
       method: "PUT",
       body: JSON.stringify({ policy: parsed }),
-    });
+    })).policy;
     saved.value = true;
   } catch (e) {
     formError.value = planningErrorMessage(t, e);

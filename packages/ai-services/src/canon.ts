@@ -426,14 +426,18 @@ export interface CanonServices {
     availableFromChapter?: number | null;
     /** NF-WF-002D: the head the caller's plan was built against (C12.1). */
     expectedHeadRevisionId?: string | null;
-  }): Promise<{ canonFactId: string; supersededFactId: string | null }>;
+    expectedNovelId?: string;
+    requireNoConflict?: boolean;
+  }): Promise<{ canonFactId: string; supersededFactId: string | null; revisionId: string }>;
 
   rejectProposal(input: {
     actorUserId: string;
     workspaceId: string;
     proposalId: string;
     note?: string;
-  }): Promise<void>;
+    expectedNovelId?: string;
+    expectedHeadRevisionId?: string | null;
+  }): Promise<{ revisionId: string }>;
 
   listFacts(input: {
     actorUserId: string;
@@ -1184,6 +1188,8 @@ export function createCanonServices(deps: {
       proposalId,
       availableFromChapter,
       expectedHeadRevisionId,
+      expectedNovelId,
+      requireNoConflict,
     }) {
       const proposal = await gateProposal(
         workspaceId,
@@ -1195,6 +1201,7 @@ export function createCanonServices(deps: {
       // never from an unchecked client value, and never before the gate, so an
       // unauthorized caller learns nothing and no head is disclosed to one.
       const novelId = proposal.entity.novelId;
+      if (expectedNovelId !== undefined && expectedNovelId !== novelId) throw new NotFoundError("proposal");
 
       if (proposal.status !== "PROPOSED") {
         throw new ConflictError(`proposal is already ${proposal.status.toLowerCase()}`);
@@ -1235,6 +1242,10 @@ export function createCanonServices(deps: {
               objectText: true,
             },
           });
+
+          if (requireNoConflict && priorLive) {
+            throw new ConflictError("batch approval cannot replace a live fact; review this proposal separately");
+          }
 
           // Re-classify against canon as it stands NOW, not as it stood when
           // the proposal was filed. Nothing stops two proposals for the same
@@ -1316,7 +1327,7 @@ export function createCanonServices(deps: {
           // that lost its race throws inside this transaction, so the rollback
           // removes the checkpoint, revision, head move and snapshot together:
           // no checkpoint is recorded for a decision that did not happen.
-          await advanceForMutation(tx, {
+          const mutation = await advanceForMutation(tx, {
             workspaceId,
             novelId,
             expectedHeadRevisionId,
@@ -1454,7 +1465,7 @@ export function createCanonServices(deps: {
             throw new ConflictError("this proposal was already decided");
           }
 
-          return { canonFactId: fact.id, supersededFactId };
+          return { canonFactId: fact.id, supersededFactId, revisionId: mutation.revisionId };
         })
         .catch((e: unknown) => {
           const code = (e as { code?: string })?.code;
@@ -1512,13 +1523,14 @@ export function createCanonServices(deps: {
       return result;
     },
 
-    async rejectProposal({ actorUserId, workspaceId, proposalId, note }) {
+    async rejectProposal({ actorUserId, workspaceId, proposalId, note, expectedNovelId, expectedHeadRevisionId }) {
       const proposal = await gateProposal(
         workspaceId,
         proposalId,
         actorUserId,
         "canon:approve",
       );
+      if (expectedNovelId !== undefined && expectedNovelId !== proposal.entity.novelId) throw new NotFoundError("proposal");
       if (proposal.status !== "PROPOSED") {
         throw new ConflictError(`proposal is already ${proposal.status.toLowerCase()}`);
       }
@@ -1532,7 +1544,7 @@ export function createCanonServices(deps: {
       // rule (CLAUDE.md §2.13) bypassed by interleaving rather than by logic.
       // The predicate makes the decision atomic with the write.
       // The CAS and the revision share ONE transaction (C4).
-      await db.$transaction(async (tx) => {
+      const mutation = await db.$transaction(async (tx) => {
         const rejected = await tx.canonProposal.updateMany({
           where: { id: proposal.id, status: "PROPOSED" },
           data: {
@@ -1545,9 +1557,10 @@ export function createCanonServices(deps: {
         if (rejected.count === 0) {
           throw new ConflictError("this proposal was already decided");
         }
-        await advanceForMutation(tx, {
+        return advanceForMutation(tx, {
           workspaceId,
           novelId: proposal.entity.novelId,
+          expectedHeadRevisionId,
           operation: "proposal.reject",
           origin: "MANUAL",
           actorUserId,
@@ -1565,6 +1578,7 @@ export function createCanonServices(deps: {
         entityId: proposal.id,
         payload: { novelId: proposal.entity.novelId },
       });
+      return { revisionId: mutation.revisionId };
     },
 
     async listFacts({

@@ -2,7 +2,7 @@
 
 ## Authorized character-development follow-up — 2026-10-19
 
-IN PROGRESS. The author now requests populating character development for the
+COMPLETED — source-grounded development applied and verified. The author requests populating character development for the
 same imported novel and primary MySpaces workspace. Reuse the90existing entries
 and validated initial extraction; add source-grounded development arcs and
 chronological milestones, plus strictly evidenced character knowledge where
@@ -29,6 +29,54 @@ must never be inferred from narrator-only information or a character's presence.
 For literal knowledge evidence, keep narrow exact quotations and chapter-local
 windows; generated semantic canon remains unapproved. Rollback is supported
 non-destructive story restore; references require retained source/DB backup.
+
+Completion: all90existing entries assessed using1369retained source passages
+(maximum40per entry), prior validated extraction and targeted current-version
+source. Final separately reviewed plan SHA256
+`98e043e02fbf6c512b849a76e8b62506f9ed03c2c73a301f2413ff8c9f9a45b5`
+contains74labelled reconstruction arcs for57entries,268milestones and11literal,
+chapter-local knowledge observations.33entries remain without an invented arc.
+Native ACTIVE marks reconstruction not declared resolved; it is not a claim
+that every original story arc remains ongoing. No official arc names or human
+acceptance are asserted.50review corrections removed dream/flashback/identity
+and failed-memory errors; no retained arc falsely spans the chapter243 reset.
+
+Root applied366receipted native operations after separate reviewer
+`/root/review_character_development` approved that exact plan and application
+seam. Existing315semantic proposals remain PROPOSED with identical full-row
+hashes;270current manuscript versions/content,90character rows,266states,
+novel metadata and other novels had identical before/after hashes.11new canon
+rows are narrowly quoted learning observations backing knowledge, with exact
+immutable-version spans, chapter-local validity and explicit disclosure bounds;
+they are not automatic promotion of the315semantic proposals. Knowledge target
+identity resolves uniquely; no alias merge or existing state overwrite occurred.
+
+Actual API verifies arc/knowledge lists and chapter-specific progress without
+future milestone leakage. Read-only authenticated browser verifies displayed
+reconstruction arcs, sourced milestones through the progress form, and knowledge
+tab entries, with zero page errors and zero attempted writes. Product code was
+unchanged by this data follow-up; no full CI/build rerun is claimed.
+
+Pre-operation backup is12047942bytes, SHA256
+`dd4ba51275d76b72936fb36e7dfef1b84f1a13b2094302f5f76ed4dac7ebae50`,
+with verified custom-dump table inventory. Pre-checkpoint
+`18b526fe-f560-48d8-ab93-8c1c87549b15` preceded mutations. Final checkpoint
+`a82a210d-8de0-47a7-9244-4d84da9fd26f`, revision
+`a4bdaef9-61b0-4bd8-9b1d-8309c80b9160`, number2018,6472922bytes,
+was read back. Character1's newer version3 had identical original prose and was
+preserved, not reset to the old import version. Private input, source bindings,
+review/corrections, final plan, application and verification/browser receipts
+are under `.nf-artifacts/nf059/development/`. References remain outside story
+snapshots; retain these derived-source artifacts and DB backups for recovery.
+No commit, push, publication, deployment or Docker reset was performed.
+
+The post-operation DB backup is16087007bytes, SHA256
+`f378fbc66975dcaf6b19755f1d4b5a638eae2290828007a3d7adf634d2dcaa3c`,
+with verified custom-dump inventory; this new dump was not restore-rehearsed.
+Concurrent repository commits were observed at final Git inspection:
+`b24c9bd` (cover) and `6d343d3` (prior import/seeding progress). They were not
+created or pushed by this executor; preserve them. This phase leaves only its
+three documentation updates uncommitted, with the existing stash intact.
 
 Status: COMPLETED — import and automated enrichment verified; semantic candidates
 await author review. Owner: current Codex executor. Source: the author's local,

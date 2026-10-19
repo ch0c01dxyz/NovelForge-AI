@@ -299,6 +299,20 @@ async function api(
 }
 
 describe("publish chapter (immediate)", () => {
+  it("refuses a different current version even when it has a valid review", async () => {
+    const owner = await seedUser("publish-intent@example.test"), ids = await seedWorkspace(owner.userId, "publish-intent");
+    const ch = await makeChapter(owner.cookie, ids, "Intent pin");
+    const first = await saveVersion(owner.cookie, ids, ch.id, "Author reviewed A.");
+    await seedReceipt(ids, first.id, "PASS");
+    const second = await saveVersion(owner.cookie, ids, ch.id, "Another actor's B.");
+    await seedReceipt(ids, second.id, "PASS");
+    const refused = await api("POST", `${pubUrl(ids, ch.id)}/publish`, owner.cookie, { expectedChapterVersionId: first.id });
+    expect(refused.status).toBe(409);expect(refused.body.error).toBe("REVIEW_STALE");
+    expect(await db.publication.findUnique({ where: { chapterId: ch.id } })).toBeNull();
+    expect((await db.chapter.findUniqueOrThrow({ where: { id: ch.id } })).status).toBe("DRAFT");
+    const accepted = await api("POST", `${pubUrl(ids, ch.id)}/publish`, owner.cookie, { expectedChapterVersionId: second.id });
+    expect(accepted.status).toBe(200);expect(accepted.body.pinnedVersionId).toBe(second.id);
+  });
   it("publishes a reviewed chapter: 200, PUBLISHED pin, chapter status, novel DRAFT→ACTIVE", async () => {
     const owner = await seedUser("owner-pub1@example.com");
     const ids = await seedWorkspace(owner.userId, "pub1");

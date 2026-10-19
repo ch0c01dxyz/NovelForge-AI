@@ -96,7 +96,7 @@ export interface PlanningServices {
 
   getHorizon(input: Scope): Promise<{ policy: unknown; updatedAt: Date | null }>;
 
-  putHorizon(input: Scope & { policy: unknown }): Promise<{ policy: unknown; updatedAt: Date }>;
+  putHorizon(input: Scope & { policy: unknown; expectedUpdatedAt?: string | null }): Promise<{ policy: unknown; updatedAt: Date }>;
 
   /**
    * NF-WF-003 — the current approved outline (no resolver existed).
@@ -754,7 +754,7 @@ export function createPlanningServices(deps: {
       return { policy: row?.policy ?? null, updatedAt: row?.updatedAt ?? null };
     },
 
-    async putHorizon({ actorUserId, workspaceId, novelId, policy }) {
+    async putHorizon({ actorUserId, workspaceId, novelId, policy, expectedUpdatedAt }) {
       await gate(actorUserId, workspaceId, novelId, "canon:manage");
 
       // Validate through the pure rule, not trust: probe at distance 0 exercises the full shape check; a rejected policy is stored nowhere.
@@ -771,11 +771,17 @@ export function createPlanningServices(deps: {
         "horizon.write",
         "PlanningHorizon",
         ["planning_horizons"],
-        (tx) => tx.planningHorizon.upsert({
+        async (tx) => {
+          if (expectedUpdatedAt !== undefined) {
+            const current = await tx.planningHorizon.findUnique({ where: { novelId } });
+            if ((current?.updatedAt.toISOString() ?? null) !== expectedUpdatedAt) throw new ConflictError("planning horizon changed since it was read");
+          }
+          return tx.planningHorizon.upsert({
           where: { novelId },
           update: { policy: policy as InputJsonValue },
           create: { novelId, policy: policy as InputJsonValue },
-        }),
+          });
+        },
         { entityId: novelId, itemOperation: "UPDATE" },
       );
       await audit.record({

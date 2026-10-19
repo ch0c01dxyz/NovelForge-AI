@@ -1,5 +1,119 @@
 # Current Project State
 
+## Solo Leveling planning data, Save review and publication repair — 2026-10-19
+
+COMPLETE, separately reviewed and locally active. Solo Leveling has outline
+version 1 (DRAFT, 270 source-linked nodes) and horizon bands FULL/5, BEATS/20,
+SKETCH/60, VAGUE/tail, verified through API/database and actual author UI.
+Original/current source hashes retain chapter 1's author name corrections;
+the imported summaries remain explicitly derived, unapproved observations.
+Pre-change native checkpoint/backup are recorded in
+`tasks/solo-planning-and-publish-review.md`.
+
+Writer Save now saves then runs the native final-text review, including when
+blur autosave is already in flight. Publish first reviews and releases only
+on confirmed PASS for the version selected by this click; the native locked
+publication guard rejects a different current version. Existing HARD/SCALE
+gates remain enforced. Failed findings appear above Generation; Show selects
+verified unique quoted text with the reference design's temporary orange
+highlight. Edit in place, then Save to review again. Edited findings become
+stale; policy-only/missing-data findings never invent text positions.
+
+Observed 42 focused web + 26 native PostgreSQL planning/publication tests PASS;
+affected types/scoped lint/diff PASS; independent review APPROVE. Native scratch
+browser EN desktop/ID mobile Save/Publish, real SCALE refusal, editable
+highlight and re-review PASS with database read-back. Live chapter 1 version 5
+Save-review PASS, 270 source chapters and 315 canon proposals preserved,
+0 published chapters. Updated local API readiness 200. No commit/push,
+automatic outline/canon approval, live publication or human screen-reader pass.
+Temporary Engram hook timeout recovered only after fresh host confirmation.
+
+## Canon proposal batch decisions — 2026-10-19
+
+Completed and independently reviewed: Canon > Proposals now supports pending
+multiselect/select-all, counted confirmation, shared rejection note and visible
+per-item results. Native pre-batch checkpoint and per-approval HIGH recovery
+remain intact. Both decisions chain committed revision CAS through new
+novel-scoped routes. Batch approval never supersedes a live fact; conflicts
+require individual review. Stop at first failure/uncertainty or unmount;
+earlier successes remain committed and unprocessed items remain undecided.
+
+Observed: 44 focused web + 67 native PostgreSQL canon API tests PASS; web/API/
+ai-services types, scoped lint and diff check PASS; separate review APPROVE.
+Real browser/native scratch DB EN desktop approve, ID 390px reject and partial
+conflict stop PASS with persisted decision/checkpoint read-back. Main database
+retains 315 identical proposal rows, 2 novels/279 chapters. Local API activation
+verified no unsettled generation, readiness 200 and missing-head 400 for both
+new routes. No migration/commit/push, live candidate approval or human
+screen-reader acceptance. Full task/evidence:
+`tasks/canon-proposal-batch-decisions.md`.
+
+## Outline version 1 approved for "Kaisar dari Masa Depan" — 2026-10-19
+
+The Kaisar novel (`e36d568b`, ws-c, DRAFT) now has outline_versions populated
+and approved. Outline version 1 ("Babak 1 — Kebangkitan di Maspati") was
+created via the real API as a structured draft: 9 beats, each carrying its
+existing outline node id, chapter id/title and the 3-4 scene ids seeded for
+that chapter. Approved through
+`POST .../planning/outline-versions/:id/approve` with the tri-state head
+omitted (matches the OutlineVersionsView UI contract).
+
+SQL-verified after approval: 1 outline version, number 1, status APPROVED
+(one-APPROVED-per-novel partial unique index intact); audit trail
+`planning.outline-draft-created` + `planning.outline-approved` under the
+author's real user id; `outlineVersion.approve @ R172` PRE_MUTATION
+checkpoint recorded; main-branch head revision advanced inside the
+transaction. The temporary author session used for the calls was deleted
+afterwards (0 lingering sessions for that window). The approved content is
+projection-only metadata: the 9 `CHAPTER_GROUP` outline nodes remain
+CHAPTER_GROUP in `outline_nodes` (kind is immutable without a delete+create
+path), so the chapter/scene links live in the version content, not the nodes.
+
+Remaining gaps for this novel are unchanged: cover unset, character
+states/arcs/knowledge 0, story events/threads/promises/causal edges 0,
+references 0, narrative policies/planning horizon/endgame ledger 0.
+
+## Writer chapter scrollbar and sorting verified — 2026-10-19
+
+Author-requested chapter navigation now has its own keyboard-scrollable bounded
+region and localized oldest/newest select. Numeric chapter order is computed
+from a copy; active selection, source array and unsaved text remain unchanged.
+Story-tool buttons follow the constrained list rather than270unbounded rows.
+Explicit shell/grid constraints also fix a390px mobile intrinsic-width overflow.
+
+Focused navigation/locale22tests, web typecheck, scoped lint and diff-check PASS;
+separate exact-diff review APPROVE. Live270chapter browser in en/id desktop and
+Indonesian390px verifies sorting, keyboard scrolling, preserved active selection
+and no document overflow, page errors or API writes. No database/story mutation,
+dependency, commit/push or publication. See tasks/writer-chapter-navigation.md.
+
+## NF-WF-059 character development applied — 2026-10-19
+
+The author specifically authorized this follow-up.90existing Solo Leveling
+entries were assessed;74labelled reconstruction arcs for57entries,268sourced
+milestones and11chapter-local knowledge observations were applied through native
+scoped/audited services.33entries remain without unsupported development arcs.
+Separate review approved the exact final-plan hash after50corrections, removing
+dream events, mixed identities, failed remembering, narrator/knower confusion
+and false progression across the chapter243 reset. This is bounded source
+reconstruction, not exhaustive all-prose semantic certification or human sign-off.
+
+Verified full-row hashes preserve315PROPOSED semantic candidates,90characters,
+266existing states,270current manuscript versions/content, novel metadata and
+other novels.11new quoted learning-observation facts support the knowledge rows;
+no semantic-proposal approval or alias merge occurred. The existing product's
+ACTIVE arc status is explicitly presented as reconstruction, without inventing
+story resolution. Current primary workspace/account and audience are preserved.
+
+API read-back checks chronological progress, citations and knowledge windows.
+Authenticated read-only browser confirms arc milestones through its progress
+form and the Knowledge tab, with no page errors or writes. Final checkpoint
+`a82a210d-8de0-47a7-9244-4d84da9fd26f` was read back; fresh pre-operation DB
+backup and private source/review/application receipts are retained. No product
+code changes, full CI rerun, commit/push or publication are part of this phase.
+Remaining indexing/memory, timeline/relationships, author policies and semantic
+approval gaps from the earlier inventory are separate, still-open work.
+
 ## NF-WF-059 private source import verified — 2026-10-19
 
 Completeness clarification after the author's follow-up: the import and bounded

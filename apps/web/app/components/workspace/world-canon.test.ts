@@ -539,7 +539,7 @@ describe("ProposalReview", () => {
       .at(-1)!;
     expect((dialogApprove.element as HTMLButtonElement).disabled).toBe(true);
 
-    await w.find('input[type="checkbox"]').setValue(true);
+    await w.find('[role="alertdialog"] input[type="checkbox"]').setValue(true);
     await nextTick();
     expect((dialogApprove.element as HTMLButtonElement).disabled).toBe(false);
     await dialogApprove.trigger("click");
@@ -580,7 +580,7 @@ describe("ProposalReview", () => {
     await settle();
     await w.findAll("button").find((b) => b.text().includes("workspace.canon.proposals.approve"))!.trigger("click");
     await nextTick();
-    await w.find('input[type="checkbox"]').setValue(true);
+    await w.find('[role="alertdialog"] input[type="checkbox"]').setValue(true);
     await nextTick();
     await w
       .findAll("button")

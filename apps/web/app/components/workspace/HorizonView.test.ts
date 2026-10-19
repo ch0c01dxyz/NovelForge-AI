@@ -43,7 +43,7 @@ beforeEach(() => {
 
 describe("HorizonView", () => {
   it("shows the empty state when no horizon policy exists", async () => {
-    apiMock.mockResolvedValue(null);
+    apiMock.mockResolvedValue({ policy: null, updatedAt: null });
     const w = mount(HorizonView, { props });
     await flushPromises();
     expect(apiMock).toHaveBeenCalledWith(BASE);
@@ -52,16 +52,18 @@ describe("HorizonView", () => {
   });
 
   it("displays the current policy as formatted JSON", async () => {
-    apiMock.mockResolvedValue({ detailDepth: "shallow", chapters: 5 });
+    apiMock.mockResolvedValue({ policy: { bands: [{ maxDistance: null, detail: "VAGUE" }] }, updatedAt: "2026-10-19T00:00:00Z" });
     const w = mount(HorizonView, { props });
     await flushPromises();
-    expect(w.find("[data-testid='horizon-current']").text()).toContain('"detailDepth"');
+    expect(w.find("[data-testid='horizon-current']").text()).toContain('"bands"');
+    expect(w.find("textarea").element.value).not.toContain('"policy"');
+    expect(w.find("textarea").element.value).not.toContain('"updatedAt"');
     w.unmount();
   });
 
   it("saves a parsed policy object with PUT", async () => {
-    apiMock.mockResolvedValueOnce(null);
-    apiMock.mockResolvedValueOnce({ chapters: 5 });
+    apiMock.mockResolvedValueOnce({ policy: null, updatedAt: null });
+    apiMock.mockResolvedValueOnce({ policy: { chapters: 5 }, updatedAt: "2026-10-19T00:00:00Z" });
     const w = mount(HorizonView, { props });
     await flushPromises();
     await w.find("[data-testid='horizon-form'] textarea").setValue('{"chapters": 5}');
@@ -72,11 +74,12 @@ describe("HorizonView", () => {
     expect(init.method).toBe("PUT");
     expect(JSON.parse(init.body)).toEqual({ policy: { chapters: 5 } });
     expect(w.text()).toContain("workspace.planning.horizon.saved");
+    expect(w.find("[data-testid='horizon-current']").text()).not.toContain('"policy"');
     w.unmount();
   });
 
   it("refuses invalid JSON without calling the API", async () => {
-    apiMock.mockResolvedValue(null);
+    apiMock.mockResolvedValue({ policy: null, updatedAt: null });
     const w = mount(HorizonView, { props });
     await flushPromises();
     await w.find("[data-testid='horizon-form'] textarea").setValue("{not json");

@@ -27,6 +27,7 @@ const chapterParams = z.object({
   chapterId: uuid,
 });
 const novelParams = z.object({ workspaceId: uuid, novelId: uuid });
+const publishBody = z.object({ expectedChapterVersionId: uuid.optional() });
 
 // ISO-8601 with offset, parseable and strictly in the future. A past or
 // unparseable time is 400 INVALID_INPUT at the route level (Invariant 5)
@@ -110,9 +111,12 @@ export function registerPublicationRoutes(
       if (!actorUserId) return;
       const params = chapterParams.safeParse(request.params);
       if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const body = publishBody.safeParse(request.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       const result = await services.publishChapter({
         actorUserId,
         ...params.data,
+        ...body.data,
       });
       return reply.code(200).send(result);
     },

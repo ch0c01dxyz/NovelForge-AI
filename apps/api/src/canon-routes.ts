@@ -25,6 +25,8 @@ import type { CanonApplicationServices } from "./services/canon-applications.ts"
 const uuid = z.string().uuid();
 const novelParams = z.object({ workspaceId: uuid, novelId: uuid });
 const proposalParams = z.object({ workspaceId: uuid, proposalId: uuid });
+const batchProposalParams = novelParams.extend({ proposalId: uuid });
+const batchApproveBody = z.object({ expectedHeadRevisionId: uuid });
 
 const keyField = z
   .string()
@@ -493,6 +495,28 @@ export function registerCanonRoutes(
       return reply.code(204).send();
     },
   );
+
+  for (const action of ["approve", "reject"] as const) {
+    app.post(
+      `/api/workspaces/:workspaceId/novels/:novelId/canon/proposals/:proposalId/${action}-batch-item`,
+      async (request, reply) => {
+        const actorUserId = await requireActor(request, reply);
+        if (!actorUserId) return;
+        const params = batchProposalParams.safeParse(request.params);
+        const body = (action === "approve" ? batchApproveBody : rejectBody.extend({ expectedHeadRevisionId: uuid })).safeParse(request.body ?? {});
+        if (!params.success || !body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+        const input = {
+          actorUserId,
+          workspaceId: params.data.workspaceId,
+          proposalId: params.data.proposalId,
+          expectedNovelId: params.data.novelId,
+          ...body.data,
+        };
+        if (action === "approve") return services.approveProposal({ ...input, requireNoConflict: true });
+        return services.rejectProposal(input);
+      },
+    );
+  }
 
   // --- Contracted extraction applications (NF-WF-008) ---
   //

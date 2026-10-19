@@ -121,6 +121,43 @@ select option {
   background: var(--color-nf-accent-dim);
   color: var(--color-nf-text);
 }
+
+/* Author-home cover placeholder (NF author-home redesign): a stable
+ * per-novel gradient (hue set via [data-hue]) with the literary title —
+ * sized to the real 2:3 cover geometry so the grid never jumps. */
+.nf-cover-placeholder {
+  color: var(--color-nf-text);
+  /* --h is set inline per novel (deterministic id hash, 0..359). */
+  --h: 24;
+  background:
+    radial-gradient(120% 90% at 20% 0%, hsl(var(--h) 45% 26% / 0.9), transparent 60%),
+    radial-gradient(120% 100% at 90% 110%, hsl(calc(var(--h) + 30) 40% 18% / 0.9), transparent 65%),
+    linear-gradient(160deg, var(--color-nf-bg-3), var(--color-nf-bg-1) 70%, var(--color-nf-bg-0));
+}
+.nf-cover-title {
+  font-size: clamp(15px, 2.2vw, 22px);
+  font-weight: 600;
+  line-height: 1.25;
+  padding: 0 14%;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--color-nf-text);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+
+/* Workspace cross-panel "Go to" highlight (NF-WF-016 follow-up).
+ * Mirrors the editor's nf-review-highlight treatment: accent-dim wash,
+ * inset accent bar on the leading edge — from the approved writer
+ * workspace design (docs/design/writer-workspace), using the app's
+ * semantic tokens so it follows the same design language. */
+.nf-review-highlight-card {
+  background: var(--color-nf-accent-dim);
+  border-radius: 8px;
+  box-shadow: inset 2px 0 0 var(--color-nf-accent);
+}
+.nf-review-highlight-card > div:first-child {
+  border-color: var(--color-nf-accent-border);
+}
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-nf-border-strong) transparent;

@@ -33,8 +33,13 @@
       >
         {{ t("workspace.characters.list.empty") }}
       </p>
-      <ul v-else class="flex max-h-[320px] flex-col gap-1.5 overflow-y-auto">
-        <li v-for="c in characters" :key="c.id">
+      <ul v-else data-testid="character-list-body" class="flex max-h-[320px] flex-col gap-1.5 overflow-y-auto">
+        <li
+          v-for="c in characters"
+          :key="c.id"
+          :ref="(el) => { if (focusId && c.id === focusId) (listBodyEl = el as HTMLElement | null); }"
+          :class="focusId === c.id ? 'nf-review-highlight-card' : ''"
+        >
           <div
             class="rounded-lg border px-3 py-2"
             :class="
@@ -230,7 +235,7 @@
  * There is deliberately no edit affordance: no character UPDATE route
  * exists (GAP-058), and the sheet says so.
  */
-import { ref } from "vue";
+import { ref, watch, nextTick } from "vue";
 import { useApi, ApiError } from "../../composables/useApi";
 import { useLocale } from "../../composables/useLocale";
 import type { WorkspaceCharacter } from "./CharacterPanel.vue";
@@ -242,6 +247,8 @@ const props = defineProps<{
   loading: boolean;
   loadError: string | null;
   selectedId: string | null;
+  /** NF-WF-016 follow-up: flash-highlight this character card (health "Go to"). */
+  focusId?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -253,6 +260,21 @@ const emit = defineEmits<{
 
 const { t } = useLocale();
 const { api } = useApi();
+
+// NF-WF-016 follow-up: when a focus character is set (health "Go to"),
+// scroll its card into view inside the bounded list.
+const listBodyEl = ref<HTMLElement | null>(null);
+watch(
+  () => [props.focusId, props.characters.length] as const,
+  ([focusId]) => {
+    if (focusId) {
+      void nextTick(() => listBodyEl.value?.scrollIntoView({ block: "center" }));
+    } else {
+      listBodyEl.value = null;
+    }
+  },
+  { immediate: false },
+);
 
 const uid = `charlist-${Math.random().toString(36).slice(2, 8)}`;
 const KEY_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

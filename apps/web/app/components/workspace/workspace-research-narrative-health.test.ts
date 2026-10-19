@@ -554,12 +554,44 @@ describe("HealthMemoryPanel", () => {
     expect(w.text()).toContain("Resolve or retire the thread.");
   });
 
-  it("shows the unresolved-identities register read-only", async () => {
-    const w = mountHealth();
+  it("lists unresolved identities as cards with re-check and go-to actions", async () => {
+    apiMock
+      .mockResolvedValueOnce(healthResult)
+      .mockResolvedValueOnce({
+        unresolved: [
+          {
+            rule: "UNRESOLVED_IDENTITY",
+            severity: "WARNING",
+            status: "UNRESOLVED",
+            evidence: [
+              { kind: "character", id: "c1".padEnd(36, "0"), revisionId: "rev-1", detail: 'character "Bob" has NULL story_entity_id' },
+            ],
+            affectedEntities: [{ type: "character", id: "c1" }],
+            remediation: null,
+            sourceRevisionId: "rev-1",
+            evaluatedAt: "2026-10-06T00:00:00Z",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ statuses: [] });
+    const w = mount(HealthMemoryPanel, { props });
     await tick();
     expect(w.text()).toContain("workspace.health.unresolved.title");
-    expect(w.find("pre").text()).toContain("shadow figure");
+    expect(w.find('[data-testid="unresolved-item-0"]').text()).toContain("has NULL story_entity_id");
+    expect(w.find('[data-testid="unresolved-goto-0"]').text()).toContain(
+      "workspace.health.unresolved.goto",
+    );
+    await w.find('[data-testid="unresolved-goto-0"]').trigger("click");
+    expect(w.emitted("goto")).toEqual([
+      [{ kind: "character", id: "c1".padEnd(36, "0"), rule: "UNRESOLVED_IDENTITY" }],
+    ]);
+    await w.find('[data-testid="unresolved-refresh"]').trigger("click");
+    const unresolvedCalls = (apiMock.mock.calls as unknown[][]).filter((c) =>
+      String(c[0]).endsWith("/story-health/unresolved"),
+    );
+    expect(unresolvedCalls.length).toBe(2);
   });
+
 
   it("maps a 403 health failure to the forbidden message", async () => {
     apiMock

@@ -109,6 +109,43 @@ const unresolvedRegister = ref<unknown[]>([]);
 const unresolvedLoading = ref(true);
 const unresolvedError = ref<string | null>(null);
 
+const emit = defineEmits<{
+  /** Author clicked "Go to" — the parent opens the target panel/section. */
+  (e: "goto", target: { kind: string; id: string; rule: string }): void;
+}>();
+
+interface UnresolvedCard {
+  title: string;
+  detail: string;
+  goto: { kind: string; id: string; rule: string } | null;
+}
+
+const KIND_LABELS: Record<string, string> = { character: "workspace.health.unresolved.kindCharacter", entity: "workspace.health.unresolved.kindEntity", timelineEvent: "workspace.health.unresolved.kindTimeline" };
+
+const unresolvedItems = computed<UnresolvedCard[]>(() =>
+  unresolvedRegister.value.map((raw) => {
+    const ev = (raw as { evidence?: Array<{ kind?: string; id?: string; detail?: string }> }).evidence ?? [];
+    const primary = ev[0] ?? {};
+    const rule = String((raw as { rule?: string }).rule ?? "UNRESOLVED_IDENTITY");
+    const kindKey = KIND_LABELS[String(primary.kind ?? "")];
+    const title = kindKey
+      ? `${t(kindKey)}${primary.id ? ` · ${primary.id.slice(0, 8)}` : ""}`
+      : String(primary.id ?? rule);
+    const detail = ev
+      .map((e) => [e.kind, e.id, e.detail].filter(Boolean).join(" · "))
+      .join("\n");
+    const goto =
+      primary.kind && primary.id
+        ? { kind: String(primary.kind), id: String(primary.id), rule }
+        : null;
+    return { title, detail, goto };
+  }),
+);
+
+function goToUnresolved(item: UnresolvedCard): void {
+  if (item.goto) emit("goto", item.goto);
+}
+
 const filteredFindings = computed(() =>
   (health.value?.findings ?? []).filter(
     (f) => severityFilter.value === "ALL" || f.severity === severityFilter.value,
@@ -312,7 +349,6 @@ onMounted(() => {
             class="w-56 rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 font-mono text-[12.5px] text-nf-text placeholder:text-nf-text-faint focus-visible:nf-focus"
             :placeholder="t('workspace.health.findings.revisionIdOptional')"
           />
-          <span class="text-[11px] text-nf-text-faint">{{ t("workspace.health.findings.revisionIdHint") }}</span>
         </label>
         <label class="flex flex-col gap-1 text-[12px] text-nf-text-dim">
           {{ t("workspace.health.findings.severityFilterLabel") }}
@@ -333,7 +369,7 @@ onMounted(() => {
           {{ t("workspace.health.findings.refresh") }}
         </button>
       </form>
-
+      <p class="-mt-2 text-[11px] text-nf-text-faint">{{ t("workspace.health.findings.revisionIdHint") }}</p>
       <p v-if="healthLoading" class="text-[12.5px] text-nf-text-faint">
         {{ t("workspace.health.common.loading") }}
       </p>
@@ -403,9 +439,19 @@ onMounted(() => {
 
       <!-- Unresolved identities register -->
       <div class="flex flex-col gap-2">
-        <h3 class="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint">
-          {{ t("workspace.health.unresolved.title") }}
-        </h3>
+        <div class="flex items-center justify-between">
+          <h3 class="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint">
+            {{ t("workspace.health.unresolved.title") }}
+          </h3>
+          <button
+            class="rounded-md border border-nf-border-strong px-2.5 py-1 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+            :disabled="unresolvedLoading"
+            data-testid="unresolved-refresh"
+            @click="loadUnresolved"
+          >
+            {{ t("workspace.health.unresolved.refresh") }}
+          </button>
+        </div>
         <p class="text-[12px] leading-relaxed text-nf-text-faint">
           {{ t("workspace.health.unresolved.about") }}
         </p>
@@ -422,7 +468,30 @@ onMounted(() => {
         <p v-else-if="!unresolvedRegister.length" class="text-[12.5px] text-nf-text-faint">
           {{ t("workspace.health.unresolved.empty") }}
         </p>
-        <pre v-else class="max-h-64 overflow-auto rounded-md border border-nf-border bg-nf-bg-0 p-2.5 font-mono text-[11.5px] text-nf-text-dim">{{ JSON.stringify(unresolvedRegister, null, 2) }}</pre>
+        <ul v-else class="flex max-h-64 flex-col gap-2 overflow-y-auto">
+          <li
+            v-for="(item, i) in unresolvedItems"
+            :key="i"
+            class="rounded-lg border border-nf-warn/40 bg-nf-warn-dim px-3 py-2"
+            :data-testid="`unresolved-item-${i}`"
+          >
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="min-w-0 flex-1 truncate text-[13px] font-medium text-nf-text">
+                {{ item.title }}
+              </p>
+              <button
+                v-if="item.goto"
+                type="button"
+                class="rounded-md border border-nf-border-strong px-2.5 py-1 text-[12px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
+                :data-testid="`unresolved-goto-${i}`"
+                @click="goToUnresolved(item)"
+              >
+                {{ t("workspace.health.unresolved.goto") }}
+              </button>
+            </div>
+            <p class="mt-1 break-words font-mono text-[11.5px] text-nf-text-dim">{{ item.detail }}</p>
+          </li>
+        </ul>
       </div>
     </div>
 

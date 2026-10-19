@@ -818,9 +818,27 @@ function openWorkspacePanel(key: WorkspacePanelKey) {
   workspacePanel.value = key;
 }
 
+// NF-WF-016 follow-up: "Go to" from the unresolved-identity register.
+// character → Characters panel focused on that character; entity → Canon
+// panel; timelineEvent → Timeline panel. The machine must not decide the
+// fix, only open the page where the author decides it.
+function goToUnresolvedTarget(target: { kind: string; id: string; rule: string }) {
+  const panelMap: Record<string, WorkspacePanelKey> = {
+    character: "characters",
+    entity: "canon",
+    timelineEvent: "timeline",
+  };
+  const panel = panelMap[target.kind];
+  if (!panel) return;
+  openWorkspacePanel(panel);
+  gotoEntityId.value = target.id;
+}
+const gotoEntityId = ref<string | null>(null);
+
 function closeWorkspacePanel() {
   const wasHealth = workspacePanel.value === "health";
   workspacePanel.value = null;
+  gotoEntityId.value = null;
   if (wasHealth) void loadHealth();
 }
 
@@ -1439,6 +1457,7 @@ async function saveAndReview(publishAfter = false) {
         v-if="workspacePanel === 'characters'"
         :workspace-id="workspaceId"
         :novel-id="novelId"
+        :focus-character-id="gotoEntityId"
       />
       <RelationshipPanel
         v-else-if="workspacePanel === 'relationships'"
@@ -1487,6 +1506,7 @@ async function saveAndReview(publishAfter = false) {
         v-else-if="workspacePanel === 'health'"
         :workspace-id="workspaceId"
         :novel-id="novelId"
+        @goto="goToUnresolvedTarget"
       />
     </WorkspaceDrawer>
     <!-- NF-WF-017B: export picker -->

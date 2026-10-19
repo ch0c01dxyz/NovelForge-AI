@@ -67,6 +67,7 @@
           :loading="loading"
           :load-error="loadError"
           :selected-id="selectedId"
+          :focus-id="focusCharacterId"
           @select="selectedId = $event"
           @created="reload"
           @deleted="onDeleted"
@@ -148,6 +149,8 @@ export interface WorkspaceCharacter {
 const props = defineProps<{
   workspaceId: string;
   novelId: string;
+  /** NF-WF-016 follow-up: preselect + highlight this character (from the health "Go to"). */
+  focusCharacterId?: string | null;
 }>();
 
 const { t } = useLocale();
@@ -214,6 +217,13 @@ async function reload() {
     characters.value = await api<WorkspaceCharacter[]>(
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/characters?take=200&skip=0`,
     );
+    if (
+      props.focusCharacterId &&
+      characters.value.some((c) => c.id === props.focusCharacterId)
+    ) {
+      selectedId.value = props.focusCharacterId;
+      activeTab.value = "characters";
+    }
     if (selectedId.value && !characters.value.some((c) => c.id === selectedId.value)) {
       selectedId.value = null;
     }

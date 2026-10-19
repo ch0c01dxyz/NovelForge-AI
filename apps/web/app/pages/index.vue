@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
 import { ApiError, useApi } from "../composables/useApi";
 import { useLocale } from "../composables/useLocale";
 import NewNovelWizard from "../components/author/NewNovelWizard.vue";
@@ -25,6 +25,31 @@ const managerOpen = ref(false);
 const managerButton = ref<HTMLButtonElement | null>(null);
 const signingOut = ref(false);
 const createdPath = ref("");
+
+// NF author-home redesign: grid | list view, remembered per device.
+type ViewMode = "grid" | "list";
+const viewMode = ref<ViewMode>("grid");
+const VIEW_KEY = "novelforge.libraryView";
+try {
+  const saved = localStorage.getItem(VIEW_KEY);
+  if (saved === "grid" || saved === "list") viewMode.value = saved;
+} catch {
+  /* storage unavailable — grid default */
+}
+watch(viewMode, (mode) => {
+  try {
+    localStorage.setItem(VIEW_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+});
+
+/** Deterministic placeholder hue from the novel id — stable cover colors. */
+function coverHue(id: string): number {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return h;
+}
 async function load() {
   loading.value = true;
   errorKey.value = "";
@@ -182,30 +207,128 @@ async function signOut() {
         <svg class="mb-5 size-10 text-nf-text-dim" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M16 8C12 5 7 5 3 6v20c4-1 9-1 13 2 4-3 9-3 13-2V6c-4-1-9-1-13 2Zm0 0v20M7 11h5m-5 5h5m8-5h5m-5 5h5" /></svg>
         <p class="max-w-md text-sm leading-7 text-nf-text-dim">{{ t("authorHome.empty") }}</p>
       </section>
-      <ul v-else class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <li v-for="n in novels" :key="n.id">
-          <NuxtLink
-            :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
-            class="nf-library-card flex h-full flex-col items-start gap-5 rounded-xl border border-nf-border bg-nf-bg-1 p-5 hover:border-nf-border-strong hover:bg-nf-bg-2 focus-visible:nf-focus"
-            ><img v-if="n.coverUrl" :src="n.coverUrl" alt="" class="aspect-[2/3] w-24 rounded-lg border border-nf-border object-cover" loading="lazy" />
-            <span v-else class="grid size-9 place-items-center rounded-lg border border-nf-border-strong bg-nf-bg-0 font-nf-literary text-lg text-nf-text-dim" aria-hidden="true">{{ n.title.slice(0, 1) }}</span>
-            <span class="min-w-0 break-words font-nf-literary text-xl font-semibold">{{
-              n.title
-            }}</span
-            ><span class="mt-auto rounded border border-nf-border bg-nf-bg-0 px-2 py-0.5 text-[11px] text-nf-text-dim">{{
-              t(
-                n.status === "DRAFT"
-                  ? "authorHome.statusDraft"
-                  : n.status === "ACTIVE"
-                    ? "authorHome.statusActive"
-                    : n.status === "ARCHIVED"
-                      ? "authorHome.statusArchived"
-                      : n.status,
-              )
-            }}</span></NuxtLink
+      <template v-else>
+        <!-- View mode: grid | list (NF author-home redesign). -->
+        <div
+          class="mt-10 flex items-center justify-end gap-1 border-b border-nf-border pb-2"
+          role="group"
+          :aria-label="t('authorHome.viewMode')"
+        >
+          <button
+            type="button"
+            :aria-pressed="viewMode === 'grid'"
+            data-testid="view-grid"
+            class="grid size-8 place-items-center rounded-md border focus-visible:nf-focus"
+            :class="viewMode === 'grid' ? 'border-nf-accent/50 bg-nf-accent-dim text-nf-accent-hi' : 'border-transparent text-nf-text-faint hover:bg-nf-bg-2 hover:text-nf-text'"
+            :title="t('authorHome.viewGrid')"
+            @click="viewMode = 'grid'"
           >
-        </li>
-      </ul>
+            <svg class="size-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+          </button>
+          <button
+            type="button"
+            :aria-pressed="viewMode === 'list'"
+            data-testid="view-list"
+            class="grid size-8 place-items-center rounded-md border focus-visible:nf-focus"
+            :class="viewMode === 'list' ? 'border-nf-accent/50 bg-nf-accent-dim text-nf-accent-hi' : 'border-transparent text-nf-text-faint hover:bg-nf-bg-2 hover:text-nf-text'"
+            :title="t('authorHome.viewList')"
+            @click="viewMode = 'list'"
+          >
+            <svg class="size-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><circle cx="2.8" cy="4" r="0.9" fill="currentColor" stroke="none"/><circle cx="2.8" cy="8" r="0.9" fill="currentColor" stroke="none"/><circle cx="2.8" cy="12" r="0.9" fill="currentColor" stroke="none"/></svg>
+          </button>
+        </div>
+
+        <!-- GRID: cover-first cards, full-bleed placeholder art -->
+        <ul v-if="viewMode === 'grid'" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <li v-for="n in novels" :key="n.id">
+            <NuxtLink
+              :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
+              class="nf-library-card group flex h-full flex-col overflow-hidden rounded-xl border border-nf-border bg-nf-bg-2 hover:border-nf-border-strong hover:bg-nf-bg-3 focus-visible:nf-focus"
+            >
+              <div class="relative aspect-[2/3] w-full overflow-hidden" aria-hidden="true">
+                <img
+                  v-if="n.coverUrl"
+                  :src="n.coverUrl"
+                  alt=""
+                  class="absolute inset-0 size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                  loading="lazy"
+                />
+                <span
+                  v-else
+                  class="nf-cover-placeholder absolute inset-0 grid place-items-center"
+                  :style="{ '--h': String(coverHue(n.id)) }"
+                >
+                  <span class="nf-cover-title font-nf-literary">{{ n.title }}</span>
+                </span>
+                <span
+                  class="absolute left-3 top-3 rounded border px-2 py-0.5 font-mono text-[10.5px] backdrop-blur-sm"
+                  :class="n.status === 'DRAFT' ? 'border-nf-border-strong bg-black/40 text-nf-text-dim' : 'border-nf-accent-border bg-nf-accent-dim text-nf-accent-hi'"
+                >{{
+                  t(
+                    n.status === "DRAFT"
+                      ? "authorHome.statusDraft"
+                      : n.status === "ACTIVE"
+                        ? "authorHome.statusActive"
+                        : n.status === "ARCHIVED"
+                          ? "authorHome.statusArchived"
+                          : n.status,
+                  )
+                }}</span>
+              </div>
+              <span class="flex min-h-0 flex-1 flex-col gap-1 p-4">
+                <span class="min-w-0 break-words font-nf-literary text-lg font-semibold leading-snug">{{
+                  n.title
+                }}</span>
+                <span class="mt-auto truncate font-mono text-[11px] text-nf-text-faint">/{{ n.slug }}</span>
+              </span>
+            </NuxtLink>
+          </li>
+        </ul>
+
+        <!-- LIST: one row per novel -->
+        <ul v-else class="flex flex-col gap-2">
+          <li v-for="n in novels" :key="n.id">
+            <NuxtLink
+              :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
+              class="nf-library-card group flex items-center gap-4 rounded-xl border border-nf-border bg-nf-bg-2 p-3 hover:border-nf-border-strong hover:bg-nf-bg-3 focus-visible:nf-focus"
+            >
+              <span class="aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md border border-nf-border" aria-hidden="true">
+                <img
+                  v-if="n.coverUrl"
+                  :src="n.coverUrl"
+                  alt=""
+                  class="size-full object-cover"
+                  loading="lazy"
+                />
+                <span
+                  v-else
+                  class="nf-cover-placeholder grid size-full place-items-center text-[13px] font-nf-literary font-semibold"
+                  :style="{ '--h': String(coverHue(n.id)) }"
+                >{{ n.title.slice(0, 1) }}</span>
+            </span>
+              <span class="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span class="min-w-0 truncate font-nf-literary text-lg font-semibold">{{ n.title }}</span>
+                <span class="truncate font-mono text-[11px] text-nf-text-faint">/{{ n.slug }}</span>
+              </span>
+              <span
+                class="shrink-0 rounded border px-2 py-0.5 text-[11px]"
+                :class="n.status === 'DRAFT' ? 'border-nf-border bg-nf-bg-0 text-nf-text-dim' : 'border-nf-accent-border bg-nf-accent-dim text-nf-accent-hi'"
+              >{{
+                t(
+                  n.status === "DRAFT"
+                    ? "authorHome.statusDraft"
+                    : n.status === "ACTIVE"
+                      ? "authorHome.statusActive"
+                      : n.status === "ARCHIVED"
+                        ? "authorHome.statusArchived"
+                        : n.status,
+                )
+              }}</span>
+              <svg class="size-4 shrink-0 text-nf-text-faint transition-transform group-hover:translate-x-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 3.5L10.5 8L6 12.5"/></svg>
+            </NuxtLink>
+          </li>
+        </ul>
+      </template>
     </main>
   </div>
 </template>

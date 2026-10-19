@@ -239,11 +239,11 @@ async function signOut() {
         </div>
 
         <!-- GRID: cover-first cards, full-bleed placeholder art -->
-        <ul v-if="viewMode === 'grid'" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <ul v-if="viewMode === 'grid'" class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           <li v-for="n in novels" :key="n.id">
             <NuxtLink
               :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
-              class="nf-library-card group flex h-full flex-col overflow-hidden rounded-xl border border-nf-border bg-nf-bg-2 hover:border-nf-border-strong hover:bg-nf-bg-3 focus-visible:nf-focus"
+              class="nf-library-card group flex h-full flex-col overflow-hidden rounded-lg border border-nf-border bg-nf-bg-2 hover:border-nf-border-strong hover:bg-nf-bg-3 focus-visible:nf-focus"
             >
               <div class="relative aspect-[2/3] w-full overflow-hidden" aria-hidden="true">
                 <img
@@ -261,7 +261,7 @@ async function signOut() {
                   <span class="nf-cover-title font-nf-literary">{{ n.title }}</span>
                 </span>
                 <span
-                  class="absolute left-3 top-3 rounded border px-2 py-0.5 font-mono text-[10.5px] backdrop-blur-sm"
+                  class="absolute left-2 top-2 rounded border px-1.5 py-0.5 font-mono text-[10px] backdrop-blur-sm"
                   :class="n.status === 'DRAFT' ? 'border-nf-border-strong bg-black/40 text-nf-text-dim' : 'border-nf-accent-border bg-nf-accent-dim text-nf-accent-hi'"
                 >{{
                   t(
@@ -275,24 +275,24 @@ async function signOut() {
                   )
                 }}</span>
               </div>
-              <span class="flex min-h-0 flex-1 flex-col gap-1 p-4">
-                <span class="min-w-0 break-words font-nf-literary text-lg font-semibold leading-snug">{{
+              <span class="flex min-h-0 flex-1 flex-col gap-0.5 p-3">
+                <span class="min-w-0 break-words font-nf-literary text-[15px] font-semibold leading-snug">{{
                   n.title
                 }}</span>
-                <span class="mt-auto truncate font-mono text-[11px] text-nf-text-faint">/{{ n.slug }}</span>
+                <span class="mt-auto truncate font-mono text-[10.5px] text-nf-text-faint">/{{ n.slug }}</span>
               </span>
             </NuxtLink>
           </li>
         </ul>
 
         <!-- LIST: one row per novel -->
-        <ul v-else class="flex flex-col gap-2">
+        <ul v-else class="flex flex-col gap-1.5">
           <li v-for="n in novels" :key="n.id">
             <NuxtLink
               :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
-              class="nf-library-card group flex items-center gap-4 rounded-xl border border-nf-border bg-nf-bg-2 p-3 hover:border-nf-border-strong hover:bg-nf-bg-3 focus-visible:nf-focus"
+              class="nf-library-card group flex items-center gap-3 rounded-lg border border-nf-border bg-nf-bg-2 px-2.5 py-2 hover:border-nf-border-strong hover:bg-nf-bg-3 focus-visible:nf-focus"
             >
-              <span class="aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-md border border-nf-border" aria-hidden="true">
+              <span class="aspect-[2/3] w-10 shrink-0 overflow-hidden rounded-md border border-nf-border" aria-hidden="true">
                 <img
                   v-if="n.coverUrl"
                   :src="n.coverUrl"
@@ -307,8 +307,8 @@ async function signOut() {
                 >{{ n.title.slice(0, 1) }}</span>
             </span>
               <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span class="min-w-0 truncate font-nf-literary text-lg font-semibold">{{ n.title }}</span>
-                <span class="truncate font-mono text-[11px] text-nf-text-faint">/{{ n.slug }}</span>
+                <span class="min-w-0 truncate font-nf-literary text-base font-semibold">{{ n.title }}</span>
+                <span class="truncate font-mono text-[10.5px] text-nf-text-faint">/{{ n.slug }}</span>
               </span>
               <span
                 class="shrink-0 rounded border px-2 py-0.5 text-[11px]"

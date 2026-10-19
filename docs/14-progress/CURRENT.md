@@ -1,5 +1,34 @@
 # Current Project State
 
+## docker-compose becomes the one-group NovelForge stack — 2026-10-19
+
+Author requested one group: `docker compose up -d` starts everything,
+`docker compose down` stops everything. The compose file now carries four
+services: postgres/redis (unchanged defaults, ports 5432/6379) plus
+postgres_acceptance/redis_acceptance on 5433/6399 — the previously
+standalone `nf-pg-5433` and `nf-redis-acceptance` containers. Their data
+volumes are declared EXTERNAL (`nf-scratch-5433`, the acceptance redis
+anonymous volume id) so `down`/`-v` can never touch the live acceptance
+database or BullMQ queues; `compose config` validated.
+
+Transition (no reinstall, no data reset): the standalone containers were
+removed (`docker rm -f` keeps volumes), then `docker compose up -d` recreated
+the pair inside project `novelforge-ai`. First `up` hit a stale 5432 port
+proxy (Docker Desktop lingering after the postgres recreate); a second
+`up` started cleanly. Verified after the swap: 4/4 healthy, both databases
+retain data (2 acceptance novels incl. `novelforge_acceptance_050b`; 4 primary
+users), redis acceptance queues intact. The swap briefly killed the worker
+and API host processes: `nf023-worker-r3` (with
+`--experimental-transform-types` — worker entry needs it, unlike the API
+server; env contract unchanged: DATABASE_URL → 5433 acceptance, REDIS_URL
+→ 6399/0) and `nf-api-3000-v10` restarted, `/ready` shows database+redis
+up. The earlier `nf023-api-r2`/`nf023-worker-r2` service records remain
+historical.
+
+`docker compose down` now stops all four; data survives unless `-v` is
+passed. Host-side node processes (API/worker) are outside Compose by
+design and are not affected by compose lifecycle events.
+
 ## CI repair: migration baselines keep the audience migration — 2026-10-19
 
 CI on main had been red since the audience migration landed: the 050A/050B

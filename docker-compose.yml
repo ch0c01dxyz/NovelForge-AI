@@ -1,6 +1,18 @@
-# NovelForge local development infrastructure.
+# NovelForge local development infrastructure — ONE GROUP.
 # Canonical path per docs/11-deployment/DEPLOYMENT.md: works on
 # Windows (Docker Desktop/WSL2) and Ubuntu (Docker Engine + Compose plugin).
+#
+# Everything NovelForge needs runs as a single Compose project:
+#   - `docker compose up -d` starts ALL services,
+#   - `docker compose down` stops ALL of them (data volumes are kept),
+#   - `docker compose down -v` also removes stale/unused volume data —
+#     never used for the live acceptance databases below.
+#
+# postgres/redis     — primary dev databases (defaults per .env.example).
+# postgres_acceptance/redis_acceptance — the isolated acceptance
+# stack on 5433/6399 used by the live API/worker. Their volumes are
+# EXTERNAL so the existing data (novelforge_acceptance_050b, BullMQ
+# queues) is preserved across compose lifecycle events.
 #
 # All credentials below are LOCAL-DEV DEFAULTS only, never for production.
 # Override via .env (see .env.example).
@@ -40,6 +52,46 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  postgres_acceptance:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: novelforge
+      POSTGRES_PASSWORD: novelforge
+      POSTGRES_DB: novelforge
+    ports:
+      - "5433:5432"
+    volumes:
+      - acceptance_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U novelforge -d novelforge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis_acceptance:
+    image: redis:7-alpine
+    ports:
+      - "6399:6379"
+    volumes:
+      - acceptance_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
+  # Existing acceptance data volumes (standalone containers replaced by
+  # this project); external so `docker compose down` never destroys them.
+  acceptance_pg_data:
+    external: true
+    name: nf-scratch-5433
+  acceptance_redis_data:
+    external: true
+    name: "297879c852e53de804f9bd2e2753cc892fd15e5b78f9e2e3b260d5ff25eae267"

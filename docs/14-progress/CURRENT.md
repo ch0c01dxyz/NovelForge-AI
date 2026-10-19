@@ -1,5 +1,82 @@
 # Current Project State
 
+## Health & Memory panel and author-home library revisions — 2026-10-19
+
+Author-requested UI revisions, verified in the real browser (authenticated
+live loop, temporary session deleted after):
+
+1. Health filter row alignment: the `ID revisi` hint span previously sat
+   inside the label column, lifting the button and inputs off one baseline.
+   The hint now renders below the form row; Chapter / Revision id /
+   Severity / Refresh share the same `items-end` baseline (en screenshot).
+2. The UNRESOLVED-identities register no longer renders a raw JSON `<pre>`.
+   It is now per-finding cards with a header `Re-check` button
+   (`data-testid=unresolved-refresh`, en "Re-check" / id "Cek Ulang") and a
+   per-card `Go to` button ("Menuju") that emits `goto {kind, id, rule}`.
+   The writer page maps character → Characters panel (preselects and
+   flash-highlights the card via `nf-review-highlight-card`, the
+   writer-workspace accent-dim + inset-bar treatment from
+   docs/design/writer-workspace and the same tokens as the editor's
+   `nf-review-highlight`), entity → Canon panel, timelineEvent → Timeline.
+   The register stays read-only: the machine opens the surface, the author
+   decides the fix. CharacterList scrolls the focused card into view.
+3. Author home (`/`) library redesign: view toggle (grid | list icon
+   buttons, `aria-pressed`, persisted in localStorage
+   `novelforge.libraryView`). Grid = cover-first 2:3 cards with status
+   badge over the art and slug; List = compact rows with 56px thumb and a
+   chevron. Novels without a cover get a deterministic per-id hue
+   placeholder gradient (`--h` inline, hsl-based, design tokens) carrying
+   the literary title — the 2:3 geometry keeps the grid stable even
+   though live reads proved Solo Leveling shows its real cover.
+4. Tests: HealthMemoryPanel unresolved test rewritten to the new cards
+   contract (asserts card detail text, goto payload, and a second
+   unresolved fetch on Re-click). All 41 workspace tests, 17
+   author-home tests, web typecheck, and repo-wide `pnpm lint` PASS.
+
+## Solo Leveling story-health repair: identity links + Baek Yoonho knowledge — 2026-10-19
+
+Author-directed switch to the Solo Leveling novel (`bdab82a0`, ws-c, DRAFT).
+The "Kesehatan & Memori" panel showed 13 findings: 10 UNRESOLVED_IDENTITY
+(WARNING) and 3 KNOWLEDGE_BOUNDARY_VIOLATION (WARNING) against Baek Yoonho.
+
+Root causes, verified against the live acceptance DB before any write:
+
+1. UNRESOLVED_IDENTITY × 10 — rule (b) flags characters holding
+   `character_knowledge` rows while `story_entity_id` is NULL. All 90 Solo
+   Leveling characters were unlinked because the import created characters
+   with keys `nf059-<hash>` while their mirror entities use
+   `nf059-character-<hash>`; the C9.1 exact-key backfill therefore matched 0
+   rows. The 24-char hash suffixes are 1:1 (100 entities / 90 characters).
+   Author authorized the repair; a PRE_MUTATION checkpoint
+   ("pre character-entity link backfill (nf059 identity repair)") was created
+   via the API first, then the 90 links were set by a suffix-equivalence
+   UPDATE mirroring the C9.1 discipline (kind=CHARACTER, same novel, no
+   name matching, uniqueness re-verified 0 duplicates). Direct SQL is
+   justified by the character-routes GAP-058 note: no route or service
+   writes this link — it is migration/author-action owned.
+2. KNOWLEDGE_BOUNDARY_VIOLATION × 3 — chapter 270's version cites 3 canon
+   facts; Baek Yoonho is the only cast row covering ch270 (states 95-96,
+   117-118, 270-271) and held 0 knowledge rows. Remediation through the
+   audited API: `KNOWN/REMEMBERED` for the fire-scene fact
+   (3ecee8c9: Baek Yoonho appears in the quote verbatim), explicit `UNKNOWN`
+   rows (fromChapter 270, toChapter 271) for the two scenes he does not
+   appear in (0ffcdbf5 Jin Woo vs blue-mist monster; c745bec6 Jin Woo/Cha
+   Haein flight epilogue) — recording the author check without fabricating
+   knowledge.
+
+Re-evaluated after the fixes: UNRESOLVED_IDENTITY 10 → 0 (register empty).
+KNOWLEDGE_BOUNDARY_VIOLATION 3 → 2: the two facts carrying explicit UNKNOWN
+rows initially still fired, because the KBV rule treats an in-window UNKNOWN
+row as the boundary signal itself. After the author's follow-up correction
+(passed on 2026-10-19), a live re-check returned 0 findings and an empty
+unresolved register — the KBV pair cleared with the final window/stance
+state. Author confirmed the remaining warnings are gone; verified live:
+findings 0, unresolved 0.
+
+A temporary author session was used for the API calls and deleted after;
+0 sessions created by this work remain. Earlier same-day session rows
+belong to other work and were not touched.
+
 ## Solo Leveling planning data, Save review and publication repair — 2026-10-19
 
 COMPLETE, separately reviewed and locally active. Solo Leveling has outline

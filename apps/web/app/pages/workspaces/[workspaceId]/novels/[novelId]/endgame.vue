@@ -1,5 +1,6 @@
 <template>
   <div class="mx-auto max-w-5xl px-5 py-10 sm:px-8" data-testid="endgame-panel">
+    <BackLink :to="`/workspaces/${workspaceId}/novels/${novelId}`" :label="t('recovery.backToWorkspace')" class="mb-4" />
     <header class="mb-6">
       <h1 class="font-nf-literary text-[30px] font-semibold text-nf-text">{{ t("endgame.title") }}</h1>
       <p class="mt-1 text-[13px] text-nf-text-dim">{{ t("endgame.subtitle") }}</p>
@@ -81,6 +82,7 @@
 </template>
 
 <script setup lang="ts">
+import BackLink from "../../../../../components/ui/BackLink.vue";
 /**
  * NF-WF-022A: Endgame panel page.
  *

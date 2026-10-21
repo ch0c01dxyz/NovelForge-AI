@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 /**
  * Generation panel (NF-WF-007 output #1): start form + run history.
  *
@@ -15,6 +15,8 @@ import { useWorkflowRuns } from "../../composables/useWorkflowRuns";
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
 import type { OutlineVersionView } from "../../composables/useChapterGeneration";
+import WorkflowRunModelPreferences from "./WorkflowRunModelPreferences.vue";
+import { readWorkflowStart, saveWorkflowStart, clearWorkflowStart, type PendingWorkflowStart } from "../../utils/workflowStartJournal";
 
 interface ChapterRef {
   id: string;
@@ -36,6 +38,7 @@ const props = defineProps<{
   workspaceId: string;
   novelId: string;
   chapter: ChapterRef | null;
+  creationMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -52,13 +55,48 @@ const outlines = ref<OutlineVersionView[]>([]);
 const outlineId = ref<string>("");
 const targetWords = ref<string>("");
 const styleNotes = ref("");
+const stepModelRefs = ref<Record<string, string>>({});
+const modelPreferenceFingerprint = ref<string | null>(null);
 const history = ref<RunHistoryItem[]>([]);
 let selectionVersion = 0;
 let historyRequest = 0;
+let restoredHistorySelection = false;
 const starting = ref(false);
+const preparingRetry = ref(false);
+const retryNotice = ref(false);
+const creationWorkflow = ref(false);
+let retrySetupRequest = 0;
 const loading = ref(true);
 const error = ref<string | null>(null);
 const startError = ref<string | null>(null);
+const pendingStart = ref<PendingWorkflowStart | null>(null);
+const uncertainStart = ref(false);
+const recoveryReady = ref(false);
+const recoveryFailed = ref(false);
+const actorUserId = ref<string | null>(null);
+let mounted = true;
+let recoveryRequest = 0;
+async function restoreStart() {
+  const request = ++recoveryRequest;
+  recoveryReady.value = false;
+  recoveryFailed.value = false;
+  pendingStart.value = null;
+  uncertainStart.value = false;
+  actorUserId.value = null;
+  try {
+    const { api } = useApi();
+    const session = await api<{ userId: string }>("/auth/session");
+    if (!mounted || request !== recoveryRequest) return;
+    const restored = readWorkflowStart(session.userId);
+    actorUserId.value = session.userId;
+    pendingStart.value = restored;
+    uncertainStart.value = restored !== null;
+    recoveryReady.value = true;
+  } catch {
+    if (mounted && request === recoveryRequest) recoveryFailed.value = true;
+  }
+}
+onMounted(() => { void restoreStart(); });
 
 const approvedOutline = computed(
   () => outlines.value.find((o) => o.status === "APPROVED") ?? null,
@@ -72,7 +110,11 @@ function inputChapterNumber(item: RunHistoryItem): number | null {
 
 /** Verify provenance even when the server has already filtered the list. */
 const chapterHistory = computed(() =>
-  history.value.filter((r) => r.novelId === props.novelId && inputChapterNumber(r) === props.chapter?.number),
+  history.value.filter((r) => {
+    const input = r.input as { chapterId?: unknown } | null;
+    return r.novelId === props.novelId && inputChapterNumber(r) === props.chapter?.number &&
+      (input?.chapterId == null || input.chapterId === props.chapter?.id);
+  }),
 );
 const parkedRun = computed(() => chapterHistory.value.find((r) => r.status === "AWAITING_APPROVAL") ?? null);
 
@@ -81,9 +123,10 @@ async function refresh(version: number) {
   loading.value = true;
   error.value = null;
   try {
-    const wid = await runs.resolveWorkflowId(props.workspaceId, "chapter-generation-review");
+    const wid = await runs.resolveWorkflowId(props.workspaceId, props.creationMode ? "chapter-creation-review" : "chapter-generation-review");
     if (version !== selectionVersion) return;
     workflowId.value = wid;
+    creationWorkflow.value = !!props.creationMode;
     templateMissing.value = wid === null;
   } catch (e) {
     if (version !== selectionVersion) return;
@@ -99,14 +142,13 @@ async function loadOutlinesAndHistory() {
   const version = selectionVersion;
   const request = ++historyRequest;
   const { workspaceId, novelId, chapter } = props;
-  const wid = workflowId.value;
   try {
     const { api } = useApi();
     const [ovs, hs] = await Promise.all([
       api<OutlineVersionView[]>(
         `/workspaces/${workspaceId}/novels/${novelId}/planning/outline-versions`,
       ),
-      runs.listRuns({ workspaceId, workflowId: wid, novelId, chapterNumber: chapter.number, limit: 100 }),
+      runs.listRuns({ workspaceId, novelId, chapterNumber: chapter.number, limit: 100 }),
     ]);
     if (version !== selectionVersion || request !== historyRequest) return;
     outlines.value = ovs;
@@ -119,6 +161,11 @@ async function loadOutlinesAndHistory() {
       input: h.input,
       startedAt: h.startedAt,
     }));
+    if (!restoredHistorySelection) {
+      restoredHistorySelection = true;
+      const latest = chapterHistory.value.find(r => ["AWAITING_APPROVAL", "SUCCEEDED"].includes(r.status));
+      if (latest) emit("run-selected", latest.id);
+    }
   } catch (e) {
     if (version !== selectionVersion || request !== historyRequest) return;
     error.value = e instanceof ApiError ? t("errors.loadFailed") : t("errors.network");
@@ -126,36 +173,99 @@ async function loadOutlinesAndHistory() {
 }
 
 async function startRun() {
-  if (!props.chapter || !workflowId.value || starting.value) return;
+  if (starting.value || preparingRetry.value || !recoveryReady.value) return;
   const version = selectionVersion;
   starting.value = true;
   startError.value = null;
   try {
-    const input: Record<string, unknown> = {
-      chapterNumber: props.chapter.number,
-      outlineRef: outlineId.value,
-    };
+    const { api } = useApi();
+    const session = await api<{ userId: string }>("/auth/session");
+    if (!mounted) return;
+    if (session.userId !== actorUserId.value) { await restoreStart();return; }
+    if (!pendingStart.value) {
+    if (version !== selectionVersion) return;
+    if (!props.chapter || !workflowId.value || !modelPreferenceFingerprint.value) return;
+    const input: Record<string, unknown> = { chapterNumber: props.chapter.number, outlineRef: outlineId.value };
+    if (creationWorkflow.value) input.chapterId = props.chapter.id;
     const words = Number.parseInt(targetWords.value, 10);
     if (Number.isFinite(words) && words > 0) input.targetWordCount = words;
     if (styleNotes.value.trim()) input.styleNotes = styleNotes.value.trim();
-    const { run, statusUrl } = await runs.startRun({
-      workspaceId: props.workspaceId,
-      workflowId: workflowId.value,
-      novelId: props.novelId,
-      input,
-      // Fresh key per intentional start; the backend dedupes a retried
-      // submit to the existing run (200 path).
+    const pending: PendingWorkflowStart = { actorUserId: session.userId, chapterId: props.chapter.id, chapterTitle: props.chapter.title, request: {
+      workspaceId: props.workspaceId, workflowId: workflowId.value, novelId: props.novelId, input,
+      ...(Object.keys(stepModelRefs.value).length ? { stepModelRefs: { ...stepModelRefs.value } } : {}),
+      expectedModelPreferenceFingerprint: modelPreferenceFingerprint.value,
       idempotencyKey: runs.newIdempotencyKey(),
-    });
-    if (version !== selectionVersion) return;
-    emit("run-started", { runId: run.id, statusUrl });
-    await loadOutlinesAndHistory();
-  } catch (e) {
-    if (version !== selectionVersion) return;
-    startError.value = t("generation.startFailed");
+    } };
+    saveWorkflowStart(pending);
+    pendingStart.value = pending;
+    } else saveWorkflowStart(pendingStart.value);
+  } catch {
+    recoveryReady.value = false;
+    recoveryFailed.value = true;
+    return;
   } finally {
     starting.value = false;
   }
+  if (!pendingStart.value || !mounted) return;
+  const pending = pendingStart.value;
+  const { request } = pending;
+  starting.value = true;
+  startError.value = null;
+  uncertainStart.value = false;
+  try {
+    const { run, statusUrl } = await runs.startRun(request);
+    clearWorkflowStart(pending);
+    pendingStart.value = null;
+    if (!mounted || version !== selectionVersion || request.novelId !== props.novelId || request.workspaceId !== props.workspaceId || pending.chapterId !== props.chapter?.id) return;
+    emit("run-started", { runId: run.id, statusUrl });
+    await loadOutlinesAndHistory();
+  } catch (e) {
+    if (!(e instanceof ApiError) || e.status >= 500 || [401, 403, 404, 408, 429].includes(e.status)) {
+      uncertainStart.value = true;
+      return;
+    }
+    try { clearWorkflowStart(pending); } catch { recoveryReady.value = false;recoveryFailed.value = true;return; }
+    pendingStart.value = null;
+    if (version !== selectionVersion) return;
+    if (e instanceof ApiError && e.status === 409) {
+      modelPreferenceFingerprint.value = null;
+      startError.value = t("workflowModelPreferences.changed");
+    } else startError.value = t("generation.startFailed");
+  } finally {
+    starting.value = false;
+  }
+}
+
+async function prepareFailedRun(runId: string) {
+  if (starting.value || preparingRetry.value || pendingStart.value || !props.chapter) return;
+  const version = selectionVersion;
+  const request = ++retrySetupRequest;
+  const { workspaceId, novelId, chapter } = props;
+  const current = () => mounted && version === selectionVersion && request === retrySetupRequest;
+  preparingRetry.value = true;retryNotice.value = false;startError.value = null;
+  try {
+    const run = await runs.getRun(workspaceId, runId);
+    if (!current()) return;
+    const input = run.input as Record<string, unknown> | null;
+    const strict = run.workflowKey === "chapter-creation-review";
+    if (run.status !== "FAILED" || run.novelId !== novelId || !input || input.chapterNumber !== chapter.number || (strict && input.chapterId !== chapter.id) || !["chapter-generation-review", "chapter-creation-review"].includes(run.workflowKey)) throw new Error("Failed run does not target this chapter");
+    const preview = await runs.previewModelPreferences(workspaceId, run.workflowId, novelId);
+    if (!current()) return;
+    modelPreferenceFingerprint.value = null;
+    workflowId.value = run.workflowId;creationWorkflow.value = strict;
+    await nextTick();
+    if (!current()) return;
+    const choices = { ...run.requestedModelPreferences?.stepModelRefs };
+    const preferred = run.requestedModelPreferences?.preferredModelRef;
+    if (preferred) for (const step of preview.steps) if (!Object.hasOwn(choices, step.stepKey)) choices[step.stepKey] = preferred;
+    stepModelRefs.value = choices;
+    styleNotes.value = typeof input.styleNotes === "string" ? input.styleNotes : "";
+    targetWords.value = typeof input.targetWordCount === "number" ? String(input.targetWordCount) : "";
+    modelPreferenceFingerprint.value = preview.fingerprint;
+    await loadOutlinesAndHistory();
+    if (current()) retryNotice.value = true;
+  } catch { if (current()) startError.value = t("generation.reuseFailedError"); }
+  finally { if (request === retrySetupRequest) preparingRetry.value = false; }
 }
 
 function runStatusLabel(status: string): string {
@@ -171,10 +281,14 @@ function runStatusLabel(status: string): string {
 }
 
 watch(
-  () => [props.workspaceId, props.novelId, props.chapter?.id, props.chapter?.number],
+  [() => props.workspaceId, () => props.novelId, () => props.chapter?.id, () => props.chapter?.number, () => props.creationMode],
   () => {
     const version = ++selectionVersion;
+    restoredHistorySelection = false;
+    retrySetupRequest++;preparingRetry.value = false;retryNotice.value = false;
     workflowId.value = null;
+    stepModelRefs.value = {};
+    modelPreferenceFingerprint.value = null;
     templateMissing.value = false;
     outlines.value = [];
     outlineId.value = "";
@@ -187,7 +301,7 @@ watch(
   },
   { immediate: true },
 );
-onUnmounted(() => { selectionVersion++; });
+onUnmounted(() => { mounted = false;selectionVersion++;recoveryRequest++; });
 
 defineExpose({ refresh: loadOutlinesAndHistory });
 </script>
@@ -199,6 +313,17 @@ defineExpose({ refresh: loadOutlinesAndHistory });
     >
       {{ t("generation.title") }}
     </h2>
+
+    <div v-if="recoveryFailed" role="alert" class="rounded-lg border border-nf-warn/40 px-3 py-2 text-[12.5px] text-nf-warn">
+      <p>{{ t("generation.recoveryFailed") }}</p>
+      <button type="button" class="mt-2 underline focus-visible:nf-focus" @click="restoreStart">{{ t("generation.recheckRecovery") }}</button>
+    </div>
+
+    <div v-if="uncertainStart" role="alert" class="rounded-lg border border-nf-warn/40 bg-nf-warn/10 px-3 py-2 text-[12.5px] text-nf-warn">
+      <p>{{ t("generation.startUncertain") }}</p>
+      <p v-if="pendingStart" class="mt-1">{{ t("generation.previousChapter") }} {{ pendingStart.request.input.chapterNumber }} · {{ pendingStart.chapterTitle }}</p>
+      <button data-testid="retry-workflow-start" :disabled="starting || !recoveryReady" class="mt-2 rounded-md border border-nf-border-strong px-3 py-1.5 hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50" @click="startRun">{{ t("generation.retryStart") }}</button>
+    </div>
 
     <p v-if="loading" role="status" class="text-[13px] text-nf-text-faint">
       {{ t("common.loading") }}
@@ -245,6 +370,7 @@ defineExpose({ refresh: loadOutlinesAndHistory });
             <span class="font-medium text-nf-text-dim">{{ t("generation.targetWords") }}</span>
             <input
               v-model="targetWords"
+              :disabled="starting || preparingRetry || !!pendingStart"
               type="number"
               min="1"
               class="rounded-lg border border-nf-border-strong bg-nf-bg-2 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
@@ -255,14 +381,17 @@ defineExpose({ refresh: loadOutlinesAndHistory });
             <span class="font-medium text-nf-text-dim">{{ t("generation.styleNotes") }}</span>
             <textarea
               v-model="styleNotes"
+              :disabled="starting || preparingRetry || !!pendingStart"
               rows="2"
               :placeholder="t('generation.styleNotesPlaceholder')"
               class="resize-none rounded-lg border border-nf-border-strong bg-nf-bg-2 px-2.5 py-1.5 text-[13px] text-nf-text placeholder:text-nf-text-faint focus-visible:nf-focus"
             />
           </label>
 
+          <WorkflowRunModelPreferences v-if="workflowId" v-model="stepModelRefs" :workspace-id="workspaceId" :workflow-id="workflowId" :novel-id="novelId"
+            :disabled="starting || preparingRetry || !!pendingStart" @fingerprint="value => { modelPreferenceFingerprint = value; if (value) startError = null; }" />
           <button
-            :disabled="starting || !outlineId"
+            :disabled="starting || preparingRetry || !recoveryReady || !!pendingStart || !outlineId || !modelPreferenceFingerprint"
             class="rounded-lg bg-nf-accent px-3.5 py-2 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
             @click="startRun"
           >
@@ -271,6 +400,7 @@ defineExpose({ refresh: loadOutlinesAndHistory });
           <p v-if="startError" role="alert" class="text-[12.5px] text-nf-warn">
             {{ startError }}
           </p>
+          <p v-if="retryNotice" role="status" class="text-[12.5px] text-nf-text-dim">{{ t('generation.reuseReady') }}</p>
         </div>
 
         <div>
@@ -291,6 +421,8 @@ defineExpose({ refresh: loadOutlinesAndHistory });
                 <span class="truncate font-mono text-[11.5px]">{{ r.id.slice(0, 8) }}</span>
                 <span class="ml-auto shrink-0">{{ runStatusLabel(r.status) }}</span>
               </button>
+              <button v-if="r.status === 'FAILED'" type="button" :data-retry-run="r.id" :disabled="starting || preparingRetry || !!pendingStart" :aria-label="`${t('generation.reuseFailed')} · ${r.id.slice(0, 8)}`"
+                class="ml-2 rounded-md border border-nf-border-strong px-2 py-1 text-[11.5px] text-nf-text-dim hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50" @click="prepareFailedRun(r.id)">{{ t('generation.reuseFailed') }}</button>
             </li>
           </ul>
         </div>

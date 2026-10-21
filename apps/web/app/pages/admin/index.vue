@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BackLink from "../../components/ui/BackLink.vue";
 /**
  * Platform administration page (NF-WF-018B): gateway/model/profile
  * management and the routing overview, SUPER_ADMIN only.
@@ -10,9 +11,11 @@
 import { ref, computed, onMounted } from "vue";
 import {
   usePlatformAdmin,
+  MODEL_PROFILES as PROFILES,
   type PlatformRole,
   type GatewayView,
   type ModelView,
+  type PlatformModelCatalogOption,
   type ProfileMapping,
   type PlatformAuditLogEntry,
   type CreateGatewayInput,
@@ -45,6 +48,10 @@ const gatewaysError = ref<string | null>(null);
 const models = ref<ModelView[]>([]);
 const modelsLoading = ref(false);
 const modelsError = ref<string | null>(null);
+const modelCatalog = ref<PlatformModelCatalogOption[]>([]);
+const catalogLoading = ref(false);
+const catalogError = ref<string | null>(null);
+let catalogRequest = 0;
 
 const mappings = ref<ProfileMapping[]>([]);
 const mappingsLoading = ref(false);
@@ -115,16 +122,6 @@ const tabs = computed<{ key: TabKey; labelKey: string }[]>(() => [
   { key: "audit", labelKey: "platformAdmin.tabs.audit" },
 ]);
 
-const PROFILES = [
-  "CREATIVE_WRITER",
-  "DEEP_PLANNER",
-  "CONTINUITY_REVIEWER",
-  "FAST_CLASSIFIER",
-  "STRUCTURED_EXTRACTOR",
-  "LONG_CONTEXT_REVIEWER",
-  "EMBEDDING",
-];
-
 function errText(err: unknown): string {
   return err instanceof Error ? err.message : "unknown";
 }
@@ -153,6 +150,14 @@ async function refreshModels() {
   }
 }
 
+async function refreshCatalog() {
+  const request = ++catalogRequest;
+  catalogLoading.value = true;catalogError.value = null;modelCatalog.value = [];
+  try { const result = await admin.listModelCatalog();if (request === catalogRequest) modelCatalog.value = result; }
+  catch (err) { if (request === catalogRequest) catalogError.value = errText(err); }
+  finally { if (request === catalogRequest) catalogLoading.value = false; }
+}
+
 async function refreshMappings() {
   mappingsLoading.value = true;
   mappingsError.value = null;
@@ -171,7 +176,7 @@ async function refreshRouting() {
   try {
     const res = await admin.getRoutingStrategy();
     strategy.value = res.strategy;
-    await refreshGateways();
+    await Promise.all([refreshGateways(), refreshCatalog()]);
   } catch (err) {
     routingError.value = errText(err);
   } finally {
@@ -195,6 +200,7 @@ async function refreshAll() {
   await Promise.all([
     refreshGateways(),
     refreshModels(),
+    refreshCatalog(),
     refreshMappings(),
     refreshRouting(),
     refreshAudit(),
@@ -230,7 +236,7 @@ async function confirmDelete() {
   try {
     await admin.deleteGateway(target.id);
     deleteTarget.value = null;
-    await Promise.all([refreshGateways(), refreshModels(), refreshMappings()]);
+    await Promise.all([refreshGateways(), refreshModels(), refreshCatalog(), refreshMappings()]);
   } catch (err) {
     actionError.value = errText(err);
   }
@@ -250,7 +256,7 @@ async function syncModels(id: string) {
   actionError.value = null;
   try {
     const res = await admin.syncModels(id);
-    await Promise.all([refreshModels(), refreshAudit()]);
+    await Promise.all([refreshModels(), refreshCatalog(), refreshAudit()]);
     const name = gateways.value.find((g) => g.id === id)?.name ?? id;
     pushToast("success", "platformAdmin.toasts.syncOk", {
       name,
@@ -285,7 +291,7 @@ async function toggleModel(id: string, enabled: boolean) {
   actionError.value = null;
   try {
     await admin.setModelEnabled(id, enabled);
-    await refreshModels();
+    await Promise.all([refreshModels(), refreshCatalog()]);
   } catch (err) {
     actionError.value = errText(err);
   }
@@ -313,6 +319,16 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleString();
 }
 
+async function removeMapping(mapping: ProfileMapping) {
+  if (!mapping.modelRef || mappingsSaving.value) return;
+  mappingsSaving.value = true; actionError.value = null;
+  try {
+    await admin.removeProfileMapping(mapping.profile, mapping.modelRef);
+    await Promise.all([refreshMappings(), refreshAudit()]);
+  } catch (err) { actionError.value = errText(err); }
+  finally { mappingsSaving.value = false; }
+}
+
 onMounted(async () => {
   try {
     role.value = await admin.getPlatformRole();
@@ -329,7 +345,7 @@ onMounted(async () => {
 
 <template>
   <div class="mx-auto max-w-6xl px-5 py-10 sm:px-8">
-    <NuxtLink to="/" class="mb-4 inline-block text-sm text-nf-text-dim underline focus-visible:nf-focus">{{ t("authorHome.backHome") }}</NuxtLink>
+    <BackLink to="/" :label="t('authorHome.backHome')" class="mb-4" />
     <h1 class="mb-6 font-nf-literary text-[30px] font-semibold text-nf-text">
       {{ t("platformAdmin.title") }}
     </h1>
@@ -402,10 +418,16 @@ onMounted(async () => {
         :mappings="mappings"
         :models="models"
         :profiles="PROFILES"
+        :catalog="modelCatalog"
+        :catalog-loading="catalogLoading"
+        :catalog-error="catalogError"
         :loading="mappingsLoading"
         :error="mappingsError"
         :saving="mappingsSaving"
+        :action-error="actionError"
         @save="saveMapping"
+        @remove="removeMapping"
+        @reload-catalog="refreshCatalog"
       />
 
       <RoutingOverview

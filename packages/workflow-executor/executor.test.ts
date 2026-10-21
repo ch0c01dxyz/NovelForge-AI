@@ -215,6 +215,76 @@ describe("generation usage attribution", () => {
   });
 });
 
+describe("structured model responses", () => {
+  const objectSchema = { type: "object", properties: { purpose: { type: "string", minLength: 1 } }, required: ["purpose"] };
+  async function fixture(schema: unknown, response: string, agentSchema: unknown = null) {
+    const graph = { steps: [{ key: "plan", kind: "AGENT", ref: "planner", ...(schema == null ? {} : { outputSchema: schema }) }, { key: "next", kind: "TRANSFORM", inputs: { plan: "$steps.plan.json" } }], edges: [{ from: "plan", to: "next" }] };
+    const seed = await seedWorkflow(graph);
+    await db.workflowVersion.update({ where: { id: seed.versionId }, data: { agentKeys: ["planner"] } });
+    const agent = await db.agent.create({ data: { workspaceId: seed.workspaceId, key: "planner", name: "Planner", createdById: seed.userId } });
+    const version = await db.agentVersion.create({ data: { agentId: agent.id, number: 1, instructions: "Plan the chapter.", modelProfile: "DEEP_PLANNER", skillKeys: [], createdById: seed.userId } });
+    const runId = await seedRun(seed, graph);const calls: Array<Record<string, unknown>> = [];
+    const driver = createWorkflowExecutor({ db, audit: { record: async () => {} }, resolvers: {
+      resolveAgent: async () => ({ id: agent.id, key: "planner", versionId: version.id, versionNumber: 1, instructions: version.instructions, modelProfile: "DEEP_PLANNER", skillKeys: [], outputSchema: agentSchema, temperature: null, maxTokens: null }),
+      resolveSkill: async () => { throw Error("No skills"); },
+    }, generate: { generate: async input => {
+      calls.push(input);
+      const generation = await db.generation.create({ data: { workspaceId: seed.workspaceId, task: input.task, modelProfile: input.profile, status: "SUCCEEDED" } });
+      return { generationId: generation.id, content: response, model: "fixture" };
+    } } });
+    const result = await driver.executeRun(runId);
+    const rows = await db.workflowStepRun.findMany({ where: { runId }, orderBy: { sequence: "asc" } });
+    return { result, calls, rows };
+  }
+  it("requests JSON-object transport and states the effective contract in the system message", async () => {
+    const proof = await fixture(objectSchema, '{"purpose":"Find the letter"}');
+    expect(proof.result.status).toBe("SUCCEEDED");expect(proof.calls).toHaveLength(1);
+    expect(proof.calls[0]!.outputMode).toBe("json_object");
+    const instruction = (proof.calls[0]!.messages as Array<{ content: string }>)[0]!.content;
+    expect(JSON.parse(instruction.split("Output contract (authoritative):\n")[1]!.split("\n")[0]!)).toEqual(objectSchema);
+  });
+  it("uses the resolved immutable definition's output contract rather than a different step contract", async () => {
+    const effective = { type: "object", properties: { result: { type: "string" } }, required: ["result"] };
+    const proof = await fixture(objectSchema, '{"result":"Definition output"}', effective);
+    expect(proof.result.status).toBe("SUCCEEDED");
+    const instruction = (proof.calls[0]!.messages as Array<{ content: string }>)[0]!.content;
+    expect(JSON.parse(instruction.split("Output contract (authoritative):\n")[1]!.split("\n")[0]!)).toEqual(effective);
+  });
+  it.each([null, { type: "array", items: { type: "string" } }])("preserves plain and array response transports: %j", async schema => {
+    const proof = await fixture(schema, schema === null ? "Plain text" : '["a"]');
+    expect(proof.result.status).toBe("SUCCEEDED");expect(proof.calls[0]!.outputMode).toBeUndefined();
+  });
+  it.each(['{"properties":{"purpose":{"type":"string"}},"required":["purpose"]}', 'No JSON response'])('retains rejected output and generation attribution without retrying or running successors: %s', async response => {
+    const proof = await fixture(objectSchema, response);
+    expect(proof.result.status).toBe("FAILED");expect(proof.calls).toHaveLength(1);
+    expect(proof.rows[0]!.status).toBe("FAILED");
+    expect(proof.rows[0]!.generationId).not.toBeNull();
+    expect(proof.rows[0]!.instruction).not.toBeNull();
+    expect(proof.rows[0]!.output).toEqual({ text: response, json: null });
+    expect(proof.rows[1]!.status).not.toBe("SUCCEEDED");
+  });
+  it("rejects an invalid resolved contract before model dispatch", async () => {
+    const proof = await fixture(objectSchema, '{}', { type: "object", unsupportedConstraint: true });
+    expect(proof.result.status).toBe("FAILED");expect(proof.calls).toHaveLength(0);
+  });
+  it("rejects a schema-valid blocked chapter draft and retains it without advancing", async () => {
+    const response = JSON.stringify({ prose: "A diagnostic instead of a chapter.", status: "blocked", blocker: "Outline unavailable" });
+    const proof = await fixture({ type: "object", properties: { prose: { type: "string" } }, required: ["prose"] }, response);
+    expect(proof.result.status).toBe("FAILED");expect(proof.calls).toHaveLength(1);
+    expect(proof.rows[0]!.output).toEqual({ text: response, json: null });
+    expect(proof.rows[0]!.errorMessage).toContain("AI_CHAPTER_DRAFT_BLOCKED");
+    expect(proof.rows[1]!.status).not.toBe("SUCCEEDED");
+  });
+  it("passes bounded compiled story text alongside provenance through the JSON consumed by chapter steps", async () => {
+    const graph = { steps: [{ key: "compile_context", kind: "RETRIEVAL", instruction: "Compile bounded story" }, { key: "next", kind: "TRANSFORM", inputs: { context: "$steps.compile_context.json" } }], edges: [{ from: "compile_context", to: "next" }] };
+    const seed = await seedWorkflow(graph),runId = await seedRun(seed, graph);
+    const driver = createWorkflowExecutor({ db, audit: { record: async () => {} }, resolvers: { resolveAgent: async () => { throw Error("No agent"); }, resolveSkill: async () => { throw Error("No skill"); } }, retrieval: { search: async () => { throw Error("Compiler owns retrieval"); } }, compiler: { compile: async () => ({ canDispatch: true, text: "Hard canon: the sealed letter remains unopened.", blocks: [{ tier: 3, status: "PRESENT", provenance: { selectedIds: ["fact"] }, rows: [] }], storyPosition: 1, headRevisionId: null }) } });
+    expect((await driver.executeRun(runId)).status).toBe("SUCCEEDED");
+    const row = await db.workflowStepRun.findFirstOrThrow({ where: { runId, stepKey: "next" } });
+    expect(row.output).toMatchObject({ json: { context: { storyContext: "Hard canon: the sealed letter remains unopened.", blocks: [{ selectedIds: ["fact"] }] } } });
+  });
+});
+
 describe("guarded claims", () => {
   it("claimRunForExecution has exactly one winner", async () => {
     const seed = await seedWorkflow(TWO_TRANSFORMS);

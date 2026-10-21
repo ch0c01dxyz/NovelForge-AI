@@ -509,6 +509,38 @@ function streamedGenerationId(body: string): string {
 }
 
 describe("the orchestrator assembles the prompt from resolved definitions", () => {
+  it.each([false, true])("uses a definition preference unless an explicit request overrides it (stream=%s)", async stream => {
+    const owner = await seedUser("definition-model-owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "definition-model");
+    await seedRoute();
+    const automatic = await db.aIModel.findFirstOrThrow({ where: { modelId: "fake-writer" } });
+    const preferred = await db.aIModel.create({ data: { gatewayId: automatic.gatewayId, modelId: "preferred-writer", capabilities: ["chat"] } });
+    await db.modelProfileMapping.create({ data: { modelRef: preferred.id, profile: "CREATIVE_WRITER", priority: 999 } });
+    await makeAgent(owner.cookie, workspaceId, "definition-model", { preferredModelRef: preferred.id });
+    for (const explicit of [undefined, automatic.id]) {
+      const result = await (stream ? generateStream : generate)(owner.cookie, workspaceId, { agentKey: "definition-model", instruction: "Write.", ...(explicit ? { preferredModelRef: explicit } : {}) });
+      expect(result.statusCode, result.body).toBe(stream ? 200 : 201);
+      const id = stream ? streamedGenerationId(result.body) : result.json().generationId;
+      const row = await db.generation.findUniqueOrThrow({ where: { id }, include: { attempts: true } });
+      expect(row.contextSnapshot).toMatchObject({ routing: { preferredModelRef: explicit ?? preferred.id } });
+      expect(row.attempts[0]?.requestedModelId).toBe(explicit ? "fake-writer" : "preferred-writer");
+    }
+  });
+  it.each([false, true])("passes and preserves an explicit model preference (stream=%s)", async stream => {
+    const owner = await seedUser("preference-owner@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "preference");
+    await seedRoute();
+    await makeAgent(owner.cookie, workspaceId, "preference-agent");
+    const model = await db.aIModel.findFirstOrThrow({ where: { modelId: "fake-writer" } });
+    const payload = { agentKey: "preference-agent", instruction: "Write a short opening.", preferredModelRef: model.id };
+    const result = await (stream ? generateStream : generate)(owner.cookie, workspaceId, payload);
+    expect(result.statusCode, result.body).toBe(stream ? 200 : 201);
+    const id = stream ? streamedGenerationId(result.body) : result.json().generationId;
+    expect((await db.generation.findUniqueOrThrow({ where: { id } })).contextSnapshot).toMatchObject({ routing: { preferredModelRef: model.id } });
+    await db.modelProfileMapping.updateMany({ where: { modelRef: model.id }, data: { enabled: false } });
+    expect((await (stream ? generateStream : generate)(owner.cookie, workspaceId, payload)).statusCode).toBe(409);
+    expect((await (stream ? generateStream : generate)(owner.cookie, workspaceId, { ...payload, preferredModelRef: "invalid" })).statusCode).toBe(400);
+  });
   it("puts agent and skill instructions plus canon facts in the system prompt, and pins provenance", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId, novelId } = await seedWorkspace(owner.userId, "w1");

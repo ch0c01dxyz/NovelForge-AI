@@ -21,6 +21,18 @@ function deferred<T>() {
 beforeEach(() => { api.mockReset(); });
 
 describe("run selection response isolation", () => {
+  it.each([true, false])("keeps raw diagnostics in collapsed support details (run error: %s)", async (hasRunError) => {
+    const diagnostic = 'step "plan" output violated its contract: $.cast missing';
+    api.mockResolvedValue({ ...row("run-a", "FAILED"), errorMessage: hasRunError ? diagnostic : null,
+      steps: [{ stepKey: "plan", kind: "AGENT", sequence: 1, status: "FAILED", latencyMs: 1, errorMessage: diagnostic }] });
+    const wrapper = mount(RunStatusPanel, { props });
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toBe("run.failedMessage");
+    expect(wrapper.get("details").attributes("open")).toBeUndefined();
+    expect(wrapper.get("summary").text()).toBe("run.technicalDetails");
+    expect(wrapper.get("details").text()).toContain(diagnostic);
+    wrapper.unmount();
+  });
   it.each(["run", "workspace", "clear", "unmount"])("ignores delayed detail after %s changes", async (change) => {
     const old = deferred<ReturnType<typeof row>>();
     api.mockImplementationOnce(() => old.promise).mockResolvedValue(row("run-b"));

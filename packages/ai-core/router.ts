@@ -19,6 +19,8 @@ export interface Candidate {
   gatewayId: string;
   gatewayName: string;
   modelId: string;
+  /** Internal catalog identity; provider names may collide across gateways. */
+  modelRef?: string;
   /** Lower = preferred (PRIORITY/FAILOVER). */
   priority: number;
   /** Relative share for WEIGHTED. */
@@ -127,12 +129,15 @@ export function planAttempts(
     random?: () => number;
     roundRobinCursor?: number;
     maxAttempts?: number;
+    preferredModelRef?: string;
   } = {},
 ): Candidate[] {
   const random = opts.random ?? Math.random;
   const enabled = candidates.filter((c) => c.enabled);
   const healthy = enabled.filter((c) => !isCircuitOpen(c.consecutiveFailures));
-  const pool = healthy.length > 0 ? healthy : enabled;
+  const pool = healthy.length > 0
+    ? enabled.filter(c => healthy.includes(c) || (opts.preferredModelRef !== undefined && c.modelRef === opts.preferredModelRef))
+    : enabled;
 
   let ordered: Candidate[];
   switch (strategy) {
@@ -150,6 +155,11 @@ export function planAttempts(
     default:
       ordered = [...pool].sort(byPriority);
       break;
+  }
+
+  if (opts.preferredModelRef !== undefined) {
+    const preferredIndex = ordered.findIndex(c => c.modelRef === opts.preferredModelRef);
+    if (preferredIndex > 0) ordered.unshift(ordered.splice(preferredIndex, 1)[0]!);
   }
 
   // Dedupe by gateway so fallback always moves to a DIFFERENT instance

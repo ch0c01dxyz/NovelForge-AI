@@ -55,7 +55,7 @@ beforeEach(() => {
   api.mockReset().mockImplementation(async (path: string, init?: RequestInit) => {
     if (path === "/auth/session") return { userId: "admin", platformRole: "SUPER_ADMIN" };
     if (path === "/gateways" && !init) return gateways;
-    if (path === "/models" || path === "/model-profiles" || path === "/admin/audit-log") return [];
+    if (path === "/models" || path === "/model-catalog" || path === "/model-profiles" || path === "/admin/audit-log") return [];
     if (path === "/admin/routing-strategy") return { strategy: "PRIORITY" };
     return { status: "ok" };
   });

@@ -64,4 +64,9 @@ describe("selectDraft", () => {
     expect(draftProse({ notProse: 1 })).toBeNull();
     expect(draftProse(null)).toBeNull();
   });
+  it("does not expose an explicitly blocked artifact as chapter prose", () => {
+    expect(draftProse({ prose: "Diagnostic report", status: "blocked" })).toBeNull();
+    expect(draftProse({ prose: "Diagnostic report", blocker: "Missing outline" })).toBeNull();
+    expect(draftProse({ prose: "Real story", blocker: null })).toBe("Real story");
+  });
 });

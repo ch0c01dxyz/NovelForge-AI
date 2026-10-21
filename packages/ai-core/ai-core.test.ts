@@ -412,6 +412,44 @@ describe("attempt usage provenance", () => {
 });
 
 describe("gateway manager", () => {
+  it.each([false, true])("prefers an internal model identity before the cap (stream=%s)", async stream => {
+    const registry = fakeRegistry([gw(), gw({ id: "g2", name: "two", priority: 900, consecutiveFailures: 9 })]);
+    registry.resolveProfile = async () => [
+      { modelRef: "first", gatewayId: "g1", modelId: "same-provider-model" },
+      { modelRef: "second", gatewayId: "g2", modelId: "same-provider-model" },
+    ];
+    const manager = new GatewayManager(registry, { createGateway: rec => fakeGateway(rec, { behaviour: {} }) });
+    const opts = { profile: "CREATIVE_WRITER" as const, generationId: "preference", messages: [], preferredModelRef: "second", maxAttempts: 1 };
+    if (stream) { for await (const chunk of manager.generateStream(opts)) expect(chunk.delta).toBeTruthy(); }
+    else await manager.generate(opts);
+    expect(registry.attempts).toHaveLength(1);
+    expect(registry.attempts[0]).toMatchObject({ gatewayId: "g2", requestedModelId: "same-provider-model", status: "SUCCEEDED" });
+  });
+
+  it.each(["missing", "disabled", "incompatible"])("refuses an explicit %s preference before any dispatch", async reason => {
+    const registry = fakeRegistry([gw(), gw({ id: "g2", name: "two", enabled: reason !== "disabled" })]);
+    registry.resolveProfile = async () => [
+      { modelRef: "first", gatewayId: "g1", modelId: "one" },
+      { modelRef: "second", gatewayId: "g2", modelId: "two", capabilities: reason === "incompatible" ? [JSON_MODE_INCOMPATIBLE] : [] },
+    ];
+    const manager = new GatewayManager(registry, { createGateway: () => { throw Error("must not dispatch"); } });
+    const opts = { profile: "CREATIVE_WRITER" as const, generationId: "preference", messages: [], preferredModelRef: reason === "missing" ? "unknown" : "second", outputMode: "json_object" as const };
+    await expect(manager.generate(opts)).rejects.toBeInstanceOf(NoRouteError);
+    await expect(async () => { for await (const _chunk of manager.generateStream(opts)) { /* consume */ } }).rejects.toBeInstanceOf(NoRouteError);
+    expect(registry.attempts).toHaveLength(0);
+  });
+
+  it.each([false, true])("rechecks mapping eligibility between fallback attempts (stream=%s)", async stream => {
+    const registry = fakeRegistry([gw(), gw({ id: "g2", name: "two" }), gw({ id: "g3", name: "three" })]);
+    let disabled = false;
+    registry.resolveProfile = async () => ["g1", "g2", "g3"].filter(id => !disabled || id !== "g2").map(id => ({ modelRef: id, gatewayId: id, modelId: id }));
+    const manager = new GatewayManager(registry, { createGateway: rec => fakeGateway(rec, { behaviour: { g1: { ok: false, category: "RATE_LIMIT" } } }) });
+    const opts = { profile: "CREATIVE_WRITER" as const, generationId: "preference", messages: [], preferredModelRef: "g1", sleep: async () => { disabled = true; }, random: () => 1 };
+    if (stream) { for await (const _chunk of manager.generateStream(opts)) { /* consume */ } }
+    else await manager.generate(opts);
+    expect(registry.attempts.map(a => [a.attemptNumber, a.gatewayId])).toEqual([[1, "g1"], [2, "g3"]]);
+  });
+
   it("returns the first successful attempt", async () => {
     const { manager, registry } = makeManager([gw()], { g1: { ok: true } });
     const result = await manager.generate({

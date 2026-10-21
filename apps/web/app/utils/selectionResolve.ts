@@ -18,13 +18,20 @@ export interface CapturedSelection {
 }
 
 /** Capture the current non-collapsed selection (null when collapsed). */
-export function captureSelection(editor: Editor): CapturedSelection | null {
-  const { from, to, empty } = editor.state.selection;
+export function captureSelection(editor: Editor, singleParagraph = false): CapturedSelection | null {
+  let { from, to } = editor.state.selection;
+  const { empty } = editor.state.selection;
   if (empty) return null;
+  if (singleParagraph) {
+    from = Math.max(1, from);to = Math.min(editor.state.doc.content.size - 1, to);
+    if (from >= to) return null;
+    const start = editor.state.doc.resolve(from), end = editor.state.doc.resolve(to);
+    if (!start.parent.isTextblock || start.parent !== end.parent) return null;
+  }
   return { from, to, text: editor.state.doc.textBetween(from, to, " ", " ") };
 }
 
-export type AcceptOutcome = "replaced" | "inserted-after";
+export type AcceptOutcome = "replaced" | "inserted-after" | "stale";
 
 /**
  * Apply the AI suggestion with the stale-selection pin. Returns how the
@@ -35,6 +42,7 @@ export function applySuggestion(
   editor: Editor,
   captured: CapturedSelection,
   suggestion: string,
+  requireUnchanged = false,
 ): AcceptOutcome {
   let stillThere = false;
   try {
@@ -50,10 +58,11 @@ export function applySuggestion(
       .chain()
       .focus()
       .deleteRange({ from: captured.from, to: captured.to })
-      .insertContentAt(captured.from, suggestion)
+      .insertContentAt(captured.from, requireUnchanged ? { type: "text", text: suggestion } : suggestion)
       .run();
     return "replaced";
   }
+  if (requireUnchanged) return "stale";
   editor.chain().focus().insertContentAt(editor.state.selection.head, suggestion).run();
   return "inserted-after";
 }

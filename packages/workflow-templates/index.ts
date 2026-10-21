@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+export { WORKSPACE_STARTER_SKILLS } from "./workspace-starter-skills.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_DIR = join(HERE, "chapter-generation-review");
@@ -115,6 +116,30 @@ function loadTemplate(): ChapterTemplate {
 
 /** The frozen chapter generation/review template (loaded once). */
 export const CHAPTER_GENERATION_REVIEW: ChapterTemplate = loadTemplate();
+
+function chapterCreationTemplate(): ChapterTemplate {
+  const template = structuredClone(CHAPTER_GENERATION_REVIEW);
+  template.key = "chapter-creation-review";
+  template.name = "AI Chapter Creation & Review";
+  template.description = "Generate and review a coherent chapter title and prose from an approved outline and author instructions; apply only after author approval.";
+  const schema = template.schemas["draft-schema"] as { required: string[]; properties: Record<string, unknown> };
+  schema.required = [...schema.required, "title"];
+  schema.properties["title"] = { type: "string", minLength: 1, maxLength: 200, pattern: "\\S" };
+  const graph = template.graph as { steps: Array<{ key: string; kind: string; instruction?: string; usageComponent?: string; inputs?: Record<string, string>; outputSchema?: { properties?: Record<string, unknown> } }> };
+  for (const step of graph.steps) {
+    if (step.outputSchema?.properties?.["prose"]) step.outputSchema = structuredClone(schema);
+    if (step.kind === "RETRIEVAL") step.inputs = { ...step.inputs, authorInstructions: "$input.styleNotes" };
+    if (step.kind === "AGENT") {
+      step.usageComponent = "CHAPTER";
+      step.inputs = { ...step.inputs, authorInstructions: "$input.styleNotes", targetWordCount: "$input.targetWordCount", creationSourcePins: "$input.chapterCreationPins" };
+      step.instruction = `${step.instruction ?? ""}\nPreserve the explicit author instructions in ## authorInstructions (subject to hard canon). The chapter title and prose are one artifact: writers and corrections must return both, with a specific nonblank title of at most 200 characters consistent with the prose. Reviewers assess title/prose coherence as well as the existing checks. Use the server-pinned workflowVersionNumber and outlineRef in ## creationSourcePins for plan sourcePins. Do not substitute the temporary reservation title or invent approved story facts.\nRequired output contract (JSON only): ${JSON.stringify(step.outputSchema)}`;
+    }
+  }
+  return template;
+}
+
+/** A new identity leaves all historical generation contracts unchanged. */
+export const CHAPTER_CREATION_REVIEW = chapterCreationTemplate();
 
 /**
  * Canonical JSON byte equality — the SAME canonicalization as NF-WF-005's

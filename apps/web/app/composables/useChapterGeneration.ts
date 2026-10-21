@@ -10,7 +10,9 @@ import { ref } from "vue";
  * snapshot).
  */
 import { useWorkflowRuns, type RunView } from "./useWorkflowRuns";
+import { useApi } from "./useApi";
 import { selectDraft, draftProse, type DraftSelection } from "../utils/draftSelect";
+import { isBlockedChapterDraft } from "../../../../packages/validation/chapter-draft";
 import { diffOutlineContent, type OutlineChange } from "../utils/outlineDiff";
 
 export interface OutlineVersionView {
@@ -26,7 +28,8 @@ export interface OutlineVersionView {
 export interface ApprovalSnapshot {
   material: {
     instruction: unknown;
-    outcomes: Record<string, unknown>;
+    priorOutcomes?: Record<string, unknown>;
+    outcomes?: Record<string, unknown>;
     pins: unknown;
   };
   snapshotHash: string;
@@ -37,6 +40,7 @@ export interface ReviewModel {
   snapshot: ApprovalSnapshot;
   draft: DraftSelection;
   prose: string | null;
+  blocked: boolean;
   findings: Array<{
     category: string;
     severity: string;
@@ -85,16 +89,16 @@ export function useChapterGeneration() {
     const snap = step?.approvalSnapshot as ApprovalSnapshot | null | undefined;
     if (!snap || typeof snap !== "object" || !("snapshotHash" in snap)) return null;
     const material = (snap as { material?: unknown }).material as
-      | { outcomes?: unknown }
+      | { priorOutcomes?: unknown; outcomes?: unknown }
       | undefined;
-    if (!material || typeof material !== "object" || !("outcomes" in material)) return null;
+    if (!material || typeof material !== "object" || (!("priorOutcomes" in material) && !("outcomes" in material))) return null;
     return snap as ApprovalSnapshot;
   }
 
   function buildReview(run: RunView): ReviewModel | null {
     const snapshot = parkedSnapshot(run);
     if (!snapshot) return null;
-    const outcomes = snapshot.material.outcomes ?? {};
+    const outcomes = snapshot.material.priorOutcomes ?? snapshot.material.outcomes ?? {};
     const steps = (run.steps ?? []).map((s) => ({
       stepKey: s.stepKey,
       status: s.status,
@@ -148,6 +152,7 @@ export function useChapterGeneration() {
       snapshot,
       draft,
       prose,
+      blocked: isBlockedChapterDraft(draft.draft),
       findings,
       proposals,
       runOutlineRef: typeof runOutlineRef === "string" ? runOutlineRef : null,

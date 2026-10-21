@@ -20,6 +20,7 @@ import { SESSION_COOKIE } from "./auth-routes.ts";
 import { PLATFORM_AUDIT_ACTIONS, WORKSPACE_AUDIT_ACTIONS, type AiServices } from "@novelforge/ai-services";
 
 const uuid = z.string().uuid();
+const novelDefaultsBody = z.object({ expectedVersion: z.number().int().min(0), generationModelRef: uuid.nullable(), analysisModelRef: uuid.nullable(), reason: z.string().trim().min(1).max(4000) }).strict();
 const gatewayParams = z.object({ gatewayId: uuid });
 const modelParams = z.object({ modelId: uuid });
 const workspaceParams = z.object({ workspaceId: uuid });
@@ -104,6 +105,7 @@ const generateBody = z.object({
   component: z.enum(GENERATION_COMPONENTS).optional(),
   artifactId: uuid.optional(),
   profile: z.enum(PROFILE_VALUES),
+  preferredModelRef: uuid.optional(),
   novelId: uuid.optional(),
   messages: z
     .array(
@@ -182,6 +184,22 @@ export function registerAiRoutes(
     return reply.code(201).send({ id });
   });
 
+  app.get("/api/workspaces/:workspaceId/novels/:novelId/model-defaults", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = novelScopeParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.getNovelModelDefaults({ actorUserId: actor.userId, ...params.data });
+  });
+  app.put("/api/workspaces/:workspaceId/novels/:novelId/model-defaults", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = novelScopeParams.safeParse(request.params);
+    const body = novelDefaultsBody.safeParse(request.body);
+    if (!params.success || !body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.putNovelModelDefaults({ actorUserId: actor.userId, ...params.data, ...body.data });
+  });
+
   app.get("/api/gateways", async (request, reply) => {
     const actor = await requireActor(request, reply);
     if (!actor) return;
@@ -246,10 +264,41 @@ export function registerAiRoutes(
     return services.listModels(actor.platformRole);
   });
 
+  app.get("/api/model-catalog", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    return services.listModelCatalog({ actorUserId: actor.userId, actorPlatformRole: actor.platformRole });
+  });
+
   app.get("/api/model-profiles", async (request, reply) => {
     const actor = await requireActor(request, reply);
     if (!actor) return;
     return services.listProfileMappings(actor.platformRole);
+  });
+
+  app.get("/api/workspaces/:workspaceId/model-options", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = workspaceParams.safeParse(request.params), query = z.object({ profile: z.enum(PROFILE_VALUES).optional() }).safeParse(request.query);
+    if (!params.success || !query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.listModelOptions({ actorUserId: actor.userId, workspaceId: params.data.workspaceId, profile: query.data.profile });
+  });
+
+  app.get("/api/workspaces/:workspaceId/model-catalog", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = workspaceParams.safeParse(request.params), query = z.object({ profile: z.enum(PROFILE_VALUES).optional() }).safeParse(request.query);
+    if (!params.success || !query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.listModelCatalog({ actorUserId: actor.userId, workspaceId: params.data.workspaceId, profile: query.data.profile });
+  });
+
+  app.delete("/api/model-profiles/:profile/:modelRef", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = z.object({ profile: z.enum(PROFILE_VALUES), modelRef: uuid }).safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    await services.removeProfileMapping({ actorPlatformRole: actor.platformRole, actorUserId: actor.userId, ...params.data });
+    return { status: "ok" };
   });
 
   app.put("/api/model-profiles", async (request, reply) => {
@@ -396,14 +445,13 @@ export function registerAiRoutes(
       // outlives the SSE writes.
       const abort = new AbortController();
       const onClose = () => abort.abort();
-      reply.raw.on("close", onClose);
-
       const { generationId, stream, status } = await services.generateStream({
         actorUserId: actor.userId,
         workspaceId: params.data.workspaceId,
         signal: abort.signal,
         ...body.data,
       });
+      reply.raw.on("close", onClose);
 
       // SSE. Headers are set before the first write; a failure after this
       // point can only be reported as an event, not a status code.

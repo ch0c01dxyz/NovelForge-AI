@@ -42,3 +42,5 @@ review-receipts/
 
 # Encrypted backup passphrase (never committed)
 backup/.passwd
+# Local encrypted database snapshots remain private, including new backups.
+/backup/*.dump.enc

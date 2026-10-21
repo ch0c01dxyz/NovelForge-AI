@@ -3,7 +3,7 @@
  * SelectionAiMenu (NF-WF-015, Invariant 4): the floating bubble menu that
  * appears over a non-collapsed text selection in the editor.
  *
- * From `@tiptap/vue-3/menus` (v3 stable pin). Lists the six pinned
+ * From `@tiptap/vue-3/menus` (v3 stable pin). Lists the pinned
  * operations; "Ask the writing agent" opens a small prompt input in the
  * same menu. Esc dismisses and returns focus to the editor. Orange +
  * sparkle glyph per DESIGN-TOKENS.md (orange marks every AI affordance).

@@ -208,6 +208,27 @@ async function mountPanel() {
 }
 
 describe("ScaleReviewPanel S3 (050C)", () => {
+  it("does not let a previous chapter extraction failure clear the new request's busy state", async () => {
+    const pending: Array<{ resolve: (value: unknown) => void; reject: (reason: Error) => void }> = [];
+    apiImpl = (url, opts) => {
+      if (url.endsWith("/scale-s3/extract")) return new Promise((resolve, reject) => pending.push({ resolve, reject }));
+      return baseRoutes({ s3Enabled: true })(url, opts);
+    };
+    const wrapper = await mountPanel();
+    const requestButton = () => wrapper.findAll("button").find(button => /Suggest claims with AI|Requesting…/.test(button.text()))!;
+    await requestButton().trigger("click");
+    await wrapper.setProps({ chapterId: "ch-2" });
+    await flushPromises();
+    await requestButton().trigger("click");
+    expect(pending).toHaveLength(2);
+    pending[0]!.reject(new Error("Old chapter failure"));
+    await flushPromises();
+    expect(requestButton().attributes("disabled")).toBeDefined();
+    pending[1]!.resolve({ proposal: makeProposal() });
+    await flushPromises();
+    expect(requestButton().attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     currentLocale = "en";
@@ -241,6 +262,7 @@ describe("ScaleReviewPanel S3 (050C)", () => {
     const extractCalls: Array<{ url: string; body: unknown }> = [];
     let extracted = false;
     apiImpl = async (url: string, opts?: { method?: string; body?: string }) => {
+      if (url.includes("/model-catalog?")) return [{ modelRef: "chosen-model", providerModelId: "provider/model", displayName: "Chosen model", gatewayId: "gateway", selectable: true }];
       if (url.endsWith("/scale-s3/extract")) {
         extractCalls.push({ url, body: JSON.parse(opts!.body!) });
         extracted = true;
@@ -252,6 +274,8 @@ describe("ScaleReviewPanel S3 (050C)", () => {
       return baseRoutes({ s3Enabled: true })(url, opts);
     };
     const wrapper = await mountPanel();
+    await wrapper.get('.nf-model-preference summary').trigger("click");
+    await wrapper.get('[data-model-ref="chosen-model"]').trigger("click");
     const buttons = wrapper.findAll("button");
     const requestBtn = buttons.find((b) => b.text() === "Suggest claims with AI");
     expect(requestBtn).toBeDefined();
@@ -262,6 +286,7 @@ describe("ScaleReviewPanel S3 (050C)", () => {
     expect(extractCalls).toHaveLength(1);
     const body = extractCalls[0]!.body as Record<string, unknown>;
     expect(body).toMatchObject({
+      preferredModelRef: "chosen-model",
       chapterVersionId: V1,
       expectedBranchId: B1,
       expectedHeadRevisionId: R1,

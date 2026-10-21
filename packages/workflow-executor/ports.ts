@@ -14,6 +14,7 @@ import type { ModelProfile, GenerationComponent } from "@novelforge/ai-core";
  * Declared structurally so tests can drive the executor without a gateway.
  */
 export interface StepGenerator {
+  validateModelPreference?(input: { actorUserId: string; workspaceId: string; profile: ModelProfile; preferredModelRef?: string }): Promise<void>;
   generate(input: {
     actorUserId: string;
     workspaceId: string;
@@ -22,9 +23,12 @@ export interface StepGenerator {
     component?: GenerationComponent;
     artifactId?: string;
     profile: ModelProfile;
+    preferredModelRef?: string;
+    novelModelDefaultsVersionId?: string | null;
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;
     maxTokens?: number;
+    outputMode?: "json_object";
   }): Promise<{ generationId: string; content: string; model: string }>;
 }
 
@@ -67,6 +71,7 @@ export interface StepRetriever {
  * API passes its own resolvers, so the package never imports that module.
  */
 export interface ResolvedAgent {
+  preferredModelRef?: string | null;
   id: string;
   key: string;
   versionId: string;
@@ -80,6 +85,7 @@ export interface ResolvedAgent {
 }
 
 export interface ResolvedSkill {
+  preferredModelRef?: string | null;
   id: string;
   key: string;
   versionId: string;
@@ -91,8 +97,8 @@ export interface ResolvedSkill {
 
 /** Definition resolution, injected so the worker reuses the API's paths. */
 export interface DefinitionResolvers {
-  resolveAgent(workspaceId: string, key: string): Promise<ResolvedAgent>;
-  resolveSkill(workspaceId: string, key: string): Promise<ResolvedSkill>;
+  resolveAgent(workspaceId: string, key: string, versionId?: string): Promise<ResolvedAgent>;
+  resolveSkill(workspaceId: string, key: string, versionId?: string): Promise<ResolvedSkill>;
 }
 
 /**
@@ -131,6 +137,7 @@ export interface ContextCompilerPort {
     contextQuery: string;
     mode: "AUTHOR";
     searchReferencesWithoutNovel: boolean;
+    chapterCreation?: { chapterId: string; chapterNumber: number; chapterVersionId: string | null; outlineRef: string; headRevisionId: string };
   }): Promise<CompiledStepContext>;
 }
 

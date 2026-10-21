@@ -33,11 +33,12 @@ export interface AuthRoutesOptions {
    * The session is the user's own — no new disclosure.
    */
   platformRoleOf: (userId: string) => Promise<PlatformRole | null>;
+  profileOf: (userId: string) => Promise<{ displayName: string; email: string } | null>;
 }
 
 export async function registerAuthRoutes(
   app: FastifyInstance,
-  { auth, secureCookies, platformRoleOf }: AuthRoutesOptions,
+  { auth, secureCookies, platformRoleOf, profileOf }: AuthRoutesOptions,
 ): Promise<void> {
   const cookieOptions = {
     httpOnly: true,
@@ -124,6 +125,7 @@ export async function registerAuthRoutes(
       userId: session.userId,
       expiresAt: session.expiresAt,
       platformRole: await platformRoleOf(session.userId),
+      profile: await profileOf(session.userId),
     };
   });
 }

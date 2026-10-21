@@ -15,6 +15,7 @@
  */
 import type { PrismaClient } from "@novelforge/database";
 import sanitizeHtml from "sanitize-html";
+import { isBlockedChapterDraft } from "@novelforge/validation";
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 // Shared error vocabulary with the platform services; requireCapability
 // throws the auth-package ForbiddenError, which the platform routes'
@@ -39,6 +40,34 @@ import {
 // NF-WF-017B: export rendering (HTML → TXT/Markdown/PDF/DOCX/EPUB).
 import { renderExport, type ExportFormat } from "./export-render.ts";
 
+export class AiCreationSourceConflict extends ConflictError {
+  constructor(readonly recoveryCode: "AI_CREATION_TITLE_ONLY_CHANGED" | "AI_CREATION_SOURCE_CHANGED") { super(recoveryCode); }
+}
+
+async function isAuditedTitleOnlyChange(tx: RevisionTx, chapterId: string, novelId: string, branchId: string,
+  sourceHead: string, currentHead: string, sourceVersionId: string, currentVersionId: string): Promise<boolean> {
+  const source = await tx.chapterVersion.findFirst({ where: { id: sourceVersionId, chapterId } });
+  const current = await tx.chapterVersion.findFirst({ where: { id: currentVersionId, chapterId } });
+  const sourceRevision = await tx.revision.findFirst({ where: { id: sourceHead, novelId, branchId } });
+  const head = await tx.revision.findFirst({ where: { id: currentHead, novelId, branchId } });
+  if (!source || !current || !sourceRevision || !head || current.number <= source.number || head.number <= sourceRevision.number || current.number - source.number > 32 || head.number - sourceRevision.number > 32) return false;
+  const versions = await tx.chapterVersion.findMany({ where: { chapterId, number: { gt: source.number, lte: current.number } }, orderBy: { number: "asc" }, take: 33 });
+  const revisions = await tx.revision.findMany({ where: { novelId, branchId, number: { gt: sourceRevision.number, lte: head.number } }, orderBy: { number: "asc" }, take: 33, include: { changeSet: { include: { items: true } } } });
+  if (!versions.length || versions.length !== revisions.length || versions.length !== current.number - source.number) return false;
+  let previousVersion = sourceVersionId, previousRevision = sourceHead;
+  for (const [i, version] of versions.entries()) {
+    const revision = revisions[i]!, items = revision.changeSet?.items ?? [];
+    if (version.content !== source.content || revision.parentRevisionId !== previousRevision || items.length !== 2 ||
+      !items.some(item => item.entityType === "Chapter" && item.entityId === chapterId && item.operation === "UPDATE") ||
+      !items.some(item => item.entityType === "ChapterVersion" && item.entityId === version.id && item.operation === "CREATE")) return false;
+    const receipt = await tx.auditLog.findFirst({ where: { workspaceId: revision.workspaceId, action: "chapter.renamed", entityType: "Chapter", entityId: chapterId,
+      AND: [{ payload: { path: ["previousChapterVersionId"], equals: previousVersion } }, { payload: { path: ["chapterVersionId"], equals: version.id } }] }, select: { id: true } });
+    if (!receipt) return false;
+    previousVersion = version.id;previousRevision = revision.id;
+  }
+  return previousVersion === currentVersionId && previousRevision === currentHead;
+}
+
 /** Serialize scene mutations with checkout/restore before taking child locks. */
 async function lockManuscriptBranch(tx: RevisionTx, novelId: string) {
   await tx.$queryRawUnsafe(`SELECT id FROM novels WHERE id = $1 FOR NO KEY UPDATE`, novelId);
@@ -49,15 +78,17 @@ async function lockManuscriptBranch(tx: RevisionTx, novelId: string) {
   });
   if (!branch) throw new ConflictError("no checked-out branch exists");
   await tx.$queryRawUnsafe(`SELECT id FROM novel_branches WHERE id = $1 FOR UPDATE`, branch.id);
-  return branch;
+  return tx.novelBranch.findUniqueOrThrow({ where: { id: branch.id }, select: { id: true, name: true, headRevisionId: true } });
 }
 
 export interface ManuscriptServices {
+  getCreationReceipt(input: { actorUserId: string; workspaceId: string; novelId: string; creationRequestId: string }): Promise<{ chapter: { id: string; title: string; number: number } | null }>;
   createChapter(input: {
     actorUserId: string;
     workspaceId: string;
     novelId: string;
     title: string;
+    creationRequestId?: string;
 
   }): Promise<{ id: string; number: number }>;
   listChapters(input: {
@@ -103,20 +134,30 @@ export interface ManuscriptServices {
     note?: string;
     /** Optimistic concurrency: version number the author last saw. */
     expectedVersion: number | null;
-  }): Promise<{ version: number; wordCount: number }>;
+    title?: string;
+    expectedTitle?: string;
+    creationRunId?: string;
+    allowTitleOnlyRebase?: boolean;
+  }): Promise<{ version: number; wordCount: number; title?: string }>;
+  renameChapter(input: {
+    actorUserId: string; workspaceId: string; novelId: string; chapterId: string;
+    title: string; expectedTitle: string; expectedChapterVersionId: string | null;
+  }): Promise<{ title: string; currentVersion: number | null; currentVersionId: string | null }>;
   deleteChapter(input: {
     actorUserId: string;
     workspaceId: string;
     novelId: string;
     chapterId: string;
-
+    expectedTitle?: string;
+    expectedChapterVersionId?: string | null;
   }): Promise<void>;
   setStatus(input: {
     actorUserId: string;
     workspaceId: string;
     novelId: string;
     chapterId: string;
-    status: "IN_REVIEW" | "PUBLISHED";
+    status: "DRAFT" | "IN_REVIEW" | "PUBLISHED";
+    expectedVersion?: number | null;
   }): Promise<void>;
   importChapters(input: {
     actorUserId: string;
@@ -538,13 +579,28 @@ export function createManuscriptServices(
   }
 
   return {
-    async createChapter({ actorUserId, workspaceId, novelId, title }) {
+    async getCreationReceipt({ actorUserId, workspaceId, novelId, creationRequestId }) {
+      await gate(workspaceId, novelId, actorUserId, "chapter:read");
+      const receipt = await db.auditLog.findFirst({ where: { actorUserId, workspaceId, action: "chapter.created", entityId: creationRequestId } });
+      if (!receipt || (receipt.payload as { novelId?: string } | null)?.novelId !== novelId) throw new NotFoundError("chapter creation receipt");
+      const chapter = await db.chapter.findFirst({ where: { id: creationRequestId, novelId, createdById: actorUserId }, select: { id: true, title: true, number: true } });
+      return { chapter };
+    },
+    async createChapter({ actorUserId, workspaceId, novelId, title, creationRequestId }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:create");
 
       // Novel-row lock serializes numbering against importChapters (same
       // lock) and concurrent creates; max+1 cannot collide under it.
       const chapter = await db.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT id FROM novels WHERE id = ${novelId} FOR UPDATE`;
+        if (creationRequestId) {
+          const existing = await tx.chapter.findUnique({ where: { id: creationRequestId } });
+          if (existing) {
+            if (existing.novelId !== novelId || existing.createdById !== actorUserId || existing.title !== title || existing.currentVersionId !== null || existing.status !== "DRAFT") throw new ConflictError("chapter reservation changed; read its original identity before continuing");
+            return existing;
+          }
+          if (await tx.auditLog.findFirst({ where: { action: "chapter.created", entityId: creationRequestId } })) throw new ConflictError("chapter reservation was deleted; read its original creation receipt, never recreate it");
+        }
         const max = await tx.chapter.findFirst({
           where: { novelId },
           orderBy: { number: "desc" },
@@ -552,6 +608,7 @@ export function createManuscriptServices(
         });
         const created = await tx.chapter.create({
           data: {
+            ...(creationRequestId ? { id: creationRequestId } : {}),
             novelId,
             number: (max?.number ?? 0) + 1,
             title,
@@ -567,15 +624,15 @@ export function createManuscriptServices(
           tables: ["chapters"],
           items: [{ entityType: "Chapter", entityId: created.id, operation: "CREATE" }],
         });
-        return created;
-      });
-      await audit?.record({
+        await tx.auditLog.create({ data: {
         actorUserId,
         workspaceId,
         action: "chapter.created",
         entityType: "Chapter",
-        entityId: chapter.id,
-        payload: { novelId, number: chapter.number, title },
+        entityId: created.id,
+        payload: { novelId, number: created.number, title },
+        } });
+        return created;
       });
       return { id: chapter.id, number: chapter.number };
     },
@@ -616,6 +673,7 @@ export function createManuscriptServices(
         status: chapter.status,
         wordCount: chapter.wordCount,
         currentVersion: chapter.currentVersion?.number ?? null,
+        currentVersionId: chapter.currentVersionId,
         content: chapter.currentVersion?.content ?? "",
         updatedAt: chapter.updatedAt,
       };
@@ -629,8 +687,13 @@ export function createManuscriptServices(
       content,
       note,
       expectedVersion,
+      title,
+      expectedTitle,
+      creationRunId,
+      allowTitleOnlyRebase,
     }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:update");
+      if ((title === undefined) !== (expectedTitle === undefined) || (title !== undefined && (!title.trim() || title.length > 200))) throw new ConflictError("invalid chapter title pair");
       const chapter = await getChapterOr404(chapterId, novelId);
 
       const current = chapter.currentVersion?.number ?? null;
@@ -647,6 +710,7 @@ export function createManuscriptServices(
       // and the version insert, so every stored version is clean. The
       // word count is computed on tag-stripped text (tags are not words).
       const cleanContent = sanitizeChapterHtml(content);
+      let savedTitle = title?.trim();
       const wordCount = countWords(stripHtmlTags(cleanContent));
       // Version append + pointer move in one transaction.
       const version = await db.$transaction(async (tx) => {
@@ -657,10 +721,13 @@ export function createManuscriptServices(
           where: { id: chapterId },
           select: {
             status: true,
+            title: true,
+            currentVersionId: true,
             currentVersion: { select: { number: true } },
           },
         });
         if (!fresh) throw new NotFoundError("chapter"); // deleted mid-save
+        if (expectedTitle !== undefined && fresh.title !== expectedTitle) throw new ConflictError("chapter title changed; reload before applying");
         if (fresh.status === "PUBLISHED") {
           throw new ConflictError("published chapters are immutable; unpublish first");
         }
@@ -670,24 +737,43 @@ export function createManuscriptServices(
             `stale version: expected ${expectedVersion}, current ${nowCurrent}`,
           );
         }
+        let titleRecovery: Record<string, unknown> | null = null;
+        if (creationRunId) {
+          const run = await tx.workflowRun.findFirst({ where: { id: creationRunId, workspaceId, novelId, status: "SUCCEEDED", workflow: { key: "chapter-creation-review" } }, include: { steps: { where: { kind: "HUMAN_APPROVAL", status: "SUCCEEDED" } } } });
+          const pins = (run?.input as { chapterCreationPins?: { chapterId?: string; chapterVersionId?: string | null; headRevisionId?: string } } | null)?.chapterCreationPins;
+          const snapshot = run?.steps[0]?.approvalSnapshot as { material?: { priorOutcomes?: Record<string, { json?: { title?: unknown; prose?: unknown } }>; outcomes?: Record<string, { json?: { title?: unknown; prose?: unknown } }> } } | null | undefined;
+          const outcomes = snapshot?.material?.priorOutcomes ?? snapshot?.material?.outcomes;
+          const draft = ["rewrite_2", "rewrite_1", "write"].map(key => outcomes?.[key]?.json).find(value => typeof value?.prose === "string");
+          if (isBlockedChapterDraft(draft)) throw new ConflictError("AI_CHAPTER_DRAFT_BLOCKED: a diagnostic refusal cannot be applied as chapter prose");
+          if (!run || !pins || pins.chapterId !== chapterId || typeof draft?.title !== "string" || draft.title.trim() !== title?.trim() || draft.prose !== content) throw new AiCreationSourceConflict("AI_CREATION_SOURCE_CHANGED");
+          if (pins.headRevisionId !== branch.headRevisionId || pins.chapterVersionId !== fresh.currentVersionId) {
+            const titleOnly = pins.headRevisionId && branch.headRevisionId && pins.chapterVersionId && fresh.currentVersionId &&
+              await isAuditedTitleOnlyChange(tx, chapterId, novelId, branch.id, pins.headRevisionId, branch.headRevisionId, pins.chapterVersionId, fresh.currentVersionId);
+            if (!titleOnly) throw new AiCreationSourceConflict("AI_CREATION_SOURCE_CHANGED");
+            if (!allowTitleOnlyRebase) throw new AiCreationSourceConflict("AI_CREATION_TITLE_ONLY_CHANGED");
+            savedTitle = fresh.title;
+            titleRecovery = { sourceHeadRevisionId: pins.headRevisionId, appliedAgainstHeadRevisionId: branch.headRevisionId, sourceChapterVersionId: pins.chapterVersionId, appliedAgainstChapterVersionId: fresh.currentVersionId, approvedArtifactTitle: draft.title, recovery: "TITLE_ONLY_KEEP_CURRENT_TITLE" };
+          }
+        }
         const last = await tx.chapterVersion.findFirst({
           where: { chapterId },
           orderBy: { number: "desc" },
           select: { number: true },
         });
+        const titleChange = title === undefined ? null : { previousTitle: fresh.title, title: savedTitle!, ...(titleRecovery ?? {}) };
         const created = await tx.chapterVersion.create({
           data: {
             chapterId,
             number: (last?.number ?? 0) + 1,
             content: cleanContent,
             wordCount,
-            note,
+            note: titleChange ? JSON.stringify({ operation: "chapter.apply_title_and_prose", ...titleChange, note: note ?? null, ...(creationRunId ? { creationRunId } : {}) }) : note,
             authorId: actorUserId,
           },
         });
         await tx.chapter.update({
           where: { id: chapterId },
-          data: { currentVersionId: created.id, wordCount },
+          data: { currentVersionId: created.id, wordCount, ...(savedTitle !== undefined ? { title: savedTitle } : {}) },
         });
         // C10 step 1: a LOW save still produces a revision — one UPDATE
         // chapters and one CREATE chapter_versions — with no checkpoint.
@@ -704,20 +790,54 @@ export function createManuscriptServices(
             { entityType: "Chapter", entityId: chapterId, operation: "UPDATE" },
           ],
         });
-        return created.number;
-      });
-      await audit?.record({
+        await tx.auditLog.create({ data: {
         actorUserId,
         workspaceId,
         action: "chapter.saved",
         entityType: "ChapterVersion",
         entityId: chapterId,
-        payload: { chapterId, version, wordCount, note: note ?? null },
+        payload: { chapterId, version: created.number, wordCount, note: note ?? null, ...(titleChange ?? {}), ...(creationRunId ? { creationRunId } : {}) },
+        } });
+        return created.number;
       });
-      return { version, wordCount };
+      return { version, wordCount, ...(savedTitle !== undefined ? { title: savedTitle } : {}) };
     },
 
-    async deleteChapter({ actorUserId, workspaceId, novelId, chapterId }) {
+    async renameChapter({ actorUserId, workspaceId, novelId, chapterId, title, expectedTitle, expectedChapterVersionId }) {
+      await gate(workspaceId, novelId, actorUserId, "chapter:update");
+      return db.$transaction(async tx => {
+        const branch = await lockManuscriptBranch(tx, novelId);
+        await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId}::uuid AND novel_id = ${novelId}::uuid FOR UPDATE`;
+        const chapter = await tx.chapter.findFirst({ where: { id: chapterId, novelId }, include: { currentVersion: true } });
+        if (!chapter) throw new NotFoundError("chapter");
+        if (chapter.status === "PUBLISHED") throw new ConflictError("published chapters cannot be renamed; unpublish first");
+        if (chapter.title !== expectedTitle || chapter.currentVersionId !== expectedChapterVersionId) throw new ConflictError("chapter title or version changed; reload before renaming");
+        if (chapter.title === title) return { title, currentVersion: chapter.currentVersion?.number ?? null, currentVersionId: chapter.currentVersionId };
+        const change = { previousTitle: chapter.title, title };
+        let version = chapter.currentVersion;
+        if (version) {
+          const last = await tx.chapterVersion.findFirst({ where: { chapterId }, orderBy: { number: "desc" }, select: { number: true } });
+          version = await tx.chapterVersion.create({ data: {
+            chapterId, number: (last?.number ?? 0) + 1, content: version.content,
+            wordCount: version.wordCount, authorId: actorUserId,
+            note: JSON.stringify({ operation: "chapter.rename", ...change }),
+          } });
+        }
+        await tx.chapter.update({ where: { id: chapterId }, data: { title, currentVersionId: version?.id ?? null } });
+        await advanceForMutation(tx, { workspaceId, novelId, branchName: branch.name,
+          operation: "chapter.rename", origin: "MANUAL", actorUserId, message: JSON.stringify(change),
+          tables: ["chapters", "chapter_versions"], items: [
+            { entityType: "Chapter", entityId: chapterId, operation: "UPDATE" },
+            ...(version && version.id !== chapter.currentVersionId ? [{ entityType: "ChapterVersion", entityId: version.id, operation: "CREATE" as const }] : []),
+          ],
+        });
+        await tx.auditLog.create({ data: { actorUserId, workspaceId, action: "chapter.renamed", entityType: "Chapter", entityId: chapterId,
+          payload: { ...change, previousChapterVersionId: chapter.currentVersionId, chapterVersionId: version?.id ?? null } } });
+        return { title, currentVersion: version?.number ?? null, currentVersionId: version?.id ?? null };
+      });
+    },
+
+    async deleteChapter({ actorUserId, workspaceId, novelId, chapterId, expectedTitle, expectedChapterVersionId }) {
       await gate(workspaceId, novelId, actorUserId, "chapter:delete");
       const chapter = await getChapterOr404(chapterId, novelId);
       // Published manuscripts are not silently destroyable — same
@@ -726,9 +846,15 @@ export function createManuscriptServices(
         throw new ConflictError("published chapters cannot be deleted; unpublish first");
       }
       await db.$transaction(async (tx) => {
+        const branch = await lockManuscriptBranch(tx, novelId);
+        const current = await tx.chapter.findFirst({ where: { id: chapterId, novelId } });
+        if (!current) throw new NotFoundError("chapter");
+        if (current.status === "PUBLISHED") throw new ConflictError("published chapters cannot be deleted; unpublish first");
+        if ((expectedTitle !== undefined && current.title !== expectedTitle) || (expectedChapterVersionId !== undefined && current.currentVersionId !== expectedChapterVersionId)) throw new ConflictError("chapter changed since deletion confirmation");
         await advanceForMutation(tx, {
           workspaceId,
           novelId,
+          branchName: branch.name,
           operation: "chapter.delete",
           origin: "MANUAL",
           actorUserId,
@@ -796,7 +922,7 @@ export function createManuscriptServices(
       });
     },
 
-    async setStatus({ actorUserId, workspaceId, novelId, chapterId, status }) {
+    async setStatus({ actorUserId, workspaceId, novelId, chapterId, status, expectedVersion }) {
       await gate(
         workspaceId,
         novelId,
@@ -804,6 +930,24 @@ export function createManuscriptServices(
         status === "PUBLISHED" ? "chapter:publish" : "chapter:update",
       );
       const chapter = await getChapterOr404(chapterId, novelId);
+      if (status === "DRAFT") {
+        await db.$transaction(async tx => {
+          const branch = await lockManuscriptBranch(tx, novelId);
+          await tx.$queryRaw`SELECT id FROM chapters WHERE id = ${chapterId} FOR UPDATE`;
+          const current = await tx.chapter.findFirst({ where: { id: chapterId, novelId }, include: { currentVersion: true, publication: true } });
+          if (!current) throw new NotFoundError("chapter");
+          if (expectedVersion === undefined || expectedVersion !== (current.currentVersion?.number ?? null)) throw new ConflictError("chapter version changed; reload before returning to draft");
+          const release = current.publication;
+          if (current.status === "DRAFT" && (!release || release.status === "UNPUBLISHED")) return;
+          await tx.chapter.update({ where: { id: chapterId }, data: { status: "DRAFT" } });
+          const advanced = await advanceForMutation(tx, { workspaceId, novelId, branchName: branch.name, operation: "chapter.return_to_draft", origin: "MANUAL", actorUserId,
+            tables: release ? ["chapters", "publications"] : ["chapters"], items: [{ entityType: "Chapter", entityId: chapterId, operation: "UPDATE" }, ...(release ? [{ entityType: "Publication", entityId: release.id, operation: "UPDATE" as const }] : [])] });
+          // Scheduled jobs re-read this status under the same chapter lock and become no-ops.
+          if (release) await tx.publication.update({ where: { id: release.id }, data: { status: "UNPUBLISHED", scheduledFor: null, revisionId: advanced.revisionId } });
+          await tx.auditLog.create({ data: { actorUserId, workspaceId, action: "chapter.returned_to_draft", entityType: "Chapter", entityId: chapterId, payload: { from: current.status, to: "DRAFT", retainedVersionId: current.currentVersionId, publicationId: release?.id ?? null } } });
+        });
+        return;
+      }
       if (status === "PUBLISHED" && !chapter.currentVersion) {
         throw new ConflictError("cannot publish a chapter with no content");
       }

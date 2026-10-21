@@ -1,7 +1,7 @@
 /**
  * Selection-AI orchestration (NF-WF-015, Invariant 4).
  *
- * Runs one of the six pinned operations against the existing generations
+ * Runs a pinned operation against the existing generations
  * API (`POST /api/workspaces/:workspaceId/generations/stream`, SSE) with
  * `profile: "CREATIVE_WRITER"` and the pinned `task`. Selection text is
  * capped at 2000 chars and surrounding context at 1000 chars — never the
@@ -77,9 +77,13 @@ export function useSelectionAi() {
   async function run(opts: RunOptions): Promise<void> {
     reset();
     const op = SELECTION_AI_OPERATIONS[opts.operation];
-    const sel = captureSelection(opts.editor);
+    const sel = captureSelection(opts.editor, opts.operation === "polish-language");
     if (!sel) {
-      errorKey.value = "editor.selectTextFirst";
+      errorKey.value = opts.operation === "polish-language" ? "aiAssist.polishSelectParagraph" : "editor.selectTextFirst";
+      return;
+    }
+    if (opts.operation === "polish-language" && sel.text.length > SELECTION_MAX_CHARS) {
+      errorKey.value = "aiAssist.selectionTooLong";
       return;
     }
     const selection = sel.text.slice(0, SELECTION_MAX_CHARS);
@@ -99,6 +103,7 @@ export function useSelectionAi() {
 
     const controller = new AbortController();
     abort = controller;
+    let completed = false;
     try {
       const res = await fetch(
         `/api/workspaces/${opts.workspaceId}/generations/stream`,
@@ -121,6 +126,7 @@ export function useSelectionAi() {
           signal: controller.signal,
         },
       );
+      if (abort !== controller) return;
       if (!res.ok) {
         let code = String(res.status);
         try {
@@ -128,6 +134,7 @@ export function useSelectionAi() {
         } catch {
           /* non-JSON error body */
         }
+        if (abort !== controller) return;
         // NoRouteError → 409: no model is routed for CREATIVE_WRITER —
         // the actionable state, not a retry loop.
         errorKey.value = res.status === 409 ? "aiAssist.noModel" : "aiAssist.requestFailed";
@@ -140,6 +147,7 @@ export function useSelectionAi() {
       let buf = "";
       for (;;) {
         const { done, value } = await reader.read();
+        if (abort !== controller) return;
         if (done) break;
         buf += decoder.decode(value, { stream: true });
         let idx: number;
@@ -148,21 +156,23 @@ export function useSelectionAi() {
           buf = buf.slice(idx + 2);
           const event = /^event: (.+)$/m.exec(chunk)?.[1]?.trim();
           const dataLine = chunk.split("\n").find((l) => l.startsWith("data:"));
-          let data: { delta?: string } | null = null;
+          let data: { delta?: string; status?: string } | null = null;
           try {
-            data = dataLine ? (JSON.parse(dataLine.slice(5)) as { delta?: string }) : null;
+            data = dataLine ? (JSON.parse(dataLine.slice(5)) as { delta?: string; status?: string }) : null;
           } catch {
             data = null;
           }
           if (event === "delta" && data?.delta) result.value += data.delta;
           else if (event === "error") errorKey.value = "aiAssist.requestFailed";
+          else if (event === "done") completed = data?.status === "SUCCEEDED";
         }
       }
+      if (opts.operation === "polish-language" && !completed) errorKey.value = "aiAssist.incompleteSuggestion";
     } catch (e) {
       // AbortError: the author closed the card mid-stream — not an error.
-      if ((e as Error).name !== "AbortError") errorKey.value = "aiAssist.requestFailed";
+      if (abort === controller && (e as Error).name !== "AbortError") errorKey.value = "aiAssist.requestFailed";
     } finally {
-      streaming.value = false;
+      if (abort === controller) { streaming.value = false;abort = null; }
     }
   }
 

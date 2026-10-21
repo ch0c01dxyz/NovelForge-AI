@@ -16,6 +16,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "rewrite-tone"): void;
+  (e: "polish-language"): void;
 }>();
 
 const { t } = useLocale();
@@ -44,6 +45,7 @@ const boldActive = computed(() => active("bold"));
 const italicActive = computed(() => active("italic"));
 const h2Active = computed(() => active("heading", { level: 2 }));
 const quoteActive = computed(() => active("blockquote"));
+const canPolish = computed(() => { void tick.value;return !!props.editor?.isEditable; });
 
 function run(fn: (ed: Editor) => void) {
   const ed = props.editor;
@@ -59,8 +61,9 @@ const btnOn = "bg-nf-bg-3 text-nf-text";
   <div
     role="toolbar"
     :aria-label="t('editor.toolbarLabel')"
-    class="flex items-center gap-0.5"
+    class="flex flex-wrap items-center gap-0.5"
   >
+    <button type="button" class="rounded-md px-2 py-1 text-[12.5px] font-semibold text-nf-accent-hi hover:bg-nf-accent/10 focus-visible:nf-focus disabled:opacity-40" :disabled="!canPolish" :title="t('aiAssist.polishHint')" @mousedown.prevent @click="emit('polish-language')">{{ t('aiAssist.opPolishLanguage') }}</button>
     <button
       @mousedown.prevent
       type="button"

@@ -214,9 +214,14 @@ defineExpose({ reload: load, run });
         </button>
       </div>
 
-      <p v-if="run.errorMessage" role="alert" class="text-[12.5px] text-nf-warn">
-        <span class="font-medium">{{ t("run.errorLabel") }}:</span> {{ run.errorMessage }}
-      </p>
+      <template v-if="run.errorMessage || failedSteps.length">
+        <p role="alert" class="text-[12.5px] text-nf-warn">{{ t("run.failedMessage") }}</p>
+        <details class="text-[12px] text-nf-text-dim">
+          <summary class="cursor-pointer focus-visible:nf-focus">{{ t("run.technicalDetails") }}</summary>
+          <p v-if="run.errorMessage" class="mt-2 whitespace-pre-wrap break-words">{{ run.errorMessage }}</p>
+          <p v-for="s in failedSteps" :key="s.stepKey" class="mt-2 whitespace-pre-wrap break-words">{{ s.stepKey }}: {{ s.errorMessage }}</p>
+        </details>
+      </template>
 
       <div v-if="sortedSteps.length">
         <h3
@@ -242,14 +247,6 @@ defineExpose({ reload: load, run });
             </span>
           </li>
         </ol>
-        <p
-          v-for="s in failedSteps"
-          :key="`err-${s.stepKey}`"
-          role="alert"
-          class="mt-1 text-[11.5px] text-nf-warn"
-        >
-          {{ s.stepKey }}: {{ s.errorMessage }}
-        </p>
       </div>
 
       <button

@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import ActionMenu from "../components/ui/ActionMenu.vue";
+import LanguageMenu from "../components/ui/LanguageMenu.vue";
+import NovelLibraryCard from "../components/author/NovelLibraryCard.vue";
+import AccountProfileDialog from "../components/author/AccountProfileDialog.vue";
 import { ApiError, useApi } from "../composables/useApi";
 import { useLocale } from "../composables/useLocale";
 import NewNovelWizard from "../components/author/NewNovelWizard.vue";
@@ -13,7 +17,12 @@ interface Novel {
   coverUrl?: string;
 }
 const { api } = useApi();
-const { t, locale, setLocale } = useLocale();
+const { t } = useLocale();
+const profile = ref<{ displayName: string; email: string } | null>(null);
+const profileOpen = ref(false);
+const accountMenu = ref<InstanceType<typeof ActionMenu> | null>(null);
+const initials = computed(() => profile.value?.displayName.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join("").toUpperCase() || "N");
+async function closeProfile() { profileOpen.value = false;await nextTick();accountMenu.value?.$el.querySelector("summary")?.focus(); }
 const novels = ref<Novel[]>([]);
 const loading = ref(true);
 const errorKey = ref("");
@@ -30,12 +39,6 @@ const createdPath = ref("");
 type ViewMode = "grid" | "list";
 const viewMode = ref<ViewMode>("grid");
 const VIEW_KEY = "novelforge.libraryView";
-try {
-  const saved = localStorage.getItem(VIEW_KEY);
-  if (saved === "grid" || saved === "list") viewMode.value = saved;
-} catch {
-  /* storage unavailable — grid default */
-}
 watch(viewMode, (mode) => {
   try {
     localStorage.setItem(VIEW_KEY, mode);
@@ -44,21 +47,16 @@ watch(viewMode, (mode) => {
   }
 });
 
-/** Deterministic placeholder hue from the novel id — stable cover colors. */
-function coverHue(id: string): number {
-  let h = 0;
-  for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return h;
-}
 async function load() {
   loading.value = true;
   errorKey.value = "";
   platformRole.value = null;
   authenticated.value = false;
   try {
-    const session = await api<{ userId: string; platformRole: string | null }>("/auth/session");
+    const session = await api<{ userId: string; platformRole: string | null; profile?: { displayName: string; email: string } }>("/auth/session");
     authenticated.value = true;
     platformRole.value = session.platformRole;
+    profile.value = session.profile ?? null;
     novels.value = await api<Novel[]>("/novels");
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
@@ -72,7 +70,13 @@ async function load() {
     loading.value = false;
   }
 }
-onMounted(load);
+onMounted(() => {
+  try {
+    const saved = localStorage.getItem(VIEW_KEY);
+    if (saved === "grid" || saved === "list") viewMode.value = saved;
+  } catch { /* Storage unavailable: retain the server-rendered grid. */ }
+  void load();
+});
 async function closeWizard() {
   wizardOpen.value = false;
   await nextTick();
@@ -107,46 +111,24 @@ async function signOut() {
 </script>
 <template>
   <div class="min-h-dvh bg-nf-bg-0 text-nf-text">
-    <header
-      class="flex flex-wrap items-center gap-4 border-b border-nf-border bg-nf-bg-1 px-5 py-3 shadow-nf-sm"
-    >
-      <div class="flex items-center gap-2.5 text-[14.5px] font-semibold tracking-tight">
-        <span
-          class="grid size-6.5 place-items-center rounded-md bg-nf-accent font-nf-literary text-[15px] font-bold text-nf-accent-ink"
-          >N</span
-        >NovelForge
-      </div>
-      <nav
-        class="ml-auto flex flex-wrap items-center gap-4 text-sm"
-        :aria-label="t('authorHome.navigation')"
-      >
-        <NuxtLink
-          v-if="platformRole === 'SUPER_ADMIN'"
-          to="/admin"
-          class="text-nf-text-dim hover:text-nf-text focus-visible:nf-focus"
-          >{{ t("platformAdmin.title") }}</NuxtLink
-        >
-        <label class="flex items-center gap-2 text-nf-text-dim"
-          >{{ t("authorHome.language") }}
-          <select
-            :value="locale"
-            class="rounded-md border border-nf-border-strong bg-nf-bg-0 p-1.5 text-nf-text focus-visible:nf-focus"
-            @change="setLocale(($event.target as HTMLSelectElement).value as 'en' | 'id')"
-          >
-            <option value="en">English</option>
-            <option value="id">Bahasa Indonesia</option>
-          </select>
-        </label>
-        <button
-          v-if="authenticated"
-          :disabled="signingOut"
-          class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-nf-text-dim hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50"
-          @click="signOut"
-        >
-          {{ t("authorHome.signOut") }}
-        </button>
+    <header class="flex min-h-[52px] items-center gap-3 border-b border-nf-border bg-nf-bg-1 px-3 py-2 shadow-nf-sm sm:px-5">
+      <NuxtLink to="/" class="flex shrink-0 items-center gap-2.5 text-[14.5px] font-semibold tracking-tight focus-visible:nf-focus">
+        <span class="grid size-6.5 place-items-center rounded-md bg-nf-accent font-nf-literary text-[15px] font-bold text-nf-accent-ink" aria-hidden="true">N</span>NovelForge
+      </NuxtLink>
+      <nav class="ml-auto flex min-w-0 items-center gap-2" :aria-label="t('authorHome.navigation')">
+        <NuxtLink v-if="platformRole === 'SUPER_ADMIN'" to="/admin" :aria-label="t('platformAdmin.title')" :title="t('platformAdmin.title')" class="inline-flex min-h-9 items-center gap-2 rounded-lg border border-nf-border-strong bg-nf-bg-2 px-2.5 py-1.5 text-[12px] font-medium text-nf-text-dim hover:border-nf-accent-border hover:text-nf-text focus-visible:nf-focus">
+          <svg class="size-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.5 16 5v4.5c0 4-6 8-6 8s-6-4-6-8V5z" /><path d="m7.5 9.5 1.5 1.5 3.5-3.5" /></svg><span class="hidden sm:inline">{{ t("platformAdmin.title") }}</span>
+        </NuxtLink>
+        <LanguageMenu />
+        <ActionMenu v-if="authenticated" ref="accountMenu" :label="t('accountProfile.menu')" class="nf-account-menu" data-testid="account-menu">
+          <template #trigger><span class="grid size-7 shrink-0 place-items-center rounded-full border border-nf-border-strong bg-nf-bg-2 font-nf-literary text-[11px] font-semibold text-nf-text" aria-hidden="true">{{ initials }}</span></template>
+          <div class="border-b border-nf-border px-3 py-3"><p class="break-words text-[13px] font-semibold text-nf-text">{{ profile?.displayName || t('accountProfile.title') }}</p><p v-if="profile" class="mt-1 break-all text-[11px] text-nf-text-faint">{{ profile.email }}</p></div>
+          <button type="button" data-testid="account-profile" class="items-center gap-2.5 text-nf-text-dim" @click="profileOpen = true"><svg class="size-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="6" r="3" /><path d="M4 17c0-4 12-4 12 0" /></svg>{{ t("accountProfile.title") }}</button>
+          <button type="button" data-testid="account-logout" :disabled="signingOut" class="items-center gap-2.5 text-nf-error disabled:opacity-50" @click="signOut"><svg class="size-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H4v14h4M10 10h7m-3-3 3 3-3 3" /></svg>{{ t("authorHome.signOut") }}</button>
+        </ActionMenu>
       </nav>
     </header>
+    <AccountProfileDialog v-if="profileOpen" :profile="profile" @close="closeProfile" />
     <main class="mx-auto max-w-[1120px] px-5 py-10 sm:px-10 sm:py-14">
       <div class="flex flex-wrap items-start justify-between gap-5">
         <div>
@@ -238,95 +220,8 @@ async function signOut() {
           </button>
         </div>
 
-        <!-- GRID: cover-first cards, full-bleed placeholder art -->
-        <ul v-if="viewMode === 'grid'" class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          <li v-for="n in novels" :key="n.id">
-            <NuxtLink
-              :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
-              class="nf-library-card group flex h-full flex-col overflow-hidden rounded-lg border border-nf-border bg-nf-bg-2 hover:border-nf-border-strong hover:bg-nf-bg-3 focus-visible:nf-focus"
-            >
-              <div class="relative aspect-[2/3] w-full overflow-hidden" aria-hidden="true">
-                <img
-                  v-if="n.coverUrl"
-                  :src="n.coverUrl"
-                  alt=""
-                  class="absolute inset-0 size-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                  loading="lazy"
-                />
-                <span
-                  v-else
-                  class="nf-cover-placeholder absolute inset-0 grid place-items-center"
-                  :style="{ '--h': String(coverHue(n.id)) }"
-                >
-                  <span class="nf-cover-title font-nf-literary">{{ n.title }}</span>
-                </span>
-                <span
-                  class="absolute left-2 top-2 rounded border px-1.5 py-0.5 font-mono text-[10px] backdrop-blur-sm"
-                  :class="n.status === 'DRAFT' ? 'border-nf-border-strong bg-black/40 text-nf-text-dim' : 'border-nf-accent-border bg-nf-accent-dim text-nf-accent-hi'"
-                >{{
-                  t(
-                    n.status === "DRAFT"
-                      ? "authorHome.statusDraft"
-                      : n.status === "ACTIVE"
-                        ? "authorHome.statusActive"
-                        : n.status === "ARCHIVED"
-                          ? "authorHome.statusArchived"
-                          : n.status,
-                  )
-                }}</span>
-              </div>
-              <span class="flex min-h-0 flex-1 flex-col gap-0.5 p-3">
-                <span class="min-w-0 break-words font-nf-literary text-[15px] font-semibold leading-snug">{{
-                  n.title
-                }}</span>
-                <span class="mt-auto truncate font-mono text-[10.5px] text-nf-text-faint">/{{ n.slug }}</span>
-              </span>
-            </NuxtLink>
-          </li>
-        </ul>
-
-        <!-- LIST: one row per novel -->
-        <ul v-else class="flex flex-col gap-1.5">
-          <li v-for="n in novels" :key="n.id">
-            <NuxtLink
-              :to="`/workspaces/${n.workspaceId}/novels/${n.id}`"
-              class="nf-library-card group flex items-center gap-3 rounded-lg border border-nf-border bg-nf-bg-2 px-2.5 py-2 hover:border-nf-border-strong hover:bg-nf-bg-3 focus-visible:nf-focus"
-            >
-              <span class="aspect-[2/3] w-10 shrink-0 overflow-hidden rounded-md border border-nf-border" aria-hidden="true">
-                <img
-                  v-if="n.coverUrl"
-                  :src="n.coverUrl"
-                  alt=""
-                  class="size-full object-cover"
-                  loading="lazy"
-                />
-                <span
-                  v-else
-                  class="nf-cover-placeholder grid size-full place-items-center text-[13px] font-nf-literary font-semibold"
-                  :style="{ '--h': String(coverHue(n.id)) }"
-                >{{ n.title.slice(0, 1) }}</span>
-            </span>
-              <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span class="min-w-0 truncate font-nf-literary text-base font-semibold">{{ n.title }}</span>
-                <span class="truncate font-mono text-[10.5px] text-nf-text-faint">/{{ n.slug }}</span>
-              </span>
-              <span
-                class="shrink-0 rounded border px-2 py-0.5 text-[11px]"
-                :class="n.status === 'DRAFT' ? 'border-nf-border bg-nf-bg-0 text-nf-text-dim' : 'border-nf-accent-border bg-nf-accent-dim text-nf-accent-hi'"
-              >{{
-                t(
-                  n.status === "DRAFT"
-                    ? "authorHome.statusDraft"
-                    : n.status === "ACTIVE"
-                      ? "authorHome.statusActive"
-                      : n.status === "ARCHIVED"
-                        ? "authorHome.statusArchived"
-                        : n.status,
-                )
-              }}</span>
-              <svg class="size-4 shrink-0 text-nf-text-faint transition-transform group-hover:translate-x-0.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M6 3.5L10.5 8L6 12.5"/></svg>
-            </NuxtLink>
-          </li>
+        <ul :data-testid="`novel-library-${viewMode}`" class="mt-4" :class="viewMode === 'grid' ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3' : 'flex flex-col gap-2'">
+          <li v-for="n in novels" :key="n.id" class="min-w-0"><NovelLibraryCard :novel="n" :mode="viewMode" /></li>
         </ul>
       </template>
     </main>

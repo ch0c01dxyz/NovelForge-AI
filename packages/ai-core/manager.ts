@@ -89,7 +89,7 @@ export interface GatewayRegistry {
    */
   resolveProfile(
     profile: ModelProfile,
-  ): Promise<Array<{ gatewayId: string; modelId: string; capabilities?: string[] }>>;
+  ): Promise<Array<{ gatewayId: string; modelId: string; modelRef?: string; capabilities?: string[] }>>;
   /** Persist an attempt row (append-only). */
   recordAttempt(generationId: string, attempt: AttemptRecord): Promise<void>;
   /** Update breaker/health counters after an attempt. */
@@ -111,6 +111,7 @@ export interface GatewayRegistry {
 
 export interface GenerateOptions {
   profile: ModelProfile;
+  preferredModelRef?: string;
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
@@ -137,6 +138,7 @@ export const DEFAULT_MAX_ATTEMPTS = 7;
 /** Options shared by every operation that routes through a profile. */
 export interface RouteAttemptOptions {
   profile: ModelProfile;
+  preferredModelRef?: string;
   /** Logical generation id to attach attempts to. */
   generationId: string;
   /**
@@ -256,10 +258,12 @@ export class GatewayManager {
    */
   private planFor(opts: RouteAttemptOptions, candidates: Candidate[]): Candidate[] {
     const eligible = this.requestEligible(candidates, opts.outputMode);
+    this.assertPreference(opts, eligible);
     const plan = planAttempts(eligible, opts.strategy ?? this.deps.defaultStrategy ?? "PRIORITY", {
       random: opts.random,
       roundRobinCursor: (opts.roundRobinCursor ?? (() => this.nextCursor()))(),
       maxAttempts: opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+      preferredModelRef: opts.preferredModelRef,
     });
     if (plan.length === 0) {
       if (opts.outputMode === "json_object" && candidates.length > 0) {
@@ -275,6 +279,19 @@ export class GatewayManager {
       throw new NoRouteError(opts.profile);
     }
     return plan;
+  }
+
+  private assertPreference(opts: Pick<RouteAttemptOptions, "profile" | "preferredModelRef">, eligible: Candidate[]): void {
+    if (opts.preferredModelRef !== undefined && !eligible.some(c => c.enabled && c.modelRef === opts.preferredModelRef)) {
+      throw new NoRouteError(opts.profile, "selected model is not enabled or compatible with this profile and request");
+    }
+  }
+
+  /** Refuse a stale explicit selection before a caller commits SSE headers. */
+  async validatePreference(opts: Pick<RouteAttemptOptions, "profile" | "preferredModelRef" | "outputMode">): Promise<void> {
+    if (opts.preferredModelRef === undefined) return;
+    const { candidates } = await this.candidates(opts.profile);
+    this.assertPreference(opts, this.requestEligible(candidates, opts.outputMode));
   }
 
   /**
@@ -301,6 +318,7 @@ export class GatewayManager {
         gatewayId: g.id,
         gatewayName: g.name,
         modelId: m.modelId,
+        modelRef: m.modelRef,
         priority: g.priority,
         weight: g.weight,
         latencyMs: g.latencyMs ?? null,
@@ -331,6 +349,13 @@ export class GatewayManager {
         signal: opts.signal,
       }),
     );
+  }
+
+  private async retryGateway(opts: RouteAttemptOptions, target: Candidate): Promise<GatewayRecord | undefined> {
+    const live = await this.candidates(opts.profile);
+    const eligible = this.requestEligible(live.candidates, opts.outputMode).some(c =>
+      c.enabled && c.gatewayId === target.gatewayId && c.modelId === target.modelId && c.modelRef === target.modelRef);
+    return eligible ? live.gateways.get(target.gatewayId) : undefined;
   }
 
   /**
@@ -373,17 +398,19 @@ export class GatewayManager {
     const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
 
     let last: GatewayError | null = null;
+    let attemptNumber = 0;
     for (let i = 0; i < plan.length; i++) {
       const target = plan[i]!;
-      const rec = gateways.get(target.gatewayId);
+      const rec = i === 0 ? gateways.get(target.gatewayId) : await this.retryGateway(opts, target);
       if (!rec) continue;
+      attemptNumber++;
       const adapter = this.build(rec);
       const started = Date.now();
       try {
         const result = await call(adapter, target);
         const latencyMs = Date.now() - started;
         await this.registry.recordAttempt(opts.generationId, {
-          attemptNumber: i + 1,
+          attemptNumber,
           gatewayId: target.gatewayId,
           modelId: result.model || target.modelId,
           requestedModelId: target.modelId,
@@ -409,7 +436,7 @@ export class GatewayManager {
         last = gerr;
         const latencyMs = Date.now() - started;
         await this.registry.recordAttempt(opts.generationId, {
-          attemptNumber: i + 1,
+          attemptNumber,
           gatewayId: target.gatewayId,
           modelId: target.modelId,
           requestedModelId: target.modelId,
@@ -455,10 +482,12 @@ export class GatewayManager {
     const sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
 
     let last: GatewayError | null = null;
+    let attemptNumber = 0;
     for (let i = 0; i < plan.length; i++) {
       const target = plan[i]!;
-      const rec = gateways.get(target.gatewayId);
+      const rec = i === 0 ? gateways.get(target.gatewayId) : await this.retryGateway(opts, target);
       if (!rec) continue;
+      attemptNumber++;
       const adapter = this.build(rec);
       const started = Date.now();
       let emitted = false;
@@ -511,7 +540,7 @@ export class GatewayManager {
         // consumer abandoning the generator early.
         await stream.return(undefined).catch(() => undefined);
         await this.registry.recordAttempt(opts.generationId, {
-          attemptNumber: i + 1, gatewayId: target.gatewayId, modelId: reportedModelId ?? target.modelId,
+          attemptNumber, gatewayId: target.gatewayId, modelId: reportedModelId ?? target.modelId,
           requestedModelId: target.modelId, reportedModelId, inputTokens, outputTokens,
           status: finished ? "SUCCEEDED" : failure ? attemptStatus(failure.category, emitted) : "FAILED",
           errorCategory: finished ? "NONE" : failure?.category ?? "DETERMINISTIC",

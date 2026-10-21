@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mount, flushPromises } from "@vue/test-utils";
+import { mount, shallowMount, flushPromises } from "@vue/test-utils";
 import { computed, ref, watch, onUnmounted, type Ref } from "vue";
 import Workspace from "./index.vue";
 import { useApi } from "../../../../../composables/useApi";
@@ -25,6 +25,50 @@ let guard: () => boolean;
 vi.stubGlobal("onBeforeRouteLeave", (callback: () => boolean) => { guard = callback; });
 
 describe("workspace navigation preserves unsaved text", () => {
+  it("opens every story panel from the mobile menu without changing the unsaved chapter", async () => {
+    const wrapper = shallowMount(Workspace, { global: { stubs: { ActionMenu: false, NuxtLink: true } } });
+    const state = (wrapper.vm.$ as unknown as { setupState: Record<string, unknown> }).setupState;
+    state.content = "Retain this unsaved chapter";state.saveState = "dirty";
+    const menu = wrapper.get('[data-testid="mobile-story-menu"]');
+    const items = state.workspaceNavItems as { key: string }[];
+    expect(items.map(item => item.key)).toEqual(expect.arrayContaining(["discovery", "characters", "relationships", "world", "canon"]));
+    for (const item of items) {
+      (menu.element as HTMLDetailsElement).open = true;
+      await menu.get(`[data-story-panel="${item.key}"]`).trigger("click");
+      expect(state.workspacePanel).toBe(item.key);expect((menu.element as HTMLDetailsElement).open).toBe(false);
+      expect(state.content).toBe("Retain this unsaved chapter");expect(state.saveState).toBe("dirty");
+    }
+    (menu.element as HTMLDetailsElement).open = true;await menu.trigger("keydown", { key: "Escape" });expect((menu.element as HTMLDetailsElement).open).toBe(false);wrapper.unmount();
+  });
+  it("keeps late input bound to the previous chapter while a selection GET is pending", async () => {
+    let finish!: (response: Response) => void;
+    const { wrapper, state, fetch } = publishingFixture((url) => url.endsWith("/next") ? new Promise<Response>(resolve => { finish = resolve; }) : undefined);
+    state.chapters = [{ id: "chapter", currentVersion: 1, wordCount: 2 }, { id: "next", currentVersion: 1, wordCount: 2 }];
+    const pending = (state.selectChapter as (id: string) => Promise<void>)("next");
+    await flushPromises();
+    expect(state.activeId).toBe("chapter");
+    expect(state.chapterSelecting).toBe(true);
+    await (state.saveNow as () => Promise<void>)();
+    (state.onEditorInput as (text: string) => void)("Late input kept with original chapter");
+    finish(new Response(JSON.stringify({ id: "next", content: "Other chapter", currentVersion: 1 }), { status: 200 }));
+    await pending;
+    expect(state.activeId).toBe("chapter");expect(state.content).toBe("Late input kept with original chapter");
+    expect(state.saveState).toBe("dirty");
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
+    wrapper.unmount();
+  });
+
+  it("does not repeat a confirmed chapter POST when the following list read fails", async () => {
+    const { wrapper, state, fetch } = publishingFixture((url, init) => url.endsWith("/chapters")
+      ? new Response(JSON.stringify(init?.method === "POST" ? { id: "created", number: 2 } : { error: "FORBIDDEN" }), { status: init?.method === "POST" ? 201 : 403 }) : undefined);
+    state.chapterCreateOpen = true;
+    const create = state.createChapter as (input: { title: string }) => Promise<void>;
+    await create({ title: "Created once" });
+    expect(state.chapterCreateOpen).toBe(false);
+    await create({ title: "Created once" });
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    expect(state.error).toBeTruthy();wrapper.unmount();
+  });
   beforeEach(() => {
     vi.restoreAllMocks();
     stateMap.clear();

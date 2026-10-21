@@ -32,6 +32,7 @@ import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import { createAuditService } from "@novelforge/ai-services";
 import { createPlatformServices } from "@novelforge/ai-services";
+import { createWorkflowExecutor, createDbDefinitionResolvers } from "@novelforge/workflow-executor";
 import type { WorkflowQueue } from "./services/workflow-queue.ts";
 import { createTestDriver, type TestDriver } from "./workflow-test-driver.ts";
 
@@ -433,6 +434,7 @@ async function getRun(cookie: string, workspaceId: string, runId: string) {
     errorMessage: string | null;
     completedAt: string | null;
     steps: Array<{
+      approvalSnapshot: { snapshotHash: string } | null;
       stepKey: string;
       sequence: number;
       status: string;
@@ -487,6 +489,309 @@ const CHAPTER_PIPELINE = {
 };
 
 describe("Phase 4 — definitions", () => {
+  it("previews scoped routing and persists request/step choices through approval and idempotency", async () => {
+    const owner = await seedUser("request-models@example.test");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "request-models");
+    await seedRoute();
+    const automatic = await db.aIModel.findFirstOrThrow({ where: { modelId: "fake-writer" } });
+    const writer = await db.aIModel.create({ data: { gatewayId: automatic.gatewayId, modelId: "request-writer", capabilities: ["chat"] } });
+    const extractor = await db.aIModel.create({ data: { gatewayId: automatic.gatewayId, modelId: "request-extractor", capabilities: ["chat"] } });
+    await db.modelProfileMapping.create({ data: { profile: "CREATIVE_WRITER", modelRef: writer.id, priority: 999 } });
+    await db.modelProfileMapping.create({ data: { profile: "STRUCTURED_EXTRACTOR", modelRef: extractor.id, priority: 999 } });
+    await makeAgent(owner.cookie, workspaceId, "request-writer-agent", { preferredModelRef: automatic.id });
+    await makeSkill(owner.cookie, workspaceId, "request-extractor-skill", { preferredModelRef: automatic.id });
+    const graph = { steps: [{ key: "write", kind: "AGENT", ref: "request-writer-agent", instruction: "Write" }, { key: "approval", kind: "HUMAN_APPROVAL" }, { key: "extract", kind: "SKILL", ref: "request-extractor-skill", instruction: "Extract" }], edges: [{ from: "write", to: "approval" }, { from: "approval", to: "extract" }], maxSteps: 3 };
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "requested-models", graph);
+    const base = `/api/workspaces/${workspaceId}/workflows/${workflowId}`;
+    const previewResponse = await app.inject({ method: "GET", url: `${base}/model-preferences?novelId=${novelId}`, headers: { cookie: owner.cookie } });
+    expect(previewResponse.statusCode, previewResponse.body).toBe(200);
+    const preview = previewResponse.json();
+    expect(preview.steps.map((step: { profile: string }) => step.profile)).toEqual(["CREATIVE_WRITER", "STRUCTURED_EXTRACTOR"]);
+    const choices = { preferredModelRef: writer.id, stepModelRefs: { extract: extractor.id } };
+    const payload = { novelId, idempotencyKey: "requested-models", expectedModelPreferenceFingerprint: preview.fingerprint, ...choices, input: { requestedModelPreferences: { preferredModelRef: automatic.id } } };
+    const queued = await app.inject({ method: "POST", url: `${base}/run`, headers: { cookie: owner.cookie }, payload });expect(queued.statusCode, queued.body).toBe(202);
+    const runId = queued.json().id;
+    expect((await db.workflowRun.findUniqueOrThrow({ where: { id: runId } })).requestedModelPreferences).toEqual(choices);
+    await db.workflowRun.update({ where: { id: runId }, data: { startedAt: new Date(Date.now() - 900_000) } });
+    const recovery = createWorkflowExecutor({ db, audit: createAuditService(db), resolvers: createDbDefinitionResolvers(db) });
+    const recovered = await recovery.recoverStaleRuns({ getJob: async () => undefined, add: async () => {} });
+    expect(recovered.orphanEnqueues).toContain(runId);
+    expect((await db.workflowRun.findUniqueOrThrow({ where: { id: runId } })).requestedModelPreferences).toEqual(choices);
+    expect((await driveRun(runId)).status).toBe("AWAITING_APPROVAL");
+    const parked = await getRun(owner.cookie, workspaceId, runId);
+    const snapshot = parked.steps.find(step => step.stepKey === "approval")!.approvalSnapshot!;
+    const decision = await app.inject({ method: "POST", url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}/approve`, headers: { cookie: owner.cookie }, payload: { expectedSnapshotHash: snapshot.snapshotHash, reason: "Fixture approval only" } });expect(decision.statusCode).toBe(200);
+    expect((await driveRun(runId)).status).toBe("SUCCEEDED");
+    expect(seenPrompts.map(prompt => prompt.model)).toEqual(["request-writer", "request-extractor"]);
+    const retry = await app.inject({ method: "POST", url: `${base}/run`, headers: { cookie: owner.cookie }, payload: { ...payload, preferredModelRef: automatic.id, expectedModelPreferenceFingerprint: "0".repeat(64) } });
+    expect(retry.statusCode).toBe(200);expect(retry.json().id).toBe(runId);expect(retry.json().requestedModelPreferences).toEqual(choices);
+  });
+  it("binds previews to tenant/novel/default/definition versions and refuses stale enqueue without a row", async () => {
+    const fixture = await queuedFixture();
+    const { owner, workspaceId, workflowId, agentId } = fixture;
+    const firstNovel = await db.novel.findFirstOrThrow({ where: { workspaceId } });
+    const otherNovel = await createPlatformServices({ db, audit: createAuditService(db) }).createNovel({ actorUserId: owner.userId, workspaceId, title: "Other preview", slug: "other-preview" });
+    const base = `/api/workspaces/${workspaceId}/workflows/${workflowId}`;
+    const preview = (novelId: string, cookie = owner.cookie) => app.inject({ method: "GET", url: `${base}/model-preferences?novelId=${novelId}`, headers: { cookie } });
+    const first = await preview(firstNovel.id), other = await preview(otherNovel.id);
+    expect(first.statusCode).toBe(200);expect(other.statusCode).toBe(200);
+    expect(first.json().fingerprint).not.toBe(other.json().fingerprint);
+    const stranger = await seedUser("preview-stranger@example.test");
+    expect((await preview(firstNovel.id, stranger.cookie)).statusCode).toBe(404);
+    await db.membership.create({ data: { workspaceId, userId: stranger.userId, role: "VIEWER" } });
+    expect((await preview(firstNovel.id, stranger.cookie)).statusCode).toBe(403);
+    const count = await db.workflowRun.count(), jobs = enqueuedJobs.length;
+    const refuse = async (fingerprint: string) => {
+      const response = await app.inject({ method: "POST", url: `${base}/run`, headers: { cookie: owner.cookie }, payload: { novelId: firstNovel.id, expectedModelPreferenceFingerprint: fingerprint } });
+      expect(response.statusCode).toBe(409);expect(await db.workflowRun.count()).toBe(count);expect(enqueuedJobs).toHaveLength(jobs);
+    };
+    await db.novelModelDefaultsVersion.create({ data: { novelId: firstNovel.id, number: 1, actorUserId: owner.userId, reason: "New routing configuration" } });
+    await refuse(first.json().fingerprint);
+    const afterDefaults = await preview(firstNovel.id);
+    expect((await app.inject({ method: "POST", url: `/api/agents/${agentId}/versions`, headers: { cookie: owner.cookie }, payload: { instructions: "New preview definition", modelProfile: "CREATIVE_WRITER" } })).statusCode).toBe(200);
+    await refuse(afterDefaults.json().fingerprint);
+  });
+  it.each(["unknown-step", "deterministic-step", "malformed-uuid", "unavailable", "bad-stored", "legacy"])("refuses unsafe request choices or preserves legacy (%s)", async mode => {
+    const fixture = await queuedFixture();
+    const { owner, workspaceId } = fixture;
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "negative-preferences", { steps: [{ key: "write", kind: "AGENT", ref: "queued-writer", instruction: "Write" }, { key: "approval", kind: "HUMAN_APPROVAL" }], edges: [{ from: "write", to: "approval" }], maxSteps: 2 });
+    const model = await db.aIModel.findFirstOrThrow({ where: { modelId: "fake-writer" } });
+    if (mode === "bad-stored" || mode === "legacy") {
+      if (mode === "legacy") await db.$executeRaw`UPDATE workflow_runs SET requested_model_preferences = NULL WHERE id = ${fixture.runId}::uuid`;
+      else await db.workflowRun.update({ where: { id: fixture.runId }, data: { requestedModelPreferences: { stepModelRefs: { missing: model.id } } } });
+      expect((await driveRun(fixture.runId)).status).toBe(mode === "legacy" ? "SUCCEEDED" : "FAILED");
+      expect(seenPrompts).toHaveLength(mode === "legacy" ? 1 : 0);return;
+    }
+    const payload = mode === "malformed-uuid" ? { preferredModelRef: "provider/model" }
+      : mode === "unavailable" ? { preferredModelRef: "00000000-0000-4000-8000-000000000999" }
+      : { stepModelRefs: { [mode === "unknown-step" ? "missing" : "approval"]: model.id } };
+    const count = await db.workflowRun.count();
+    const response = await app.inject({ method: "POST", url: `/api/workspaces/${workspaceId}/workflows/${workflowId}/run`, headers: { cookie: owner.cookie }, payload });
+    if (mode === "unavailable") {
+      expect(response.statusCode).toBe(202);expect((await driveRun(response.json().id)).status).toBe("FAILED");
+    } else {
+      expect(response.statusCode).toBe(mode === "malformed-uuid" ? 400 : 409);expect(await db.workflowRun.count()).toBe(count);
+    }
+    expect(seenPrompts).toHaveLength(0);
+  });
+  it.each(["configured", "absent", "legacy", "foreign", "disabled"])("pins novel defaults at enqueue (%s)", async mode => {
+    const owner = await seedUser("novel-default-pin@example.test");
+    const { workspaceId, novelId } = await seedWorkspace(owner.userId, "novel-default-pin");
+    await seedRoute();
+    const automatic = await db.aIModel.findFirstOrThrow({ where: { modelId: "fake-writer" } });
+    const selected = await db.aIModel.create({ data: { gatewayId: automatic.gatewayId, modelId: "novel-selected", capabilities: ["chat"] } });
+    await db.modelProfileMapping.create({ data: { profile: "CREATIVE_WRITER", modelRef: selected.id, priority: 999 } });
+    const config = { novelId, number: 1, generationModelRef: selected.id, analysisModelRef: null, actorUserId: owner.userId, reason: "Scratch routing default" };
+    const original = mode === "absent" ? null : await db.novelModelDefaultsVersion.create({ data: config });
+    await makeAgent(owner.cookie, workspaceId, "default-writer");
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "default-workflow", { steps: [{ key: "write", kind: "AGENT", ref: "default-writer", instruction: "Write", usageComponent: "CHAPTER" }], edges: [], maxSteps: 1 });
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId, { novelId, runInput: { novelModelDefaultsVersionId: "untrusted", modelDefaultsPinnedAt: null } });
+    const pin = await db.workflowRun.findUniqueOrThrow({ where: { id: runId } });
+    expect(pin.modelDefaultsPinnedAt).not.toBeNull();
+    expect(pin.novelModelDefaultsVersionId).toBe(original?.id ?? null);
+    await db.novelModelDefaultsVersion.create({ data: { ...config, number: original ? 2 : 1, generationModelRef: automatic.id } });
+    if (mode === "legacy") await db.workflowRun.update({ where: { id: runId }, data: { modelDefaultsPinnedAt: null, novelModelDefaultsVersionId: null } });
+    if (mode === "foreign") {
+      const other = await createPlatformServices({ db, audit: createAuditService(db) }).createNovel({ actorUserId: owner.userId, workspaceId, title: "Other", slug: "other" });
+      const foreign = await db.novelModelDefaultsVersion.create({ data: { ...config, novelId: other.id } });
+      await db.workflowRun.update({ where: { id: runId }, data: { novelModelDefaultsVersionId: foreign.id } });
+    }
+    if (mode === "disabled") await db.modelProfileMapping.update({ where: { profile_modelRef: { profile: "CREATIVE_WRITER", modelRef: selected.id } }, data: { enabled: false } });
+    const result = await driveRun(runId);
+    if (mode === "foreign" || mode === "disabled") {
+      expect(result.status).toBe("FAILED");expect(seenPrompts).toHaveLength(0);
+    } else {
+      expect(result.status).toBe("SUCCEEDED");expect(seenPrompts.map(prompt => prompt.model)).toEqual([mode === "configured" ? "novel-selected" : "fake-writer"]);
+      const generation = await db.generation.findFirstOrThrow({ where: { novelId } });
+      expect(generation.contextSnapshot).toMatchObject({ routing: { novelModelDefaultsVersionId: mode === "configured" ? original!.id : null } });
+    }
+    if (original && mode !== "foreign" && mode !== "legacy") await expect(db.novelModelDefaultsVersion.delete({ where: { id: original.id } })).rejects.toMatchObject({ code: "P2003" });
+  });
+  async function queuedFixture() {
+    const owner = await seedUser("queued-fixture@example.test");
+    const { workspaceId } = await seedWorkspace(owner.userId, "queued-fixture");
+    await seedRoute();
+    const skillId = await makeSkill(owner.cookie, workspaceId, "queued-grant", { instructions: "QUEUED_GRANT", modelProfile: "CREATIVE_WRITER" });
+    const agentId = await makeAgent(owner.cookie, workspaceId, "queued-writer", { instructions: "QUEUED_AGENT", skillKeys: ["queued-grant"] });
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "queued-workflow", { steps: [{ key: "write", kind: "AGENT", ref: "queued-writer", instruction: "Write" }], edges: [], maxSteps: 1 });
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId, { idempotencyKey: "queued-proof", runInput: { definitionsPinnedAt: null, definitionPins: [] } });
+    return { owner, workspaceId, skillId, agentId, workflowId, runId };
+  }
+
+  it.each(["missing", "foreign"])("fails closed for %s enqueue pins without model calls", async damage => {
+    const fixture = await queuedFixture();
+    if (damage === "missing") await db.workflowRunDefinitionPin.deleteMany({ where: { runId: fixture.runId, kind: "SKILL" } });
+    else {
+      const foreign = await seedUser("foreign-pin@example.test");
+      const workspace = await seedWorkspace(foreign.userId, "foreign-pin");
+      const foreignId = await makeAgent(foreign.cookie, workspace.workspaceId, "queued-writer");
+      const version = await db.agentVersion.findFirstOrThrow({ where: { agentId: foreignId } });
+      await db.workflowRunDefinitionPin.updateMany({ where: { runId: fixture.runId, kind: "AGENT" }, data: { agentVersionId: version.id } });
+    }
+    expect((await driveRun(fixture.runId)).status).toBe("FAILED");
+    expect(seenPrompts).toHaveLength(0);
+    expect(await db.generation.count()).toBe(0);
+  });
+
+  it("retains direct and granted version dependencies through database constraints", async () => {
+    const fixture = await queuedFixture();
+    const agent = await db.agentVersion.findFirstOrThrow({ where: { agentId: fixture.agentId } });
+    const skill = await db.skillVersion.findFirstOrThrow({ where: { skillId: fixture.skillId } });
+    await expect(db.agentVersion.delete({ where: { id: agent.id } })).rejects.toMatchObject({ code: "P2003" });
+    await expect(db.skillVersion.delete({ where: { id: skill.id } })).rejects.toMatchObject({ code: "P2003" });
+    expect(await db.workflowRunDefinitionPin.count({ where: { runId: fixture.runId } })).toBe(2);
+    expect((await driveRun(fixture.runId)).status).toBe("SUCCEEDED");
+  });
+
+  it("rolls back the run and pending steps if writing its definition pins fails", async () => {
+    const fixture = await queuedFixture();
+    const jobsBefore = enqueuedJobs.length;
+    await db.$executeRawUnsafe(`CREATE FUNCTION test_enqueue_pin_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test pin refusal'; END; $$`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER test_enqueue_pin_failure BEFORE INSERT ON workflow_run_definition_pins FOR EACH ROW EXECUTE FUNCTION test_enqueue_pin_failure()`);
+    try {
+      const response = await app.inject({ method: "POST", url: `/api/workspaces/${fixture.workspaceId}/workflows/${fixture.workflowId}/run`, headers: { cookie: fixture.owner.cookie }, payload: { idempotencyKey: "pin-write-refusal" } });
+      expect(response.statusCode).toBe(500);
+      expect(await db.workflowRun.count({ where: { workflowId: fixture.workflowId } })).toBe(1);
+      expect(await db.workflowStepRun.count({ where: { run: { workflowId: fixture.workflowId } } })).toBe(1);
+      expect(await db.workflowRunDefinitionPin.count({ where: { runId: fixture.runId } })).toBe(2);
+      expect(enqueuedJobs).toHaveLength(jobsBefore);
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER test_enqueue_pin_failure ON workflow_run_definition_pins`);
+      await db.$executeRawUnsafe(`DROP FUNCTION test_enqueue_pin_failure()`);
+    }
+  });
+
+  it("returns idempotent pinned runs after definitions are archived without recapturing", async () => {
+    const fixture = await queuedFixture();
+    const before = await db.workflowRunDefinitionPin.findMany({ where: { runId: fixture.runId }, orderBy: { kind: "asc" } });
+    await db.agent.update({ where: { id: fixture.agentId }, data: { status: "ARCHIVED" } });
+    await db.workflow.update({ where: { id: fixture.workflowId }, data: { status: "ARCHIVED" } });
+    const response = await app.inject({ method: "POST", url: `/api/workspaces/${fixture.workspaceId}/workflows/${fixture.workflowId}/run`, headers: { cookie: fixture.owner.cookie }, payload: { idempotencyKey: "queued-proof" } });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().id).toBe(fixture.runId);
+    expect(await db.workflowRunDefinitionPin.findMany({ where: { runId: fixture.runId }, orderBy: { kind: "asc" } })).toEqual(before);
+    expect((await driveRun(fixture.runId)).status).toBe("SUCCEEDED");
+    const stranger = await seedUser("stranger-pin@example.test");
+    expect((await app.inject({ method: "POST", url: `/api/workspaces/${fixture.workspaceId}/workflows/${fixture.workflowId}/run`, headers: { cookie: stranger.cookie }, payload: { idempotencyKey: "queued-proof" } })).statusCode).toBe(404);
+  });
+
+  it("preserves explicit legacy resolution without manufacturing past pins", async () => {
+    const fixture = await queuedFixture();
+    await db.workflowRunDefinitionPin.deleteMany({ where: { runId: fixture.runId } });
+    await db.workflowRun.update({ where: { id: fixture.runId }, data: { definitionsPinnedAt: null } });
+    expect((await app.inject({ method: "POST", url: `/api/agents/${fixture.agentId}/versions`, headers: { cookie: fixture.owner.cookie }, payload: { instructions: "LEGACY_CURRENT", modelProfile: "CREATIVE_WRITER" } })).statusCode).toBe(200);
+    expect((await driveRun(fixture.runId)).status).toBe("SUCCEEDED");
+    expect(seenPrompts[0]!.messages[0]!.content).toContain("LEGACY_CURRENT");
+    expect((await db.workflowRun.findUniqueOrThrow({ where: { id: fixture.runId } })).definitionsPinnedAt).toBeNull();
+    expect(await db.workflowRunDefinitionPin.count({ where: { runId: fixture.runId } })).toBe(0);
+  });
+
+  it("recovers an orphaned pending run with its original pin identities", async () => {
+    const fixture = await queuedFixture();
+    const before = await db.workflowRunDefinitionPin.findMany({ where: { runId: fixture.runId }, orderBy: { kind: "asc" } });
+    await db.workflowRun.update({ where: { id: fixture.runId }, data: { startedAt: new Date(Date.now() - 3_600_000) } });
+    const jobs: unknown[] = [];
+    const { createWorkflowExecutor, createDbDefinitionResolvers } = await import("@novelforge/workflow-executor");
+    const recovery = createWorkflowExecutor({ db, audit: createAuditService(db), resolvers: createDbDefinitionResolvers(db) });
+    const report = await recovery.recoverStaleRuns({ getJob: async () => undefined, add: async (_name, data) => { jobs.push(data); } });
+    expect(report.orphanEnqueues).toContain(fixture.runId);
+    expect(jobs[0]).toMatchObject({ runId: fixture.runId });
+    expect(await db.workflowRunDefinitionPin.findMany({ where: { runId: fixture.runId }, orderBy: { kind: "asc" } })).toEqual(before);
+    expect((await driveRun(fixture.runId)).status).toBe("SUCCEEDED");
+  });
+  it("retains enqueue-time definitions and model choices across edits and approval resume", async () => {
+    const owner = await seedUser("pinned-owner@example.test");
+    const { workspaceId } = await seedWorkspace(owner.userId, "pinned");
+    await seedRoute();
+    const original = await db.aIModel.findFirstOrThrow({ where: { modelId: "fake-writer" } });
+    const later = await db.aIModel.create({ data: { gatewayId: original.gatewayId, modelId: "later-writer", capabilities: ["chat"] } });
+    await db.modelProfileMapping.create({ data: { modelRef: later.id, profile: "CREATIVE_WRITER", priority: 999 } });
+    const granted = await makeSkill(owner.cookie, workspaceId, "granted", { instructions: "PINNED_GRANTED", modelProfile: "CREATIVE_WRITER" });
+    const action = await makeSkill(owner.cookie, workspaceId, "action", { instructions: "PINNED_ACTION", modelProfile: "CREATIVE_WRITER", preferredModelRef: later.id });
+    const agent = await makeAgent(owner.cookie, workspaceId, "pinned", { instructions: "PINNED_AGENT", skillKeys: ["granted"], preferredModelRef: original.id });
+    const graph = { steps: [{ key: "draft", kind: "AGENT", ref: "pinned", instruction: "Write" }, { key: "approve", kind: "HUMAN_APPROVAL", instruction: "Review fixture" }, { key: "action", kind: "SKILL", ref: "action", instruction: "Write" }], edges: [{ from: "draft", to: "approve" }, { from: "approve", to: "action" }], maxSteps: 3 };
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "pinned", graph);
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId, { idempotencyKey: "pinned-run" });
+    const originalAgent = await db.agentVersion.findFirstOrThrow({ where: { agentId: agent, number: 1 } });
+    const originalAction = await db.skillVersion.findFirstOrThrow({ where: { skillId: action, number: 1 } });
+    for (const [kind, id] of [["agents", agent], ["skills", granted], ["skills", action]]) expect((await app.inject({ method: "POST", url: `/api/${kind}/${id}/versions`, headers: { cookie: owner.cookie }, payload: { instructions: "LATER_INSTRUCTIONS", modelProfile: "CREATIVE_WRITER", preferredModelRef: id === action ? original.id : later.id } })).statusCode).toBe(200);
+    expect((await driveRun(runId)).status).toBe("AWAITING_APPROVAL");
+    expect(seenPrompts).toHaveLength(1);
+    expect(seenPrompts[0]!.messages[0]!.content).toContain("PINNED_AGENT");
+    expect(seenPrompts[0]!.messages[0]!.content).toContain("PINNED_GRANTED");
+    expect(seenPrompts[0]!.model).toBe("fake-writer");
+    const approval = await db.workflowStepRun.findFirstOrThrow({ where: { runId, stepKey: "approve" } });
+    const hash = (approval.approvalSnapshot as { snapshotHash: string }).snapshotHash;
+    await db.modelProfileMapping.updateMany({ where: { modelRef: original.id }, data: { enabled: false } });
+    const response = await app.inject({ method: "POST", url: `/api/workspaces/${workspaceId}/workflow-runs/${runId}/approve`, headers: { cookie: owner.cookie }, payload: { expectedSnapshotHash: hash } });
+    expect(response.statusCode, response.body).toBe(200);
+    expect((await driveRun(runId)).status).toBe("SUCCEEDED");
+    expect(seenPrompts).toHaveLength(2);
+    expect(seenPrompts[1]!.messages[0]!.content).toContain("PINNED_ACTION");
+    expect(seenPrompts[1]!.model).toBe("later-writer");
+    const steps = await db.workflowStepRun.findMany({ where: { runId }, orderBy: { sequence: "asc" } });
+    expect(steps[0]!.agentVersionId).toBe(originalAgent.id);
+    expect(steps[2]!.skillVersionId).toBe(originalAction.id);
+    const pins = await db.$queryRawUnsafe<Array<{ kind: string; key: string }>>('SELECT kind,key FROM workflow_run_definition_pins WHERE run_id=$1::uuid', runId);
+    expect(pins.map(p => `${p.kind}:${p.key}`).sort()).toEqual(["AGENT:pinned", "SKILL:action", "SKILL:granted"]);
+  });
+  it("executes agent and skill preferences ahead of the workflow default", async () => {
+    const owner = await seedUser("worker-preference@example.test");
+    const { workspaceId } = await seedWorkspace(owner.userId, "worker-preference");
+    await seedRoute();
+    const automatic = await db.aIModel.findFirstOrThrow({ where: { modelId: "fake-writer" } });
+    const selected = await db.aIModel.create({ data: { gatewayId: automatic.gatewayId, modelId: "selected-writer", capabilities: ["chat"] } });
+    const fallback = await db.aIModel.create({ data: { gatewayId: automatic.gatewayId, modelId: "workflow-writer", capabilities: ["chat"] } });
+    for (const model of [selected, fallback]) await db.modelProfileMapping.create({ data: { modelRef: model.id, profile: "CREATIVE_WRITER", priority: 999 } });
+    await makeAgent(owner.cookie, workspaceId, "selected", { preferredModelRef: selected.id });
+    await makeAgent(owner.cookie, workspaceId, "inherited");
+    await makeSkill(owner.cookie, workspaceId, "selected-skill", { modelProfile: "CREATIVE_WRITER", preferredModelRef: selected.id });
+    const graph = { steps: [
+      { key: "first", kind: "AGENT", ref: "selected", instruction: "Write" },
+      { key: "second", kind: "SKILL", ref: "selected-skill", instruction: "Write" },
+      { key: "third", kind: "AGENT", ref: "inherited", instruction: "Write" },
+    ], edges: [{ from: "first", to: "second" }, { from: "second", to: "third" }], maxSteps: 3 };
+    const workflowId = await makeWorkflow(owner.cookie, workspaceId, "preference", graph);
+    expect((await app.inject({ method: "POST", url: `/api/workflows/${workflowId}/versions`, headers: { cookie: owner.cookie }, payload: { graph, defaultModelRef: fallback.id } })).statusCode).toBe(200);
+    const { runId } = await postRun(owner.cookie, workspaceId, workflowId);
+    expect((await driveRun(runId)).status).toBe("SUCCEEDED");
+    expect(seenPrompts.map(p => p.model)).toEqual(["selected-writer", "selected-writer", "workflow-writer"]);
+    const generations = await db.generation.findMany({ where: { workspaceId }, orderBy: { createdAt: "asc" } });
+    expect(generations.map(g => (g.contextSnapshot as { routing: { preferredModelRef: string } }).routing.preferredModelRef)).toEqual([selected.id, selected.id, fallback.id]);
+    await db.modelProfileMapping.deleteMany({ where: { modelRef: fallback.id } });
+    seenPrompts = [];
+    const refused = await postRun(owner.cookie, workspaceId, workflowId);
+    expect((await driveRun(refused.runId)).status).toBe("FAILED");
+    expect(seenPrompts).toHaveLength(0);
+  });
+  it.each(["agents", "skills", "workflows"])("versions %s model choices without changing history", async kind => {
+    const owner = await seedUser("preference-owner@example.test");
+    const { workspaceId } = await seedWorkspace(owner.userId, "preference");
+    await seedRoute();
+    const model = await db.aIModel.findFirstOrThrow({ where: { modelId: "fake-writer" } });
+    const field = kind === "workflows" ? "defaultModelRef" : "preferredModelRef";
+    const content = kind === "workflows"
+      ? { graph: { steps: [{ key: "context", kind: "RETRIEVAL", instruction: "Read context" }], edges: [], maxSteps: 2 } }
+      : { instructions: "Write concisely.", modelProfile: "CREATIVE_WRITER" };
+    const headers = { cookie: owner.cookie };
+    const created = await app.inject({ method: "POST", url: `/api/${kind}`, headers, payload: { ...content, scope: "WORKSPACE", workspaceId, key: "preference", name: "Preference", [field]: model.id } });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json().id;
+    const read = () => app.inject({ method: "GET", url: `/api/${kind}/${id}`, headers });
+    expect((await read()).json()[field]).toBe(model.id);
+    const next = await app.inject({ method: "POST", url: `/api/${kind}/${id}/versions`, headers, payload: { ...content, [field]: null } });
+    expect(next.statusCode, next.body).toBe(200);
+    expect((await read()).json()[field]).toBeNull();
+    const rows = await db.$queryRawUnsafe<Array<{ choice: string | null }>>(`SELECT ${kind === "workflows" ? "default_model_ref" : "preferred_model_ref"} AS choice FROM ${kind === "agents" ? "agent_versions" : kind === "skills" ? "skill_versions" : "workflow_versions"} WHERE ${kind === "agents" ? "agent_id" : kind === "skills" ? "skill_id" : "workflow_id"} = $1::uuid ORDER BY number`, id);
+    expect(rows.map(r => r.choice)).toEqual([model.id, null]);
+    const refused = await app.inject({ method: "POST", url: `/api/${kind}/${id}/versions`, headers, payload: { ...content, [field]: "00000000-0000-4000-8000-000000000001" } });
+    expect(refused.statusCode).toBe(409);
+    if (kind !== "workflows") expect((await app.inject({ method: "POST", url: `/api/${kind}/${id}/versions`, headers, payload: { ...content, modelProfile: "EMBEDDING", [field]: model.id } })).statusCode).toBe(409);
+    expect((await app.inject({ method: "POST", url: `/api/${kind}/${id}/versions`, headers, payload: { ...content, [field]: "invalid" } })).statusCode).toBe(400);
+    await db.aIModel.update({ where: { id: model.id }, data: { enabled: false } });
+    expect((await app.inject({ method: "POST", url: `/api/${kind}/${id}/versions`, headers, payload: { ...content, [field]: model.id } })).statusCode).toBe(409);
+    expect((await read()).json().version).toBe(2);
+  });
   it("creates an agent, versions it, and never mutates a prior version", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");

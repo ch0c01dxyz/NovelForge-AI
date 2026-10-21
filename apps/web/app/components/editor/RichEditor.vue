@@ -25,6 +25,7 @@ import StarterKit from "@tiptap/starter-kit";
 const props = defineProps<{
   modelValue: string;
   ariaLabel?: string;
+  readOnly?: boolean;
   reviewHighlight?: { from: number; to: number } | null;
 }>();
 
@@ -37,6 +38,7 @@ const emit = defineEmits<{
 let suppressEmit = false;
 
 const editor = useEditor({
+  editable: !props.readOnly,
   extensions: [
     Extension.create({
       name: "reviewHighlight",
@@ -78,6 +80,10 @@ const editor = useEditor({
     emit("update:modelValue", ed.getHTML());
   },
   onBlur: () => emit("blur"),
+});
+
+watch([() => props.readOnly, editor], ([readOnly, instance]) => {
+  instance?.setEditable(!readOnly, false);
 });
 
 watch(

@@ -6,6 +6,8 @@
  * and MUST show "pending stage" rather than fabricate text when the
  * producing step is not SUCCEEDED.
  */
+import { isBlockedChapterDraft } from "../../../../packages/validation/chapter-draft";
+
 export interface StepLike {
   stepKey: string;
   status: string;
@@ -77,6 +79,11 @@ export function selectDraft(
 
 /** Extract the prose text from a draft-schema JSON object. */
 export function draftProse(draft: Record<string, unknown> | null): string | null {
-  if (!draft || typeof draft.prose !== "string") return null;
+  if (!draft || isBlockedChapterDraft(draft) || typeof draft.prose !== "string") return null;
   return draft.prose;
+}
+
+export function draftTitle(draft: Record<string, unknown> | null): string | null {
+  const title = draft?.title;
+  return typeof title === "string" && title.trim().length > 0 && title.length <= 200 ? title.trim() : null;
 }

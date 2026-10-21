@@ -127,11 +127,8 @@ select option {
  * sized to the real 2:3 cover geometry so the grid never jumps. */
 .nf-cover-placeholder {
   color: var(--color-nf-text);
-  /* --h is set inline per novel (deterministic id hash, 0..359). */
-  --h: 24;
   background:
-    radial-gradient(120% 90% at 20% 0%, hsl(var(--h) 45% 26% / 0.9), transparent 60%),
-    radial-gradient(120% 100% at 90% 110%, hsl(calc(var(--h) + 30) 40% 18% / 0.9), transparent 65%),
+    linear-gradient(135deg, var(--color-nf-accent-dim), transparent 65%),
     linear-gradient(160deg, var(--color-nf-bg-3), var(--color-nf-bg-1) 70%, var(--color-nf-bg-0));
 }
 .nf-cover-title {
@@ -330,10 +327,17 @@ dialog::backdrop {
 .nf-menu > summary::-webkit-details-marker {
   display: none;
 }
-.nf-menu > summary::after {
-  content: "⌄";
-  color: var(--color-nf-text-dim);
-}
+.nf-menu-chevron { transition: transform 150ms; }
+.nf-menu[open] > summary .nf-menu-chevron { transform: rotate(180deg); }
+.nf-language-menu > summary { padding: 7px 9px; min-height: 36px; }
+.nf-account-menu > summary { padding: 3px 6px; border-color: transparent; }
+.nf-account-menu > .nf-menu-panel,
+.nf-language-menu > .nf-menu-panel { left: auto; right: 0; }
+  .nf-chapter-sort > summary { width: 100%; justify-content: space-between; }
+  .nf-chapter-sort > .nf-menu-panel { left: 0; right: 0; min-width: 0; }
+  .nf-chapter-actions > summary { min-width: 28px; padding: 4px 8px; justify-content: center; }
+  .nf-chapter-actions > summary > .nf-menu-chevron { display: none; }
+  .nf-chapter-actions > .nf-menu-panel { left: auto; right: 0; }
 .nf-menu[open] > summary {
   background: var(--color-nf-bg-2);
   color: var(--color-nf-text);
@@ -400,12 +404,12 @@ dialog::backdrop {
   }
 }
 .nf-chapters-toggle,
+.nf-mobile-story-menu,
 .nf-menu-panel > .nf-generation-toggle,
 .nf-menu-panel > .nf-mobile-action {
   display: none;
 }
 .nf-library-card {
-  min-height: 160px;
   transition:
     border-color 150ms,
     background-color 150ms,
@@ -429,6 +433,18 @@ dialog::backdrop {
   }
 }
 @media (max-width: 1023px) {
+  .nf-mobile-story-menu { display: block; }
+  .nf-mobile-story-menu > .nf-menu-panel {
+    position: fixed;
+    top: auto;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: min(65dvh, 32rem);
+    overflow-y: auto;
+  }
   .nf-writer-shell {
     grid-template-rows: auto minmax(0, 1fr) 30px;
   }
@@ -461,8 +477,7 @@ dialog::backdrop {
 }
 @media (max-width: 639px) {
   .nf-menu-panel { left: 0; right: auto; }
-  .nf-writer-header > [data-writer-action="planning"],
-  .nf-writer-header > [data-writer-action="save"] { display: none; }
+  .nf-writer-header > [data-writer-action="planning"] { display: none; }
   .nf-writer-header > .nf-menu,
   .nf-writer-header > .nf-chapters-toggle,
   .nf-writer-header > [data-writer-action="language"] { order: 1; }

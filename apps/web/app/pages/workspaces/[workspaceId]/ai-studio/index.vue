@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BackLink from "../../../../components/ui/BackLink.vue";
+import { studioReturnTo } from "../../../../utils/studioReturnTo";
 /**
  * AI Studio page (NF-WF-018A): the management surface for the 004/005
  * backend — versioned agent/skill/workflow definitions, the run list +
@@ -8,8 +10,7 @@
  * progressive enhancement. A VIEWER sees nothing. NF-WF-018C adds a
  * fourth "receipts" tab to this shell.
  */
-import { ref, computed, onMounted } from "vue";
-import { useRoute } from "#app";
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import {
   useAiStudio,
   canViewStudio,
@@ -28,6 +29,8 @@ import {
 import { useLocale } from "../../../../composables/useLocale";
 import DefinitionList from "../../../../components/ai-studio/DefinitionList.vue";
 import DefinitionDetail from "../../../../components/ai-studio/DefinitionDetail.vue";
+import DefinitionCreateDialog from "../../../../components/ai-studio/DefinitionCreateDialog.vue";
+import StarterPackInstall from "../../../../components/ai-studio/StarterPackInstall.vue";
 import RunList from "../../../../components/ai-studio/RunList.vue";
 import RunGraph from "../../../../components/ai-studio/RunGraph.vue";
 import ApprovalsInbox from "../../../../components/ai-studio/ApprovalsInbox.vue";
@@ -39,6 +42,7 @@ import AuditTrail from "../../../../components/ai-studio/AuditTrail.vue";
 
 const route = useRoute();
 const workspaceId = computed(() => String(route.params.workspaceId ?? ""));
+const returnTo = computed(() => studioReturnTo(workspaceId.value, route.query.novelId));
 const { t } = useLocale();
 const studio = useAiStudio();
 
@@ -50,6 +54,18 @@ const roleLoaded = ref(false);
 const kind = ref<DefinitionKind>("agent");
 const selectedDefinition = ref<string | null>(null);
 const definitionListKey = ref(0);
+const createOpen = ref(false);
+const createOpener = ref<HTMLElement | null>(null);
+function openCreate(event: MouseEvent) { createOpener.value = event.currentTarget as HTMLElement;createOpen.value = true; }
+async function closeCreate() { const opener = createOpener.value;createOpen.value = false;createOpener.value = null;await nextTick();if (opener?.isConnected) opener.focus(); }
+function onCreated(value: { id: string; kind: DefinitionKind; workspaceId: string }) {
+  if (value.workspaceId !== workspaceId.value || value.kind !== kind.value) return;
+  void closeCreate();selectedDefinition.value = value.id;definitionListKey.value++;
+}
+function onStarterInstalled(value: { workspaceId: string; workflowId: string }) {
+  if (value.workspaceId !== workspaceId.value || !canManage.value) return;
+  kind.value = "workflow";selectedDefinition.value = value.workflowId;definitionListKey.value++;
+}
 
 const selectedRunId = ref<string | null>(null);
 const runDetail = ref<RunDetail | null>(null);
@@ -79,25 +95,32 @@ const receiptsTabs = computed<{ key: ReceiptsTabKey; labelKey: string; visible: 
 ]);
 
 const canManage = computed(() => canManageDefinitions(role.value));
+watch(() => [workspaceId.value, kind.value, canManage.value], () => { createOpen.value = false;createOpener.value = null; });
 const canDecide = computed(() => canDecideApprovals(role.value));
 const canRun = computed(() => canLaunchRuns(role.value));
 
 const kindLabel = computed(() => t(`aiStudio.kinds.${kind.value}`));
 
+let roleRequest = 0;
+let runRequest = 0;
+let mounted = false;
 async function selectRun(runId: string) {
+  const request = ++runRequest;const target = workspaceId.value;
   selectedRunId.value = runId;
   runDetailLoading.value = true;
   runDetailError.value = null;
   try {
-    runDetail.value = await studio.getRun(workspaceId.value, runId);
+    const detail = await studio.getRun(target, runId);
+    if (request === runRequest && target === workspaceId.value) runDetail.value = detail;
   } catch (err) {
-    runDetailError.value = err instanceof Error ? err.message : "unknown";
+    if (request === runRequest && target === workspaceId.value) runDetailError.value = err instanceof Error ? err.message : "unknown";
   } finally {
-    runDetailLoading.value = false;
+    if (request === runRequest && target === workspaceId.value) runDetailLoading.value = false;
   }
 }
 
 function backToRuns() {
+  runRequest++;
   selectedRunId.value = null;
   runDetail.value = null;
 }
@@ -112,21 +135,30 @@ function onRunLaunched(runId: string) {
   selectRun(runId);
 }
 
-onMounted(async () => {
+async function loadRole() {
+  const request = ++roleRequest;const target = workspaceId.value;
+  role.value = null;roleLoaded.value = false;
   try {
-    role.value = await studio.getWorkspaceRole(workspaceId.value);
+    const current = await studio.getWorkspaceRole(target);
+    if (request === roleRequest) role.value = current;
   } catch {
-    role.value = null;
+    if (request === roleRequest) role.value = null;
   } finally {
-    roleLoaded.value = true;
+    if (request === roleRequest) roleLoaded.value = true;
   }
+}
+onMounted(() => { mounted = true;void loadRole(); });
+watch(workspaceId, () => {
+  selectedDefinition.value = null;selectedRunId.value = null;runDetail.value = null;runDetailError.value = null;runDetailLoading.value = false;runRequest++;
+  if (mounted) void loadRole();
 });
+onUnmounted(() => { mounted = false;roleRequest++;runRequest++; });
 </script>
 
 <template>
   <div class="min-h-screen bg-nf-bg-0">
     <header
-      class="flex items-center gap-5 border-b border-nf-border bg-nf-bg-1 px-5 shadow-nf-sm"
+      class="flex min-h-[52px] flex-wrap items-center gap-5 border-b border-nf-border bg-nf-bg-1 px-5 py-2 shadow-nf-sm"
     >
       <NuxtLink
         to="/"
@@ -143,15 +175,16 @@ onMounted(async () => {
       </h1>
     </header>
 
+    <div class="mx-auto max-w-[1280px] px-5 pt-6"><BackLink :to="returnTo" :label="t(returnTo === '/' ? 'authorHome.backHome' : 'recovery.backToWorkspace')" /></div>
     <div v-if="!roleLoaded" class="px-5 py-10 text-center text-nf-text-faint" role="status">
       {{ t("common.loading") }}
     </div>
     <div v-else-if="!canViewStudio(role)" class="px-5 py-10 text-center" role="alert">
       <p class="text-[14px] text-nf-text-dim">{{ t("aiStudio.noAccess") }}</p>
     </div>
-    <div v-else class="px-5 py-4">
+    <div v-else class="mx-auto max-w-[1280px] px-5 py-6">
       <nav
-        class="mb-4 flex gap-1 border-b border-nf-border"
+        class="mb-4 flex flex-wrap gap-1 border-b border-nf-border"
         :aria-label="t('aiStudio.title')"
       >
         <button
@@ -173,6 +206,7 @@ onMounted(async () => {
 
       <!-- Definitions tab -->
       <div v-if="tab === 'definitions'" role="tabpanel">
+        <button v-if="canManage" data-testid="create-definition" class="mb-4 rounded-lg bg-nf-accent px-3.5 py-2 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus" @click="openCreate">{{ t('aiStudio.creation.open') }} · {{ kindLabel }}</button>
         <div class="mb-3 flex gap-1" role="tablist" :aria-label="t('aiStudio.tabs.definitions')">
           <button
             v-for="k in (['agent', 'skill', 'workflow'] as const)"
@@ -190,8 +224,10 @@ onMounted(async () => {
             {{ t(`aiStudio.kinds.${k}`) }}
           </button>
         </div>
+        <DefinitionCreateDialog v-if="createOpen && canManage" :key="`${workspaceId}-${kind}`" :workspace-id="workspaceId" :kind="kind" @close="closeCreate" @created="onCreated" />
+        <StarterPackInstall v-if="canManage" :key="workspaceId" :workspace-id="workspaceId" @installed="onStarterInstalled" />
         <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-          <div class="rounded-xl border border-nf-border bg-nf-bg-1 p-2">
+          <div class="min-w-0 rounded-xl border border-nf-border bg-nf-bg-1 p-2">
             <DefinitionList
               :key="`${kind}-${definitionListKey}`"
               :workspace-id="workspaceId"
@@ -202,12 +238,13 @@ onMounted(async () => {
               @run-launched="onRunLaunched"
             />
           </div>
-          <div class="rounded-xl border border-nf-border bg-nf-bg-1 p-4">
+          <div class="min-w-0 rounded-xl border border-nf-border bg-nf-bg-1 p-4">
             <DefinitionDetail
               v-if="selectedDefinition"
               :key="selectedDefinition"
               :kind="kind"
               :id="selectedDefinition"
+              :workspace-id="workspaceId"
               :can-manage="canManage"
               @changed="onDefinitionChanged"
               @close="selectedDefinition = null"

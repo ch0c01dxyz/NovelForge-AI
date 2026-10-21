@@ -20,9 +20,11 @@ const props = defineProps<{
   /** Ordinal/total for the "Draft n of m" label. */
   ordinal: number;
   total: number;
+  blocked?: boolean;
 }>();
 
 const { t } = useLocale();
+const showDiff = ref(false);
 
 const lines = computed<DiffLine[]>(() =>
   props.draftProse === null ? [] : diffLines(props.baseText, props.draftProse),
@@ -70,11 +72,16 @@ function linePrefix(op: DiffLine["op"]): string {
       role="status"
       class="rounded-lg border border-nf-border bg-nf-bg-1 px-4 py-6 text-center text-[13px] text-nf-text-faint"
     >
-      {{ t("review.pendingStage") }}
+      {{ t(blocked ? "review.blockedDraft" : "review.pendingStage") }}
     </p>
 
+    <template v-else>
+    <p class="text-[12.5px] text-nf-text-dim">{{ t('review.previewNotice') }}</p>
+    <div role="document" :aria-label="t('review.prosePreview')" data-testid="generated-prose-preview"
+      class="whitespace-pre-wrap rounded-lg border border-nf-border bg-nf-bg-1 px-5 py-6 font-nf-literary text-[17.5px] leading-[1.85] text-nf-text">{{ draftProse }}</div>
+    <button type="button" :aria-expanded="showDiff" class="self-start rounded-md border border-nf-border-strong px-3 py-1.5 text-[12.5px] text-nf-text-dim hover:bg-nf-bg-2 focus-visible:nf-focus" @click="showDiff = !showDiff">{{ t('review.compareChanges') }}</button>
     <div
-      v-else
+      v-if="showDiff"
       role="document"
       aria-label="Draft diff"
       tabindex="0"
@@ -92,5 +99,6 @@ function linePrefix(op: DiffLine["op"]): string {
         <span class="min-w-0">{{ l.text || " " }}</span>
       </div>
     </div>
+    </template>
   </section>
 </template>

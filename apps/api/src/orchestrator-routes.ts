@@ -22,6 +22,7 @@ const workspaceParams = z.object({ workspaceId: uuid });
 
 const generateBody = z.object({
   agentKey: z.string().trim().min(1).max(200),
+  preferredModelRef: uuid.optional(),
   component: z.enum(GENERATION_COMPONENTS).optional(),
   artifactId: uuid.optional(),
   instruction: z.string().min(1).max(200_000),

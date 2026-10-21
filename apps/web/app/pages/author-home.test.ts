@@ -9,9 +9,10 @@ import { en } from "../i18n/en";
 import { id } from "../i18n/id";
 
 const api = vi.hoisted(() => vi.fn());
+const ownershipPolicy = vi.hoisted(() => vi.fn());
 vi.mock("../composables/useApi", async (original) => ({
   ...(await original<object>()),
-  useApi: () => ({ api }),
+  useApi: () => ({ api: (path: string, init?: RequestInit) => path === "/workspaces/ownership-policy" ? ownershipPolicy() : api(path, init) }),
 }));
 const states = new Map<string, Ref<unknown>>();
 const cookie = ref<string | null>(null);
@@ -41,6 +42,7 @@ beforeEach(() => {
     if (path === "/workspaces") return { id: "new-workspace" };
     return { id: "new-novel" };
   });
+  ownershipPolicy.mockReset().mockResolvedValue({ ownedCount: 0, maxOwned: 1, canCreate: true });
 });
 afterEach(() => wrappers.splice(0).forEach((w) => w.unmount()));
 const posts = () => api.mock.calls.filter(([, init]) => init?.method === "POST");
@@ -59,6 +61,54 @@ async function fillNew(w: VueWrapper) {
 }
 
 describe("author home and creation", () => {
+  it("reloads the workspace created in another tab after a stale ownership refusal", async () => {
+    let createdElsewhere = false;
+    ownershipPolicy.mockImplementation(async () => ({ ownedCount: createdElsewhere ? 1 : 0, maxOwned: 1, canCreate: !createdElsewhere }));
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/workspaces" && !init) return createdElsewhere ? [{ id: "other-tab", name: "My stories", slug: "my-stories", role: "OWNER", canCreateNovel: true }] : [];
+      if (path === "/workspaces") { createdElsewhere = true; throw new ApiError("WORKSPACE_OWNERSHIP_LIMIT", 409); }
+      return { id: "novel" };
+    });
+    const w = mounted(Wizard); await fillNew(w); await next(w);
+    expect(w.get("select").findAll("option").map(o => o.text())).toEqual(["My stories"]);
+    expect(w.find('input[type="radio"][value="new"]').exists()).toBe(false);
+    await next(w); await next(w); await next(w);
+    expect(posts().map(([path]) => path)).toEqual(["/workspaces", "/workspaces/other-tab/novels"]);
+  });
+  it("explains the ownership cap and reuses an existing workspace for another novel", async () => {
+    ownershipPolicy.mockResolvedValue({ ownedCount: 1, maxOwned: 1, canCreate: false });
+    api.mockImplementation(async (path: string, init?: RequestInit) => path === "/workspaces" && !init
+      ? [{ id: "own", name: "My stories", slug: "my-stories", role: "OWNER", canCreateNovel: true }]
+      : { id: "next-novel" });
+    const w = mounted(Wizard); await flushPromises();
+    expect(w.find('input[type="radio"][value="new"]').exists()).toBe(false);
+    expect(w.text()).toContain("one workspace");
+    await next(w);
+    await w.get('[data-testid="novel-title"]').setValue("Another story");
+    await w.get('[data-testid="novel-slug"]').setValue("another-story");
+    await next(w); await next(w);
+    expect(posts().map(([path]) => path)).toEqual(["/workspaces/own/novels"]);
+  });
+  it("shows the account profile from the authenticated session and retains logout", async () => {
+    api.mockImplementation(async (path: string) => path === "/auth/session" ? { userId: "author", platformRole: null, profile: { displayName: "Story Author", email: "author@example.test" } } : []);
+    const w = mounted(Home);await flushPromises();
+    expect(w.get('[data-testid="account-menu"]').text()).toContain("Story Author");
+    await w.get('[data-testid="account-profile"]').trigger("click");await flushPromises();
+    expect(w.get('[data-testid="account-profile-dialog"]').text()).toContain("author@example.test");
+    expect(posts()).toHaveLength(0);
+    await w.get('[data-testid="account-profile-close"]').trigger("click");await flushPromises();
+    await w.get('[data-testid="account-logout"]').trigger("click");await flushPromises();
+    expect(posts().map(([path]) => path)).toEqual(["/auth/logout"]);
+  });
+  it("keeps the same novel links in compact grid and list layouts", async () => {
+    api.mockImplementation(async (path: string) => path === "/auth/session" ? { userId: "author", platformRole: null } : [{ id: "novel", workspaceId: "workspace", title: "A long novel title", slug: "novel", status: "DRAFT" }]);
+    const w = mounted(Home);await flushPromises();
+    expect(w.find('[data-testid="novel-library-grid"]').exists()).toBe(true);
+    await w.get('[data-testid="view-list"]').trigger("click");
+    expect(w.find('[data-testid="novel-library-list"]').exists()).toBe(true);
+    expect(w.get('a[href="/workspaces/workspace/novels/novel"]').text()).toContain("A long novel title");
+    expect(localStorage.getItem("novelforge.libraryView")).toBe("list");
+  });
   it("renders the authenticated cover URL without exposing image data and keeps the title fallback", async () => {
     const coverUrl = "/api/workspaces/w/novels/n/cover?v=hash";
     api.mockImplementation(async path => path === "/auth/session" ? { userId: "a", platformRole: null } : path === "/novels" ? [

@@ -14,6 +14,7 @@ export {
   extractJson,
   type SchemaValidator,
 } from "./json-schema.ts";
+export { isBlockedChapterDraft } from "./chapter-draft.ts";
 
 export {
   validateGraph,
@@ -35,3 +36,4 @@ export {
   type ValidationFailure,
   type ValidationResult,
 } from "./failure.ts";
+export { workflowModelPreferencesSchema, validateWorkflowModelPreferences, workflowModelPreferenceForStep, type WorkflowModelPreferences } from "./workflow-model-preferences.ts";

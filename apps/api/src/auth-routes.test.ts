@@ -199,6 +199,10 @@ describe("GET /api/auth/session + POST /api/auth/logout", () => {
     });
     expect(sess.statusCode).toBe(200);
     expect(sess.json().userId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(sess.json().profile).toEqual({ displayName: "S", email });
+    expect(Object.keys(sess.json().profile).sort()).toEqual(["displayName", "email"]);
+    expect(sess.body).not.toContain("passwordHash");
+    expect(sess.body).not.toContain(cookie.value);
 
     // Logout clears the cookie and revokes server-side.
     const out = await app.inject({

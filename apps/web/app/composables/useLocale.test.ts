@@ -88,7 +88,7 @@ describe("useLocale (SSR-safe, GAP-123)", () => {
     const { setLocale, t } = useLocale();
     setLocale("id");
     // Intentionally missing in id: falls back to en.
-    expect(t("review.showFullHash")).toBe("Show full hash");
+    expect(t("review.showFullHash")).toBe("Show full reference");
   });
 
   it("interpolates params", () => {

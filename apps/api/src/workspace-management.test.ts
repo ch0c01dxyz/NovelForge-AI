@@ -376,3 +376,46 @@ describe("workspace deletion", () => {
     expect(authorRow).toMatchObject({ canRename: false, canDelete: false, novelCount: 1 });
   });
 });
+
+describe("workspace ownership policy", () => {
+  it("authenticates policy reads and serializes ordinary concurrent creates", async () => {
+    expect((await api(null, "GET", "/api/workspaces/ownership-policy")).statusCode).toBe(401);
+    const author = await seedUser("Author");
+    expect((await api(author.cookie, "GET", "/api/workspaces/ownership-policy")).json()).toEqual({ ownedCount: 0, maxOwned: 1, canCreate: true });
+    const results = await Promise.all(["first", "second"].map(slug =>
+      api(author.cookie, "POST", "/api/workspaces", { name: slug, slug })));
+    expect(results.map(r => r.statusCode).sort()).toEqual([201, 409]);
+    expect(results.find(r => r.statusCode === 409)!.json().error).toBe("WORKSPACE_OWNERSHIP_LIMIT");
+    expect(await db.workspace.count({ where: { ownerId: author.userId } })).toBe(1);
+    expect((await api(author.cookie, "GET", "/api/workspaces/ownership-policy")).json()).toEqual({ ownedCount: 1, maxOwned: 1, canCreate: false });
+    const workspace = await db.workspace.findFirstOrThrow({ where: { ownerId: author.userId } });
+    for (const slug of ["novel-one", "novel-two"]) {
+      expect((await api(author.cookie, "POST", `/api/workspaces/${workspace.id}/novels`, { title: slug, slug })).statusCode).toBe(201);
+    }
+  });
+
+  it("exempts only SUPER_ADMIN and does not count invited memberships as ownership", async () => {
+    const admin = await seedUser("Platform admin");
+    await db.user.update({ where: { id: admin.userId }, data: { platformRole: "SUPER_ADMIN" } });
+    const ids = [];
+    for (const slug of ["admin-one", "admin-two"]) ids.push(await makeWorkspace(admin.cookie, slug, slug));
+    expect((await api(admin.cookie, "GET", "/api/workspaces/ownership-policy")).json()).toEqual({ ownedCount: 2, maxOwned: null, canCreate: true });
+    const invited = await seedUser("Invited owner");
+    await seedMember(ids[0]!, invited.userId, "OWNER");
+    expect((await api(invited.cookie, "GET", "/api/workspaces/ownership-policy")).json()).toEqual({ ownedCount: 0, maxOwned: 1, canCreate: true });
+    await makeWorkspace(invited.cookie, "Own workspace", "invited-own");
+    expect((await api(invited.cookie, "POST", "/api/workspaces", { name: "Another", slug: "invited-second" })).statusCode).toBe(409);
+  });
+
+  it("preserves existing over-limit workspaces and blocks only new ownership", async () => {
+    const author = await seedUser("Existing author");
+    for (const slug of ["legacy-one", "legacy-two"]) {
+      const ws = await db.workspace.create({ data: { ownerId: author.userId, name: slug, slug } });
+      await seedMember(ws.id, author.userId, "OWNER");
+    }
+    expect((await api(author.cookie, "GET", "/api/workspaces/ownership-policy")).json()).toEqual({ ownedCount: 2, maxOwned: 1, canCreate: false });
+    expect((await api(author.cookie, "GET", "/api/workspaces")).json()).toHaveLength(2);
+    expect((await api(author.cookie, "POST", "/api/workspaces", { name: "No", slug: "legacy-three" })).statusCode).toBe(409);
+    expect(await db.workspace.count({ where: { ownerId: author.userId } })).toBe(2);
+  });
+});

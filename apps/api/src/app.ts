@@ -232,6 +232,7 @@ export async function buildApp(
       auth,
       secureCookies: env.NODE_ENV === "production",
       platformRoleOf,
+      profileOf: (userId) => options.db!.user.findUnique({ where: { id: userId }, select: { displayName: true, email: true } }),
     });
     await registerPlatformRoutes(app, {
       auth,

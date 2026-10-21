@@ -90,6 +90,7 @@ export interface ScaleS3Expectations {
 }
 
 export interface ExtractInput extends ScaleS3Expectations {
+  preferredModelRef?: string;
   actorUserId: string;
   workspaceId: string;
   novelId: string;
@@ -438,6 +439,8 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
         component: "OTHER",
         artifactId: input.chapterVersionId,
         profile: "STRUCTURED_EXTRACTOR",
+        preferredModelRef: input.preferredModelRef,
+        modelOperation: "ANALYSIS",
         temperature: 0,
         messages: [
           {
@@ -571,6 +574,8 @@ export function createScaleS3Services(deps: ScaleS3Deps): ScaleS3Services {
         component: "OTHER",
         artifactId: input.chapterVersionId,
         profile: "STRUCTURED_EXTRACTOR",
+        preferredModelRef: input.preferredModelRef,
+        modelOperation: "ANALYSIS",
         temperature: 0,
         messages: [
           {

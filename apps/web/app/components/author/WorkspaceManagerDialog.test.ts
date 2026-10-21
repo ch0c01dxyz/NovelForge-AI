@@ -5,9 +5,10 @@ import Dialog from "./WorkspaceManagerDialog.vue";
 import { useLocale } from "../../composables/useLocale";
 
 const api = vi.hoisted(() => vi.fn());
+const ownershipPolicy = vi.hoisted(() => vi.fn());
 vi.mock("../../composables/useApi", async (original) => ({
   ...(await original<object>()),
-  useApi: () => ({ api }),
+  useApi: () => ({ api: (path: string, init?: RequestInit) => path === "/workspaces/ownership-policy" ? ownershipPolicy() : api(path, init) }),
 }));
 const states = new Map<string, Ref<unknown>>();
 const cookie = ref<string | null>(null);
@@ -28,6 +29,7 @@ beforeEach(() => {
   cookie.value = null;
   localStorage.clear();
   api.mockReset().mockImplementation(async () => []);
+  ownershipPolicy.mockReset().mockResolvedValue({ ownedCount: 0, maxOwned: 1, canCreate: true });
 });
 afterEach(() => wrappers.splice(0).forEach((w) => w.unmount()));
 const rows = () => [
@@ -230,5 +232,46 @@ describe("workspace manager dialog", () => {
     await w.get('[data-testid="confirm-ok"]').trigger("click"); await flushPromises();
     expect(w.get('[role="alertdialog"] [role="alert"]').text()).toBe(useLocale().t("authorHome.wsHistoryBlocked"));
     expect(w.text()).not.toContain(useLocale().t("authorHome.wsSlugConflict"));
+  });
+
+  it("prevents another owned workspace while leaving existing management available", async () => {
+    ownershipPolicy.mockResolvedValue({ ownedCount: 1, maxOwned: 1, canCreate: false });
+    api.mockResolvedValue(rows());
+    const w = mounted(); await flushPromises();
+    expect(w.get('[data-testid="workspace-limit"]').text()).toContain("one workspace");
+    expect(w.get("fieldset").attributes("disabled")).toBeDefined();
+    expect(w.get('[data-testid="ws-rename-alpha"]').attributes("disabled")).toBeUndefined();
+    await w.get("form").trigger("submit"); await flushPromises();
+    expect(api.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+  });
+
+  it("closes creation when policy loading fails rather than assuming an exemption", async () => {
+    ownershipPolicy.mockRejectedValue(new Error("offline"));
+    const w = mounted(); await flushPromises();
+    expect(w.find('[role="alert"]').exists()).toBe(true);
+    expect(w.get("fieldset").attributes("disabled")).toBeDefined();
+    await w.get("form").trigger("submit"); await flushPromises();
+    expect(api.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+  });
+
+  it("offers a read retry after deletion succeeds but the refreshed policy is unavailable", async () => {
+    ownershipPolicy.mockResolvedValueOnce({ ownedCount: 1, maxOwned: 1, canCreate: false })
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue({ ownedCount: 0, maxOwned: 1, canCreate: true });
+    let deleted = false;
+    api.mockImplementation(async (_path: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") { deleted = true; return { status: "ok" }; }
+      return deleted ? [] : rows();
+    });
+    const w = mounted(); await flushPromises();
+    await w.get('[data-testid="ws-delete-alpha"]').trigger("click");
+    await w.get('[data-testid="confirm-ok"]').trigger("click"); await flushPromises();
+    expect(w.find('[data-testid="workspace-limit"]').exists()).toBe(false);
+    expect(w.text()).not.toContain("authorHome.workspaceError");
+    const retry = w.findAll("button").find(b => b.text() === useLocale().t("common.retry"))!;
+    await retry.trigger("click"); await flushPromises();
+    expect(w.find('[data-testid="ws-delete-alpha"]').exists()).toBe(false);
+    expect(w.get("fieldset").attributes("disabled")).toBeUndefined();
+    expect(api.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(1);
   });
 });

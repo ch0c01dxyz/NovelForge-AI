@@ -257,6 +257,7 @@ const IT_URL = (() => {
 })();
 
 const itRedis = process.env.WORKER_IT_REDIS_URL ?? "redis://localhost:6379";
+const itPrefix = `nf-worker-jobs-it-${process.pid}-${Date.now()}`;
 
 describe("integration — real BullMQ + real executor", () => {
   let db: NovelForgeDb;
@@ -285,15 +286,15 @@ describe("integration — real BullMQ + real executor", () => {
 
     const connection = new IORedis(itRedis, { maxRetriesPerRequest: null });
     queue = new Queue(WORKFLOW_QUEUE_NAME, {
+      prefix: itPrefix,
       connection: connection as never,
       defaultJobOptions: { attempts: 1, removeOnComplete: 1000, removeOnFail: 5000 },
     });
-    // Drain any leftover jobs from a previous run.
-    await queue.drain();
   }, 120_000);
 
   afterAll(async () => {
     await worker?.close();
+    await queue?.obliterate();
     await queue?.close();
     await db?.$disconnect();
   });
@@ -362,6 +363,7 @@ describe("integration — real BullMQ + real executor", () => {
 
     const workerConnection = new IORedis(itRedis, { maxRetriesPerRequest: null });
     worker = new Worker(WORKFLOW_QUEUE_NAME, handler as never, {
+      prefix: itPrefix,
       connection: workerConnection as never,
     });
     await worker.waitUntilReady();

@@ -18,6 +18,7 @@ import { computed, onUnmounted, ref, watch } from "vue";
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
 import ScalePayloadForm from "./ScalePayloadForm.vue";
+import ModelPreferenceSelect from "../generation/ModelPreferenceSelect.vue";
 
 const props = defineProps<{
   workspaceId: string;
@@ -845,6 +846,7 @@ interface S3AdviceItem {
 }
 
 const s3Enabled = ref(false);
+const s3ModelRef = ref("");
 const s3Proposals = ref<S3ProposalRow[]>([]);
 // Evidence-form provenance options: pending proposals only (a dismissed or
 // stale proposal can never pass the server-side pin/binding check anyway).
@@ -858,6 +860,7 @@ const s3Advice = ref<S3AdviceItem[] | null>(null);
 const s3AdviceBusy = ref(false);
 
 function s3Reset(): void {
+  s3ModelRef.value = "";
   s3Enabled.value = false;
   s3Proposals.value = [];
   s3Loading.value = false;
@@ -930,12 +933,15 @@ async function loadS3Proposals(selSeq: number, opSeq: number): Promise<void> {
 async function requestS3Extraction(): Promise<void> {
   const versionId = effectiveVersionId.value;
   if (!context.value || !versionId || s3Busy.value) return;
+  const selSeq = selectionSeq;
+  const opSeq = operationSeq;
   s3Busy.value = true;
   s3Error.value = null;
   try {
     await api(`${base()}/scale-s3/extract`, {
       method: "POST",
       body: JSON.stringify({
+        ...(s3ModelRef.value ? { preferredModelRef: s3ModelRef.value } : {}),
         chapterVersionId: versionId,
         expectedBranchId: context.value.branch.id,
         expectedHeadRevisionId: context.value.headRevisionId,
@@ -943,19 +949,17 @@ async function requestS3Extraction(): Promise<void> {
         expectedPolicyFingerprint: context.value.policyFingerprint,
       }),
     });
-    const selSeq = selectionSeq;
-    const opSeq = operationSeq;
-    if (selSeq !== selectionSeq || isUnmounted) return;
+    if (selSeq !== selectionSeq || opSeq !== operationSeq || isUnmounted) return;
     await loadS3Proposals(selSeq, opSeq);
   } catch (e) {
-    if (isUnmounted) return;
+    if (selSeq !== selectionSeq || opSeq !== operationSeq || isUnmounted) return;
     if (e instanceof ApiError && e.status === 422) {
       s3Error.value = t("workspace.narrative.scaleReview.s3.errors.invalid");
     } else {
       s3Error.value = statusErrorKey(e);
     }
   } finally {
-    if (!isUnmounted) s3Busy.value = false;
+    if (selSeq === selectionSeq && opSeq === operationSeq && !isUnmounted) s3Busy.value = false;
   }
 }
 
@@ -1021,6 +1025,7 @@ async function requestS3Advice(): Promise<void> {
     const res = await api<{ items: S3AdviceItem[] }>(`${base()}/scale-s3/advice`, {
       method: "POST",
       body: JSON.stringify({
+        ...(s3ModelRef.value ? { preferredModelRef: s3ModelRef.value } : {}),
         chapterVersionId: versionId,
         expectedBranchId: context.value.branch.id,
         expectedHeadRevisionId: context.value.headRevisionId,
@@ -1501,6 +1506,8 @@ function statusClass(status: ChecklistItem["status"]): string {
           <p class="mt-1 text-[12px] leading-relaxed text-nf-text-dim">
             {{ t("workspace.narrative.scaleReview.s3.hint") }}
           </p>
+          <ModelPreferenceSelect v-model="s3ModelRef" :workspace-id="workspaceId"
+            profile="STRUCTURED_EXTRACTOR" :disabled="s3Busy || s3AdviceBusy" />
 
           <p
             v-if="s3Error"

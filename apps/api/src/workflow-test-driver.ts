@@ -164,8 +164,8 @@ export function createTestDriver(
         }),
     },
     resolvers: {
-      resolveAgent: (workspaceId, key) => resolveAgent(db, workspaceId, key),
-      resolveSkill: (workspaceId, key) => resolveSkill(db, workspaceId, key),
+      resolveAgent: (workspaceId, key, versionId) => resolveAgent(db, workspaceId, key, versionId),
+      resolveSkill: (workspaceId, key, versionId) => resolveSkill(db, workspaceId, key, versionId),
     },
     generate: aiServices,
     retrieval: retrievalServices,

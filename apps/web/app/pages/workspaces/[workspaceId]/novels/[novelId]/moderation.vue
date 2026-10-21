@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BackLink from "../../../../../components/ui/BackLink.vue";
 /**
  * Comment moderation queue (NF-WF-019B) — workspace side.
  *
@@ -107,12 +108,7 @@ onMounted(load);
 
 <template>
   <main class="mx-auto max-w-[860px] px-5 py-12 sm:px-10">
-    <NuxtLink
-      :to="`/workspaces/${workspaceId}/novels/${novelId}`"
-      class="text-[13px] text-nf-text-dim underline hover:text-nf-text focus-visible:nf-focus"
-    >
-      {{ t("comments.backToNovel") }}
-    </NuxtLink>
+    <BackLink :to="`/workspaces/${workspaceId}/novels/${novelId}`" :label="t('comments.backToNovel')" />
     <div class="nf-overline mt-6">{{ t("comments.queueOverline") }}</div>
     <h1 class="mt-3 font-nf-literary text-[30px] font-semibold leading-[1.2]">
       {{ t("comments.queueTitle") }}

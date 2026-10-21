@@ -55,6 +55,7 @@ const expectationsSchema = z
     expectedHeadRevisionId: uuid.nullable(),
     expectedSetId: uuid.nullable(),
     expectedPolicyFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+    preferredModelRef: uuid.optional(),
   })
   .strict();
 

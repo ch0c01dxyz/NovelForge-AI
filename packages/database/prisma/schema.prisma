@@ -256,6 +256,7 @@ model Novel {
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
   settings    NovelSettings?
+  modelDefaultsVersions NovelModelDefaultsVersion[]
   chapters    Chapter[]
   scaleEvidenceSets ScaleEvidenceSet[]
   /// NF-WF-050B: author decision proposals in this novel.
@@ -365,6 +366,23 @@ model NovelSettings {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("novel_settings")
+}
+
+/// Append-only author routing configuration; not story canon.
+model NovelModelDefaultsVersion {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId String @map("novel_id") @db.Uuid
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  number Int
+  generationModelRef String? @map("generation_model_ref") @db.Uuid
+  analysisModelRef String? @map("analysis_model_ref") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  reason String
+  createdAt DateTime @default(now()) @map("created_at")
+  runs WorkflowRun[]
+
+  @@unique([novelId, number])
+  @@map("novel_model_defaults_versions")
 }
 
 // Immutable audit fact. No update/delete path is exposed by the repository
@@ -798,6 +816,8 @@ model AgentVersion {
   instructions String  @db.Text
   /// Model capability this agent asks for (never a provider model name).
   modelProfile ModelProfile @map("model_profile")
+  /// Optional internal model identity; stale preferences refuse at dispatch.
+  preferredModelRef String? @map("preferred_model_ref") @db.Uuid
   /// Skill keys this agent may invoke. Explicit allowlist (SECURITY.md).
   skillKeys   String[] @map("skill_keys")
   /// Optional structured-output contract (JSON Schema subset).
@@ -810,6 +830,7 @@ model AgentVersion {
   createdAt   DateTime @default(now()) @map("created_at")
   currentFor  Agent?   @relation("CurrentAgentVersion")
   stepRuns    WorkflowStepRun[]
+  runPins     WorkflowRunDefinitionPin[]
 
   @@unique([agentId, number])
   @@index([agentId, createdAt])
@@ -850,12 +871,14 @@ model SkillVersion {
   instructions String  @db.Text
   /// Model capability this skill needs when it runs on its own.
   modelProfile ModelProfile @map("model_profile")
+  preferredModelRef String? @map("preferred_model_ref") @db.Uuid
   outputSchema Json?   @map("output_schema")
   createdById String   @map("created_by_id") @db.Uuid
   createdBy   User     @relation("SkillVersionAuthor", fields: [createdById], references: [id])
   createdAt   DateTime @default(now()) @map("created_at")
   currentFor  Skill?   @relation("CurrentSkillVersion")
   stepRuns    WorkflowStepRun[]
+  runPins     WorkflowRunDefinitionPin[]
 
   @@unique([skillId, number])
   @@index([skillId, createdAt])
@@ -900,6 +923,8 @@ model WorkflowVersion {
   number      Int
   /// { steps: [...], edges: [...], maxSteps: n } — see @novelforge/validation.
   graph       Json
+  /// Default for AI-backed steps only; definition/request preferences override.
+  defaultModelRef String? @map("default_model_ref") @db.Uuid
   /// Snapshot of the keys this version references, for display and drift
   /// detection without re-walking the graph.
   agentKeys   String[] @map("agent_keys")
@@ -934,6 +959,14 @@ model WorkflowRun {
   status            WorkflowRunStatus @default(PENDING)
   /// Run inputs. Never contains credentials.
   input             Json              @default("{}")
+  /// Server-owned request/AI-step routing choices, never read from arbitrary input.
+  requestedModelPreferences Json? @map("requested_model_preferences")
+  /// NULL identifies legacy runs that predate enqueue-time definition pins.
+  definitionsPinnedAt DateTime? @map("definitions_pinned_at")
+  definitionPins    WorkflowRunDefinitionPin[]
+  modelDefaultsPinnedAt DateTime? @map("model_defaults_pinned_at")
+  novelModelDefaultsVersionId String? @map("novel_model_defaults_version_id") @db.Uuid
+  novelModelDefaultsVersion NovelModelDefaultsVersion? @relation(fields: [novelModelDefaultsVersionId], references: [id], onDelete: Restrict)
   /// Final outputs of each step, keyed by step key.
   output            Json              @default("{}")
   errorMessage      String?           @map("error_message")
@@ -951,6 +984,7 @@ model WorkflowRun {
   decisions         WorkflowApprovalDecision[]
 
   @@index([workflowId, startedAt])
+  @@index([novelModelDefaultsVersionId])
   // RESTRICT FK-check target: deleting a workflow version scans this column.
   @@index([workflowVersionId])
   @@index([workspaceId, startedAt])
@@ -962,6 +996,24 @@ model WorkflowRun {
   // express a partial index, and a full unique constraint would be wrong
   // (NULL keys must never collide). See migration 20261005_nf_wf_004_idempotency_key.
   @@map("workflow_runs")
+}
+
+/// Server-owned immutable run dependencies, including skills granted to agents.
+model WorkflowRunDefinitionPin {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId          String @map("run_id") @db.Uuid
+  run            WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  kind           String
+  key            String
+  agentVersionId String? @map("agent_version_id") @db.Uuid
+  agentVersion   AgentVersion? @relation(fields: [agentVersionId], references: [id], onDelete: Restrict)
+  skillVersionId String? @map("skill_version_id") @db.Uuid
+  skillVersion   SkillVersion? @relation(fields: [skillVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, kind, key])
+  @@index([agentVersionId])
+  @@index([skillVersionId])
+  @@map("workflow_run_definition_pins")
 }
 
 /// One step of one run. Records the resolved definition versions so a run

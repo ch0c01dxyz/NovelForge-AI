@@ -10,6 +10,10 @@
  *   callers branch on the exact backend codes (Invariant 5).
  */
 import { useApi } from "./useApi";
+export interface WorkflowModelPreferencePreview {
+  fingerprint: string;
+  steps: Array<{ stepKey: string; kind: string; definitionKey: string; profile: string; inheritedModelRef: string | null; inheritedSource: string }>;
+}
 
 export interface StepRow {
   stepKey: string;
@@ -37,6 +41,7 @@ export interface RunView {
   startedAt: string;
   completedAt: string | null;
   steps?: StepRow[];
+  requestedModelPreferences?: { preferredModelRef?: string; stepModelRefs?: Record<string, string> };
 }
 
 export interface RunListItem {
@@ -87,6 +92,9 @@ export function useWorkflowRuns() {
     novelId: string;
     input: Record<string, unknown>;
     idempotencyKey?: string;
+    preferredModelRef?: string;
+    stepModelRefs?: Record<string, string>;
+    expectedModelPreferenceFingerprint?: string;
   }): Promise<{ run: RunView; statusUrl: string }> {
     const key = opts.idempotencyKey ?? uuidv4();
     // The idempotency contract: a repeated key returns the EXISTING run
@@ -101,6 +109,9 @@ export function useWorkflowRuns() {
           novelId: opts.novelId,
           input: opts.input,
           idempotencyKey: key,
+          ...(opts.preferredModelRef ? { preferredModelRef: opts.preferredModelRef } : {}),
+          ...(opts.stepModelRefs ? { stepModelRefs: opts.stepModelRefs } : {}),
+          ...(opts.expectedModelPreferenceFingerprint ? { expectedModelPreferenceFingerprint: opts.expectedModelPreferenceFingerprint } : {}),
         }),
       },
     );
@@ -150,6 +161,7 @@ export function useWorkflowRuns() {
   }
 
   return {
+    previewModelPreferences: (workspaceId: string, workflowId: string, novelId: string) => api<WorkflowModelPreferencePreview>(`/workspaces/${encodeURIComponent(workspaceId)}/workflows/${encodeURIComponent(workflowId)}/model-preferences?novelId=${encodeURIComponent(novelId)}`),
     resolveWorkflowId,
     startRun,
     cancelRun,

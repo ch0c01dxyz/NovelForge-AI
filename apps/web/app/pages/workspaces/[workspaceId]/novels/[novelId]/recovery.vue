@@ -1,13 +1,13 @@
 <template>
   <main class="mx-auto max-w-5xl space-y-6 px-5 py-10 sm:px-8" data-testid="recovery-page">
+    <BackLink :to="base" :label="t('recovery.backToWorkspace')" />
     <header class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="font-nf-literary text-[30px] font-semibold text-nf-text">{{ t("recovery.title") }}</h1>
-      <NuxtLink :to="base" class="text-[13px] text-nf-text-dim underline focus-visible:nf-focus">{{ t("recovery.backToWorkspace") }}</NuxtLink>
     </header>
     <p v-if="loading" role="status">{{ t("common.loading") }}</p>
     <div v-else-if="loadError" role="alert">
       <p>{{ t("recovery.pageLoadError") }}</p>
-      <button type="button" class="mt-2 underline focus-visible:nf-focus" @click="refresh">{{ t("common.retry") }}</button>
+      <button type="button" class="mt-2 inline-flex min-h-9 items-center rounded-lg border border-nf-border-strong bg-nf-bg-2 px-3 py-1.5 text-[13px] hover:bg-nf-bg-3 focus-visible:nf-focus" @click="refresh">{{ t("common.retry") }}</button>
     </div>
     <template v-else>
       <RecoveryCenter :key="`branches-${epoch}`" :workspace-id="workspaceId" :novel-id="novelId" @changed="refresh" />
@@ -19,7 +19,7 @@
             {{ t("recovery.checkpointLabel") }}
             <input v-model="checkpointLabel" required maxlength="200" class="mt-1 block rounded-lg border border-nf-border-strong bg-nf-bg-2 px-3 py-2 focus-visible:nf-focus" />
           </label>
-          <button type="submit" :disabled="creating || !checkedOut || !checkpointLabel.trim()" class="rounded-lg border border-nf-border-strong bg-nf-bg-3 px-4 py-2 text-[13px] focus-visible:nf-focus disabled:opacity-50">{{ t("recovery.createCheckpoint") }}</button>
+          <button type="submit" :disabled="creating || !checkedOut || !checkpointLabel.trim()" class="inline-flex min-h-9 items-center gap-2 rounded-lg border border-nf-border-strong bg-nf-bg-3 px-4 py-2 text-[13px] font-medium hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50"><svg class="size-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>{{ t("recovery.createCheckpoint") }}</button>
         </form>
         <p v-if="createError" role="alert" class="mt-2 text-[13px] text-nf-error">{{ createError }}</p>
         <label class="mt-4 block text-[13px] text-nf-text">
@@ -50,6 +50,7 @@
 </template>
 
 <script setup lang="ts">
+import BackLink from "../../../../../components/ui/BackLink.vue";
 import { computed, onMounted, ref } from "vue";
 import { useApi, ApiError } from "../../../../../composables/useApi";
 import { useLocale } from "../../../../../composables/useLocale";

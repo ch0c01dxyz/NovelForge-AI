@@ -28,8 +28,10 @@ onUnmounted(() => document.removeEventListener("pointerdown", outside));
   <details ref="menu" class="nf-menu" @keydown="close">
     <summary
       class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim focus-visible:nf-focus"
+      :aria-label="label"
     >
-      {{ label }}
+      <slot name="trigger">{{ label }}</slot>
+      <svg class="nf-menu-chevron size-3.5 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>
     </summary>
     <div class="nf-menu-panel" @click="selected"><slot /></div>
   </details>

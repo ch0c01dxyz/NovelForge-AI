@@ -335,7 +335,7 @@ describe("SCALE gate via real setStatus route", () => {
     // Race: a save (creating version 2) against setStatus → PUBLISHED.
     // The gate reads currentVersionId INSIDE its locked tx, so whichever
     // order they commit, the result is consistent and never a 500:
-    // - setStatus first: gate sees version 1 (genuine receipt) → 200.
+    // - setStatus first: version 1 publishes; the locked save refuses immutable content.
     // - save first: gate sees version 2, receipt pins version 1 → 409 REVIEW_STALE.
     const saveReq = app.inject({
       method: "PUT",
@@ -354,7 +354,6 @@ describe("SCALE gate via real setStatus route", () => {
     });
     const [saveRes, statusRes] = await Promise.all([saveReq, statusReq]);
 
-    expect(saveRes.statusCode, saveRes.body).toBe(200);
     // The gate must never 500 under the race; 200 or a typed 409 are both
     // consistent outcomes depending on commit order.
     expect([200, 409]).toContain(statusRes.statusCode);
@@ -368,10 +367,14 @@ describe("SCALE gate via real setStatus route", () => {
       orderBy: { number: "desc" },
     });
     if (statusRes.statusCode === 200) {
-      // setStatus won: published against version 1; the save still landed.
+      expect(saveRes.statusCode, saveRes.body).toBe(409);
+      expect(saveRes.json().error).toBe("CONFLICT");
       expect(row.status).toBe("PUBLISHED");
-      expect(liveVersion.number).toBe(2);
+      expect(liveVersion.number).toBe(1);
+      expect(row.currentVersionId).toBe(chapter.versionId);
     } else {
+      expect(saveRes.statusCode, saveRes.body).toBe(200);
+      expect(liveVersion.number).toBe(2);
       // save won: version 2 is current, receipt pins version 1 → refused.
       expect(row.status).toBe("DRAFT");
       expect(row.currentVersionId).toBe(liveVersion.id);

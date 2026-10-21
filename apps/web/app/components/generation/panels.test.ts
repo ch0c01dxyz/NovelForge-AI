@@ -121,5 +121,12 @@ describe("DraftDiffView", () => {
     });
     expect(w.text()).toContain("review.diffAgainst|version=2");
     expect(w.text()).toContain("line two changed");
+    expect(w.get('[data-testid="generated-prose-preview"]').text()).toBe("line one\nline two changed");
+    expect(w.find('[aria-label="Draft diff"][role="document"]').exists()).toBe(false);
+  });
+  it("shows a blocked artifact as a planning problem instead of pending prose", () => {
+    const w = mount(DraftDiffView, { props: { draftProse: null, blocked: true, baseText: "Existing chapter", pinnedVersion: 1, ordinal: 1, total: 1 } });
+    expect(w.text()).toContain("review.blockedDraft");expect(w.text()).not.toContain("review.pendingStage");
+    expect(w.find('[data-testid="generated-prose-preview"]').exists()).toBe(false);
   });
 });

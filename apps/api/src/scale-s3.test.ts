@@ -176,9 +176,9 @@ function makeGenerateSpy(result: {
   inputTokens?: number | null;
   outputTokens?: number | null;
 }) {
-  const calls: Array<{ task: string; profile: string; messages: unknown }> = [];
+  const calls: Array<{ task: string; profile: string; messages: unknown; preferredModelRef?: string }> = [];
   const generate: AiServices["generate"] = async (input) => {
-    calls.push({ task: input.task, profile: input.profile, messages: input.messages });
+    calls.push({ task: input.task, profile: input.profile, messages: input.messages, preferredModelRef: input.preferredModelRef });
     return {
       generationId: "00000000-0000-4000-8000-000000000001",
       content: result.content,
@@ -289,6 +289,23 @@ beforeEach(async () => {
 });
 
 describe("S3 setting enablement", () => {
+  it("forwards an explicit model UUID without changing proposal validation or disabled gating", async () => {
+    const f = await seedFixture({ withPolicy: true });
+    const spy = makeGenerateSpy({ content: VALID_MODEL_JSON });
+    const app = await buildTestApp(f.userId, spy.generate);
+    const preferredModelRef = "00000000-0000-4000-8000-000000000123";
+    const request = (preference: unknown) => app.inject({ method: "POST", url: `${chapterBase(f)}/scale-s3/extract`,
+      cookies: { [SESSION_COOKIE]: "test-session" }, payload: pins(f, { preferredModelRef: preference }) });
+    expect((await request(preferredModelRef)).statusCode).toBe(409);
+    expect(spy.calls).toHaveLength(0);
+    await db.novelSettings.create({ data: { novelId: f.novelId, settings: { scaleS3: { enabled: true } } } });
+    expect((await request("provider/model-name")).statusCode).toBe(400);
+    expect(spy.calls).toHaveLength(0);
+    expect((await request(preferredModelRef)).statusCode).toBe(201);
+    expect(spy.calls).toHaveLength(1);
+    expect(spy.calls[0]).toMatchObject({ preferredModelRef, profile: "STRUCTURED_EXTRACTOR" });
+    await app.close();
+  });
   it("GET defaults to disabled; PUT requires canon:manage capability through the role gate", async () => {
     const f = await seedFixture({ withPolicy: false });
     const app = await buildTestApp(f.userId, makeGenerateSpy({ content: "{}" }).generate);
@@ -871,9 +888,7 @@ describe("advice — transient, gated on INCOMPLETE", () => {
     });
 
     // Elaboration keeps the code → 200.
-    const okApp = await buildTestApp(
-      f.userId,
-      makeGenerateSpy({
+    const adviceSpy = makeGenerateSpy({
         content: JSON.stringify({
           items: [
             {
@@ -886,15 +901,16 @@ describe("advice — transient, gated on INCOMPLETE", () => {
             },
           ],
         }),
-      }).generate,
-    );
+      });
+    const okApp = await buildTestApp(f.userId, adviceSpy.generate);
     const ok = await okApp.inject({
       method: "POST",
       url: `${chapterBase(f)}/scale-s3/advice`,
       cookies: { [SESSION_COOKIE]: "test-session" },
-      payload: pins(f),
+      payload: pins(f, { preferredModelRef: "00000000-0000-4000-8000-000000000124" }),
     });
     expect(ok.statusCode, ok.body).toBe(200);
+    expect(adviceSpy.calls[0]).toMatchObject({ preferredModelRef: "00000000-0000-4000-8000-000000000124", profile: "STRUCTURED_EXTRACTOR" });
     expect(ok.json().items).toHaveLength(1);
     // Transient: no proposal row.
     expect(await db.scaleS3Proposal.count()).toBe(0);

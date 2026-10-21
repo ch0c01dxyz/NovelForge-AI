@@ -1,10 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { mount } from "@vue/test-utils";
 import ApplyBar from "./ApplyBar.vue";
+import { ApiError } from "../../composables/useApi";
+const { api } = vi.hoisted(() => ({ api: vi.fn() }));
 
 vi.mock("../../composables/useApi", () => ({
   useApi: () => ({
-    api: vi.fn(),
+    api,
   }),
   ApiError: class ApiError extends Error {
     constructor(
@@ -44,6 +46,42 @@ const baseProps = {
 };
 
 describe("ApplyBar", () => {
+  it("requires explicit title-only recovery, makes no automatic retry and retains the server-applied title", async () => {
+    api.mockRejectedValueOnce(new ApiError("AI_CREATION_TITLE_ONLY_CHANGED", 409));
+    const w = mount(ApplyBar, { props: { ...baseProps, draftTitle: "AI title", chapterTitle: "My title" } });
+    await w.get("button").trigger("click");await new Promise(done => setTimeout(done, 0));
+    expect(api).toHaveBeenCalledTimes(1);expect(w.text()).toContain("apply.titleOnlyChanged");
+    expect(w.get("button").attributes("disabled")).toBeDefined();
+    await w.get('[data-testid="allow-title-only-recovery"]').setValue(true);
+    api.mockResolvedValueOnce({ version: 4, title: "My title" });await w.get("button").trigger("click");await new Promise(done => setTimeout(done, 0));
+    expect(JSON.parse(api.mock.calls[1]![1].body)).toMatchObject({ allowTitleOnlyRebase: true, expectedVersion: 3, expectedTitle: "My title", title: "AI title" });
+    expect(w.emitted("applied")).toEqual([[4, "My title"]]);w.unmount();
+  });
+  it("does not offer title recovery for real source drift", async () => {
+    api.mockRejectedValueOnce(new ApiError("AI_CREATION_SOURCE_CHANGED", 409));
+    const w = mount(ApplyBar, { props: { ...baseProps, draftTitle: "AI title", chapterTitle: "My title" } });
+    await w.get("button").trigger("click");await new Promise(done => setTimeout(done, 0));
+    expect(w.text()).toContain("apply.sourceChanged");expect(w.find('[data-testid="allow-title-only-recovery"]').exists()).toBe(false);
+    expect(api).toHaveBeenCalledTimes(1);w.unmount();
+  });
+  it("does not emit a delayed apply response into a newly selected chapter", async () => {
+    let resolve!: (value: { version: number }) => void;
+    api.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    const w = mount(ApplyBar, { props: { ...baseProps, draftTitle: "Reviewed title", chapterTitle: "Pending" } });
+    await w.get("button").trigger("click");
+    expect(JSON.parse(api.mock.calls.at(-1)![1].body)).toMatchObject({ title: "Reviewed title", expectedTitle: "Pending", content: baseProps.draftProse });
+    await w.setProps({ chapterId: "another-chapter", runId: "another-run" });
+    resolve({ version: 4 });await new Promise(done => setTimeout(done, 0));
+    expect(w.emitted("applied")).toBeUndefined();
+    w.unmount();
+  });
+  it("blocks strict creation artifacts with a missing title and displays the coherent reviewed title", async () => {
+    const w = mount(ApplyBar, { props: { ...baseProps, draftTitle: null, chapterTitle: "Pending" } });
+    expect(w.find("button").attributes("disabled")).toBeDefined();
+    expect(w.text()).toContain("chapterCreation.invalidTitle");
+    await w.setProps({ draftTitle: "A quiet dawn" });
+    expect(w.find("button").attributes("disabled")).toBeUndefined();expect(w.text()).toContain("A quiet dawn");
+  });
   beforeEach(() => vi.clearAllMocks());
 
   it("enables apply when all guards pass", () => {

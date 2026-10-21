@@ -11,6 +11,7 @@
  * the ciphertext (CLAUDE.md §14).
  */
 import type { NovelForgeDb } from "@novelforge/database";
+import { createNovelModelDefaultsServices, type NovelModelDefaultsView, type NovelModelDefaultsScope, type NovelModelDefaultsWrite } from "./novel-model-defaults.ts";
 import {
   encryptCredential,
   GatewayManager,
@@ -48,6 +49,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "gateway.deleted",
   "gateways.health-checked",
   "model-profile.mapped",
+  "model-profile.removed",
   "model.updated",
   "models.synced",
   "models.sync-failed",
@@ -133,6 +135,8 @@ export interface GenerationView {
 }
 
 export interface AiServices {
+  getNovelModelDefaults(input: NovelModelDefaultsScope): Promise<NovelModelDefaultsView>;
+  putNovelModelDefaults(input: NovelModelDefaultsWrite): Promise<NovelModelDefaultsView>;
   createGateway(input: {
     actorPlatformRole: PlatformRole;
     actorUserId: string;
@@ -173,6 +177,9 @@ export interface AiServices {
     gatewayId: string;
   }): Promise<{ discovered: number }>;
   listModels(actorPlatformRole: PlatformRole): Promise<ModelView[]>;
+  listModelCatalog(input: { actorUserId: string; workspaceId?: string; actorPlatformRole?: PlatformRole; profile?: ModelProfile }): Promise<Array<{ modelRef: string | null; providerModelId: string; displayName: string | null; gatewayId: string; gatewayName: string; selectable: boolean; unavailableReason: "NOT_SYNCED" | "MODEL_DISABLED" | "NOT_MAPPED" | null }>>;
+  listModelOptions(input: { actorUserId: string; workspaceId: string; profile?: ModelProfile }): Promise<Array<{ modelRef: string; providerModelId: string; displayName: string | null; gatewayId: string; profile: ModelProfile }>>;
+  removeProfileMapping(input: { actorPlatformRole: PlatformRole; actorUserId: string; profile: ModelProfile; modelRef: string }): Promise<void>;
   setModelEnabled(input: {
     actorPlatformRole: PlatformRole;
     actorUserId: string;
@@ -202,7 +209,7 @@ export interface AiServices {
     enabled?: boolean;
   }): Promise<void>;
   listProfileMappings(actorPlatformRole: PlatformRole): Promise<
-    Array<{ profile: string; modelId: string; gatewayId: string; priority: number; enabled: boolean }>
+    Array<{ profile: string; modelRef: string; modelId: string; gatewayId: string; priority: number; enabled: boolean }>
   >;
   /** Probe every enabled gateway and persist health. */
   checkHealth(input: {
@@ -238,6 +245,7 @@ export interface AiServices {
     }>
   >;
   /** Workspace-scoped generation. */
+  validateModelPreference(input: { actorUserId: string; workspaceId: string; profile: ModelProfile; preferredModelRef?: string }): Promise<void>;
   generate(input: {
     actorUserId: string;
     workspaceId: string;
@@ -246,6 +254,9 @@ export interface AiServices {
     component?: GenerationComponent;
     artifactId?: string;
     profile: ModelProfile;
+    preferredModelRef?: string;
+    modelOperation?: "ANALYSIS";
+    novelModelDefaultsVersionId?: string | null;
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;
     maxTokens?: number;
@@ -289,6 +300,9 @@ export interface AiServices {
     component?: GenerationComponent;
     artifactId?: string;
     profile: ModelProfile;
+    preferredModelRef?: string;
+    modelOperation?: "ANALYSIS";
+    novelModelDefaultsVersionId?: string | null;
     messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
     temperature?: number;
     maxTokens?: number;
@@ -408,6 +422,15 @@ export function createAiServices(deps: {
     requireCapability(membership.role, cap);
   }
 
+  async function validatePreference(input: { profile: ModelProfile; preferredModelRef?: string; outputMode?: "json_object" }) {
+    try {
+      await manager.validatePreference(input);
+    } catch (error) {
+      if (error instanceof NoRouteError) throw new ConflictError(error.message);
+      throw error;
+    }
+  }
+
   function toGatewayView(row: {
     id: string;
     name: string;
@@ -448,7 +471,23 @@ export function createAiServices(deps: {
     return row;
   }
 
+  async function resolveNovelRouting(input: { novelId?: string; component?: GenerationComponent; modelOperation?: "ANALYSIS"; preferredModelRef?: string; novelModelDefaultsVersionId?: string | null }) {
+    const operation = input.modelOperation ?? (input.component === "CHAPTER" ? "GENERATION" : undefined);
+    let preferredModelRef = input.preferredModelRef;
+    let routing: Record<string, string | null> | undefined = preferredModelRef !== undefined ? { preferredModelRef } : undefined;
+    if (operation && input.novelId) {
+      const version = input.novelModelDefaultsVersionId === null ? null : await db.novelModelDefaultsVersion.findFirst({
+        where: { novelId: input.novelId, ...(input.novelModelDefaultsVersionId ? { id: input.novelModelDefaultsVersionId } : {}) }, orderBy: { number: "desc" },
+      });
+      if (input.novelModelDefaultsVersionId && !version) throw new ConflictError("pinned novel model defaults are unavailable");
+      preferredModelRef ??= (operation === "GENERATION" ? version?.generationModelRef : version?.analysisModelRef) ?? undefined;
+      routing = { operation, novelModelDefaultsVersionId: version?.id ?? null, ...(preferredModelRef !== undefined ? { preferredModelRef } : {}) };
+    }
+    return { preferredModelRef, routing };
+  }
+
   return {
+    ...createNovelModelDefaultsServices(db),
     async createGateway(input) {
       requirePlatformCapability(input.actorPlatformRole, "gateway:manage");
       const existing = await db.aIGateway.findUnique({
@@ -722,11 +761,65 @@ export function createAiServices(deps: {
       });
     },
 
+    async listModelOptions(input) {
+      await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
+      const rows = await db.modelProfileMapping.findMany({
+        where: { profile: input.profile, enabled: true, model: { enabled: true, gateway: { enabled: true } } },
+        orderBy: [{ priority: "asc" }, { modelRef: "asc" }],
+        select: { modelRef: true, profile: true, model: { select: { modelId: true, displayName: true, gatewayId: true } } },
+      });
+      // Union entries prove one enabled mapping, not compatibility with all steps.
+      return [...new Map(rows.map(row => [row.modelRef, { modelRef: row.modelRef, providerModelId: row.model.modelId, displayName: row.model.displayName, gatewayId: row.model.gatewayId, profile: row.profile }])).values()];
+    },
+
+    async listModelCatalog(input) {
+      if (input.workspaceId) await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
+      else requirePlatformCapability(input.actorPlatformRole ?? null, "model:read");
+      const gateways = await db.aIGateway.findMany({ where: { enabled: true }, select: { id: true, name: true }, orderBy: [{ priority: "asc" }, { id: "asc" }] });
+      const [models, mappings, catalogs] = await Promise.all([
+        db.aIModel.findMany({ where: { gatewayId: { in: gateways.map(g => g.id) } }, select: { id: true, gatewayId: true, modelId: true, enabled: true, displayName: true } }),
+        db.modelProfileMapping.findMany({ where: { profile: input.profile, enabled: true }, select: { modelRef: true } }),
+        Promise.all(gateways.map(async gateway => {
+          try { return { gateway, models: await manager.listModelsFor(gateway.id) }; }
+          catch (error) {
+            if (error instanceof GatewayError) throw new BadGatewayError("live model catalog could not be loaded");
+            throw error;
+          }
+        })),
+      ]);
+      const known = new Map(models.map(model => [JSON.stringify([model.gatewayId, model.modelId]), model]));
+      const eligible = new Set(mappings.map(mapping => mapping.modelRef));
+      const rows: Awaited<ReturnType<AiServices["listModelCatalog"]>> = [];
+      for (const { gateway, models: live } of catalogs) {
+        const seen = new Set<string>();
+        for (const model of live) {
+          if (seen.has(model.modelId)) continue;
+          seen.add(model.modelId);
+          const local = known.get(JSON.stringify([gateway.id, model.modelId]));
+          const reason = !local ? "NOT_SYNCED" : !local.enabled ? "MODEL_DISABLED" : !eligible.has(local.id) ? "NOT_MAPPED" : null;
+          rows.push({ modelRef: local?.id ?? null, providerModelId: model.modelId, displayName: model.displayName ?? local?.displayName ?? null, gatewayId: gateway.id, gatewayName: gateway.name, selectable: reason === null, unavailableReason: reason });
+        }
+      }
+      return (input.workspaceId ? rows.filter(row => row.selectable) : rows).sort((a, b) => Number(b.selectable) - Number(a.selectable) || a.providerModelId.localeCompare(b.providerModelId) || a.gatewayId.localeCompare(b.gatewayId));
+    },
+
+    async removeProfileMapping(input) {
+      requirePlatformCapability(input.actorPlatformRole, "model:manage");
+      await db.$transaction(async tx => {
+        const removed = await tx.modelProfileMapping.deleteMany({ where: { profile: input.profile, modelRef: input.modelRef } });
+        if (removed.count) await tx.auditLog.create({ data: {
+          actorUserId: input.actorUserId, action: "model-profile.removed", entityType: "ModelProfileMapping", entityId: input.modelRef,
+          payload: { profile: input.profile, modelRef: input.modelRef },
+        } });
+      });
+    },
+
     async setProfileMapping(input) {
       requirePlatformCapability(input.actorPlatformRole, "model:manage");
       const model = await db.aIModel.findUnique({ where: { id: input.modelId } });
       if (!model) throw new NotFoundError("model");
-      await db.modelProfileMapping.upsert({
+      await db.$transaction(async tx => {
+      const mapping = await tx.modelProfileMapping.upsert({
         where: {
           profile_modelRef: { profile: input.profile, modelRef: input.modelId },
         },
@@ -744,12 +837,13 @@ export function createAiServices(deps: {
           ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
         },
       });
-      await audit.record({
+      await tx.auditLog.create({ data: {
         actorUserId: input.actorUserId,
         action: "model-profile.mapped",
         entityType: "ModelProfileMapping",
         entityId: input.modelId,
-        payload: { profile: input.profile, priority: input.priority ?? 100 },
+        payload: { profile: input.profile, modelRef: input.modelId, priority: mapping.priority, enabled: mapping.enabled },
+      } });
       });
     },
 
@@ -761,6 +855,7 @@ export function createAiServices(deps: {
       });
       return rows.map((r) => ({
         profile: r.profile,
+        modelRef: r.modelRef,
         modelId: r.model.modelId,
         gatewayId: r.model.gatewayId,
         priority: r.priority,
@@ -891,6 +986,11 @@ export function createAiServices(deps: {
       }));
     },
 
+    async validateModelPreference(input) {
+      await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
+      await validatePreference(input);
+    },
+
     async generate(input) {
       await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
       if (input.novelId) {
@@ -901,6 +1001,8 @@ export function createAiServices(deps: {
         if (!novel) throw new NotFoundError("novel");
       }
 
+      const { preferredModelRef, routing } = await resolveNovelRouting(input);
+      await validatePreference({ ...input, preferredModelRef });
       // Logical request first: the generation row exists before any
       // transport attempt so attempts always have a parent (and a crash
       // mid-request leaves a PENDING/IN_PROGRESS record, not a gap).
@@ -914,6 +1016,7 @@ export function createAiServices(deps: {
           artifactId: input.artifactId ?? null,
           modelProfile: input.profile,
           promptVersion: input.promptVersion ?? null,
+          ...(routing ? { contextSnapshot: { routing } } : {}),
           status: "IN_PROGRESS",
         },
         select: { id: true },
@@ -923,6 +1026,7 @@ export function createAiServices(deps: {
       try {
         const result = await manager.generate({
           profile: input.profile,
+          preferredModelRef,
           messages: input.messages,
           temperature: input.temperature,
           maxTokens: input.maxTokens,
@@ -1097,6 +1201,8 @@ export function createAiServices(deps: {
         if (!novel) throw new NotFoundError("novel");
       }
 
+      const { preferredModelRef, routing } = await resolveNovelRouting(input);
+      await validatePreference({ ...input, preferredModelRef });
       const generation = await db.generation.create({
         data: {
           workspaceId: input.workspaceId,
@@ -1106,6 +1212,7 @@ export function createAiServices(deps: {
           component: input.component ?? "OTHER",
           artifactId: input.artifactId ?? null,
           modelProfile: input.profile,
+          ...(routing ? { contextSnapshot: { routing } } : {}),
           status: "IN_PROGRESS",
         },
         select: { id: true },
@@ -1122,6 +1229,7 @@ export function createAiServices(deps: {
         try {
           for await (const chunk of manager.generateStream({
             profile: input.profile,
+            preferredModelRef,
             messages: input.messages,
             temperature: input.temperature,
             maxTokens: input.maxTokens,

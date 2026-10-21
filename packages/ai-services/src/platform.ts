@@ -56,6 +56,21 @@ export class WorkspaceDeleteError extends ConflictError {
   }
 }
 
+export class WorkspaceOwnershipLimitError extends ConflictError {
+  readonly reason = "WORKSPACE_OWNERSHIP_LIMIT";
+  constructor() {
+    super("author accounts may own only one workspace");
+  }
+}
+
+async function readWorkspaceOwnershipPolicy(db: Pick<NovelForgeDb, "user" | "workspace">, userId: string) {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { platformRole: true } });
+  if (!user) throw new NotFoundError("user");
+  const ownedCount = await db.workspace.count({ where: { ownerId: userId } });
+  const maxOwned = user.platformRole === "SUPER_ADMIN" ? null : 1;
+  return { ownedCount, maxOwned, canCreate: maxOwned === null || ownedCount < maxOwned };
+}
+
 /**
  * An upstream dependency (an LLM gateway) was unreachable or failed.
  * Distinct from ConflictError: the request was valid, the *upstream* is
@@ -96,6 +111,7 @@ export interface PlatformServices {
     mimeType: string; dataBase64: string; sourceName?: string }): Promise<{ coverUrl: string; sha256: string }>;
   getNovelCover(actorUserId: string, workspaceId: string, novelId: string): Promise<NovelCover>;
   listWorkspaces(actorUserId: string): Promise<WorkspaceListView[]>;
+  workspaceOwnershipPolicy(actorUserId: string): Promise<{ ownedCount: number; maxOwned: number | null; canCreate: boolean }>;
 
   createWorkspace(input: {
     actorUserId: string;
@@ -297,6 +313,10 @@ export function createPlatformServices(deps: {
       return validateNovelCover({ mimeType: cover.mimeType, dataBase64: cover.dataBase64 });
     },
 
+    async workspaceOwnershipPolicy(actorUserId) {
+      return readWorkspaceOwnershipPolicy(db, actorUserId);
+    },
+
     async createWorkspace({ actorUserId, name, slug }) {
       const existing = await db.workspace.findUnique({ where: { slug } });
       if (existing) throw new ConflictError("workspace slug already exists");
@@ -305,6 +325,9 @@ export function createPlatformServices(deps: {
       let workspace;
       try {
         workspace = await db.$transaction(async (tx) => {
+          // Serialize ownership checks with other creates by this account.
+          await tx.$queryRaw`SELECT id FROM users WHERE id = ${actorUserId}::uuid FOR UPDATE`;
+          if (!(await readWorkspaceOwnershipPolicy(tx, actorUserId)).canCreate) throw new WorkspaceOwnershipLimitError();
           const ws = await tx.workspace.create({
             data: { name, slug, ownerId: actorUserId },
           });

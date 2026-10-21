@@ -47,6 +47,7 @@ const deleteTarget = ref<WorkspaceRow | null>(null);
 const nameInput = ref<HTMLInputElement | null>(null);
 const heading = ref<HTMLElement | null>(null);
 const dialog = ref<HTMLDialogElement | null>(null);
+const policy = ref({ ownedCount: 0, maxOwned: 1 as number | null, canCreate: false });
 
 const validSlug = (value: string) =>
   value.length <= 80 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
@@ -77,7 +78,12 @@ async function load() {
   loading.value = true;
   loadError.value = false;
   try {
-    workspaces.value = await api<WorkspaceRow[]>("/workspaces");
+    const [rows, ownership] = await Promise.all([
+      api<WorkspaceRow[]>("/workspaces"),
+      api<typeof policy.value>("/workspaces/ownership-policy"),
+    ]);
+    workspaces.value = rows;
+    policy.value = ownership;
   } catch {
     loadError.value = true;
   } finally {
@@ -93,7 +99,7 @@ onMounted(async () => {
 });
 
 async function create() {
-  if (busy.value || loading.value || loadError.value || ambiguous.value || !createValid.value) return;
+  if (busy.value || loading.value || loadError.value || ambiguous.value || !policy.value.canCreate || !createValid.value) return;
   const name = newName.value.trim();
   const slug = newSlug.value;
   busy.value = true;
@@ -119,6 +125,8 @@ async function create() {
     newName.value = "";
     newSlug.value = "";
     slugTouched.value = false;
+    policy.value.ownedCount += 1;
+    policy.value.canCreate = policy.value.maxOwned === null || policy.value.ownedCount < policy.value.maxOwned;
   } catch (e) {
     handleError(e, "create");
   } finally {
@@ -163,6 +171,13 @@ async function remove() {
     await api(`/workspaces/${target.id}`, { method: "DELETE" });
     workspaces.value = workspaces.value.filter((w) => w.id !== target.id);
     deleteTarget.value = null;
+    try {
+      policy.value = await api<typeof policy.value>("/workspaces/ownership-policy");
+    } catch {
+      policy.value.canCreate = false;
+      loadError.value = true;
+      errorKey.value = "authorHome.workspaceError";
+    }
   } catch (e) {
     handleError(e, "delete");
   } finally {
@@ -178,6 +193,10 @@ function handleError(e: unknown, action: "create" | "rename" | "delete") {
 
 function mapError(e: unknown, action: string): string {
   if (e instanceof ApiError) {
+    if (e.code === "WORKSPACE_OWNERSHIP_LIMIT") {
+      policy.value.canCreate = false;
+      return "authorHome.workspaceLimit";
+    }
     if (e.code === "WORKSPACE_NOT_EMPTY") return "authorHome.wsDeleteBlocked";
     if (e.code === "WORKSPACE_HAS_REFERENCED_HISTORY") return "authorHome.wsHistoryBlocked";
     if (e.status === 409 && action === "create") return "authorHome.wsSlugConflict";
@@ -225,7 +244,7 @@ function onEscape() {
       </div>
 
       <form class="mt-4" @submit.prevent="create">
-        <fieldset :disabled="busy || loading || loadError || ambiguous">
+        <fieldset :disabled="busy || loading || loadError || ambiguous || !policy.canCreate">
         <h4 class="text-[13px] font-semibold text-nf-text">{{ t("authorHome.wsCreateTitle") }}</h4>
         <label class="mt-2 block text-[12.5px] text-nf-text-dim" for="ws-new-name">
           {{ t("authorHome.workspaceName") }}
@@ -263,6 +282,7 @@ function onEscape() {
         </button>
         </fieldset>
       </form>
+      <p v-if="!loading && !loadError && !policy.canCreate" data-testid="workspace-limit" class="mt-3 text-[13px] text-nf-text-dim">{{ t("authorHome.workspaceLimit") }}</p>
 
       <p v-if="loading" role="status" class="mt-5 text-[13px] text-nf-text-faint">
         {{ t("common.loading") }}

@@ -26,15 +26,26 @@ const novelScopeParams = z.object({ workspaceId: uuid, novelId: uuid });
 
 const createChapterBody = z.object({
   title: z.string().trim().min(1).max(200),
+  creationRequestId: uuid.optional(),
 });
 const saveChapterBody = z.object({
   content: z.string().max(1_000_000),
   note: z.string().trim().max(200).optional(),
   expectedVersion: z.number().int().min(0).nullable(),
+  title: z.string().trim().min(1).max(200).optional(),
+  expectedTitle: z.string().min(1).max(200).optional(),
+  creationRunId: uuid.optional(),
+  allowTitleOnlyRebase: z.boolean().optional(),
+}).refine(value => (value.title === undefined) === (value.expectedTitle === undefined) && (value.creationRunId === undefined || value.title !== undefined) && (!value.allowTitleOnlyRebase || value.creationRunId !== undefined), { message: "title and expectedTitle must be paired; recovery requires an approved creation run" });
+const renameChapterBody = z.object({
+  title: z.string().trim().min(1).max(200),
+  expectedTitle: z.string().min(1).max(200),
+  expectedChapterVersionId: uuid.nullable(),
 });
 const setStatusBody = z.object({
-  status: z.enum(["IN_REVIEW", "PUBLISHED"]),
-});
+  status: z.enum(["DRAFT", "IN_REVIEW", "PUBLISHED"]),
+  expectedVersion: z.number().int().min(0).nullable().optional(),
+}).refine(value => value.status !== "DRAFT" || value.expectedVersion !== undefined, { message: "draft requires expectedVersion" });
 // NF-WF-015 (Invariant 6): minimal scene CRUD. Scenes are structural
 // anchors (title/summary/number) — no scene content, no versioning.
 const sceneScopeParams = chapterParams;
@@ -102,9 +113,17 @@ export function registerManuscriptRoutes(
     const chapter = await services.createChapter({
       actorUserId,
       ...params.data,
-      title: body.data.title,
+      ...body.data,
     });
     return reply.code(201).send(chapter);
+  });
+
+  app.get("/api/workspaces/:workspaceId/novels/:novelId/chapters/creation-requests/:creationRequestId", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = novelScopeParams.extend({ creationRequestId: uuid }).safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.getCreationReceipt({ actorUserId, ...params.data });
   });
 
   app.get("/api/workspaces/:workspaceId/novels/:novelId/chapters", async (request, reply) => {
@@ -145,6 +164,14 @@ export function registerManuscriptRoutes(
     },
   );
 
+  app.patch("/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId/title", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = chapterParams.safeParse(request.params), body = renameChapterBody.safeParse(request.body);
+    if (!params.success || !body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.renameChapter({ actorUserId, ...params.data, ...body.data });
+  });
+
   app.delete(
     "/api/workspaces/:workspaceId/novels/:novelId/chapters/:chapterId",
     async (request, reply) => {
@@ -152,7 +179,9 @@ export function registerManuscriptRoutes(
       if (!actorUserId) return;
       const params = chapterParams.safeParse(request.params);
       if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-      await services.deleteChapter({ actorUserId, ...params.data });
+      const body = renameChapterBody.omit({ title: true }).optional().safeParse(request.body);
+      if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      await services.deleteChapter({ actorUserId, ...params.data, ...body.data });
       return { status: "ok" };
     },
   );
@@ -166,7 +195,7 @@ export function registerManuscriptRoutes(
       if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
       const body = setStatusBody.safeParse(request.body);
       if (!body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
-      await services.setStatus({ actorUserId, ...params.data, status: body.data.status });
+      await services.setStatus({ actorUserId, ...params.data, ...body.data });
       return { status: "ok" };
     },
   );

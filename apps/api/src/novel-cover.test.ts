@@ -100,7 +100,10 @@ describe("authenticated novel cover configuration", () => {
     expect((await request("GET", `${base()}/cover`, undefined, outsider.cookie)).statusCode).toBe(404);
     expect((await request("GET", `${base()}/cover`, undefined, viewer.cookie)).statusCode).toBe(200);
     expect((await request("GET", `/api/workspaces/${workspaceId}/novels/not-a-uuid/cover`)).statusCode).toBe(400);
-    const otherWorkspace = (await request("POST", "/api/workspaces", { name: "Other", slug: `other-${sequence}` })).json().id;
+    const createdWorkspace = await request("POST", "/api/workspaces", { name: "Other", slug: `other-${sequence}` }, outsider.cookie);
+    expect(createdWorkspace.statusCode).toBe(201);
+    const otherWorkspace = createdWorkspace.json().id;
+    await db.membership.create({ data: { workspaceId: otherWorkspace, userId, role: "AUTHOR" } });
     for (const method of ["GET", "PUT"] as const) expect((await request(method, `/api/workspaces/${otherWorkspace}/novels/${novelId}/cover`, method === "PUT" ? payload : undefined)).statusCode).toBe(404);
   });
 

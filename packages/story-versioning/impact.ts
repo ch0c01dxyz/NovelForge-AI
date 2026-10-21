@@ -25,6 +25,7 @@ export type ImpactClass = "LOW" | "HIGH";
 export const OPERATIONS = [
   // LOW — C3 "Operations" column
   "chapter.save",
+  "chapter.rename",
   "chapter.restore",
   "chapter.create",
   "chapter.delete",

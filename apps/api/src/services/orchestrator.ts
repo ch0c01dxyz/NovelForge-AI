@@ -74,6 +74,7 @@ export interface OrchestratorServices {
     workspaceId: string;
     novelId?: string;
     agentKey: string;
+    preferredModelRef?: string;
     component?: GenerationComponent;
     artifactId?: string;
     /** The author's instruction. Also the default retrieval query. */
@@ -96,6 +97,7 @@ export interface OrchestratorServices {
     workspaceId: string;
     novelId?: string;
     agentKey: string;
+    preferredModelRef?: string;
     component?: GenerationComponent;
     artifactId?: string;
     instruction: string;
@@ -164,6 +166,7 @@ export function createOrchestratorServices(deps: {
     workspaceId: string;
     novelId?: string;
     agentKey: string;
+    preferredModelRef?: string;
     instruction: string;
     contextQuery?: string;
   }) {
@@ -195,7 +198,11 @@ export function createOrchestratorServices(deps: {
         `mandatory context overflowed: ${compiled.overflow?.name} — ${compiled.overflow?.reason}`,
       );
     }
-    const contextSnapshot: Record<string, unknown> = compiled.contextSnapshot as Record<string, unknown>;
+    const preferredModelRef = input.preferredModelRef ?? agent.preferredModelRef ?? undefined;
+    const contextSnapshot: Record<string, unknown> = {
+      ...compiled.contextSnapshot as Record<string, unknown>,
+      ...(preferredModelRef !== undefined ? { routing: { preferredModelRef } } : {}),
+    };
 
     // The fence is the point: it names the block as retrieved material so a
     // directive inside a reference reads as quoted text, not as an
@@ -208,6 +215,7 @@ export function createOrchestratorServices(deps: {
 
     return {
       agent,
+      preferredModelRef,
       messages: [
         { role: "system" as const, content: systemParts.join("\n\n") },
         { role: "user" as const, content: userContent },
@@ -223,11 +231,13 @@ export function createOrchestratorServices(deps: {
     agentVersionNumber: number,
     contextSnapshot: Record<string, unknown>,
   ): Promise<void> {
+    const generation = await db.generation.findUniqueOrThrow({ where: { id: generationId }, select: { contextSnapshot: true } });
+    const prior = generation.contextSnapshot as Record<string, unknown> | null;
     await db.generation.update({
       where: { id: generationId },
       data: {
         promptVersion: `agent:${agentKey}@v${agentVersionNumber}`,
-        contextSnapshot: contextSnapshot as never,
+        contextSnapshot: { ...contextSnapshot, ...(prior?.routing ? { routing: prior.routing } : {}) } as never,
       },
     });
   }
@@ -283,7 +293,7 @@ export function createOrchestratorServices(deps: {
       if (input.novelId) {
         await ensureNovelInWorkspace(input.novelId, input.workspaceId);
       }
-      const { agent, messages, contextSnapshot } = await compile(input);
+      const { agent, messages, contextSnapshot, preferredModelRef } = await compile(input);
       const result = await ai.generate({
         actorUserId: input.actorUserId,
         workspaceId: input.workspaceId,
@@ -292,6 +302,7 @@ export function createOrchestratorServices(deps: {
         component: input.component,
         artifactId: input.artifactId,
         profile: agent.modelProfile,
+        preferredModelRef,
         messages,
         ...(agent.temperature != null ? { temperature: agent.temperature } : {}),
         ...(agent.maxTokens != null ? { maxTokens: agent.maxTokens } : {}),
@@ -340,7 +351,7 @@ export function createOrchestratorServices(deps: {
       if (input.novelId) {
         await ensureNovelInWorkspace(input.novelId, input.workspaceId);
       }
-      const { agent, messages, contextSnapshot } = await compile(input);
+      const { agent, messages, contextSnapshot, preferredModelRef } = await compile(input);
       // A streamed response is already delivered when the contract check
       // would run, so a contracted agent cannot be streamed without
       // violating fail-closed validation. Refuse up front instead.
@@ -361,6 +372,7 @@ export function createOrchestratorServices(deps: {
         component: input.component,
         artifactId: input.artifactId,
         profile: agent.modelProfile,
+        preferredModelRef,
         messages,
         ...(agent.temperature != null ? { temperature: agent.temperature } : {}),
         ...(agent.maxTokens != null ? { maxTokens: agent.maxTokens } : {}),

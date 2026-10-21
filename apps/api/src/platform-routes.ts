@@ -17,11 +17,13 @@ import {
   ForbiddenError,
   NotFoundError,
   WorkspaceDeleteError,
+  WorkspaceOwnershipLimitError,
   InvalidNovelCoverError,
   MAX_COVER_BASE64_LENGTH,
   type PlatformServices,
 } from "@novelforge/ai-services";
 import { InvalidDefinitionError } from "./services/definitions.ts";
+import { AiCreationSourceConflict } from "./services/manuscript.ts";
 import { HeadConflictError } from "@novelforge/ai-services";
 import { ApprovalDecisionError } from "./services/workflow-runs.ts";
 import { CanonApplicationError } from "./services/canon-applications.ts";
@@ -257,9 +259,10 @@ export async function registerPlatformRoutes(
     // error field (WORKSPACE_NOT_EMPTY / WORKSPACE_HAS_REFERENCED_HISTORY)
     // so the workspace manager dialog can give actionable copy. Checked
     // BEFORE the generic ConflictError branch (it extends ConflictError).
-    if (error instanceof WorkspaceDeleteError) {
+    if (error instanceof WorkspaceDeleteError || error instanceof WorkspaceOwnershipLimitError) {
       return reply.code(409).send({ error: error.reason });
     }
+    if (error instanceof AiCreationSourceConflict) return reply.code(409).send({ error: error.recoveryCode });
     if (error instanceof ConflictError) {
       return reply.code(409).send({
         error: "CONFLICT",
@@ -326,6 +329,11 @@ export async function registerPlatformRoutes(
   }
 
   // --- Workspaces ---
+  app.get("/api/workspaces/ownership-policy", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    return services.workspaceOwnershipPolicy(actorUserId);
+  });
   app.get("/api/workspaces", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);
     if (!actorUserId) return;

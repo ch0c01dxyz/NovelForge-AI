@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useLocale } from "../../composables/useLocale";
-const { t, locale, setLocale } = useLocale();
+import LanguageMenu from "./LanguageMenu.vue";
+const { t } = useLocale();
 </script>
 
 <template>
@@ -28,14 +29,7 @@ const { t, locale, setLocale } = useLocale();
       <NuxtLink to="/browse" class="hover:text-nf-text focus-visible:nf-focus">{{
         t("discover.browseSection")
       }}</NuxtLink>
-      <select
-        :aria-label="t('authorHome.language')"
-        :value="locale"
-        @change="setLocale(($event.target as HTMLSelectElement).value as 'en' | 'id')"
-      >
-        <option value="en">English</option>
-        <option value="id">Bahasa Indonesia</option>
-      </select>
+      <LanguageMenu />
     </nav>
   </header>
 </template>

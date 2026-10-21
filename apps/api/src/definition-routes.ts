@@ -13,13 +13,14 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { workflowModelPreferencesSchema } from "@novelforge/validation";
 import type { AuthService } from "@novelforge/auth";
 import { WorkflowRunStatus } from "@novelforge/database";
 import type { PlatformRole } from "@novelforge/auth/authorization";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import type { DefinitionServices } from "./services/definitions.ts";
 import type { WorkflowRunServices } from "./services/workflow-runs.ts";
-import { InvalidDefinitionError } from "./services/definitions.ts";
+import { InvalidDefinitionError, StarterPackConflictError } from "./services/definitions.ts";
 
 const uuid = z.string().uuid();
 
@@ -57,6 +58,7 @@ const outputSchemaField = z
 const scopeField = z.enum(["PLATFORM", "WORKSPACE"]);
 
 const agentContent = z.object({
+  preferredModelRef: uuid.nullable().optional(),
   instructions: z.string().trim().min(1).max(20_000),
   modelProfile: z.enum(PROFILE_VALUES),
   skillKeys: z.array(keyField).max(50).optional(),
@@ -66,6 +68,7 @@ const agentContent = z.object({
 });
 
 const skillContent = z.object({
+  preferredModelRef: uuid.nullable().optional(),
   instructions: z.string().trim().min(1).max(20_000),
   modelProfile: z.enum(PROFILE_VALUES),
   outputSchema: outputSchemaField,
@@ -95,6 +98,7 @@ const createSkillBody = skillContent.extend({
  * size only.
  */
 const createWorkflowBody = z.object({
+  defaultModelRef: uuid.nullable().optional(),
   scope: scopeField.default("WORKSPACE"),
   workspaceId: uuid.optional(),
   novelId: uuid.optional(),
@@ -104,9 +108,11 @@ const createWorkflowBody = z.object({
   graph: z.unknown(),
 });
 
-const addWorkflowVersionBody = z.object({ graph: z.unknown() });
+const addWorkflowVersionBody = z.object({ graph: z.unknown(), defaultModelRef: uuid.nullable().optional() });
 
 const runWorkflowBody = z.object({
+  ...workflowModelPreferencesSchema.shape,
+  expectedModelPreferenceFingerprint: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   input: z.record(z.string(), z.unknown()).optional(),
   novelId: uuid.optional(),
   // Client-generated idempotency key (opaque, e.g. UUID v4). A repeat POST
@@ -168,6 +174,33 @@ export function registerDefinitionRoutes(
     };
   };
 
+  app.post("/api/workspaces/:workspaceId/studio/chapter-creation", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success || !z.object({}).strict().safeParse(request.body ?? {}).success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    try { return await definitions.installChapterCreation({ actorUserId: actor.userId, workspaceId: params.data.workspaceId }); }
+    catch (error) {
+      if (error instanceof StarterPackConflictError) return reply.code(409).send({ error: "STARTER_PACK_KEY_CONFLICT", definitionKey: error.definitionKey });
+      throw error;
+    }
+  });
+
+  app.post("/api/workspaces/:workspaceId/studio/starter-pack", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = workspaceParams.safeParse(request.params);
+    if (!params.success || !z.object({}).strict().safeParse(request.body ?? {}).success) {
+      return reply.code(400).send({ error: "INVALID_INPUT" });
+    }
+    try {
+      return await definitions.installStarterPack({ actorUserId: actor.userId, workspaceId: params.data.workspaceId });
+    } catch (error) {
+      if (error instanceof StarterPackConflictError) return reply.code(409).send({ error: "STARTER_PACK_KEY_CONFLICT", definitionKey: error.definitionKey });
+      throw error;
+    }
+  });
+
   /**
    * A definition write resolved the scope from the stored row, so an
    * invalid contract or graph surfaces as 400 rather than 500.
@@ -201,6 +234,7 @@ export function registerDefinitionRoutes(
         content: {
           instructions: body.data.instructions,
           modelProfile: body.data.modelProfile,
+          preferredModelRef: body.data.preferredModelRef,
           ...(body.data.skillKeys ? { skillKeys: body.data.skillKeys } : {}),
           ...(body.data.outputSchema ? { outputSchema: body.data.outputSchema } : {}),
           ...(body.data.temperature !== undefined ? { temperature: body.data.temperature } : {}),
@@ -251,6 +285,7 @@ export function registerDefinitionRoutes(
         content: {
           instructions: body.data.instructions,
           modelProfile: body.data.modelProfile,
+          preferredModelRef: body.data.preferredModelRef,
           ...(body.data.skillKeys ? { skillKeys: body.data.skillKeys } : {}),
           ...(body.data.outputSchema ? { outputSchema: body.data.outputSchema } : {}),
           ...(body.data.temperature !== undefined ? { temperature: body.data.temperature } : {}),
@@ -309,6 +344,7 @@ export function registerDefinitionRoutes(
         content: {
           instructions: body.data.instructions,
           modelProfile: body.data.modelProfile,
+          preferredModelRef: body.data.preferredModelRef,
           ...(body.data.outputSchema ? { outputSchema: body.data.outputSchema } : {}),
         },
       });
@@ -356,6 +392,7 @@ export function registerDefinitionRoutes(
         content: {
           instructions: body.data.instructions,
           modelProfile: body.data.modelProfile,
+          preferredModelRef: body.data.preferredModelRef,
           ...(body.data.outputSchema ? { outputSchema: body.data.outputSchema } : {}),
         },
       });
@@ -409,6 +446,7 @@ export function registerDefinitionRoutes(
         name: body.data.name,
         ...(body.data.description ? { description: body.data.description } : {}),
         graph: body.data.graph,
+        defaultModelRef: body.data.defaultModelRef,
       });
       return reply.code(201).send(created);
     } catch (err) {
@@ -452,6 +490,7 @@ export function registerDefinitionRoutes(
         actorPlatformRole: actor.platformRole,
         workflowId: params.data.workflowId,
         graph: body.data.graph,
+        defaultModelRef: body.data.defaultModelRef,
       });
     } catch (err) {
       return handleInvalid(err, reply);
@@ -508,6 +547,15 @@ export function registerDefinitionRoutes(
   // URL; it never claims execution. A repeat POST with the same
   // idempotency key returns the existing run with 200.
 
+  app.get("/api/workspaces/:workspaceId/workflows/:workflowId/model-preferences", async (request, reply) => {
+    const actor = await requireActor(request, reply);
+    if (!actor) return;
+    const params = z.object({ workspaceId: uuid, workflowId: uuid }).safeParse(request.params);
+    const query = z.object({ novelId: uuid.optional() }).safeParse(request.query);
+    if (!params.success || !query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return runs.modelPreferencePreview({ actorUserId: actor.userId, ...params.data, ...query.data });
+  });
+
   app.post(
     "/api/workspaces/:workspaceId/workflows/:workflowId/run",
     { bodyLimit: DEFINITION_BODY_LIMIT },
@@ -524,6 +572,9 @@ export function registerDefinitionRoutes(
         actorUserId: actor.userId,
         workspaceId: params.data.workspaceId,
         workflowId: params.data.workflowId,
+        ...(body.data.preferredModelRef !== undefined ? { preferredModelRef: body.data.preferredModelRef } : {}),
+        ...(body.data.stepModelRefs !== undefined ? { stepModelRefs: body.data.stepModelRefs } : {}),
+        ...(body.data.expectedModelPreferenceFingerprint !== undefined ? { expectedModelPreferenceFingerprint: body.data.expectedModelPreferenceFingerprint } : {}),
         ...(body.data.input ? { runInput: body.data.input } : {}),
         ...(body.data.novelId ? { novelId: body.data.novelId } : {}),
         ...(body.data.idempotencyKey ? { idempotencyKey: body.data.idempotencyKey } : {}),

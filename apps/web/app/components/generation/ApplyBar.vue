@@ -27,10 +27,12 @@ const props = defineProps<{
   runStatus: string | null;
   runId: string | null;
   draftProse: string | null;
+  draftTitle?: string | null;
+  chapterTitle?: string;
 }>();
 
 const emit = defineEmits<{
-  (e: "applied", version: number): void;
+  (e: "applied", version: number, title?: string): void;
   (e: "reload-rediff"): void;
   (e: "continue-next"): void;
 }>();
@@ -42,6 +44,13 @@ const applying = ref(false);
 const appliedVersion = ref<number | null>(null);
 const appliedRunId = ref<string | null>(null);
 const error = ref<string | null>(null);
+const titleOnlyConflict = ref(false);
+const allowTitleOnlyRebase = ref(false);
+let scope = 0;
+let mounted = true;
+watch(() => [props.workspaceId, props.novelId, props.chapterId, props.runId], () => { scope++;appliedVersion.value = null;appliedRunId.value = null;error.value = null;titleOnlyConflict.value = false;allowTitleOnlyRebase.value = false; });
+watch(() => [props.chapterTitle, props.diffPinnedVersion], () => { allowTitleOnlyRebase.value = false; });
+onUnmounted(() => { mounted = false;scope++; });
 
 const isPublished = computed(() => props.chapterStatus === "PUBLISHED");
 const versionMoved = computed(
@@ -56,6 +65,7 @@ const blockReason = computed((): string | null => {
   if (isPublished.value) return t("apply.blockedPublished");
   if (props.saveState !== "saved") return t("apply.blockedDirty");
   if (versionMoved.value) return t("apply.blockedStale");
+  if (props.draftTitle === null || (props.draftTitle !== undefined && (!props.draftTitle.trim() || props.draftTitle.length > 200 || !props.chapterTitle))) return t("chapterCreation.invalidTitle");
   return null;
 });
 
@@ -66,32 +76,45 @@ const canApply = computed(
     props.saveState === "saved" &&
     !versionMoved.value &&
     !isPublished.value &&
+    (!titleOnlyConflict.value || allowTitleOnlyRebase.value) &&
+    blockReason.value === null &&
+    appliedRunId.value !== props.runId &&
     !applying.value,
 );
 
 async function apply() {
   if (!canApply.value || !props.draftProse) return;
   applying.value = true;
+  const requestScope = scope;
   error.value = null;
   try {
-    const result = await api<{ version: number }>(
+    const result = await api<{ version: number; title?: string }>(
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/chapters/${props.chapterId}`,
       {
         method: "PUT",
         body: JSON.stringify({
           content: props.draftProse,
           expectedVersion: props.diffPinnedVersion,
+          ...(props.draftTitle !== undefined ? { title: props.draftTitle, expectedTitle: props.chapterTitle } : {}),
+          ...(props.draftTitle !== undefined ? { creationRunId: props.runId } : {}),
+          ...(titleOnlyConflict.value && allowTitleOnlyRebase.value ? { allowTitleOnlyRebase: true } : {}),
         }),
       },
     );
+    if (!mounted || requestScope !== scope) return;
     appliedVersion.value = result.version;
     appliedRunId.value = props.runId;
-    emit("applied", result.version);
+    titleOnlyConflict.value = false;
+    if (result.title !== undefined) emit("applied", result.version, result.title);
+    else emit("applied", result.version);
   } catch (e) {
+    if (!mounted || requestScope !== scope) return;
     if (e instanceof ApiError && e.status === 409) {
       // Stale version or published immutability — same stale-source
       // state; never auto-retry.
-      error.value = t("apply.blockedStale");
+      titleOnlyConflict.value = e.code === "AI_CREATION_TITLE_ONLY_CHANGED";
+      allowTitleOnlyRebase.value = false;
+      error.value = t(titleOnlyConflict.value ? "apply.titleOnlyChanged" : e.code === "AI_CREATION_SOURCE_CHANGED" ? "apply.sourceChanged" : "apply.blockedStale");
     } else {
       error.value = t("apply.applyFailed");
     }
@@ -107,6 +130,7 @@ async function apply() {
     class="flex flex-col gap-2 rounded-xl border border-nf-border bg-nf-bg-1 p-3"
   >
     <div class="flex flex-wrap items-center gap-2">
+      <p v-if="draftTitle" class="w-full text-sm font-semibold">{{ draftTitle }}</p>
       <button
         :disabled="!canApply"
         class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
@@ -135,6 +159,11 @@ async function apply() {
     </p>
 
     <p v-if="error" role="alert" class="text-[12.5px] text-nf-warn">{{ error }}</p>
+    <label v-if="titleOnlyConflict" class="flex items-start gap-2 text-[12.5px] text-nf-text-dim">
+      <input v-model="allowTitleOnlyRebase" data-testid="allow-title-only-recovery" type="checkbox" :disabled="applying" class="mt-0.5 accent-nf-accent" />
+      {{ t('apply.keepRenamedTitle', { title: chapterTitle ?? '' }) }}
+    </label>
+    <button v-if="error && !isPublished" type="button" :disabled="applying" class="self-start underline focus-visible:nf-focus" @click="allowTitleOnlyRebase = false; emit('reload-rediff')">{{ t('apply.reloadRediff') }}</button>
 
     <p
       v-if="appliedVersion !== null && appliedRunId"

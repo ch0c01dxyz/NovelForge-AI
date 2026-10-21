@@ -7,6 +7,7 @@
 import { useApi } from "./useApi";
 
 export type PlatformRole = "SUPER_ADMIN" | null;
+export const MODEL_PROFILES = ["CREATIVE_WRITER", "DEEP_PLANNER", "CONTINUITY_REVIEWER", "FAST_CLASSIFIER", "STRUCTURED_EXTRACTOR", "LONG_CONTEXT_REVIEWER", "EMBEDDING"] as const;
 
 export interface GatewayView {
   id: string;
@@ -37,11 +38,22 @@ export interface ModelView {
 }
 
 export interface ProfileMapping {
+  modelRef?: string;
   profile: string;
   modelId: string;
   gatewayId: string;
   priority: number;
   enabled: boolean;
+}
+
+export interface PlatformModelCatalogOption {
+  modelRef: string | null;
+  providerModelId: string;
+  displayName: string | null;
+  gatewayId: string;
+  gatewayName: string;
+  selectable: boolean;
+  unavailableReason: "NOT_SYNCED" | "MODEL_DISABLED" | "NOT_MAPPED" | null;
 }
 
 export interface PlatformAuditLogEntry {
@@ -138,6 +150,10 @@ export function usePlatformAdmin() {
     return api<ModelView[]>(`/models`);
   }
 
+  function listModelCatalog() {
+    return api<PlatformModelCatalogOption[]>("/model-catalog");
+  }
+
   async function setModelEnabled(
     modelId: string,
     enabled: boolean,
@@ -162,6 +178,10 @@ export function usePlatformAdmin() {
       method: "PUT",
       body: JSON.stringify(input),
     });
+  }
+
+  async function removeProfileMapping(profile: string, modelRef: string): Promise<{ status: string }> {
+    return api(`/model-profiles/${encodeURIComponent(profile)}/${encodeURIComponent(modelRef)}`, { method: "DELETE" });
   }
 
   async function getRoutingStrategy(): Promise<{ strategy: string }> {
@@ -189,9 +209,11 @@ export function usePlatformAdmin() {
     healthCheck,
     syncModels,
     listModels,
+    listModelCatalog,
     setModelEnabled,
     listProfileMappings,
     setProfileMapping,
+    removeProfileMapping,
     getRoutingStrategy,
     listAuditLog,
   };

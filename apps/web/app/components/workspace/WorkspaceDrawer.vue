@@ -64,6 +64,8 @@ const opener = ref<HTMLElement | null>(null);
 function onKeydown(e: KeyboardEvent) {
   if (!props.open) return;
   if (e.key === "Escape") {
+    // Nested menus close first and return focus before the drawer owns Escape.
+    if (e.target instanceof Element && panelRef.value?.contains(e.target) && e.target.closest("details.nf-menu[open]")) return;
     e.stopPropagation();
     emit("close");
   }

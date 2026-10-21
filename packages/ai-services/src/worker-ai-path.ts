@@ -92,7 +92,7 @@ export function createWorkerAiPath(
       const compiled = await fetchAndCompileContext(
         {
           canon,
-          planning,
+          planning: input.chapterCreation ? { ...planning, getStoryPosition: async () => input.chapterCreation!.chapterNumber } : planning,
           characters,
           relationships,
           narrative,
@@ -123,11 +123,16 @@ export function createWorkerAiPath(
           workspaceId: input.workspaceId,
           ...(input.novelId ? { novelId: input.novelId } : {}),
           instruction: input.instruction,
+          ...(input.chapterCreation ? { expectedHeadRevisionId: input.chapterCreation.headRevisionId } : {}),
           contextQuery: input.contextQuery,
           mode: input.mode,
           searchReferencesWithoutNovel: input.searchReferencesWithoutNovel,
         },
       );
+      if (input.chapterCreation) {
+        const outline = compiled.blocks.find(block => block.tier === 2)?.provenance as { outlineVersionId?: string } | undefined;
+        if (outline?.outlineVersionId !== input.chapterCreation.outlineRef || compiled.headRevisionId !== input.chapterCreation.headRevisionId || compiled.storyPosition !== input.chapterCreation.chapterNumber) throw new Error("AI chapter context source changed before dispatch");
+      }
       return {
         canDispatch: compiled.canDispatch,
         blocks: compiled.blocks.map((b) => ({

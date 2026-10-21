@@ -51,6 +51,7 @@ export {
   ForbiddenError,
   NotFoundError,
   WorkspaceDeleteError,
+  WorkspaceOwnershipLimitError,
   createPlatformServices,
   type PlatformServices,
 } from "./src/platform.ts";

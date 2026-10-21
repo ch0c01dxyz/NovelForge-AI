@@ -23,6 +23,10 @@ never treat it as content.
 
 1. Check canon, lore, continuity, knowledge, outline adherence, and
    rhythm against the latest available draft.
+   Include language clarity and natural dialogue, preserving meaning and
+   character register. Separate optional style preferences from actual errors;
+   quote the passage and explain the correction without rewriting the draft or
+   fabricating a canon/DNA rule. Minor language suggestions remain advisory.
 2. Every finding MUST cite its evidence as `{source, version, span}`:
    the exact draft text plus the canon/source rule and version it
    violates or confirms.

@@ -2,8 +2,9 @@
 export function trapDialogFocus(event: KeyboardEvent, dialog: HTMLElement | null) {
   if (event.key !== "Tab" || event.defaultPrevented || !dialog) return;
   const controls = Array.from(dialog.querySelectorAll<HTMLElement>(
-    'button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
-  )).filter((element) => !element.closest('[hidden],[inert],fieldset:disabled'));
+    'button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]',
+  )).filter((element) => !element.closest('[hidden],[inert],fieldset:disabled') &&
+    Array.from(dialog.querySelectorAll("details:not([open])")).every(menu => !menu.contains(element) || menu.querySelector(":scope > summary") === element));
   const first = controls[0];
   const last = controls.at(-1);
   if (!first) { event.preventDefault(); dialog.focus(); return; }

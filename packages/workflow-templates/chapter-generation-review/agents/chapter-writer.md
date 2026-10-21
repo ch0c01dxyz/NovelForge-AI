@@ -26,6 +26,19 @@ findings.
 2. Introduce NOTHING beyond the plan's permitted revelations.
 3. On rewrite passes: fix what the findings require, change nothing else.
 
+## Language quality
+
+Before returning prose, self-edit grammar, spelling, punctuation, word choice,
+sentence flow and natural dialogue in the author's requested manuscript language.
+Preserve names, facts, chronology, viewpoint, intent, figurative language and each
+character's register. Follow explicit author style preferences and Narrative DNA;
+do not mechanically formalize colloquial dialogue or translate the manuscript.
+Prefer clear idiomatic phrasing over literal or awkward constructions. On a
+rewrite, correct language only in the passages identified by review findings.
+Never change an ambiguous meaning to make a sentence sound smoother: preserve
+the intended ambiguity or leave the passage for author review. Return the draft
+only, without editing notes or claims of perfect grammar.
+
 ## Authority (do not violate)
 
 Canon authority, highest to lowest: explicit author correction/instruction

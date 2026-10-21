@@ -1,14 +1,892 @@
 # Technical Issues and Implementation Gaps
 
+## Publication integration gaps and outdated acceptance fixtures — 2026-10-21
+
+CLOSED with focused regression evidence; owner authoring-batch-publication.
+Full local suite initially: 2961PASS/5FAIL across
+245 files. Two new administrative tables lack restore-scope classifications;
+the completeness test still pins97 instead of99 models. Cover tenant fixture
+silently fails second-workspace creation under the new ordinary-account limit.
+SCALE S3 model fixture omits selectable and does not open the new searchable menu.
+Worker integration uses the default workflow queue on shared Redis; the existing
+main consumer can claim its scratch run, leaving the test PENDING. Give the test
+a unique BullMQ prefix and remove default-queue drain; preserve production queues.
+Also observed remote CI39326809757 failure: race fixture wrongly expects saving
+after publication to succeed, contradicting published immutability. Fix fixture
+outcomes while retaining strict locks/validation; classify new configuration and
+execution history explicitly without expanding story restore. Rerun affected
+checks and independently review exact fix before publication.
+
+Resolution: explicit CONFIGURATION/OPERATIONAL mappings for the two administrative
+tables preserve restore targets. Cover fixture creates a valid first workspace
+for another actor and grants AUTHOR membership to test the actual cross-novel
+boundary. S3 fixture uses model-catalog/selectable/searchable-menu contracts.
+Worker Queue and Worker share a unique test-only BullMQ prefix; no default queue
+drain. Race assertions now require the winning publication to retain immutable
+version1 with save409, or save200/version2 with publication REVIEW_STALE. Restore8,
+S3UI26, worker10 and API8PASS (52 focused tests), scoped lint0. Original broad run
+is retained evidence; no claim that the complete suite was rerun after repairs.
+
+## Publication preflight lacks a local test administration database — 2026-10-21
+
+CLOSED; owner authoring-batch-publication. Whole-repository preflight used the
+existing private harness DATABASE_URL naming novelforge_test_authoring, but that
+database did not exist. Selective restore beforeAll/afterAll explicitly failed
+before assertions; isolated reproduction confirms PostgreSQL missing-database
+error. This is not evidence of an application regression or a passing suite.
+Create only the missing dedicated test administration database (no reset/drop of
+existing data), stop the owned invalid run, rerun full gates and record actual
+results. Main acceptance database, Docker volumes, stashes and backups retained.
+
+Resolution: created only missing novelforge_test_authoring, stopped only the
+owned invalid Vitest process tree and ran the full suite against isolated test
+databases. Database setup now succeeds; subsequent application/test integration
+failures are recorded separately above. Full lint/typecheck/Compose config pass.
+
+## Chapter language polish has no dedicated author suggestion action — 2026-10-21
+
+CLOSED for the bounded selection-polish and generation-instruction scope;
+owner chapter-language-polish. Author reports awkward Indonesian diction
+and dialogue. Existing writer/style-review prompts do not explicitly cover
+language self-editing; existing selected-text AI tools have no dedicated polish
+operation or Before/Proposal comparison. Reuse existing paths, preserve meaning
+and character register, require explicit acceptance and refuse stale/partial edits.
+Current selected-text fallback inserts after the cursor on stale ranges; that is
+unsuitable for grammar correction and must not be used by the new operation.
+Verify real gateway behavior separately from contract/UI checks; retained chapter
+examples are user observations, not independently proven universal grammar errors.
+
+Native proof found the new toolbar button could remain disabled after chapter
+loading because editor.isEditable is not reactive. Bind it to the existing
+transaction counter before claiming usability. Private proof setup also found
+Node strip-only cannot import parameter properties (use installed transform-types
+mode), null outputSchema is not a valid definition API input (omit when absent),
+and a test's setup setContent shared an undo group (use a fresh editor fixture).
+These are verification/setup corrections; no live story data was modified.
+
+First real provider proof returned the original sentence unchanged. Its HTML
+serialization changed, so a DOM-string inequality was insufficient quality
+evidence. Do not claim improved diction from transport success. Explicitly prompt
+idiomatic editing, show a no-change state, and verify normalized text. Select-all
+also included block boundaries; normalize a single-paragraph range and refuse
+multiple paragraphs for polish to avoid introducing an empty paragraph.
+
+Closure: dedicated polish operation with Before/AI proposal and explicit Use/Ignore;
+single-paragraph/2,000char bounds, normalized select-all, literal insertion, stale
+refusal, no-change notice and successful-stream requirement. Toolbar reactivity and
+measured card height verified. Web61PASS/templates11PASS, types/lint/diff0. Real
+gateway final native EN1440/ID390 compares changed text, Ignore/no-mutation and
+Use/scratch-save/reload pass; main story/run hashes unchanged. Active three main
+agents appended publishedv2 preserving prior instructions/settings and v1 history.
+No claim of perfect grammar, universal correctness of style examples or automatic
+whole-chapter per-suggestion acceptance. Evidence: tasks/chapter-language-polish.md.
+Final independent sixteen-file review APPROVE; root/reviewer hashes match with
+ordinal ordering. Earlier culture-sort mismatch was verification bookkeeping,
+not another writer or a source change. No unresolved blocker in this bounded task.
+
+## Author-facing AI warnings expose technical terminology — 2026-10-21
+
+CLOSED for the generation/review/Apply/canon-proposal and AI Studio approval
+surfaces changed here; owner chapter-apply-title-recovery. Author requested
+plain-language guidance. Observed stale-diff/source-pin/snapshot terminology and
+raw workflow contract errors did not explain a usable next step. English and
+Indonesian resources now explain the known cause and next action. Raw run/step
+diagnostics remain available in collapsed support details, outside the primary
+alert. No claim that a title rename causes plot holes. Machine codes, source
+checks, permission checks and approval scope are unchanged. Web37 focused tests
+pass, including two run/step diagnostic disclosure cases and locale fallback;
+web types/scoped lint pass. Actual main EN1440/ID390 title-conflict UI passes,
+refused PUT409 only, no retry/successful Apply, story/run hashes unchanged.
+This bounded proof is not a claim that every platform message was audited.
+
+Verification tooling correction: the private native proof initially used a
+nonexistent chapter version field. Schema inspection confirmed
+Chapter.currentVersion.number; the helper was corrected before browser requests.
+The successful proof uses the actual immutable version number, not a guessed
+field. No story mutation occurred in the failed helper runs.
+
+## AI Apply cannot recover after target-only title rename — 2026-10-21
+
+CLOSED technically; owner chapter-apply-title-recovery. User reported generic stale-diff error.
+Actual run37a6375b... is SUCCEEDED; chapter10 v2 is a chapter.rename copy of v1
+with identical diagnostic content, renamed title. Run still pins v1/old head.
+Strict refusal is expected, but UI conflates immutable source drift with ordinary
+diff staleness and its reload cannot refresh immutable run pins. Preserve renamed
+title and source safety. Add explicit opt-in recovery only after server proves
+all intervening versions/revisions are audited target-only title renames with
+byte-identical content. Reject content/canon/other-chapter/branch drift. Keep
+approved snapshot/pins immutable and record source recovery in the new save audit.
+No model regeneration, forced overwrite or automatic retry. Verify negative and
+concurrent-CAS paths; keep author editorial issue separate.
+
+Resolution: explicit unchecked opt-in retains the current author title only when
+the server proves a bounded audited target-title-only revision/version chain.
+Approved prose, original pins and approval snapshot remain intact. New save/audit
+records recovery provenance. API37 tests pass against a dedicated database,
+including successful v3 recovery and content/canon/other-chapter/branch/stale-CAS
+refusals. Web Apply10 tests pass. Independent initial nine-file review approved;
+final wording/support-detail review tracked in task. API10304 activated, worker4180
+unchanged; readiness/Nuxt200, main hashes unchanged. Native EN1440/ID390 confirms
+real typed409, unchecked consent, retained-title label, enabled Apply after check,
+no automatic retry. Successful main Apply intentionally remains an author action.
+
+## Chapter10 actual draft requires narrative correction — 2026-10-21
+
+OPEN; owner chapter-generation-content-repair. Author-requested real main run
+4ccd62d1-dfc2-4b5d-a05f-bdb1dced3839 generated Indonesian prose (1078 words),
+but final review reports a blocking recap/outline-adherence issue plus major
+fish-count and timeline conflicts. It is AWAITING_APPROVAL, not author accepted
+or applied. Do not call a schema-valid draft a finished chapter. Preserve it as
+evidence; use the actual review findings and bounded previous chapter for an
+explicit corrective generation under the author's regeneration request. Recheck
+final findings and native preview, preserve error version1 and checkpoint
+9ab08d1e-67e1-4ccb-a47c-44bde7d3648a; never auto-approve/apply/publish or canonize.
+
+Update: corrective actual run37a6375b-01d6-43fd-a8cd-b448caed2898 produced1364
+Indonesian words/9207chars; final AI review needsCorrection=false/blocking0/major0.
+Main native EN1440/ID390 preview persists/errors0/mutations0; saved errorv1 retained.
+OPEN now for author editorial verification only: actual opening is next morning,
+but elapsed/remaining countdown wording in the following paragraph is inconsistent.
+Author informed; zero major flags are not proof of correctness or acceptance.
+Next: author review/edit the wording and fresh validation on the accepted text.
+
+## Chapter generation receives provenance without story content — 2026-10-20
+
+CLOSED (bounded implementation/technical verification); owner chapter-generation-content-repair. Actual main run
+49868acc-6365-4779-9955-31d27834f2ae has a write artifact explicitly marked
+status=blocked with a nonempty blocker. Schema accepted its 1365-character
+diagnostic as prose; it reached SUCCEEDED and chapter10 version1 contains that
+diagnostic. Approval actor IDs are not evidence of author intent or acceptance.
+RETRIEVAL stores rendered context in text, but downstream template consumes json,
+whose blocks contain provenance only. The model therefore lacked actual story
+content. Novel e36d568b-aecf-476a-8e3f-f47ca709672b also has no planning horizon
+and only nine outline nodes; target chapter10 selection reports EMPTY_POLICY.
+Do not invent a horizon or chapter10 plot, overwrite history, or automatically
+approve/apply. Repair the shared payload and explicit blocked-artifact guards;
+make generated draft preview directly readable and recoverable from history.
+Verify focused negative tests, actual gateway in isolated data, source review,
+current runtime and unchanged main story before closure. Scope/evidence:
+tasks/chapter-generation-content-repair.md.
+
+Native restoration investigation: actual parked run has a valid snapshot and
+buildReview succeeds, but the page review disappears without JS/API errors.
+GenerationPanel watches a getter returning a fresh array while the page passes a
+fresh inline chapter object on every render. Unchanged scope fields therefore
+trigger history reload/reselection, clearing the review after it appears. Watch
+individual scalar sources instead; verify a fresh same-chapter prop object does
+not reload/reselect. Explicit reselection of the same run must reload its panel
+instead of clearing a terminal review with no ensuing fetch. Initial native
+attempts/screenshot detachment are failures, not acceptance evidence.
+
+Closure: bounded storyContext in consumed JSON; explicit blocked-artifact guard
+in executor/API/UI; missing outline refusal before model dispatch. Scalar watch
+and same-run reload preserve readable automatic preview. Executor31/API30/web35
+PASS, worker/API/web types/scoped lint/diff0, final independent16-file APPROVEhash
+ffb821f38d5975d2622ddd1cf299b200ae482fb899979d542addb2097ca855c0.
+Actual isolated5-stage gateway/native proof and author-authorized main Chapter10
+regeneration/native EN1440/ID390 pass. Checkpoint read back; absent horizon set
+only under the scoped regeneration amendment; other chapters/canon retained.
+No automatic artifact approval/Apply/publication. Narrative wording issue above
+remains open independently. Evidence: tasks/chapter-generation-content-repair.md.
+
+## Structured planner response rejected after real provider fallback — 2026-10-20
+
+CLOSED (bounded implementation/technical verification); owner workflow-structured-output-repair. Actual main run
+7561725d-499e-4ac7-a454-31b6e0235dad failed at plan with all eight required fields
+absent. Workflow chapter-creation-review v1 includes the strict contract, pinned
+planner Agent v1 has no overriding output schema. Transport attempts: MiniMax-M3
+failed, deepseek-v4.1-flash failed, agnes-2.5-flash succeeded (735 output tokens),
+then workflow validation rejected the response. A successful transport is not a
+valid workflow artifact. Failed-step output/instruction/generation link were not
+persisted, so the original response cannot currently establish its exact shape.
+Inspect and reproduce the pinned request against the actual gateway in scratch;
+retain rejected diagnostic output without treating it as approved story content.
+Do not weaken required fields, invent defaults or blindly retry schema failures.
+Actual scratch replays: Agnes without JSON mode returned a schema-valid fenced
+plan; JSON mode returned a schema-valid whole JSON object without fences. Both
+included schema metadata alongside data: reinforce that the output is an instance,
+not the schema. Original response shape remains unknown. Native RED5 confirms
+missing transport mode/system contract, dropped failed output attribution and
+late schema compilation. First repair run28/29PASS; remaining assertion assumed
+JSONB key order. Compare parsed schema structurally. Types require capturing the
+already-checked step row ID before the async rejection helper.
+Corrected executor29PASS. First actual corrected-executor replay still rejected
+Agnes output missing outlineRef: JSON mode ensures syntax, not required fields.
+The new FAILED-step evidence is now retained. Add an explicit required-root-key
+checklist and exact source-reference instructions; do not inject missing fields or
+auto-repeat the model request. Provide deliberate same-chapter failed-run setup
+reuse so authors retain notes/model choices and do not create duplicate chapters.
+
+Closure: authoritative effective schema/required-key instructions plus existing
+JSON-object mode, early compilation, retained FAILED diagnostic attribution and
+explicit same-chapter setup reuse implemented. Executor29/web17PASS, worker/web
+types/scoped lint/diff0; separate eight-file review APPROVE. Actual corrected
+Agnes executor plan and validator pass, then AWAITING_APPROVAL, in dedicated DB
+(run61cf36b9-c9d7-48b8-9adf-fc41049b6e1c). Native main read-only EN1440/ID390 reuse
+passes/errors0/mutations0, main story/run hashes unchanged. Idle worker34364 now
+serves the fix; API10396 readiness/Nuxt200, notification queue preserved. No main
+automatic retry or author acceptance. Original response remains unrecoverable;
+provider schema noncompliance remains an explicit refusal, not fabricated success.
+Full evidence/rollback: tasks/workflow-structured-output-repair.md.
+
+## AI creation missing from Add chapter — 2026-10-20
+
+CLOSED (implementation/technical verification); owner workspace-authoring A3.
+Author correctly reports approved Manual/AI
+choice absent: ChapterCreateDialog only emits manual and writer only wires that
+path. Existing generation panel requires an already-created chapter; legacy
+template title is optional, and ApplyBar applies prose only. A menu-only link
+would not satisfy coherent generated title+prose or safe creation retries.
+Implement approved A3 via existing workflow/approval/context/model paths, strict
+new workspace workflow identity without mutating historic templates, recoverable
+idempotent chapter reservation and pinned title+prose application. Contract:
+tasks/workspace-ai-chapter-creation.md. No automatic publish/canon approval or
+live novel mutation for tests. Earlier claims cover manual creation only.
+Implementation: strict template11PASS; reservation/audit/paired-save regression
+27PASS. Added active-chapter Draft per author clarification; publication fixture
+exposed a test-cleanup FK failure (25 downstream failures): delete test publication
+rows before test ChapterVersions. This is test isolation, not live data cleanup.
+Do not report the expanded suite passing until rerun. Mobile CSS hid Save under
+640px; remove that hiding rule and verify the three actions in both locales.
+Independent review found paired title save lacked immutable previous/new-title
+provenance and used a post-commit audit. Add title metadata to the immutable
+version note and transactional chapter.saved audit; prove audit rejection rolls
+back both fields. Engram conflict-review first used wrong argument `verdict`;
+server rejected it, corrected to `relation`, all three candidates judged related.
+Expanded API40PASS and focused UI36PASS. Review also identified missing strict
+server outline/target pins, original-ID recovery/deletion protection and delayed
+Apply scope fencing; implementations added, review recheck pending. Initial native
+scratch proof stopped before model dispatch: fixture used unsupported horizon
+detail values (HTTP409). Use the actual FULL/BEATS/SKETCH/VAGUE contract, then rerun;
+do not loosen product validation or report failed fixture as live acceptance.
+Actual native AI setup created one chapter/run using selected real MiniMax-M3,
+retained author notes; five real stages succeeded and parked at approval. Initial
+browser reload used networkidle despite polling; switch to DOM/element readiness,
+reuse the existing run rather than generating again. Native continuation then
+exposed a product defect: UI expected snapshot.material.outcomes while actual
+executor persists priorOutcomes, hiding Review. Correct the shared reader with a
+canonical-shape regression; keep immutable snapshot/hash unchanged. Strict Apply
+also verifies creationRunId, approved artifact title/prose and locked source head.
+Confirmed reservations can be explicitly resolved through own immutable receipt
+when no workflow-start journal remains; unknown enqueue requests cannot be dropped.
+Final closure: separate29-file APPROVE hash6224561b5e8d2551404ad05c5faf35f744315d47205bfc3fc9fe4deeff8551e2;
+API40/web39/templates11/executor22PASS, API/web types/scoped TS lint/diff0. Live
+isolated real MiniMax proof: five successful stages, same retained approved draft
+applied once as v1; ID390/EN1440 inspected, all three mobile actions usable, no page
+errors or main story mutation. Native diagnosis also found a branch helper lacked
+the locked head needed by strict Apply: re-read head under lock, then continue the
+same approved artifact (no regeneration). Diagnostic-only fixes: real horizon
+vocabulary, DOM readiness instead of networkidle on polling pages, actual attempt
+errorCategory field and SQL count serialization. Product gates were not weakened.
+API/worker refreshed idle; final main read-only smoke recorded in CURRENT/contract.
+Final main EN1440/ID390 passes at15:12:36Z, page errors0/mutating requests0,
+stories/definitions/session count unchanged, first-use setup available. Its first
+attempt used a too-short5s readiness assertion; use60s element readiness (actual
+passing rerun8.8s), not product retries or main data writes. Author sign-off and
+human accessibility acceptance remain separate from all technical proof.
+
+## Author eligible-only models and searchable admin Profile catalog — 2026-10-20
+
+OPEN; author supersedes prior show-disabled decision: hide unavailable models
+from author choices, retain full live catalog only in SUPER_ADMIN administration,
+and make Profile mapping model input searchable/reference-aligned. Workspace
+catalog must return eligible rows only, preserving fresh gateway discovery and
+dispatch gates. Add privileged global live catalog endpoint; unsynced models
+have null local IDs and remain visible but unmappable until admin sync. Admin
+may manage mapped/unmapped known models (including disabled model configuration),
+without enabling them for authors. Reuse ActionMenu, bounded result batches,
+name/provider-ID/gateway search, keyboard focus/Escape/Enter prevention, loading/
+error/retry and en/id. Preserve stale author selection explicitly, not as an
+available menu option. No automatic sync/mapping/story mutations or commit/push.
+Regression RED2 confirmed hidden-model and missing admin-search defects, then
+native API49PASS/focusedweb22PASS. Web typecheck found an existing admin axe
+fixture missing the new required live-catalog prop; update fixture explicitly,
+not an optional silent local-catalog fallback. Separate initial12file review
+passed; final hash must include fixture and any native geometry repair.
+Native desktop probe confirmed admin form near page bottom opens the popup
+outside the viewport. Position above when below-space is insufficient and cap
+height to actual available viewport space; keep scroll/search and native keyboard
+semantics. Recheck actual desktop/mobile bounds before completion.
+RESOLVED: global live catalog requires SUPER_ADMIN model:read; workspace API and
+picker expose eligible models only. Admin Profile model picker searches the full
+live catalog with100row batches, null-ID sync warning, guarded stable-ID mapping,
+loading/error/retry and viewport-aware popup. Existing routing/mapping gates and
+main configuration unchanged. Native API49PASS, web10files85PASS incl axe, API/
+webtypes/scoped lint/diff0. Separate13file APPROVE/root hash
+69e16a697be0196e8b523b1f36df595b4c17f6eb858c0cdcb68090fab01a8675.
+Actual router/browser11:25:20Z EN1440/ID390: admin3051catalog/author7eligible,
+unmapped model searchable/selectable for admin mapping but absent in author
+choices, ordinaryglobal403/no-session401, searchEnter does not save, Escapefocus,
+popup bounds and page errors0; screenshot inspected. No real mapping/model/story
+mutation or generation call; temp sessions removed. Count is time-specific.
+
+## Definition new-version editor lacks Profile control — 2026-10-20
+
+OPEN; author reports existing Agent/Skill model choices blocked by uneditable
+Profile. Confirmed: creation has a canonical Profile menu; new-version editor
+only has a model picker and raw JSON. Backend accepts immutable versioned
+profile changes, but UI forces technical JSON editing. Add the same menu for
+Agent/Skill drafts, synchronize JSON/profile/catalog filtering, retain edits and
+explicit prior model choice (marked unavailable if incompatible). Preserve server
+mapping gate and history. Workflow has no single Profile: step definitions own
+their profiles; explain without inventing workflow fields. Verify both kinds,
+retained draft fields, new-version profile/model persistence, read-only/submitting
+guards and en/id native browser. Failed patch-context match made no source change.
+Regression confirmed missing Profile control for both kinds (2RED), then focused
+11PASS and expanded5files50PASS. Native probe stopped before browser because
+the dedicated model-preference fixture database lacks DEEP_PLANNER mappings;
+do not bypass routing or fabricate model IDs. Copy one actual enabled gateway/
+model with existing real DEEP_PLANNER and CREATIVE_WRITER mappings from the main
+configuration into the disposable fixture DB, retaining source provenance.
+The reused fixture DB also contains other enabled test gateways; full-catalog
+discovery waits for those endpoints and the browser never receives the desired
+model within its deadline. Stop the owned test helper only, remove its temporary
+fixture sessions, and use a separate dedicated profile-version DB containing
+only the copied actual gateway/model/mappings. Do not disable production gateways
+or weaken fail-closed catalog discovery to make the probe pass.
+Fresh-fixture migration initially ran from repository root and could not locate
+the package-owned Prisma schema. Run the existing CLI with database-package cwd;
+no application migration is being introduced and no main tables were changed.
+RESOLVED: canonical Agent/Skill Profile control in version editor, reactive
+catalog eligibility and JSON retention; Workflow per-step distinction explained.
+Final5files50PASS, webtypes/scoped lint/diff0, independent4file APPROVE/root hash
+1497e9c72ec5fb8d1727ded661993b72b1cc6fcc9a1ec1a72b0ef4c6a104a33c.
+Native dedicated scratch API/router/browser11:08:59Z EN1440/ID390: six actual
+version appends, Agent/Skill DEEP_PLANNER then CREATIVE_WRITER with selected model
+read-back, edited instructions and schemas retained, v1 unchanged; Workflow
+default model versions preserve graph and have no invented Profile field.
+Profile menu width checked, screenshots inspected, page errors0. Temporary
+sessions removed, source-backed fixture config retained. No main story/definition
+mutation, generation call, backend/API/worker restart, application migration,
+commit or push. This verifies configuration/versioning, not model output quality.
+
+## Full live router catalog and searchable author model picker — 2026-10-20
+
+OPEN; author requests the complete akanesia-router model catalog and a searchable
+reference-aligned picker. Explicit author decision: show every router model;
+only enabled models mapped to the requested Profile may be selected. Preserve
+generation/fallback and admin exclusion rules. Current picker reads only local
+profile mappings and renders every option as a button without search. Add an
+authorized live catalog read through GatewayManager/AIGateway, preserving the
+existing filtered model-options API. Join by actual gateway/provider identity;
+unsynced models have null internal ID and are disabled, never invented UUIDs.
+No catalog mutation, silent stale/partial success or credentials sent to browser.
+Search name/provider ID/gateway, bounded visible batches with explicit Show more,
+keyboard search/Tab/Escape, empty/error/loading and disabled-reason text, en/id.
+Verify live router parity, profile and tenant gates, unavailable catalogs, many
+models, native desktop/mobile design. Existing guessed file/path searches missed
+the shared ai-services implementation; no changes resulted from those reads.
+API regression confirmed missing endpoint404, then49PASS; focused picker/menu
+10PASS. Web typecheck caught test get().exists() (get already asserts existence);
+use find().exists() for that assertion. First native browser probe failed; retain
+private diagnostic and inspect before changing application code or claiming live
+UI proof. Initial separate7file static review passed, final hash must include any
+test/source repair. No native success is inferred from the unit tests.
+Native root cause: search focus attempted while the input was disabled during
+live catalog fetch, so it remained on the trigger after loading. Keep search
+editable during discovery; filtering can wait for options and generation/save
+remain independently gated. Broad consumer tests exposed old model-options
+mock URLs and rows without the new selectable flag, including a wrong fallback
+object causing render errors; update fixture contracts, not runtime authorization.
+RESOLVED: authorized live adapter catalog with nullable actual internal identity,
+disabled reasons and no sync/mapping writes; old filtered API/dispatch unchanged.
+Native API49PASS; final web13files104PASS, API/webtypes/scoped lint0. Separate
+12file APPROVE/root hash efb146ffc3b7fbcfb96391e4327a653c4f4c618be00a688fc32ee6f6b43497fe.
+Actual Akanesia-Router parity10:48:45Z:3051models,7selectable for CREATIVE_WRITER,
+3044disabled. EN1440/ID390 readonly native browser search/name-ID-gateway, disabled
+reason, no-match, local selection, loading-focus/Escape/geometry proof passes;
+page errors0/screenshot inspected. No story/catalog/mapping/version writes or
+generation calls, temporary session removed. Counts are observed catalog values,
+not a permanent inventory. No human acceptance or full B3 completion inferred.
+
+## Starter-pack Skills omitted — 2026-10-20
+
+OPEN; owner B3 starter-pack follow-up. Author observed an empty Skill tab after
+installation. Confirmed: installer only installs the legacy chapter template's
+five Agents and Workflow; no Skill templates exist in that source. The previous
+bounded implementation was accurate about its contents but did not fulfill the
+approved expectation of populated Agents, Skills and Workflows. Add two genuine
+reusable instruction-based Skills (bounded context distillation and continuity
+validation) with structured output contracts, published workspace versions,
+exact-content reuse/custom-key refusal, atomic audit and existing authorization.
+Upgrade previously installed packs additively without altering their Agent or
+Workflow versions. The Skills consume supplied material; they cannot retrieve
+unprovided facts or approve canon. Existing chapter workflow remains unchanged;
+authors can reference these Skills in workflow SKILL steps. Verify old-pack
+upgrade, repeat/concurrent install, custom Skill rollback and en/id visibility.
+RESOLVED: two checked-in contract-backed Skills installed as WORKSPACE PUBLISHED
+v1, shared model/version editor retained. Existing chapter graph/Agent versions
+unchanged. Regression RED empty array then native API9PASS, web6files40PASS;
+API/web/template types and scoped lint0. Independent8file APPROVE/root hash
+566f5ac709e3745f734156511fc5fdbbabd2b30e908666d347b4b5066a24a4da.
+Native scratch EN1440/ID390 shows both Skills, lost200 retry sameID, Skill409key
+visible/custom definition retained; no page errors/overflow, screenshot viewed.
+Reviewed API refresh33076 readiness/Nuxt200. Actual owner workspace upgraded
+through authenticated API10:34:22Z; two published Skills read back, old Agent/
+Workflow versions and story/run/generation counts unchanged, temp session removed.
+No gateway execution proof is claimed: these are reusable configuration templates,
+not automatically added to the existing chapter workflow. No commit/push.
+
+## Workspace Studio starter-pack safety — 2026-10-20
+
+OPEN; owner workspace-authoring B3 starter pack. Existing chapter template seed
+targets PLATFORM and skips occupied agent keys without comparing content; it
+cannot safely implement author workspace installation. Add explicit atomic
+WORKSPACE installation, exact-content reuse, fail-closed custom-key conflicts,
+bounded concurrent retries and transactional audit. Reuse checked-in graph and
+roles; no fabricated Skills, auto-run or model overrides. Closure requires
+real disposable database/API and localized UI evidence plus separate review.
+Inspection also hit a nonexistent guessed template path; the actual package
+loads chapter-generation-review/graph.json. No source or data was changed by
+that failed read or by failed patch-context matches.
+First regression run confirmed missing endpoint404 (5 failures). Initial
+implementation passed3/5; generic CONFLICT serialization hid the occupied key,
+so add a typed safe conflict response instead of exposing arbitrary exception
+messages. The version-append test assumed201; existing route returns200, so
+correct the test expectation against the actual contract.
+RESOLVED bounded starter-pack installation: native dedicated PostgreSQL/API7PASS
+includes concurrent convergence, custom-agent/workflow collision rollback,
+preserved immutable history/PLATFORM rows, role/tenant refusal and injected audit
+failure rollback. Web8files65PASS; API/web types0, scoped TS lint0/diff0. Existing
+jsdom canvas warnings occurred in unrelated workspace tests; all35/65 selected
+tests passed in their respective runs (counts overlap, do not add).
+Independent13file APPROVE; root matched SHA256
+49f7957ff65ebc9f5bc4bbf324e741c3c20bd80b6227ec38434bf8844e5f1c30.
+Native EN1440/ID390 actual scratch browser installs/readbacks, deliberate lost200
+then explicit same-ID retry, visible custom-key409 and AUTHOR control hidden;
+no page errors/overflow, screenshot inspected. Receipt studio-starter-ui-receipt
+10:18:19Z. No gateway call or main-story mutation. AI drafts and expanded CRUD
+remain separate OPEN B3 work; no full Studio completion or human acceptance.
+Final documentation diagnostic incorrectly overrode core.autocrlf=false and
+reported CRLF line endings as whitespace across whole historical files. Remove
+that diagnostic override and use repository Git settings; do not normalize or
+rewrite historical documents to silence a checker configuration artifact.
+
+## Studio manual creation from an empty workspace — 2026-10-20
+
+OPEN; owner workspace-authoring B3, manual-creation subset. Authorized existing
+POST Agent/Skill/Workflow routes create immutable v1 DRAFT but Studio lacks the
+form/client method. Add a workspace-only create dialog with name/key/description,
+Agent/Skill instructions/profile/model and Workflow graph/default model. Reuse
+server validation, existing version/publish UI and canonical profile values.
+No automatic publish/run, global definitions, model-name hardcoding or novel bind.
+Preserve rejected drafts and bound asynchronous results to the originating scope.
+An unknown create outcome may already have committed; freeze repeat submission
+and offer list read-back using the original key before starting another intent.
+Unique workspace key is server-enforced; never blindly resend with another key.
+Manual creation is not full CRUD, AI draft, starter pack or full Studio delivery.
+Integration inspection found the new scope watcher referenced canManage before
+its computed declaration; place it after initialization, without weakening gates.
+New modal menus expose an existing focus helper gap: native summary was not in
+the control set and hidden closed-menu options were included. Regress at the
+shared helper before changing it, then verify existing dialog callers.
+Studio page role loading currently runs only on mount and run detail reads lack
+scope/sequence fences. Adding creation makes stale workspace capability gating
+relevant: reset/reload capabilities on workspace navigation and ignore obsolete
+role/run responses; regression must prove a late OWNER result cannot expose
+creation in another workspace. Server authorization remains unchanged.
+Expanded tests16PASS. Typecheck exposed test mock-call indexing lacking an
+existence assertion and the extracted canonical readonly profile list passed to
+an existing mutable string[] prop. Prove the mock call exists in the test; let the
+read-only ProfileMappings prop accept readonly strings rather than cast/mutate
+the canonical list. Validate existing admin/profile-mapping consumers.
+RESOLVED manual-creation subset:13file independent APPROVE, hash
+6b64aeb434e2efbb5d74bedf12f29ddab8eb47c31a90a1f00087c54a70b2e933.
+Broad11file80PASS; final copy/Close wording covered by focused9PASS, not an extra
+10 tests as initially quoted in a reviewer follow-up (corrected against log).
+Web types/scoped TS lint/diff0. Empty-workspace native scratch browser EN1440/
+ID39009:51:11Z created6 v1 DRAFT definitions/model readback; lost201 recovered by
+exact tenant/content list/get readback, no automatic publish/run. AUTHOR API403/
+UI hidden, nonmember404, cyclic graph400, foreign workspace lists empty. No main
+story/config writes or gateway execution. Receipt studio-create-ui-receipt.json.
+Shared focus fix and existing author/admin dialog consumers covered by80PASS.
+Manual creation does not close B3 starter pack/AI drafting/expanded CRUD gates.
+
+## Mobile editor story navigation — 2026-10-20
+
+OPEN; author clarified editor mobile lacks discoverable Novel details, Characters,
+Relationships and other story actions, not the existing Chapters control. All
+actions exist only at the bottom of a hidden, height-limited chapter navigation.
+Add a dedicated labeled mobile header menu using the same workspaceNavItems and
+openWorkspacePanel handler, existing ActionMenu design/keyboard behavior, bounded
+scrolling and en/id labels. No story mutation, desktop duplication or new panel.
+Verify all actions, unsaved buffer preservation, Escape and native mobile bounds.
+First native run/review exposed inherited shared popup top:100%/width240px being
+applied to the new fixed mobile popup, placing it below the viewport. Reset top
+to its static position below the summary and width:auto for viewport side insets;
+verify actual open-menu x/y/bottom bounds before claiming navigation usable.
+RESOLVED: dedicated hamburger + Novel menu in mobile editor header uses all11
+existing story actions; desktop retains sidebar. Regression RED1failed/17PASS,
+final18PASS preserves unsaved chapter and verifies every panel/Escape. Web types/
+scoped TS lint/diff0. Independent5file APPROVE a1939cda5da5681f6c47d613ae0d3a65c464a933be32ea0b38a5a6ea399d5e9d.
+Actual readonly scratch browser05:35:48Z ID320/390 and EN768 opened all11 panels,
+popup x/y/bottom bounds pass, Escape works, desktop1440 hides duplicate control.
+Additional readonly landscape667x375/844x39009:13:54Z popup fits and last menu item
+remains accessible. No mutations/provider requests. Latest runtime again UNBOUND;
+file handoff is authoritative for this phase, no new attributed save claimed.
+
+## Studio definition model selectors — 2026-10-20
+
+Runtime interruption: latest host hook reports ENGRAM RUNTIME UNBOUND,
+spawnSync engram.exe ETIMEDOUT. Stop attributed writes immediately; do not reuse
+the formerly confirmed binding while unbound. Keep source/evidence/handoff here
+and in the existing execution ledger until the host reconfirms its binding.
+Latest successful memory checkpoint was472 (intermediate selectors phase), not
+final acceptance; no new memory save is implied by completed source checks.
+
+Author follow-up: missing left sidebar/toggle on the mobile model/Studio view.
+Exact affected screen clarification pending; inspect reference navigation and
+existing responsive chapter/sidebar controls while finishing measured overflow.
+
+OPEN; owner workspace-authoring B2. Existing immutable preference fields are
+editable only through version JSON. Add shared catalog controls synchronized with
+that JSON, Agent/Skill profile filtering and an enabled mapped-model union for a
+Workflow default. Union membership is not compatibility with every workflow step;
+dispatch still validates effective per-step profiles. Preserve stale choices and
+all content fields, explicit null means inheritance. Existing detail loader also
+lacks stale-scope fences; old responses/submissions must not update another
+definition or workspace. Add scoped UI/API regressions before completion.
+Initial UI3regressions failed before implementation, then expanded UI22PASS.
+Native API47PASS/1failed: the new union test incorrectly expected403 for an
+outsider; existing workspace gate intentionally returns404 to hide membership.
+Align this test with the established refusal, preserve authorization, and assert
+two actual mappings before claiming the union de-duplicates model identities.
+Review also caught shared request-picker inheritance wording skipping Workflow
+for Agent/Skill definitions. Use the existing generic Use inherited model label;
+do not imply null bypasses Workflow. Regression asserts that label.
+Native browser harness initially searched a definition button by name alone,
+but its accessible name includes the definition key. Use the existing keyed
+definition row, preserving the product label rather than changing it for a test.
+Readonly native mobile inspection found real horizontal overflow behind the
+editor: viewport390, document widths465/441/594 for Agent/Skill/Workflow. The
+version table and unconstrained grid/detail content set minimum page width.
+Constrain grid children/detail, wrap long heading/key text and give version
+history its own named keyboard-accessible horizontal scroll container. Recheck
+open dialog/menu and closed page, without repeating configuration writes.
+First containment check reduced overflow to395px but still exceeds390; inspect
+remaining measured offenders. Axe also rejected nested scroll/history regions
+sharing the same name (22PASS/1failed). Give the scroll region a distinct localized
+name; preserve the existing history section and automated rule.
+After that label correction, the next axe invocation did not run tests: two Vitest
+fork workers timed out during startup (60s, no tests). Host Engram timed out in the
+same period; do not classify absent assertions as a product pass/failure. Keep
+the native browser run bounded and retry focused gates sequentially with one
+worker after it exits; preserve existing Docker/services and other processes.
+Measured remaining395px offender is the definition-list button's long name/key;
+its truncate class lacks max-width. Constrain that button to its existing flex
+column, preserving full accessible text and click behavior. Source scope expands
+by DefinitionList.vue only; independent review must include this exact delta.
+RESOLVED model-selector subset: final11file APPROVE
+4e6ad35e863f42ef9b88c091500cc2d8420a5f5c67e13208dea476aa82241ea5;
+sequential final3files23PASS. Distinct scroll-region label passes axe. Final
+read-only mobile browser05:26:27Z all three kinds viewport390/document390, open
+dialog/menu and closed page fit. Scratch earlier six real version appends/readback
+preserved history, no gateway execution/main story mutation. API activation200
+and owner catalog DB parity verified. Sidebar follow-up remains pending scope.
+
+## Workflow request and per-step model choices — 2026-10-20
+
+Reload-safe retry follow-up OPEN: persist an account-scoped exact request/key in
+sessionStorage before POST, validate restored data and fail closed on unavailable,
+corrupt or conflicting storage. Restore without automatic dispatch; explicit
+retry reuses backend idempotency, including after panel unmount during POST.
+Check current session before dispatch; another account must not inherit a request.
+Clear only after a confirmed response and successful matching-record removal.
+No TTL or silent discard of uncertain requests. Tab closure is the browser's
+sessionStorage lifetime boundary, not cross-device recovery. Scope: journal helper,
+GenerationPanel/tests, en/id and progress evidence. No migration/backend change.
+Independent review identified old account recovery context remaining visible if
+new-account recovery failed. Clear the in-memory actor/request/banner before
+loading another journal, preserving stored evidence; fence overlapping recovery
+responses. Add corrupt-new-account and stale-recovery-response regressions.
+
+Reload/remount subset RESOLVED: exact account-scoped bounded journal/write-readback,
+no automatic replay, explicit same-key recovery and matching cleanup implemented.
+New tests RED2failed/7PASS before implementation, final3files27PASS including
+account-context regression and obsolete-response fence; types/scoped TS lint0.
+Separate final6file APPROVE hash2fbb0beab38a47156047ea7eb5ece13cb8e7a202cc3a7c8277cce91f46698d5b,
+root hash verified. Actual scratch API/isolated BullMQ browser deliberately lost
+committed202, reloaded, retried exact request and recovered same ID200 in EN/ID.
+Four POSTs/two logical runs, both cancelled; generation count unchanged, no main
+story writes. Receipt workflow-reload-retry-ui-receipt.json observed05:01:30Z.
+Previous mounted-only limitation below is historical, replaced within the same
+browser tab; new-tab/device recovery remains outside scope, not an open promise.
+
+Review follow-up: the existing GenerationPanel generates a fresh idempotency key
+after an uncertain POST outcome (network/5xx). A committed run with a lost response
+can therefore be duplicated by the Retry action. Retain the exact request/key and
+offer an explicit same-request retry before permitting another start in the panel.
+Navigation must not emit the old run into a different chapter. Browser reload
+reconciliation remains a separate persistence concern; do not claim full generation
+acceptance from this bounded model-selection phase.
+Native browser setup initially requested an uninstalled tsx loader and exited
+before application startup. Use the existing Node24 native TypeScript execution;
+do not install a loader for a private proof helper. Native execution also needs
+the existing experimental-transform-types flag for dependency parameter properties.
+
+OPEN; owner: workspace-authoring-program B2. Definitions/novel defaults now route
+correctly, but run requests cannot select models per workflow/AI step. Add bounded
+shared validation and server-owned nullable JSON preferences, never arbitrary
+run input. Preflight all remaining AI profiles, preserve captured choices through
+approval/recovery/idempotency, reject deterministic/unknown keys and stale preview
+fingerprints before enqueue. Legacy NULL remains no request override. Preview
+gives current dependency/profile/default context, not availability/acceptance.
+ADR-0018 and the additive migration require independent review before activation.
+Contract/migration APPROVED with clarified effective-choice preflight (a per-step
+override can replace an incompatible global choice) and fingerprint scope binding
+even when a novel has no defaults. Preserve both clarifications in tests.
+Native feature regression1failed/66PASS before preview/request implementation;
+first implementation run67PASS. Typecheck then exposed missing list-view routing
+metadata and the test helper's outdated approvalSnapshot type. Add the actual
+public field to list DTO and correct the helper's snapshot shape; do not cast
+away the service return mismatch. Legacy-NULL tests use SQL NULL explicitly.
+Expanded suite88PASS/1failed and types exposed missing static imports in the new
+recovery assertion (older recovery test imported them only within its own block).
+Import the production executor/resolvers for the new case; no application bypass.
+The expanded recovery assertion then used an unsupported second argument/report
+name (88PASS/1test failure; types confirmed). Align with actual RecoveryQueuePort
+and RecoveryReport.orphanEnqueues for an old PENDING orphan, matching the existing
+native recovery test. This is harness confusion, not an application failure.
+UI model controls are implemented using server preview/profile/inheritance, with
+start disabled until a fresh fingerprint and a reload requirement after409.
+First expanded UI suite35PASS/1axe region failure mounted the bare details
+component outside any landmark. Production hosts it inside the named Generation
+section/complementary rail; test within a main landmark without disabling rules.
+Browser harness initially tried to click the mobile Generation action while its
+Workspace tools menu was closed. Open the existing menu before the action; do
+not force hidden clicks or change product visibility to satisfy the harness.
+
+Model-selection subset RESOLVED: validation71/executor22PASS, API88 retained PASS
+plus corrected focused recovery1PASS; API/worker types/scoped lint0. Separate
+ten-file backend review APPROVE. Fresh scratch migration preserved historical
+runs/steps/story hashes and SQL NULL legacy markers. Real isolated BullMQ/gateway
+proof retained request and step choices across fixture approval/resume and
+idempotent replay after definition edit. Stale preview409 creates no row. Main
+additive migration applied; matching idle worker32164 before API reload ready200,
+history unchanged. UI45PASS/types0/lint0/diff-check0; separate nine-file APPROVE.
+Native scratch EN1440/ID390 browser enqueues persisted selected UUIDs/fingerprints
+through real API/BullMQ; both test runs cancelled, generations unchanged. Bounded
+uncertain-response retry regression RED then PASS, exact payload/key retained.
+Reload/remount key persistence remains OPEN; no complete generation acceptance.
+No owner story writes, no commit/push, no human screen-reader claim.
+
+## Versioned novel routing defaults — 2026-10-20
+
+OPEN; owner: workspace-authoring-program B2. Existing mutable NovelSettings is
+not a versioned routing store. Add reviewed append-only configuration versions,
+tenant/capability/CAS/atomic audit, generation provenance and enqueue-time FK pins.
+Initial consumers are explicit CHAPTER generation and optional S3 analysis only.
+No historical backfill, implicit background routing change or live story writes.
+ADR-0018 records the contract; schema/migration review precedes dependent edits.
+Contract/schema/migration independently APPROVED. Initial API regression2failed/
+44PASS before route/routing implementation; first integrated native run158PASS.
+Typecheck then found test helper payload:unknown selecting Fastify's wrong inject
+overload; narrow helpers to Record<string, unknown>, not a type assertion or
+production validation bypass. Scratch migration preserved2 actual historical
+runs plus novel/chapter/step hashes, with NULL legacy markers/no backfill.
+Executor command initially used root .env credentials and failed authentication
+before22 tests (all skipped). Reuse the private acceptance-credential runner and
+dedicated executor test database; no database reset/reconfiguration of the live
+environment. This command setup failure is not an application regression.
+Worker-path check initially targeted a nonexistent ai-services test path and ran
+no tests. File discovery locates apps/worker/src/worker-ai-path.test.ts; run that
+native suite through the private runner. Source review returned APPROVE with an
+exact hash before its agent later hit an account usage limit; retain the received
+static verdict, not a claim that the reviewer ran runtime gates.
+
+Backend subset RESOLVED: API158/executor22/worker-path4PASS, API/worker types0,
+scoped lint0. Exact thirteen-file review APPROVE; real isolated BullMQ/gateway
+retains original default across fixture approval/resume and applies current
+default to new generation/S3 analysis. Main migration applied with unchanged
+novel/chapter/run/step hashes, NULL legacy markers/no config backfill. Verified
+idle worker31384 replaced by matching8732 before API reload ready200. Owner GET
+matches version0/Automatic, no configuration writes. UI remains OPEN; omitted
+request choice means inherit novel default then Automatic, which UI must disclose.
+UI native browser first attempt completed both locale saves but then timed out
+when the harness blindly toggled the already-open mobile chapter navigation shut
+before looking for Narasi. Source openWorkspacePanel preserves that sidebar state.
+Fix harness visibility detection, not application behavior. Retain the successful
+scratch configuration writes/history from the failed attempt; never reset fixtures.
+UI subset RESOLVED: shared picker labels distinguish stored Automatic defaults
+from request inheritance; author drawer supports versioned save, retained rejected
+edits and explicit reload after CAS/unknown result. Web51PASS (including axe,
+localization parity/fallback), web types/scoped lint0, separate six-file APPROVE.
+Final native browser EN1440/ID390 passes actual scratch saves/read-back, preserved
+history, desktop CAS conflict/reload, inherited labels/menu bounds/pageerrors0.
+Earlier successful scratch writes from the failed harness attempt remain retained.
+No live author defaults were set or story data changed. Full B2 remains OPEN.
+
+## Optional analysis model selection and unversioned novel defaults — 2026-10-20
+
+OPEN; owner: workspace-authoring-program routing B2. S3 extract/advice requests
+have no concrete model selection. Add optional internal UUID preference through
+the existing sanctioned AI path, preserving disabled/stale/tenant refusal order,
+untrusted output checks and deterministic review. The existing NovelSettings bag
+has no immutable version history; do not silently treat it as versioned model
+defaults. Deliver request analysis selectors first; a separately reviewed additive
+default/version/run-pin contract is still required. No novel defaults are claimed.
+Initial S3 regression command used root .env credentials against the acceptance
+PostgreSQL port and failed authentication before all26 tests (all skipped).
+Use the existing private authoring-tests.mjs runner, which resolves credentials
+from the running acceptance container without printing them and targets only the
+suite's disposable database. This setup failure is not a product regression RED.
+Independent review found an existing extraction response race: selection/operation
+identity was captured after awaiting POST, allowing an old failure/finally to
+alter a newly selected chapter. Capture before dispatch and guard every response,
+error and busy reset as advice already does; add a deferred navigation regression.
+The initial native selector also failed the author's custom dropdown requirement;
+reuse ActionMenu rather than claim foundational design parity for OS options.
+Native browser proof exposed a shared drawer keyboard defect: document capture
+intercepts Escape before a nested ActionMenu can close and return focus, closing
+the entire drawer. Fix Escape ownership at WorkspaceDrawer, regress nested menu
+then drawer close separately; retain the failed browser evidence before rerun.
+Review narrowed the initial exemption from all open details to details.nf-menu:
+ordinary history disclosures have no menu Escape handler and must still allow
+drawer close. Dedicated ordinary-disclosure test reproduced RED before narrowing.
+
+Resolution: optional S3 request selection, response identity and Escape defects
+are RESOLVED for this subset. API70/web41PASS; API/web types and scoped lint0.
+Separate eleven-file review APPROVE; actual scratch API/gateway extract201 and
+advice200 retained selected/actual models and usage. Disabled model409 with zero
+new generation. Final native browser EN1440/ID390 passed menu bounds, selection,
+Automatic and Escape focus with no page errors. API-only reload ready200 and live
+novel/chapter hashes unchanged. No migration or live story mutation. Versioned
+novel defaults and workflow request preferences remain OPEN; this does not close B2.
+
+## Definition model preferences and run-start pins — 2026-10-20
+
+Resolution update: the preference persistence and enqueue-pin defects below are
+RESOLVED for the reviewed subset. API87/executor22/worker-path4PASS; API/worker
+types and scoped lint0. Atomic exact-version capture, FK retention, idempotent
+replies after archive, fail-closed invalid pins, approval resume and orphan
+recovery are covered. Resume preflight now checks remaining AI steps only.
+Real isolated BullMQ/gateway run92b4d26a-2038-4058-ba6a-08355b96475a retained v1
+Agent/Skill definitions and models after v2 edits, without repeating the draft.
+Fixture approval is not human acceptance. Scratch history comparison and applied
+schema read-back passed after the documented catalog cast correction below.
+Reviewed migration activated with main novel/chapter/run/step hashes unchanged
+and no historical backfill. Matching workflow consumer started before API reload;
+read-back2026-10-19T23:59:12.687Z observed1workflow consumer, idle workflow queue,
+0active generations/runs. Other consumers remain absent and1notification waits;
+those jobs/data were preserved. No full worker-health claim. Novel defaults,
+optional analysis, workflow request choices and author selectors keep B2 OPEN.
+The following investigation statements are historical, superseded only for the
+resolved subset above; detailed receipts are in the execution ledger.
+
+OPEN; owner: workspace-authoring-program routing B2. Definition revisions lack
+concrete model preferences. Add reviewed nullable immutable fields and preserve
+Automatic for old rows, validate enabled mappings after authorization and refuse
+stale/incompatible choices at dispatch. Observed native regression3failed/49PASS
+before implementation. Reviewed additive migration passed scratch old-client
+compatibility and all three existing-version NULL checks with history preserved.
+
+Related unfinished contract: enqueue validates current definitions but executor
+resolves them again when a job starts. A definition edit between those times can
+change the planned execution. Full server-owned enqueue-time version/preference
+pins and recovery must be implemented/tested separately before B2 is complete.
+Do not claim definition preference propagation alone repairs this run-start gap.
+
+Pin repair in progress: FK-protected exact version dependencies and a nullable
+legacy marker, captured with pending run/steps in one REPEATABLE READ snapshot.
+Static migration review APPROVE. Worker must reject incomplete marked runs and
+retain pins through approval/recovery; never backfill old runs. Idempotent retries
+must return existing authorized runs without resolving newer definitions.
+
+Recovery test initially called a method absent from the thin TestDriver. Use the
+production executor recovery entry point; this harness failure was not application
+success evidence. Resume preflight must also skip already-SUCCEEDED model steps:
+their recorded outputs remain valid if that model is later disabled, while every
+remaining transport must still validate current eligibility before dispatch.
+
+Scratch migration applied and historical-row assertions completed, then catalog
+introspection failed because Prisma does not deserialize PostgreSQL internal char.
+Cast pg_constraint.contype to text and verify the applied schema read-only. Retain
+the initial comparison provenance; do not claim a second fresh migration rehearsal
+or reset the existing real-gateway scratch history to rerun setup.
+
+Runtime preflight observed no registered workflow/memory/publication/notification
+consumers. Workflow queue idle, no pending/running workflow or active generation,
+no scheduled publication; one notification job remains waiting. Activate only
+the matching workflow consumer before the new enqueue API. Preserve the waiting
+notification job and other queues; do not start unrelated consumers or flush Redis
+as a shortcut. Workflow readiness does not prove all application workers healthy.
+
+Preflight regression: a disabled workflow default used only by a later step
+currently allows earlier valid model calls before refusal. Validate all resolved
+AI-step preferences before the first transport, using the shared manager policy;
+failed preflight must settle the run FAILED with zero model dispatches.
+
+Scratch worker/gateway helper initially used nonexistent Prisma catalog relation/
+ordering fields and stopped before model dispatch. Correct to actual profileMaps
+and discoveredAt schema fields, then rerun; this setup failure is not provider
+or workflow success evidence.
+
+Activation read-back returned three empty definition lists200 in the owner's
+workspace. This proves route/schema readiness only; an every-row assertion on
+zero rows does not prove field values. Receipt must expose zero rows checked and
+NOT_OBSERVED_EMPTY_CATALOG rather than claim live row-level preference proof.
+Actual populated-row API and historical NULL evidence comes from scratch tests.
+
+Implemented subset evidence: definitions+resolver parity64/orchestrator19/
+executor22/worker-path4PASS, API/worker/web types0, scoped lint0; exact independent
+review APPROVE. Real configured gateway and isolated-prefix actual BullMQ run
+1cc72d7d-16be-4dae-969b-841a27459b1a completed all3steps with correct definition/
+Workflow choices, actual outputs and persisted token/model attribution. Preflight
+zero-dispatch regression now PASS. Reviewed migration activated locally after
+scratch proof, with unchanged historical definition and novel/chapter hashes.
+Preference persistence/dispatch and enqueue-pin subsets are resolved; default/
+analysis/request-choice/author-selector legs keep B2 OPEN. No story acceptance implied.
+
+## Author model preference and stale retry configuration — 2026-10-20
+
+OPEN; owner: workspace-authoring-program routing B2. Current GatewayManager has
+no internal model preference and freezes mappings for the whole retry plan.
+An administrator disabling a fallback mapping during backoff can still dispatch
+that frozen target. Regress preference identity/cap/compatibility and live retry
+eligibility for buffered and streaming paths; preserve attempt bounds, partial
+stream refusal and real attempt attribution. ADR-0018 records the approved
+design. Manager support alone does not close per-definition/UI/live acceptance.
+
+Native generation API44PASS and orchestrator17PASS now include selected-model
+forwarding, retained preference and disabled-selection409 for buffered/streamed
+paths. Initial real-gateway scratch helper stopped at Prisma setup (CLI launched
+from repo root rather than database package); no provider success is inferred.
+Helper working directory corrected. Real gateway scratch proof2026-10-19T22:39:45Z
+succeeded for configured MiniMax-M3 and deepseek-v4.1-flash: two nonempty real
+responses, requested/reported model and token usage read back, no live story
+writes and identical before/after novel/chapter fingerprints. Manager98PASS,
+types/lint0; separate exact propagation review APPROVE. The frozen retry-target
+defect is RESOLVED in source. B2 remains OPEN for definition pins, worker/default/
+analysis propagation and author UI; routing proof is not chapter acceptance.
+
+## Current Engram runtime binding failure — 2026-10-20
+
+RESOLVED; owner: workspace-authoring-program. Host hook previously reported ENGRAM RUNTIME
+UNBOUND: fetch failed. The earlier confirmed identity is no longer authority
+for attributed writes. No new Engram write or invented/reused session ID is
+permitted. Continue authorized source work with file fallback in
+tasks/workspace-authoring-execution-ledger.md; disclose failure at handoff.
+Closure requires a fresh host-confirmed binding and successful save/read-back.
+Closure observed: host reconfirmed binding; attributed checkpoints456/457 saved,
+read back and related-memory judgments completed. No registration was invented.
+
 ## Admin model mapping actions and audit boundary — 2026-10-20
 
-IN PROGRESS; owner: workspace-authoring-program routing task1. Add explicit
+RESOLVED; owner: workspace-authoring-program routing task1. Added explicit
 internal modelRef identity, authorized eligible-model catalog and row enable/
 disable/removal controls. Removal affects one mapping only and retains model/
 usage records. Existing mapping PUT commits before audit.record, so audit
 failure can leave an unrecorded routing change. Native trigger regression must
 prove rollback; move configuration write and truthful actual enabled/priority
 audit into one transaction. No provider quota is inferred or calculated.
+
+Native42tests PASS, including audit-trigger refusal rolling back PUT. Independent
+review additionally found creation select labels ambiguous for identical model
+names across gateways. Full gateway identities now distinguish creation options;
+observed component regression RED then4PASS, separate exact review APPROVE.
+Final chapter browser recheck initially refused local Nuxt3001 because it bound
+only::1. Explicit127.0.0.1 preview binding restored the author-requested URL;
+final EN1440/ID390 scratch browser PASS. No container/worker/data reset.
 
 ## Chapter action localization check — 2026-10-20
 
@@ -19,7 +897,13 @@ browser; do not treat a machine key rendered on screen as localized success.
 
 ## Chapter lifecycle mutation verification — 2026-10-20
 
-IN PROGRESS; owner: workspace-authoring-program chapter slice. Rename must
+Closure: native manuscript25PASS, focused chapter web25PASS and final scratch
+browser EN1440/ID390 PASS; independent scoped review APPROVE including late
+selection, final confirmation and confirmed-create retry repairs. API/web types0
+for the verified slice. AI chapter creation and whole-novel publication are
+separate unfinished tasks; this closure does not imply their acceptance.
+
+RESOLVED for A1/A2; owner: workspace-authoring-program chapter slice. Rename must
 invalidate exact-version reviews and retain old/new title history. Appends
 an immutable same-prose version when content exists, stores title transition
 in version note/revision message/atomic audit; an explicit rename back is a new

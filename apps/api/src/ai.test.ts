@@ -326,6 +326,169 @@ async function mapProfile(
   return row!.id;
 }
 
+describe("author model catalog and profile mapping removal", () => {
+  it("gates novel defaults, rejects stale/unavailable writes and rolls back on audit failure", async () => {
+    const author = await seedUser("defaults-owner@example.test"), outsider = await seedUser("defaults-outsider@example.test"), viewer = await seedUser("defaults-viewer@example.test");
+    const { workspaceId, novelId } = await seedWorkspace(author.userId, "defaults-gates");
+    await db.membership.create({ data: { workspaceId, userId: viewer.userId, role: "VIEWER" } });
+    const url = `/api/workspaces/${workspaceId}/novels/${novelId}/model-defaults`;
+    const payload = { expectedVersion: 0, generationModelRef: null, analysisModelRef: null, reason: "Return to Automatic" };
+    const put = (cookie: string, body: Record<string, unknown> = payload) => app.inject({ method: "PUT", url, headers: { cookie }, payload: body });
+    expect((await put("")).statusCode).toBe(401);
+    expect((await put(outsider.cookie)).statusCode).toBe(404);
+    expect((await put(viewer.cookie)).statusCode).toBe(403);
+    expect((await put(author.cookie, { ...payload, generationModelRef: "bad" })).statusCode).toBe(400);
+    expect((await put(author.cookie, { ...payload, generationModelRef: "00000000-0000-4000-8000-000000000123" })).statusCode).toBe(409);
+    await db.$executeRawUnsafe(`CREATE FUNCTION refuse_defaults_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'novel.model-defaults-versioned' THEN RAISE EXCEPTION 'test refusal'; END IF; RETURN NEW; END $$`);
+    await db.$executeRawUnsafe("CREATE TRIGGER refuse_defaults_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION refuse_defaults_audit()");
+    try { expect((await put(author.cookie)).statusCode).toBe(500);expect(await db.novelModelDefaultsVersion.count({ where: { novelId } })).toBe(0); }
+    finally { await db.$executeRawUnsafe("DROP TRIGGER refuse_defaults_audit ON audit_logs");await db.$executeRawUnsafe("DROP FUNCTION refuse_defaults_audit()"); }
+    const concurrent = await Promise.all([put(author.cookie), put(author.cookie)]);
+    expect(concurrent.map(result => result.statusCode).sort()).toEqual([200, 409]);
+    expect(await db.novelModelDefaultsVersion.count({ where: { novelId } })).toBe(1);
+    expect(await db.auditLog.count({ where: { entityId: novelId, action: "novel.model-defaults-versioned" } })).toBe(1);
+  });
+  it.each([false, true])("versions novel defaults and applies them before transport (stream=%s)", async stream => {
+    const admin = await seedUser("defaults-admin@example.test", "SUPER_ADMIN"), author = await seedUser("defaults-author@example.test");
+    const ids = await seedWorkspace(author.userId, "defaults");
+    const gateway = await createGateway(admin.cookie, "Novel defaults");
+    const ref = await mapProfile(admin.cookie, gateway, "CREATIVE_WRITER");
+    const base = `/api/workspaces/${ids.workspaceId}/novels/${ids.novelId}/model-defaults`;
+    const request = (method: "GET" | "PUT", payload?: Record<string, unknown>, cookie = author.cookie) => app.inject({ method, url: base, headers: { cookie }, payload });
+    expect((await request("GET")).json()).toMatchObject({ number: 0, generationModelRef: null, analysisModelRef: null });
+    const config = { expectedVersion: 0, generationModelRef: ref, analysisModelRef: null, reason: "Choose generation model" };
+    const first = await request("PUT", config);expect(first.statusCode, first.body).toBe(200);
+    expect((await request("PUT", config)).statusCode).toBe(409);
+    const result = await app.inject({ method: "POST", url: `/api/workspaces/${ids.workspaceId}/generations${stream ? "/stream" : ""}`, headers: { cookie: author.cookie },
+      payload: { task: "novel-default", component: "CHAPTER", novelId: ids.novelId, profile: "CREATIVE_WRITER", messages: [{ role: "user", content: "Hello" }] } });
+    expect(result.statusCode).toBe(stream ? 200 : 201);
+    const generation = await db.generation.findFirstOrThrow({ where: { novelId: ids.novelId } });
+    expect(generation.contextSnapshot).toMatchObject({ routing: { preferredModelRef: ref, novelModelDefaultsVersionId: first.json().id, operation: "GENERATION" } });
+    const reset = await request("PUT", { ...config, expectedVersion: 1, generationModelRef: null });expect(reset.statusCode).toBe(200);
+    expect(reset.json()).toMatchObject({ number: 2, generationModelRef: null });
+    expect(await db.novelModelDefaultsVersion.count({ where: { novelId: ids.novelId } })).toBe(2);
+    expect(await db.novelModelDefaultsVersion.findUnique({ where: { id: first.json().id } })).toMatchObject({ generationModelRef: ref });
+    expect(await db.auditLog.count({ where: { entityId: ids.novelId, action: "novel.model-defaults-versioned" } })).toBe(2);
+  });
+  it.each([false, true])("executes and retains the chosen model identity (stream=%s)", async stream => {
+    const admin = await seedUser("preference-admin@example.test", "SUPER_ADMIN"), author = await seedUser("preference-author@example.test");
+    const ids = await seedWorkspace(author.userId, "preference");
+    const firstGateway = await createGateway(admin.cookie, "Preference first", { priority: 1 });
+    const secondGateway = await createGateway(admin.cookie, "Preference second", { priority: 999 });
+    await mapProfile(admin.cookie, firstGateway, "CREATIVE_WRITER");
+    const preferredModelRef = await mapProfile(admin.cookie, secondGateway, "CREATIVE_WRITER");
+    const url = `/api/workspaces/${ids.workspaceId}/generations${stream ? "/stream" : ""}`;
+    const payload = { task: "preference", profile: "CREATIVE_WRITER", preferredModelRef, messages: [{ role: "user", content: "Hello" }] };
+    const result = await app.inject({ method: "POST", url, headers: { cookie: author.cookie }, payload });
+    expect(result.statusCode).toBe(stream ? 200 : 201);
+    const generation = await db.generation.findFirstOrThrow({ where: { workspaceId: ids.workspaceId }, include: { attempts: true } });
+    expect(generation.contextSnapshot).toMatchObject({ routing: { preferredModelRef } });
+    expect(generation.attempts).toHaveLength(1);
+    expect(generation.attempts[0]).toMatchObject({ gatewayId: secondGateway, requestedModelId: "fake-writer", status: "SUCCEEDED" });
+    await app.inject({ method: "PUT", url: "/api/model-profiles", headers: { cookie: admin.cookie }, payload: { profile: "CREATIVE_WRITER", modelId: preferredModelRef, enabled: false } });
+    const refused = await app.inject({ method: "POST", url, headers: { cookie: author.cookie }, payload });
+    expect(refused.statusCode).toBe(409);
+    expect(await db.generationAttempt.count({ where: { generation: { workspaceId: ids.workspaceId } } })).toBe(1);
+    expect((await app.inject({ method: "POST", url, headers: { cookie: author.cookie }, payload: { ...payload, preferredModelRef: "invalid" } })).statusCode).toBe(400);
+  });
+  it("rolls back profile disable when its audit cannot be recorded", async () => {
+    const admin = await seedUser("mapping-rollback@example.test", "SUPER_ADMIN");
+    const gateway = await createGateway(admin.cookie, "Mapping rollback");
+    const modelRef = await mapProfile(admin.cookie, gateway, "CREATIVE_WRITER");
+    await db.$executeRawUnsafe(`CREATE FUNCTION test_mapping_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'model-profile.mapped' THEN RAISE EXCEPTION 'test audit refusal'; END IF; RETURN NEW; END; $$`);
+    await db.$executeRawUnsafe(`CREATE TRIGGER test_mapping_audit_failure BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION test_mapping_audit_failure()`);
+    try {
+      const res = await app.inject({ method: "PUT", url: "/api/model-profiles", headers: { cookie: admin.cookie }, payload: { profile: "CREATIVE_WRITER", modelId: modelRef, enabled: false } });
+      expect(res.statusCode).toBe(500);
+      expect(await db.modelProfileMapping.findUnique({ where: { profile_modelRef: { profile: "CREATIVE_WRITER", modelRef } } })).toMatchObject({ enabled: true });
+    } finally {
+      await db.$executeRawUnsafe(`DROP TRIGGER test_mapping_audit_failure ON audit_logs`);
+      await db.$executeRawUnsafe(`DROP FUNCTION test_mapping_audit_failure()`);
+    }
+  });
+  it("addresses mappings by internal model identity and preserves other mappings and history", async () => {
+    const admin = await seedUser("mapping-admin@example.test", "SUPER_ADMIN"), author = await seedUser("mapping-author@example.test");
+    const ids = await seedWorkspace(author.userId, "mapping-author");
+    const firstGateway = await createGateway(admin.cookie, "Mapping first"), secondGateway = await createGateway(admin.cookie, "Mapping second");
+    const first = await mapProfile(admin.cookie, firstGateway, "CREATIVE_WRITER"), second = await mapProfile(admin.cookie, secondGateway, "CREATIVE_WRITER");
+    const optionsUrl = `/api/workspaces/${ids.workspaceId}/model-options?profile=CREATIVE_WRITER`;
+    const get = (cookie: string) => app.inject({ method: "GET", url: optionsUrl, headers: { cookie } });
+    const options = await get(author.cookie);
+    expect(options.statusCode).toBe(200);
+    expect(options.json().map((r: { modelRef: string }) => r.modelRef).sort()).toEqual([first, second].sort());
+    expect(options.body).not.toMatch(/credential|apiKey|sk-secret/i);
+    const mapped = await app.inject({ method: "GET", url: "/api/model-profiles", headers: { cookie: admin.cookie } });
+    expect(mapped.json()).toEqual(expect.arrayContaining([expect.objectContaining({ modelRef: first, modelId: "fake-writer", gatewayId: firstGateway })]));
+    const url = `/api/model-profiles/CREATIVE_WRITER/${first}`;
+    expect((await app.inject({ method: "DELETE", url, headers: { cookie: author.cookie } })).statusCode).toBe(403);
+    await app.inject({ method: "PUT", url: "/api/model-profiles", headers: { cookie: admin.cookie }, payload: { profile: "CREATIVE_WRITER", modelId: first, enabled: false } });
+    expect((await get(author.cookie)).json().map((r: { modelRef: string }) => r.modelRef)).toEqual([second]);
+    const historyCount = await db.generation.count();
+    for (let i = 0; i < 2; i++) expect((await app.inject({ method: "DELETE", url, headers: { cookie: admin.cookie } })).statusCode).toBe(200);
+    expect(await db.modelProfileMapping.count({ where: { modelRef: first } })).toBe(0);
+    expect(await db.modelProfileMapping.count({ where: { modelRef: second } })).toBe(1);
+    expect(await db.aIModel.count({ where: { id: first } })).toBe(1);
+    expect(await db.generation.count()).toBe(historyCount);
+    expect(await db.auditLog.count({ where: { action: "model-profile.removed", entityId: first } })).toBe(1);
+  });
+
+  it("refuses foreign or invalid model-option reads and unauthenticated mapping removal", async () => {
+    const author = await seedUser("catalog-author@example.test"), stranger = await seedUser("catalog-stranger@example.test");
+    const ids = await seedWorkspace(author.userId, "catalog");
+    const url = `/api/workspaces/${ids.workspaceId}/model-options?profile=CREATIVE_WRITER`;
+    expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+    expect((await app.inject({ method: "GET", url, headers: { cookie: stranger.cookie } })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: url.replace("CREATIVE_WRITER", "INVALID"), headers: { cookie: author.cookie } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "DELETE", url: "/api/model-profiles/CREATIVE_WRITER/00000000-0000-4000-8000-000000000001" })).statusCode).toBe(401);
+  });
+  it("returns an authorized deduplicated mapped-model union when no profile is requested", async () => {
+    const admin = await seedUser("union-admin@example.test", "SUPER_ADMIN"), owner = await seedUser("union-owner@example.test"), outsider = await seedUser("union-outsider@example.test");
+    const ids = await seedWorkspace(owner.userId, "union");const gateway = await createGateway(admin.cookie, "Union");
+    const model = await mapProfile(admin.cookie, gateway, "CREATIVE_WRITER");
+    expect((await app.inject({ method: "PUT", url: "/api/model-profiles", headers: { cookie: admin.cookie }, payload: { profile: "DEEP_PLANNER", modelId: model } })).statusCode).toBe(200);
+    expect(await db.modelProfileMapping.count({ where: { modelRef: model } })).toBe(2);
+    const url = `/api/workspaces/${ids.workspaceId}/model-options`;
+    const res = await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } });expect(res.statusCode).toBe(200);
+    expect(res.json().map((row: { modelRef: string }) => row.modelRef)).toEqual([model]);expect(res.body).not.toMatch(/credential|apiKey|baseUrl/i);
+    expect((await app.inject({ method: "GET", url, headers: { cookie: outsider.cookie } })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+    await db.modelProfileMapping.updateMany({ where: { modelRef: model }, data: { enabled: false } });
+    expect((await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } })).json()).toEqual([]);
+  });
+});
+
+describe("full live author model catalog", () => {
+  it("restricts full live catalog to SUPER_ADMIN and hides unavailable author models", async () => {
+    const admin = await seedUser("full-catalog-admin@example.test", "SUPER_ADMIN"), owner = await seedUser("full-catalog-owner@example.test"), outsider = await seedUser("full-catalog-outsider@example.test");
+    const ids = await seedWorkspace(owner.userId, "full-catalog");const gateway = await createGateway(admin.cookie, "Full catalog");
+    const mapped = await mapProfile(admin.cookie, gateway, "CREATIVE_WRITER");
+    const url = `/api/workspaces/${ids.workspaceId}/model-catalog?profile=CREATIVE_WRITER`;
+    const response = await app.inject({ method: "GET", url: "/api/model-catalog", headers: { cookie: admin.cookie } });expect(response.statusCode).toBe(200);
+    expect(response.json()).toHaveLength(2);
+    expect(response.json().find((row: { modelRef: string | null }) => row.modelRef === mapped)).toMatchObject({ selectable: true, unavailableReason: null });
+    expect(response.json().find((row: { providerModelId: string }) => row.providerModelId === "fake-embed")).toMatchObject({ selectable: false, unavailableReason: "NOT_MAPPED" });
+    const authorRows = (await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } })).json();expect(authorRows).toHaveLength(1);expect(authorRows[0].modelRef).toBe(mapped);
+    expect((await app.inject({ method: "GET", url: "/api/model-catalog", headers: { cookie: owner.cookie } })).statusCode).toBe(403);
+    expect((await app.inject({ method: "GET", url: "/api/model-catalog" })).statusCode).toBe(401);
+    await db.aIModel.deleteMany({ where: { gatewayId: gateway, modelId: "fake-embed" } });
+    const unsynced = (await app.inject({ method: "GET", url: "/api/model-catalog", headers: { cookie: admin.cookie } })).json();
+    expect(unsynced.find((row: { providerModelId: string }) => row.providerModelId === "fake-embed")).toMatchObject({ modelRef: null, selectable: false, unavailableReason: "NOT_SYNCED" });
+    expect(await db.aIModel.count({ where: { gatewayId: gateway, modelId: "fake-embed" } })).toBe(0);
+    expect(response.body).not.toMatch(/credential|apiKey|baseUrl/i);
+    expect((await app.inject({ method: "GET", url, headers: { cookie: outsider.cookie } })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+    expect((await app.inject({ method: "GET", url: url.replace("CREATIVE_WRITER", "INVALID"), headers: { cookie: owner.cookie } })).statusCode).toBe(400);
+    const otherProfile = (await app.inject({ method: "GET", url: url.replace("CREATIVE_WRITER", "DEEP_PLANNER"), headers: { cookie: owner.cookie } })).json();
+    expect(otherProfile).toEqual([]);
+    const union = (await app.inject({ method: "GET", url: url.split("?")[0]!, headers: { cookie: owner.cookie } })).json();expect(union.find((row: { modelRef: string | null }) => row.modelRef === mapped).selectable).toBe(true);
+    await db.aIModel.update({ where: { id: mapped }, data: { enabled: false } });
+    const disabled = (await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } })).json();expect(disabled).toEqual([]);
+    const adminDisabled = (await app.inject({ method: "GET", url: "/api/model-catalog", headers: { cookie: admin.cookie } })).json();expect(adminDisabled.find((row: { modelRef: string | null }) => row.modelRef === mapped)).toMatchObject({ selectable: false, unavailableReason: "MODEL_DISABLED" });
+    behaviour["Full catalog"] = { ok: false, category: "TRANSIENT" };
+    const unavailable = await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } });expect(unavailable.statusCode).toBe(502);expect(unavailable.body).not.toMatch(/credential|sk-secret|baseUrl/i);
+  });
+});
+
 describe("usage analytics", () => {
   it("associates embedding receipts with the authorized novel and refuses a foreign novel before dispatch", async () => {
     const admin = await seedUser("embed-admin@example.invalid", "SUPER_ADMIN");

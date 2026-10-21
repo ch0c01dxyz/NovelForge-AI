@@ -23,7 +23,10 @@
 import type { NovelForgeDb } from "@novelforge/database";
 import {
   compileSchema,
+  isBlockedChapterDraft,
   validateGraph,
+  validateWorkflowModelPreferences,
+  workflowModelPreferenceForStep,
   type WorkflowGraph,
   type WorkflowStep,
   ABSOLUTE_STEP_CEILING,
@@ -254,6 +257,10 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
         workflowVersionId: true,
         workflowVersionNumber: true,
         input: true,
+        requestedModelPreferences: true,
+        definitionsPinnedAt: true,
+        modelDefaultsPinnedAt: true,
+        novelModelDefaultsVersionId: true,
       },
     });
     if (!runRow) {
@@ -285,7 +292,17 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
     });
     if (!version) throw new ExecutorNotFoundError("workflow version");
     const workflowKey = version.workflow.key;
-    const chapterArtifact = workflowKey === "chapter-generation-review" && novelId &&
+    const creationPins = workflowKey === "chapter-creation-review" ? runInput["chapterCreationPins"] as { chapterId: string; chapterNumber: number; chapterVersionId: string | null; outlineRef: string; headRevisionId: string } | undefined : undefined;
+    async function assertCreationSource() {
+      if (workflowKey !== "chapter-creation-review") return;
+      if (!creationPins || typeof creationPins.chapterId !== "string" || typeof creationPins.outlineRef !== "string" || typeof creationPins.headRevisionId !== "string" || !Number.isSafeInteger(creationPins.chapterNumber) || creationPins.chapterNumber !== runInput["chapterNumber"] || creationPins.chapterId !== runInput["chapterId"] || creationPins.outlineRef !== runInput["outlineRef"] || !novelId) throw new ExecutorConflictError("AI chapter creation source pins are missing or invalid");
+      const chapter = await db.chapter.findFirst({ where: { id: creationPins.chapterId, novelId, number: creationPins.chapterNumber, status: "DRAFT", currentVersionId: creationPins.chapterVersionId }, select: { id: true } });
+      const outline = await db.outlineVersion.findFirst({ where: { id: creationPins.outlineRef, novelId, status: "APPROVED" }, select: { id: true } });
+      if (!workspaceId) throw new ExecutorConflictError("AI chapter creation workspace is missing");
+      const novel = await db.novel.findFirst({ where: { id: novelId, workspaceId }, include: { currentBranch: true } });
+      if (!chapter || !outline || novel?.currentBranch?.headRevisionId !== creationPins.headRevisionId) throw new ExecutorConflictError("AI chapter creation source changed; start a new reviewed run for the retained chapter");
+    }
+    const chapterArtifact = ["chapter-generation-review", "chapter-creation-review"].includes(workflowKey) && novelId &&
       Number.isInteger(runInput["chapterNumber"]) && Number(runInput["chapterNumber"]) > 0
       ? await db.chapter.findFirst({ where: { novelId, number: Number(runInput["chapterNumber"]) }, select: { id: true } })
       : null;
@@ -305,16 +322,37 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
     const stepByKey = new Map(graph.steps.map((s) => [s.key, s]));
     const agents = new Map<string, ResolvedAgent>();
     const skills = new Map<string, ResolvedSkill>();
-    for (const key of version.agentKeys) {
-      agents.set(key, await resolvers.resolveAgent(workspaceId, key));
-    }
-    for (const key of version.skillKeys) {
-      skills.set(key, await resolvers.resolveSkill(workspaceId, key));
-    }
-    for (const agent of agents.values()) {
-      for (const key of agent.skillKeys) {
-        if (skills.has(key)) continue;
-        skills.set(key, await resolvers.resolveSkill(workspaceId, key));
+    async function resolveDefinitions() {
+      if (runRow!.definitionsPinnedAt) {
+        const pins = await db.workflowRunDefinitionPin.findMany({ where: { runId } });
+        const agentPins = new Map(pins.filter(p => p.kind === "AGENT").map(p => [p.key, p.agentVersionId]));
+        const skillPins = new Map(pins.filter(p => p.kind === "SKILL").map(p => [p.key, p.skillVersionId]));
+        if (agentPins.size !== new Set(version!.agentKeys).size || pins.length !== agentPins.size + skillPins.size) throw new ExecutorConflictError("workflow definition pins are inconsistent");
+        for (const key of version!.agentKeys) {
+          const id = agentPins.get(key);
+          if (!id) throw new ExecutorConflictError(`missing pinned agent "${key}"`);
+          const agent = await resolvers.resolveAgent(workspaceId!, key, id);
+          if (agent.versionId !== id) throw new ExecutorConflictError(`agent resolver did not honor pinned version "${key}"`);
+          agents.set(key, agent);
+        }
+        const expectedSkills = new Set([...version!.skillKeys, ...[...agents.values()].flatMap(agent => agent.skillKeys)]);
+        if (skillPins.size !== expectedSkills.size) throw new ExecutorConflictError("workflow skill pins are inconsistent");
+        for (const key of expectedSkills) {
+          const id = skillPins.get(key);
+          if (!id) throw new ExecutorConflictError(`missing pinned skill "${key}"`);
+          const skill = await resolvers.resolveSkill(workspaceId!, key, id);
+          if (skill.versionId !== id) throw new ExecutorConflictError(`skill resolver did not honor pinned version "${key}"`);
+          skills.set(key, skill);
+        }
+      } else {
+        // Preserve identifiable legacy behavior; never manufacture enqueue pins.
+        for (const key of version!.agentKeys) agents.set(key, await resolvers.resolveAgent(workspaceId!, key));
+        for (const key of version!.skillKeys) skills.set(key, await resolvers.resolveSkill(workspaceId!, key));
+        for (const agent of agents.values()) {
+          for (const key of agent.skillKeys) {
+            if (!skills.has(key)) skills.set(key, await resolvers.resolveSkill(workspaceId!, key));
+          }
+        }
       }
     }
 
@@ -413,6 +451,23 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
     }
 
     try {
+      await resolveDefinitions();
+      const requestedModels = validateWorkflowModelPreferences(runRow.requestedModelPreferences ?? {}, graph);
+      if (!requestedModels.ok) throw new ExecutorConflictError("invalid stored workflow model preferences");
+      if (runRow.novelModelDefaultsVersionId && !novelId) throw new ExecutorConflictError("pinned novel model defaults require a novel");
+      const modelDefaults = runRow.modelDefaultsPinnedAt && runRow.novelModelDefaultsVersionId
+        ? await db.novelModelDefaultsVersion.findFirst({ where: { id: runRow.novelModelDefaultsVersionId, novelId, novel: { workspaceId } } }) : null;
+      if (runRow.novelModelDefaultsVersionId && (!runRow.modelDefaultsPinnedAt || !modelDefaults)) throw new ExecutorConflictError("invalid pinned novel model defaults");
+      const chapterDefault = (step: { usageComponent?: string }) => (step.usageComponent ?? (workflowKey === "chapter-generation-review" ? "CHAPTER" : "OTHER")) === "CHAPTER" ? modelDefaults?.generationModelRef ?? undefined : undefined;
+      if (deps.generate?.validateModelPreference) {
+        for (const step of graph.steps) {
+          if (step.kind !== "AGENT" && step.kind !== "SKILL") continue;
+          if (rowByKey.get(step.key)?.status === "SUCCEEDED") continue;
+          const definition = step.kind === "AGENT" ? agents.get(step.ref!)! : skills.get(step.ref!)!;
+          const preferredModelRef = workflowModelPreferenceForStep(requestedModels.value, step.key) ?? definition.preferredModelRef ?? version.defaultModelRef ?? chapterDefault(step);
+          if (preferredModelRef !== undefined) await deps.generate.validateModelPreference({ actorUserId, workspaceId, profile: definition.modelProfile, preferredModelRef });
+        }
+      }
       for (const stepKey of order) {
         // Cancellation check between steps (invariant 5).
         if (await isRunCancelled(db, runId)) {
@@ -571,6 +626,7 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
             );
           }
           const query = renderInstruction(step, runInput, outcomes);
+          await assertCreationSource();
           if (query.trim().length === 0) {
             throw new ExecutorConflictError(`retrieval step "${stepKey}" has an empty query`);
           }
@@ -584,11 +640,16 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
             contextQuery: query,
             mode: "AUTHOR",
             searchReferencesWithoutNovel: true,
+            ...(creationPins ? { chapterCreation: creationPins } : {}),
           });
           if (!compiled.canDispatch) {
             throw new ExecutorConflictError(
               `mandatory context overflowed: ${compiled.overflow?.name} — ${compiled.overflow?.reason}`,
             );
+          }
+          const outlineBlock = compiled.blocks.find(b => b.tier === 2);
+          if (creationPins && outlineBlock?.status !== "PRESENT") {
+            throw new ExecutorConflictError("AI_CHAPTER_OUTLINE_UNAVAILABLE: configure Planning Horizon and an approved outline covering this chapter before generating");
           }
 
           const contextText = compiled.text;
@@ -600,6 +661,7 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
           const json = {
             query,
             mode: "AUTHOR",
+            storyContext: contextText,
             blocks: compiled.blocks.map((b) => b.provenance),
             storyPosition: compiled.storyPosition,
             headRevisionId: compiled.headRevisionId,
@@ -741,8 +803,16 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
           .filter((s): s is string => typeof s === "string" && s.length > 0)
           .join("\n\n");
         const profile = agent?.modelProfile ?? skill!.modelProfile;
+        const preferredModelRef = workflowModelPreferenceForStep(requestedModels.value, step.key) ?? agent?.preferredModelRef ?? skill?.preferredModelRef ?? version.defaultModelRef ?? chapterDefault(step);
         const contract = agent?.outputSchema ?? skill?.outputSchema ?? step.outputSchema;
+        const compiled = contract == null ? null : compileSchema(contract);
+        if (compiled && !compiled.ok) throw new ExecutorConflictError(`step "${stepKey}" has an invalid output contract`);
+        const requiredKeys = contract && typeof contract === "object" && "required" in contract && Array.isArray(contract.required) ? contract.required.filter((key): key is string => typeof key === "string") : [];
+        const systemInstruction = compiled
+          ? `${instructions}\n\nOutput contract (authoritative):\n${JSON.stringify(contract)}\nReturn only one JSON instance matching this contract. Return the data, not the JSON Schema. Do not add a wrapper, Markdown fences, commentary, or schema keywords unless the contract declares them as data fields. Required root keys: ${requiredKeys.join(", ") || "as declared by the contract"}. Before returning, check every required root key is present, including reference/source metadata. Copy supplied source identifiers exactly; do not omit them and do not invent story facts to satisfy a field.`
+          : instructions;
 
+        await assertCreationSource();
         const result = await deps.generate.generate({
           actorUserId,
           workspaceId,
@@ -752,36 +822,45 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
           component: step.usageComponent ?? (workflowKey === "chapter-generation-review" ? "CHAPTER" : "OTHER"),
           ...(chapterArtifact ? { artifactId: chapterArtifact.id } : {}),
           profile,
+          novelModelDefaultsVersionId: modelDefaults?.id ?? null,
+          ...(preferredModelRef !== undefined ? { preferredModelRef } : {}),
+          ...(contract && typeof contract === "object" && "type" in contract && contract.type === "object" ? { outputMode: "json_object" as const } : {}),
           messages: [
-            { role: "system", content: instructions },
+            { role: "system", content: systemInstruction },
             { role: "user", content: instruction },
           ],
           ...(agent?.temperature != null ? { temperature: agent.temperature } : {}),
           ...(agent?.maxTokens != null ? { maxTokens: agent.maxTokens } : {}),
         });
 
-        // Validate the contract here, before any later step can read it.
+        const responseStepId = row.id;
+        async function rejectResponse(message: string): Promise<never> {
+          await finishStepRow(responseStepId, { status: "FAILED", outcome: { text: result.content, json: null },
+            instruction, agent, skill, generationId: result.generationId, errorMessage: message,
+            latencyMs: Date.now() - started });
+          stepRowWritten = true;
+          throw new ExecutorConflictError(message);
+        }
+
+        // Rejected data stays diagnostic; only a validated artifact reaches successors.
         let json: unknown = null;
-        if (contract !== undefined && contract !== null) {
-          const compiled = compileSchema(contract);
-          if (!compiled.ok) {
-            throw new ExecutorConflictError(`step "${stepKey}" has an invalid output contract`);
-          }
+        if (compiled?.ok) {
           const parsed = parseJsonLoose(result.content);
           if (parsed === undefined) {
-            throw new ExecutorConflictError(
+            await rejectResponse(
               `step "${stepKey}" did not return JSON as its contract requires`,
             );
           }
           const failures = compiled.value.validate(parsed);
           if (failures.length > 0) {
-            throw new ExecutorConflictError(
+            await rejectResponse(
               `step "${stepKey}" output violated its contract: ${failures
                 .map((f) => `${f.path}: ${f.message}`)
                 .join("; ")}`,
             );
           }
           json = parsed;
+          if (isBlockedChapterDraft(json)) await rejectResponse(`AI_CHAPTER_DRAFT_BLOCKED: step "${stepKey}" returned a blocked draft instead of chapter prose; inspect story context and planning before retrying`);
         }
 
         executed.push(stepKey);
@@ -998,17 +1077,18 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
 
 /**
  * Create the standard DB-backed definition resolvers (workspace shadows
- * platform; only PUBLISHED executes). Used by the worker, which cannot
+ * platform; fresh resolution requires PUBLISHED, pinned resolution retains its
+ * authorized immutable version). Used by the worker, which cannot
  * import the API's `definition-resolution.ts`. Implements the same
  * documented rules; the two must stay in sync (see ISSUES-AND-GAPS).
  */
 export function createDbDefinitionResolvers(db: NovelForgeDb): DefinitionResolvers {
   return {
-    async resolveAgent(workspaceId: string, key: string) {
+    async resolveAgent(workspaceId: string, key: string, versionId?: string) {
       const agent = await db.agent.findFirst({
         where: {
           key,
-          status: "PUBLISHED",
+          ...(versionId ? { versions: { some: { id: versionId } } } : { status: "PUBLISHED" as const }),
           OR: [
             { scope: "WORKSPACE", workspaceId },
             { scope: "PLATFORM" },
@@ -1020,7 +1100,7 @@ export function createDbDefinitionResolvers(db: NovelForgeDb): DefinitionResolve
         orderBy: { scope: "desc" },
       });
       if (!agent) throw new ExecutorConflictError(`agent "${key}" is not published or does not exist`);
-      const v = agent.currentVersion;
+      const v = versionId ? await db.agentVersion.findUnique({ where: { id: versionId } }) : agent.currentVersion;
       if (!v) throw new ExecutorConflictError(`agent "${key}" has no version`);
       return {
         id: agent.id,
@@ -1029,17 +1109,18 @@ export function createDbDefinitionResolvers(db: NovelForgeDb): DefinitionResolve
         versionNumber: v.number,
         instructions: v.instructions,
         modelProfile: v.modelProfile as ResolvedAgent["modelProfile"],
+        preferredModelRef: v.preferredModelRef,
         skillKeys: v.skillKeys,
         outputSchema: v.outputSchema,
         temperature: v.temperature,
         maxTokens: v.maxTokens,
       };
     },
-    async resolveSkill(workspaceId: string, key: string) {
+    async resolveSkill(workspaceId: string, key: string, versionId?: string) {
       const skill = await db.skill.findFirst({
         where: {
           key,
-          status: "PUBLISHED",
+          ...(versionId ? { versions: { some: { id: versionId } } } : { status: "PUBLISHED" as const }),
           OR: [
             { scope: "WORKSPACE", workspaceId },
             { scope: "PLATFORM" },
@@ -1049,7 +1130,7 @@ export function createDbDefinitionResolvers(db: NovelForgeDb): DefinitionResolve
         orderBy: { scope: "desc" },
       });
       if (!skill) throw new ExecutorConflictError(`skill "${key}" is not published or does not exist`);
-      const v = skill.currentVersion;
+      const v = versionId ? await db.skillVersion.findUnique({ where: { id: versionId } }) : skill.currentVersion;
       if (!v) throw new ExecutorConflictError(`skill "${key}" has no version`);
       return {
         id: skill.id,
@@ -1058,6 +1139,7 @@ export function createDbDefinitionResolvers(db: NovelForgeDb): DefinitionResolve
         versionNumber: v.number,
         instructions: v.instructions,
         modelProfile: v.modelProfile as ResolvedSkill["modelProfile"],
+        preferredModelRef: v.preferredModelRef,
         outputSchema: v.outputSchema,
       };
     },

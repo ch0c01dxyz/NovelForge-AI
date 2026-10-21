@@ -29,6 +29,7 @@ import {
 } from "@novelforge/validation";
 import { ConflictError, NotFoundError } from "@novelforge/ai-services";
 import type { AuditService } from "@novelforge/ai-services";
+import { CHAPTER_GENERATION_REVIEW, CHAPTER_CREATION_REVIEW, WORKSPACE_STARTER_SKILLS, canonicalizeJson } from "@novelforge/workflow-templates";
 
 export type Scope = "PLATFORM" | "WORKSPACE";
 export type DefinitionStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
@@ -40,6 +41,7 @@ const KEY_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export interface AgentContent {
   instructions: string;
   modelProfile: ModelProfile;
+  preferredModelRef?: string | null;
   skillKeys?: string[];
   outputSchema?: unknown;
   temperature?: number;
@@ -49,6 +51,7 @@ export interface AgentContent {
 export interface SkillContent {
   instructions: string;
   modelProfile: ModelProfile;
+  preferredModelRef?: string | null;
   outputSchema?: unknown;
 }
 
@@ -67,6 +70,7 @@ export interface DefinitionView {
 }
 
 export interface AgentView extends DefinitionView {
+  preferredModelRef: string | null;
   modelProfile: string | null;
   skillKeys: string[];
   hasOutputSchema: boolean;
@@ -86,12 +90,14 @@ export interface DefinitionVersionRow {
 }
 
 export interface SkillView extends DefinitionView {
+  preferredModelRef: string | null;
   category: SkillCategory;
   modelProfile: string | null;
   hasOutputSchema: boolean;
 }
 
 export interface WorkflowView extends DefinitionView {
+  defaultModelRef: string | null;
   novelId: string | null;
   agentKeys: string[];
   skillKeys: string[];
@@ -125,7 +131,15 @@ export class InvalidDefinitionError extends Error {
   }
 }
 
+export class StarterPackConflictError extends ConflictError {
+  constructor(readonly definitionKey: string) {
+    super("starter pack key conflict");
+  }
+}
+
 export interface DefinitionServices {
+  installChapterCreation(input: { actorUserId: string; workspaceId: string }): Promise<{ workflowId: string; created: boolean }>;
+  installStarterPack(input: { actorUserId: string; workspaceId: string }): Promise<{ workflowId: string; created: boolean }>;
   // --- agents ---
   createAgent(input: {
     actorUserId: string;
@@ -212,6 +226,7 @@ export interface DefinitionServices {
 
   // --- workflows ---
   createWorkflow(input: {
+    defaultModelRef?: string | null;
     actorUserId: string;
     actorPlatformRole: PlatformRole;
     scope: Scope;
@@ -223,6 +238,7 @@ export interface DefinitionServices {
     graph: unknown;
   }): Promise<{ id: string; versionId: string; version: number }>;
   addWorkflowVersion(input: {
+    defaultModelRef?: string | null;
     actorUserId: string;
     actorPlatformRole: PlatformRole;
     workflowId: string;
@@ -433,7 +449,115 @@ export function createDefinitionServices(deps: {
     return (last?.number ?? 0) + 1;
   }
 
+  async function checkModelPreference(modelRef: string | null | undefined, profile?: ModelProfile) {
+    if (modelRef == null) return;
+    const mapping = await db.modelProfileMapping.findFirst({
+      where: { modelRef, ...(profile ? { profile } : {}), enabled: true, model: { enabled: true, gateway: { enabled: true } } },
+      select: { modelRef: true },
+    });
+    if (!mapping) throw new ConflictError("selected model is not enabled for this definition profile");
+  }
+
   return {
+    async installChapterCreation(input) {
+      const template = CHAPTER_CREATION_REVIEW;
+      const { agentKeys, skillKeys } = checkGraph(template.graph);
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await db.$transaction(async tx => {
+            const membership = await tx.membership.findUnique({ where: { workspaceId_userId: { workspaceId: input.workspaceId, userId: input.actorUserId } }, select: { role: true } });
+            if (!membership) throw new NotFoundError("workspace");
+            requireCapability(membership.role, "workflow:manage");
+            const row = await tx.workflow.findUnique({ where: { workflow_scope_workspace_key: { scope: "WORKSPACE", workspaceId: input.workspaceId, key: template.key } }, include: { currentVersion: true } });
+            if (row) {
+              if (row.status !== "PUBLISHED" || row.novelId !== null || !row.currentVersion || canonicalizeJson(row.currentVersion.graph) !== canonicalizeJson(template.graph)) throw new StarterPackConflictError(`workflow/${template.key}`);
+              return { workflowId: row.id, created: false };
+            }
+            // Definitions are resolved and pinned by the existing enqueue gate, never overwritten here.
+            const workflow = await tx.workflow.create({ data: { scope: "WORKSPACE", workspaceId: input.workspaceId, key: template.key, name: template.name, description: template.description, status: "PUBLISHED", createdById: input.actorUserId } });
+            const version = await tx.workflowVersion.create({ data: { workflowId: workflow.id, number: 1, graph: template.graph as never, agentKeys, skillKeys, createdById: input.actorUserId } });
+            await tx.workflow.update({ where: { id: workflow.id }, data: { currentVersionId: version.id } });
+            await tx.auditLog.create({ data: { actorUserId: input.actorUserId, workspaceId: input.workspaceId, action: "studio.chapter_creation.installed", entityType: "Workflow", entityId: workflow.id, payload: { template: template.key, version: 1 } } });
+            return { workflowId: workflow.id, created: true };
+          }, { isolationLevel: "Serializable" });
+        } catch (error) {
+          if (attempt < 3 && error && typeof error === "object" && "code" in error && ["P2034", "P2002"].includes(String(error.code))) continue;
+          throw error;
+        }
+      }
+    },
+    async installStarterPack(input) {
+      const template = CHAPTER_GENERATION_REVIEW;
+      for (const spec of WORKSPACE_STARTER_SKILLS) checkSchema(spec.outputSchema, `skill/${spec.key}/outputSchema`);
+      const { agentKeys, skillKeys } = checkGraph(template.graph);
+      if (skillKeys.length || agentKeys.some(key => !template.agents.some(agent => agent.key === key))) {
+        throw new InvalidDefinitionError("starter pack has unresolved roles", []);
+      }
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await db.$transaction(async tx => {
+            const membership = await tx.membership.findUnique({ where: { workspaceId_userId: { workspaceId: input.workspaceId, userId: input.actorUserId } }, select: { role: true } });
+            if (!membership) throw new NotFoundError("workspace");
+            requireCapability(membership.role, "agent:manage");
+            requireCapability(membership.role, "skill:manage");
+            requireCapability(membership.role, "workflow:manage");
+            let created = false;
+            for (const spec of template.agents) {
+              const expected = { instructions: spec.instructions, modelProfile: spec.modelProfile, preferredModelRef: null, skillKeys: [], outputSchema: null, temperature: null, maxTokens: null };
+              const row = await tx.agent.findUnique({ where: { agent_scope_workspace_key: { scope: "WORKSPACE", workspaceId: input.workspaceId, key: spec.key } }, include: { currentVersion: true } });
+              if (row) {
+                const version = row.currentVersion;
+                const content = version && { instructions: version.instructions, modelProfile: version.modelProfile, preferredModelRef: version.preferredModelRef, skillKeys: version.skillKeys, outputSchema: version.outputSchema, temperature: version.temperature, maxTokens: version.maxTokens };
+                if (row.status !== "PUBLISHED" || row.name !== spec.name || row.description !== null || canonicalizeJson(content) !== canonicalizeJson(expected)) {
+                  throw new StarterPackConflictError(`agent/${spec.key}`);
+                }
+                continue;
+              }
+              const agent = await tx.agent.create({ data: { scope: "WORKSPACE", workspaceId: input.workspaceId, key: spec.key, name: spec.name, status: "PUBLISHED", createdById: input.actorUserId } });
+              const version = await tx.agentVersion.create({ data: { agentId: agent.id, number: 1, instructions: spec.instructions, modelProfile: spec.modelProfile as ModelProfile, skillKeys: [], createdById: input.actorUserId } });
+              await tx.agent.update({ where: { id: agent.id }, data: { currentVersionId: version.id } });
+              created = true;
+            }
+            for (const spec of WORKSPACE_STARTER_SKILLS) {
+              const expected = { instructions: spec.instructions, modelProfile: spec.modelProfile, preferredModelRef: null, outputSchema: spec.outputSchema };
+              const row = await tx.skill.findUnique({ where: { skill_scope_workspace_key: { scope: "WORKSPACE", workspaceId: input.workspaceId, key: spec.key } }, include: { currentVersion: true } });
+              if (row) {
+                const version = row.currentVersion;
+                const content = version && { instructions: version.instructions, modelProfile: version.modelProfile, preferredModelRef: version.preferredModelRef, outputSchema: version.outputSchema };
+                if (row.status !== "PUBLISHED" || row.name !== spec.name || row.description !== spec.description || row.category !== spec.category || canonicalizeJson(content) !== canonicalizeJson(expected)) {
+                  throw new StarterPackConflictError(`skill/${spec.key}`);
+                }
+                continue;
+              }
+              const skill = await tx.skill.create({ data: { scope: "WORKSPACE", workspaceId: input.workspaceId, key: spec.key, name: spec.name, description: spec.description, category: spec.category, status: "PUBLISHED", createdById: input.actorUserId } });
+              const version = await tx.skillVersion.create({ data: { skillId: skill.id, number: 1, instructions: spec.instructions, modelProfile: spec.modelProfile, outputSchema: spec.outputSchema as never, createdById: input.actorUserId } });
+              await tx.skill.update({ where: { id: skill.id }, data: { currentVersionId: version.id } });
+              created = true;
+            }
+            const row = await tx.workflow.findUnique({ where: { workflow_scope_workspace_key: { scope: "WORKSPACE", workspaceId: input.workspaceId, key: template.key } }, include: { currentVersion: true } });
+            let workflowId: string;
+            if (row) {
+              const version = row.currentVersion;
+              if (row.status !== "PUBLISHED" || row.novelId !== null || row.name !== template.name || row.description !== template.description || !version || version.defaultModelRef !== null || canonicalizeJson(version.graph) !== canonicalizeJson(template.graph) || canonicalizeJson(version.agentKeys) !== canonicalizeJson(agentKeys) || canonicalizeJson(version.skillKeys) !== canonicalizeJson(skillKeys)) {
+                throw new StarterPackConflictError(`workflow/${template.key}`);
+              }
+              workflowId = row.id;
+            } else {
+              const workflow = await tx.workflow.create({ data: { scope: "WORKSPACE", workspaceId: input.workspaceId, key: template.key, name: template.name, description: template.description, status: "PUBLISHED", createdById: input.actorUserId } });
+              const version = await tx.workflowVersion.create({ data: { workflowId: workflow.id, number: 1, graph: template.graph as never, agentKeys, skillKeys, createdById: input.actorUserId } });
+              await tx.workflow.update({ where: { id: workflow.id }, data: { currentVersionId: version.id } });
+              workflowId = workflow.id;created = true;
+            }
+            if (created) await tx.auditLog.create({ data: { actorUserId: input.actorUserId, workspaceId: input.workspaceId, action: "studio.starter_pack.installed", entityType: "Workflow", entityId: workflowId, payload: { template: template.key, agentKeys, installedSkillKeys: WORKSPACE_STARTER_SKILLS.map(spec => spec.key), version: 1 } } });
+            return { workflowId, created };
+          }, { isolationLevel: "Serializable" });
+        } catch (error) {
+          // Concurrent installers may race on the scoped key before serialization fails.
+          if (attempt < 3 && error && typeof error === "object" && "code" in error && (error.code === "P2034" || error.code === "P2002")) continue;
+          throw error;
+        }
+      }
+    },
     // ==================== Agents ====================
 
     async createAgent(input) {
@@ -448,6 +572,7 @@ export function createDefinitionServices(deps: {
       });
 
       const created = await db.$transaction(async (tx) => {
+        await checkModelPreference(input.content.preferredModelRef, input.content.modelProfile);
         const agent = await tx.agent.create({
           data: {
             scope: input.scope,
@@ -465,6 +590,7 @@ export function createDefinitionServices(deps: {
             number: 1,
             instructions: input.content.instructions,
             modelProfile: input.content.modelProfile,
+            preferredModelRef: input.content.preferredModelRef ?? null,
             skillKeys: input.content.skillKeys ?? [],
             outputSchema: (input.content.outputSchema ?? null) as never,
             temperature: input.content.temperature ?? null,
@@ -508,12 +634,14 @@ export function createDefinitionServices(deps: {
 
       const created = await appendVersionWithRetry(async () => db.$transaction(async (tx) => {
         const number = await nextAgentNumber(tx, agent.id);
+        await checkModelPreference(input.content.preferredModelRef, input.content.modelProfile);
         const version = await tx.agentVersion.create({
           data: {
             agentId: agent.id,
             number,
             instructions: input.content.instructions,
             modelProfile: input.content.modelProfile,
+            preferredModelRef: input.content.preferredModelRef ?? null,
             skillKeys: input.content.skillKeys ?? [],
             outputSchema: (input.content.outputSchema ?? null) as never,
             temperature: input.content.temperature ?? null,
@@ -583,7 +711,7 @@ export function createDefinitionServices(deps: {
         },
         include: {
           currentVersion: {
-            select: { number: true, id: true, modelProfile: true, skillKeys: true, outputSchema: true },
+            select: { number: true, id: true, modelProfile: true, preferredModelRef: true, skillKeys: true, outputSchema: true },
           },
         },
         orderBy: [{ scope: "asc" }, { key: "asc" }],
@@ -599,6 +727,7 @@ export function createDefinitionServices(deps: {
         version: r.currentVersion?.number ?? null,
         versionId: r.currentVersion?.id ?? null,
         modelProfile: r.currentVersion?.modelProfile ?? null,
+        preferredModelRef: r.currentVersion?.preferredModelRef ?? null,
         skillKeys: r.currentVersion?.skillKeys ?? [],
         // The schema itself is omitted from list output: agents are listed
         // constantly and the contract can be large.
@@ -635,6 +764,7 @@ export function createDefinitionServices(deps: {
         version: agent.currentVersion?.number ?? null,
         versionId: agent.currentVersion?.id ?? null,
         modelProfile: agent.currentVersion?.modelProfile ?? null,
+        preferredModelRef: agent.currentVersion?.preferredModelRef ?? null,
         skillKeys: agent.currentVersion?.skillKeys ?? [],
         hasOutputSchema: agent.currentVersion?.outputSchema != null,
         instructions: agent.currentVersion?.instructions ?? null,
@@ -691,6 +821,7 @@ export function createDefinitionServices(deps: {
       });
 
       const created = await db.$transaction(async (tx) => {
+        await checkModelPreference(input.content.preferredModelRef, input.content.modelProfile);
         const skill = await tx.skill.create({
           data: {
             scope: input.scope,
@@ -709,6 +840,7 @@ export function createDefinitionServices(deps: {
             number: 1,
             instructions: input.content.instructions,
             modelProfile: input.content.modelProfile,
+            preferredModelRef: input.content.preferredModelRef ?? null,
             outputSchema: (input.content.outputSchema ?? null) as never,
             createdById: input.actorUserId,
           },
@@ -749,12 +881,14 @@ export function createDefinitionServices(deps: {
 
       const created = await appendVersionWithRetry(async () => db.$transaction(async (tx) => {
         const number = await nextSkillNumber(tx, skill.id);
+        await checkModelPreference(input.content.preferredModelRef, input.content.modelProfile);
         const version = await tx.skillVersion.create({
           data: {
             skillId: skill.id,
             number,
             instructions: input.content.instructions,
             modelProfile: input.content.modelProfile,
+            preferredModelRef: input.content.preferredModelRef ?? null,
             outputSchema: (input.content.outputSchema ?? null) as never,
             createdById: input.actorUserId,
           },
@@ -815,7 +949,7 @@ export function createDefinitionServices(deps: {
           ],
         },
         include: {
-          currentVersion: { select: { number: true, id: true, modelProfile: true, outputSchema: true } },
+          currentVersion: { select: { number: true, id: true, modelProfile: true, preferredModelRef: true, outputSchema: true } },
         },
         orderBy: [{ scope: "asc" }, { key: "asc" }],
       });
@@ -831,6 +965,7 @@ export function createDefinitionServices(deps: {
         version: r.currentVersion?.number ?? null,
         versionId: r.currentVersion?.id ?? null,
         modelProfile: r.currentVersion?.modelProfile ?? null,
+        preferredModelRef: r.currentVersion?.preferredModelRef ?? null,
         hasOutputSchema: r.currentVersion?.outputSchema != null,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
@@ -864,6 +999,7 @@ export function createDefinitionServices(deps: {
         version: skill.currentVersion?.number ?? null,
         versionId: skill.currentVersion?.id ?? null,
         modelProfile: skill.currentVersion?.modelProfile ?? null,
+        preferredModelRef: skill.currentVersion?.preferredModelRef ?? null,
         hasOutputSchema: skill.currentVersion?.outputSchema != null,
         instructions: skill.currentVersion?.instructions ?? null,
         outputSchema: skill.currentVersion?.outputSchema ?? null,
@@ -930,6 +1066,7 @@ export function createDefinitionServices(deps: {
       }
 
       const created = await db.$transaction(async (tx) => {
+        await checkModelPreference(input.defaultModelRef);
         const workflow = await tx.workflow.create({
           data: {
             scope: input.scope,
@@ -947,6 +1084,7 @@ export function createDefinitionServices(deps: {
             workflowId: workflow.id,
             number: 1,
             graph: input.graph as never,
+            defaultModelRef: input.defaultModelRef ?? null,
             agentKeys,
             skillKeys,
             createdById: input.actorUserId,
@@ -988,11 +1126,13 @@ export function createDefinitionServices(deps: {
 
       const created = await appendVersionWithRetry(async () => db.$transaction(async (tx) => {
         const number = await nextWorkflowNumber(tx, workflow.id);
+        await checkModelPreference(input.defaultModelRef);
         const version = await tx.workflowVersion.create({
           data: {
             workflowId: workflow.id,
             number,
             graph: input.graph as never,
+            defaultModelRef: input.defaultModelRef ?? null,
             agentKeys,
             skillKeys,
             createdById: input.actorUserId,
@@ -1054,7 +1194,7 @@ export function createDefinitionServices(deps: {
           ],
         },
         include: {
-          currentVersion: { select: { number: true, id: true, agentKeys: true, skillKeys: true, graph: true } },
+          currentVersion: { select: { number: true, id: true, agentKeys: true, skillKeys: true, graph: true, defaultModelRef: true } },
         },
         orderBy: [{ scope: "asc" }, { key: "asc" }],
       });
@@ -1070,6 +1210,7 @@ export function createDefinitionServices(deps: {
         version: r.currentVersion?.number ?? null,
         versionId: r.currentVersion?.id ?? null,
         agentKeys: r.currentVersion?.agentKeys ?? [],
+        defaultModelRef: r.currentVersion?.defaultModelRef ?? null,
         skillKeys: r.currentVersion?.skillKeys ?? [],
         stepCount: countSteps(r.currentVersion?.graph),
         createdAt: r.createdAt,
@@ -1104,6 +1245,7 @@ export function createDefinitionServices(deps: {
         version: workflow.currentVersion?.number ?? null,
         versionId: workflow.currentVersion?.id ?? null,
         agentKeys: workflow.currentVersion?.agentKeys ?? [],
+        defaultModelRef: workflow.currentVersion?.defaultModelRef ?? null,
         skillKeys: workflow.currentVersion?.skillKeys ?? [],
         stepCount: countSteps(workflow.currentVersion?.graph),
         graph: workflow.currentVersion?.graph ?? null,

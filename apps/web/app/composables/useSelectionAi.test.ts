@@ -42,6 +42,28 @@ function sseResponse(chunks: string[]): Response {
 }
 
 describe("useSelectionAi", () => {
+  it("ignores an obsolete response after another language request starts", async () => {
+    let resolveOld!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveOld = resolve; }));
+    fetchMock.mockResolvedValueOnce(sseResponse(['event: delta\ndata: {"delta":"Latest proposal"}\n\nevent: done\ndata: {"status":"SUCCEEDED"}\n\n']));
+    const ed = editor("<p>Original text</p>");await tick(30);ed.commands.setTextSelection({ from: 1, to: 14 });
+    const ai = useSelectionAi();const old = ai.run({ workspaceId: "w1", novelId: "n1", editor: ed, operation: "polish-language" });
+    await ai.run({ workspaceId: "w1", novelId: "n1", editor: ed, operation: "polish-language" });
+    resolveOld(sseResponse(['event: delta\ndata: {"delta":"Obsolete"}\n\n']));await old;
+    expect(ai.result.value).toBe("Latest proposal");expect(ai.errorKey.value).toBeNull();expect(ai.streaming.value).toBe(false);ed.destroy();
+  });
+  it.each(["SUCCEEDED", "INCOMPLETE", "missing"])("requires a successful completion event for language polish: %s", async (status) => {
+    fetchMock.mockResolvedValueOnce(sseResponse(['event: delta\ndata: {"delta":"Polished text"}\n\n', ...(status === "missing" ? [] : [`event: done\ndata: {"status":"${status}"}\n\n`])]));
+    const ed = editor("<p>Original text</p>");await tick(30);ed.commands.setTextSelection({ from: 1, to: 14 });
+    const ai = useSelectionAi();await ai.run({ workspaceId: "w1", novelId: "n1", editor: ed, operation: "polish-language" });
+    expect(ai.errorKey.value).toBe(status === "SUCCEEDED" ? null : "aiAssist.incompleteSuggestion");
+    expect(ed.getText()).toBe("Original text");expect(JSON.parse(fetchMock.mock.calls[0]![1].body).task).toBe("selection.polish-language");ed.destroy();
+  });
+  it("refuses oversized polish selections without sending a truncated request", async () => {
+    const ed = editor(`<p>${"a".repeat(2001)}</p>`);await tick(30);ed.commands.setTextSelection({ from: 1, to: 2002 });
+    const ai = useSelectionAi();await ai.run({ workspaceId: "w1", novelId: "n1", editor: ed, operation: "polish-language" });
+    expect(fetchMock).not.toHaveBeenCalled();expect(ai.errorKey.value).toBe("aiAssist.selectionTooLong");ed.destroy();
+  });
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {

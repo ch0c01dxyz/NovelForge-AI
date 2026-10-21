@@ -7,7 +7,23 @@
  */
 import { describe, expect, it } from "vitest";
 import { validateGraph, compileSchema } from "@novelforge/validation";
-import { CHAPTER_GENERATION_REVIEW, graphsEqual, canonicalizeJson, parseAgentFile } from "./index.ts";
+import { CHAPTER_GENERATION_REVIEW, CHAPTER_CREATION_REVIEW, graphsEqual, canonicalizeJson, parseAgentFile } from "./index.ts";
+
+it("requires a coherent title/prose artifact at every AI creation producer and validator without changing the legacy schema", () => {
+  const creation = CHAPTER_CREATION_REVIEW.graph as typeof graph;
+  expect(validateGraph(creation).ok).toBe(true);
+  for (const key of ["write", "validate_draft", "rewrite_1", "validate_rewrite_1", "rewrite_2", "validate_rewrite_2"]) {
+    const schema = creation.steps.find(step => step.key === key)!.outputSchema;
+    const compiled = compileSchema(schema);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) throw new Error("invalid schema");
+    expect(compiled.value.validate({ prose: "a".repeat(200) })).not.toHaveLength(0);
+    expect(compiled.value.validate({ title: " ", prose: "a".repeat(200) })).not.toHaveLength(0);
+    expect(compiled.value.validate({ title: "a".repeat(201), prose: "a".repeat(200) })).not.toHaveLength(0);
+    expect(compiled.value.validate({ title: "A dawn", prose: "a".repeat(200) })).toHaveLength(0);
+  }
+  expect((CHAPTER_GENERATION_REVIEW.schemas["draft-schema"] as { required: string[] }).required).toEqual(["prose"]);
+});
 
 const graph = CHAPTER_GENERATION_REVIEW.graph as {
   steps: Array<{

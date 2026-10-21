@@ -191,7 +191,7 @@ describe.each([
 
   it("DefinitionDetail (detail + version history) has no violations", async () => {
     const wrapper = mount(DefinitionDetail, {
-      props: { kind: "workflow", id: "wf-1", canManage: true },
+      props: { kind: "workflow", id: "wf-1", workspaceId: "ws-1", canManage: true },
       attachTo: document.body,
       global: { stubs },
     });

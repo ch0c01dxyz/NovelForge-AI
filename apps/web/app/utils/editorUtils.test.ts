@@ -83,6 +83,24 @@ describe("htmlText", () => {
 });
 
 describe("selectionResolve (forced-race stale selection)", () => {
+  it("normalizes select-all to paragraph text and refuses multi-paragraph polish", async () => {
+    const ed = editor("<p>Original text.</p>");await tick(30);ed.commands.selectAll();
+    const selected = captureSelection(ed, true)!;expect(selected).toEqual({ from: 1, to: 15, text: "Original text." });
+    expect(applySuggestion(ed, selected, "Polished text.", true)).toBe("replaced");expect(ed.getHTML()).toBe("<p>Polished text.</p>");
+    ed.commands.setContent("<p>One.</p><p>Two.</p>");ed.commands.selectAll();expect(captureSelection(ed, true)).toBeNull();ed.destroy();
+  });
+  it("refuses stale language polish without insertion and inserts valid proposals as literal text", async () => {
+    const ed = editor("<p>Original text.</p>");await tick(30);
+    ed.commands.setTextSelection({ from: 1, to: 15 });const captured = captureSelection(ed)!;
+    ed.commands.setContent("<p>Changed text.</p>");const unchanged = ed.getHTML();
+    expect(applySuggestion(ed, captured, "Replacement", true)).toBe("stale");
+    expect(ed.getHTML()).toBe(unchanged);
+    ed.destroy();const freshEditor = editor("<p>Changed text.</p>");await tick(30);
+    freshEditor.commands.setTextSelection({ from: 1, to: 14 });const fresh = captureSelection(freshEditor)!;
+    expect(applySuggestion(freshEditor, fresh, "<strong>Literal</strong>", true)).toBe("replaced");
+    expect(freshEditor.getText()).toBe("<strong>Literal</strong>");expect(freshEditor.getHTML()).not.toContain("<strong>");
+    freshEditor.commands.undo();expect(freshEditor.getText()).toBe("Changed text.");freshEditor.destroy();
+  });
   it("replaces when the captured text is still at the captured range", async () => {
     const ed = editor("<p>the quick brown fox</p>");
     await tick(30);
@@ -134,7 +152,7 @@ describe("selectionResolve (forced-race stale selection)", () => {
 });
 
 describe("selectionAiOperations client/server mirror", () => {
-  it("keeps the six pinned operations verbatim-identical", () => {
+  it("keeps the pinned operations verbatim-identical", () => {
     const clientKeys = Object.keys(SELECTION_AI_OPERATIONS).sort();
     const serverKeys = Object.keys(SERVER_OPERATIONS).sort();
     expect(clientKeys).toEqual(serverKeys);
@@ -143,6 +161,7 @@ describe("selectionAiOperations client/server mirror", () => {
       "expand",
       "free-prompt",
       "more-dialogue",
+      "polish-language",
       "rewrite-tone",
       "show-dont-tell",
     ]);

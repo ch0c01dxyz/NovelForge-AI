@@ -95,7 +95,7 @@ watch(() => [props.workspaceId, props.kind], refresh);
       >
         <div class="min-w-0 flex-1">
           <button
-            class="truncate text-left text-[14px] font-medium text-nf-text hover:text-nf-accent-hi focus-visible:nf-focus"
+            class="max-w-full truncate text-left text-[14px] font-medium text-nf-text hover:text-nf-accent-hi focus-visible:nf-focus"
             @click="emit('select', d.id)"
           >
             {{ d.name }}

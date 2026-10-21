@@ -1,5 +1,452 @@
 # Current Project State
 
+## Authoring batch publication preparation — 2026-10-21
+
+Author explicitly authorized committing and pushing all current changes.
+Earlier no-commit records below describe historical phases. New encrypted local
+backups are ignored; private imports/evidence/credentials are excluded. Stashes
+and existing Docker acceptance data are retained. Full lint/typecheck/Compose
+config pass. Initial whole-repository run: 2961PASS/5FAIL across245 files; repaired
+restore classification and outdated cover/model fixtures, isolated worker-test
+queues, and corrected the previously failing remote publication-race assertion.
+Focused repair regression52PASS; broad initial results are retained, not relabeled
+as a complete post-repair rerun. Source controls/validation remain strict.
+Publication commit/remote result is recorded in the verified Engram handoff;
+GitHub CI will provide the fresh whole-suite result after push.
+
+
+## Language polish with explicit author decisions — 2026-10-21
+
+Author-approved language editing reuses existing AI/editor paths. New Polish
+language toolbar/menu action handles a selected sentence or one paragraph:
+Before/AI proposal, Use suggestion/Ignore, no insertion fallback. No-change,
+stale/oversize/multi-paragraph/partial response states are explicit and safe.
+Accepted text follows normal immutable save and needs fresh final-text review;
+Ignore never edits the manuscript. Both en/id and mobile design supported.
+
+Writer/style/final templates now cover grammar, idiomatic diction and dialogue
+without changing facts, meaning or character register. Three active workspace
+agents appended publishedv2 through authorized APIs; original custom instructions,
+model/settings and old versions preserved/read back. Old runs remain immutable.
+This does not add an automatic whole-chapter suggestion list or another routine
+LLM stage. Full new-chapter quality remains author evaluation.
+
+Web61PASS/templates11PASS, API/web types/scoped lint/diff0. Final real gateway
+MiniMax-M3 proof in novelforge_test_ai_chapter_creation: EN1440 Ignore preserves
+text, ID390 Use persists/reloads, actual redundant wording removed, card inside
+viewport/page errors0. Main story/run hashes unchanged; no main prose edit,
+publication, commit/push/reset. Private receipts language-polish-live-receipt.json
+and language-polish-activation-receipt.json in .nf-artifacts. Sixteen-file
+independent exact-source APPROVE/root-matching ordinal manifest SHA256:
+097bc09962d9bcb6bd62aa012a982a09aa8b7ff705f8a3e424bb18e5752f5eb8.
+Final component21PASS/webtypes0 after card presentation changes. Details and
+author instructions: tasks/chapter-language-polish.md.
+
+
+## Title-only Apply recovery and writer-friendly messages — 2026-10-21
+
+Observed run37a6375b... now SUCCEEDED; chapter10 v2 is the author's rename of v1,
+with unchanged content. This updates the earlier AWAITING_APPROVAL observation
+below; actor IDs alone do not establish author acceptance. Apply now offers
+explicit recovery retaining the current title after server proof of audited
+title-only lineage. Real content/source changes still refuse. Original run pins
+and approval snapshot remain immutable; recovered versions record provenance.
+API37PASS in dedicated database; web37PASS (Apply10, RunStatus9, locale18), web
+types/scoped lint0. Plain English/Indonesian generation/review/Apply/canon and
+AI Studio approval messages describe causes/actions; raw AI errors are collapsed
+under support details. No invented plot-hole warning for a rename.
+
+Main native EN1440/ID390: actual PUT409 typed conflict, unchecked recovery consent,
+current author title shown, checking enables Apply without retry; page errors0,
+unexpected mutations0, story/run hashes unchanged. Successful main Apply remains
+the author's next action. API10304 activated; worker4180 unchanged, readiness/
+Nuxt200. Preserve editorial countdown wording issue and all uncommitted work.
+No commit/push. See tasks/chapter-apply-title-recovery.md for final review evidence.
+
+## Chapter context/preview repair and actual Chapter10 regeneration — 2026-10-21
+
+Bounded rendered story content now travels in consumed RETRIEVAL JSON, alongside
+provenance. Explicit blocked artifacts fail in executor/API/UI rather than becoming
+chapters. Strict creation refuses missing outline context before model dispatch.
+Readable prose preview opens from history, comparison is opt-in, and scalar scope
+watching prevents fresh chapter objects from clearing the preview. Same-run
+reselection reloads safely. Executor31/API30/web35PASS, worker/API/web types/scoped
+lint/diff0; independent16-file APPROVE hash
+2b48dd60a89bd53648efa6a4c17967b652751d15a5dfdf8b0eca901a759e78fd.
+Actual isolated5-stage gateway run and native EN1440/ID390 pass; no mock result
+is presented as gateway evidence. API20132/worker4180 refreshed idle, readiness/
+Nuxt200, notification wait2 preserved; no reset/commit/push.
+
+Author explicitly requested main Chapter10 regeneration. Recoverable checkpoint
+9ab08d1e-67e1-4ccb-a47c-44bde7d3648a read back; absent horizon initialized under
+CAS, original approved outline/canon retained. First actual candidate4ccd62d1...
+contains1078 Indonesian words but final review identifies blocking/major narrative
+defects. Never accepted/applied. Main native preview passes both locales/viewports,
+survives rerenders/reselection, errors0/mutations0. Corrective real run
+37a6375b-01d6-43fd-a8cd-b448caed2898 is now AWAITING_APPROVAL: Harga Pasar,
+Harga Kolam,1364 Indonesian words/9207chars; final AI review needsCorrection=false,
+blocking0/major0. Corrected main native preview passes both viewports/locales.
+Root still flagged elapsed/remaining countdown wording for author editorial
+review; do not claim perfect prose or acceptance from AI flags. Errorv1 remains
+until deliberate approval/Apply; other chapters/canon retained. Final title-before-
+prose16-file source APPROVEhash
+ffb821f38d5975d2622ddd1cf299b200ae482fb899979d542addb2097ca855c0 supersedes2b48
+for final bytes; webtypes/scoped lint/diff0. No active main model/run; workflow
+queue idle/one worker, notificationwait2 retained, no commit/push/publication.
+Complete evidence/next action: tasks/chapter-generation-content-repair.md.
+
+## Structured planner failure repair — 2026-10-20
+
+Reported plan rejection is addressed with effective schema and required-key system
+instructions plus existing gateway JSON-object mode for object contracts. Strict
+validation remains; rejected output/instruction/generation attribution is retained
+on FAILED steps. Run history can explicitly reuse failed setup on the same chapter,
+restoring notes/word target/models with fresh previews and a separate Start action.
+No automatic retry, duplicate chapter, schema defaults or historical run rewrite.
+
+Executor29/web17PASS, worker/web types/scoped lint/diff0. Independent eight-file
+APPROVE, final localized source hash
+04fb1784c85d9489101d40e34c4bf2a9936416dd92a9e30637ef32ca84b0d98f.
+Actual Agnes scratch executor plan+validator passed then AWAITING_APPROVAL, one
+attempt; this is not author acceptance or a full new novel run. Main native
+EN1440/ID390 reuse passes with errors0/mutations0 and unchanged story/run hashes.
+Idle workflow worker34804→34364 activated, API10396 unchanged/readiness200,
+Nuxt200/one worker; notification wait2 preserved. HEAD282983f/WIP/stash retained,
+no commit/push/migration/reset. Original failed response was discarded by old code
+and remains unknown. Future malformed provider output still fails explicitly.
+Evidence/next author action: tasks/workflow-structured-output-repair.md. Select
+the existing chapter, reuse the failed run setup, inspect models, then Generate.
+
+## AI chapter creation and active-chapter Draft — 2026-10-20
+
+Add chapter now offers Write it myself / Generate with AI. AI setup accepts author
+notes, target words, approved outline and searchable eligible per-step models.
+Enable the new workspace chapter-creation-review template explicitly on first use;
+existing starter roles must be installed/published. Historical templates and
+definition versions are retained. Generation reserves one chapter identity, pins
+the server-resolved target/outline/head and recovers uncertain create/enqueue
+requests without duplicating chapters or silently replaying work. Own immutable
+creation receipts resolve changed/deleted reservations; an unresolved workflow
+start cannot be discarded. Review shows the title and prose from one artifact;
+strict Apply verifies the approved SUCCEEDED snapshot and locked source/version,
+then saves title/text, immutable provenance and audit atomically.
+
+Author explicitly scoped Draft and Save to the active chapter. Draft retains text
+and version history, atomically withdraws its publication/cancels its schedule, and
+leaves other chapters unchanged. Existing Publish behavior was not changed. Draft,
+Save and Publish are visible on mobile. Actual gateway proof exposed and fixed the
+shared review reader's outcomes/priorOutcomes mismatch without changing snapshots
+or approval hashes. Context drift, stale title/version and delayed Apply responses
+refuse safely. No automatic publication or canon acceptance.
+
+Focused native checks: API40PASS, web39PASS, templates11PASS, executor22PASS (112
+unique tests); API/web types, scoped TS/JS lint and diff check exit0. Final manuscript
+29PASS includes audit rejection rolling back Draft/publication and paired title/text.
+Independent read-only29-file APPROVE, source hash
+6224561b5e8d2551404ad05c5faf35f744315d47205bfc3fc9fe4deeff8551e2.
+Actual isolated Docker DB/Redis queue + native browser ID390/EN1440: one chapter,
+five successful real MiniMax-M3 stages, retained author notes/model, coherent title
+and prose reviewed/fixture-approved/applied as v1 (The Blue Lantern, 249 words),
+Draft works and mobile actions are enabled/visible; page errors0. Continued the
+same parked artifact after browser diagnosis, with no repeated model calls.
+This is programmatic fixture approval, not author or human acceptance. Main novel/
+chapter hashes unchanged. Receipts: private ai-chapter-live-receipt.json and shots.
+
+Reviewed API17604→10396 and workflow worker32164→34804 refreshed only after idle
+preflight (no active generations/workflows; workflow queue empty), readiness/Nuxt
+200, one workflow worker, main story unchanged. Existing notification wait1 was
+preserved; no Redis flush or Docker reset. Actual main read-only smoke15:12:36Z
+EN1440/ID390 passes: three actions visible/enabled, Manual/AI choice, first-use
+setup available, Escape/opener focus, page errors0/mutating requests0. Main stories,
+definitions and session count unchanged; strict template not silently installed.
+HEAD282983f and existing WIP/stash preserved; no commit/push/migration/dependency.
+Contract/evidence: tasks/workspace-ai-chapter-creation.md. Parent program and
+unrelated accepted work remain separate; this does not mark full platform delivery.
+
+## Eligible author models and searchable SUPER_ADMIN Profile catalog — 2026-10-20
+
+Latest author decision supersedes previous show-disabled UI: workspace model API
+and picker now expose only eligible mapped models. SUPER_ADMIN administration
+retains full live gateway catalog via privileged global model-catalog endpoint.
+Profile mapping picker searches model name/ID/gateway with bounded batches;
+known disabled/unmapped models can be configured without enabling generation,
+unsynced null-ID entries remain disabled until admin sync. Explicit loading/error/
+retry, reference tokens and viewport-aware popup above/below. No auto-sync or
+mapping mutations. Existing author stale choices retained as unavailable only.
+Native API49PASS/web10files85PASS incl axe/types/lint/diff0, separate13file APPROVE
+69e16a697be0196e8b523b1f36df595b4c17f6eb858c0cdcb68090fab01a8675.
+Actual router/native EN1440/ID39011:25:20Z admin3051models vs author7eligible,
+ordinary global403/unauth401, admin unmapped search/author hidden, Enter/Escape/
+popup bounds passes/errors0; screenshot inspected. No main model/mapping/story
+writes or generation call. Earlier full-author catalog paragraphs are historical.
+Reviewed API refresh15056→17604 readiness/Nuxt200, actual same-origin readback
+11:27:47Z author7/7selectable versus SUPER_ADMIN3051catalog models. Main novels1/
+chapters9/agents5/skills2/workflows1/sessions2 unchanged; worker unchanged.
+
+## Editable Profile in definition versions — 2026-10-20
+
+Author reported profile locked in existing-definition edits. Agent/Skill New
+version now exposes the same canonical capability Profile menu as creation;
+changing it updates catalog eligibility while preserving all JSON draft fields
+and explicit model choice (unavailable choices remain visible for correction).
+Server mapping gate unchanged. Workflow has no aggregate Profile; localized copy
+explains per-step Agent/Skill profiles and the independently selected default.
+Final5files50PASS/types/lint/diff0, separate4file APPROVE/root hash
+1497e9c72ec5fb8d1727ded661993b72b1cc6fcc9a1ec1a72b0ef4c6a104a33c.
+Native scratch API/actual router EN1440/ID39011:08:59Z appends6versions and reads
+back changed profiles/models/instructions; immutable original versions and
+Workflow graphs retained. Page errors0, screenshot inspected. No main story or
+definition mutation, generation call, backend restart or commit/push. Next parent
+work remains selected-model unsaved AI drafts and remaining authoring scopes.
+
+## Full live searchable model catalog — 2026-10-20
+
+Author requested full Akanesia-Router list and explicitly retained Profile gates.
+Shared picker now reads authorized live model-catalog through GatewayManager,
+shows all remote models with search by name/ID/gateway, disabled reasons for
+unmapped/disabled/unsynced models,100row batches and Show more. No invented IDs,
+local sync/mapping writes, stale or partial success; old model-options and
+dispatch/fallback authorization remain unchanged. All shared picker callers
+(definitions, novel defaults and workflow steps) inherit the behavior.
+Native API49PASS/web13files104PASS/types/lint0, separate12file APPROVE/root hash
+efb146ffc3b7fbcfb96391e4327a653c4f4c618be00a688fc32ee6f6b43497fe.
+Actual router parity10:48:45Z:3051models/7selectable for CREATIVE_WRITER; en/id
+desktop/mobile readonly browser search/disabled reasons/no-match/focus/Escape/
+panel geometry passes, errors0, screenshot inspected. Catalog inventory varies.
+No generation/story/catalog writes or new routing policy. Full Studio work still
+OPEN: selected-model unsaved AI drafts and remaining parent scopes.
+Reviewed API refresh33076→15056, readiness/Nuxt200. Actual same-origin catalog
+read-back10:51:27Z returned3038models/7selectable; the router inventory changed
+since the earlier3051 parity probe, confirming a live source rather than a frozen
+local list. Main novel/chapter/definition/session counts unchanged; no worker
+restart, commit or push.
+
+## Starter-pack Skill omission repaired — 2026-10-20
+
+Author reported empty Skills after installing the pack. New checked-in reusable
+Chapter Context Distillation and Chapter Continuity Check Skills now install as
+published WORKSPACE v1 with structured contracts and selectable model profiles.
+Existing packs gain missing Skills additively; custom keys refuse atomically.
+Existing Agent/Workflow versions and chapter graph are unchanged. Skill templates
+operate on supplied context; no invented retrieval or automatic approval.
+Actual owner workspace upgraded/API read-back10:34:22Z: both Skills present,
+old versions/story/run/generation counts unchanged. API PID33076 ready/Nuxt200.
+Native API9PASS/web6files40PASS/types/lint0; separate8file APPROVE/root hash
+566f5ac709e3745f734156511fc5fdbbabd2b30e908666d347b4b5066a24a4da.
+Native scratch EN1440/ID390 both Skill rows visible, safe lost-response retry,
+custom Skill conflict and role refusal; no page errors, screenshot inspected.
+Earlier no-Skill inventory below is historical. No real LLM execution claimed,
+commit/push, or full B3 completion. Next remains selected-model unsaved AI drafts.
+
+## Workspace Studio starter pack — 2026-10-20
+
+Explicit manager action now installs the checked-in chapter-generation-review
+template (five agents + one workflow) as published WORKSPACE v1 definitions.
+The localized UI requires publication consent. Nothing runs or changes a novel.
+Serializable installation and audit commit atomically; exact published content
+is reused, customized/status/model key differences fail without partial writes.
+No template Skills exist, so none are fabricated. Immutable versions and PLATFORM
+definitions remain untouched. Unknown responses permit safe explicit retry.
+Actual dedicated PostgreSQL/API7PASS; web8files65PASS, API/web types/scoped TS
+lint/diff0. Independent13file APPROVE/root-matched hash49f7957f…4e5f1c30.
+Native actual scratch API/browser EN1440/ID390 passes install/readback, lost200
+same-ID retry, visible409key and AUTHOR-hidden controls; no story/run/generation
+changes or gateway call. Screenshot inspected; receipt10:18:19Z.
+Next: selected-model AI definition drafting with validated unsaved output, then
+remaining expanded CRUD/recovery. This does not close the full B3/program gate.
+Reviewed API refreshed to PID19376: readiness/Nuxt200 and new unauthenticated
+route401; main novels1/chapters9/agents0/workflows0/sessions2 unchanged. No starter
+pack installed in the author's workspace, no worker restart or migration.
+
+## Workspace authoring program: policy, chapter actions and routing foundation — 2026-10-20
+
+Approved parent plan: `docs/superpowers/plans/2026-10-20-workspace-authoring-program.md`.
+Source remains uncommitted; external HEAD282983f and all existing work/backups
+are preserved. No root commit/push or live story mutation.
+
+Implemented workspace ownership policy (ordinary accounts max1owned workspace,
+SUPER_ADMIN unlimited, unlimited novels) and manual chapter creation, labeled
+toolbar, reference-aligned ordering menu, version-bound rename and safe deletion.
+Native workspace17/chapter25PASS; combined focused web93PASS. Independent scoped
+reviews APPROVE. Final native scratch browser EN1440/ID390 PASS with no page
+errors, opened dropdown bounds, create/rename/delete and SUPER_ADMIN exemption.
+
+Admin profile mapping controls now use stable model UUIDs, disambiguate gateways
+and atomically audit mapping writes/removal; native42PASS and component4PASS,
+separate B1 review APPROVE. Shared routing and buffered/streamed generation APIs
+support explicit eligible model preference with attribution and live eligibility
+recheck before fallback: manager98/API44/orchestrator17PASS, relevant types0.
+Separate exact propagation review APPROVE; scoped lint0. ADR-0018 records the design.
+
+Real configured gateway proof in a dedicated scratch database succeeded for
+MiniMax-M3 and deepseek-v4.1-flash with persisted requested/reported model IDs,
+actual responses and reported token usage. Live novel/chapter fingerprints were
+unchanged. This is routing evidence, not chapter generation/acceptance evidence.
+
+Update: nullable immutable Agent/Skill preferences and Workflow default are now
+implemented with authorized API validation, direct/stream and production worker
+propagation. Definitions+resolver parity64/orchestrator19/executor22/worker path4
+PASS; API/worker types and scoped lint0. Separate exact review APPROVE. Real
+isolated-prefix BullMQ plus configured gateway completed three steps with
+persisted model choices/outputs/usage. Reviewed additive migration applied locally
+after scratch old-client/history/NULL proof; historical definition and novel/
+chapter fingerprints unchanged. API reloaded and all three definition list routes
+returned200; the owner's lists are empty, so live populated-row field proof is
+NOT_OBSERVED, not inferred from empty arrays. Scratch API tests cover actual rows.
+
+Update: server-owned enqueue-time definition pins and recovery are implemented.
+One REPEATABLE READ transaction captures exact Agent/Skill versions, including
+granted Skills; FK retention, authenticated idempotency, approval resume and
+orphan recovery preserve them. Incomplete/foreign pins fail closed; historical
+NULL markers retain legacy behavior without backfill. Completed steps are not
+rerun or rejected solely because their former model is later disabled.
+Native API87/executor22/worker-path4PASS (113 total); API/worker types and scoped
+lint0. Independent scoped review APPROVE. Actual isolated BullMQ + configured
+gateway retained v1 definitions/models after v2 edits and resumed after fixture
+approval. This is technical evidence, not author or human acceptance.
+Reviewed migration applied locally with unchanged novel/chapter/run/step history;
+matching workflow consumer started before API reload. Read-back observed one
+workflow consumer, ready200, no active generation/workflow, and preserved queues.
+Memory/publication/notification consumers remain absent; one notification waits.
+Do not infer complete worker readiness. Receipts and scope are in the ledger.
+
+Update: optional SCALE S3 extract/advice accept an internal model UUID. The author
+picker uses shared ActionMenu, retains unavailable choices, distinguishes gateways
+and discloses fallback. Deterministic review and untrusted output checks remain.
+Fixed stale extraction response ownership and nested-menu Escape in the drawer.
+Native API70/web41PASS (picker/races/drawer/menu/axe/i18n), API/web types and scoped
+lint0. Real authenticated scratch API/gateway: extract201 MiniMax-M3, advice200
+deepseek-v4.1-flash, persisted model/usage; disabled choice409/zero new generation.
+Scratch browser EN1440/ID390 PASS, opened menu fits, model/Automatic/Escape focus,
+no page errors. Separate eleven-file review APPROVE. API-only reload ready200;
+main novel/chapter hashes unchanged. See ledger for retained receipts and limits.
+
+Update: novel operation defaults now have append-only configuration versions,
+authorized CAS writes/atomic audit and immutable enqueue snapshot/FK retention.
+Explicit CHAPTER generation and optional SCALE analysis consume them below
+request/definition/workflow preferences. Legacy and no-default queued runs do
+not inherit later defaults. API158/executor22/worker-path4PASS; API/worker types0,
+scoped lint0. Separate thirteen-file backend review APPROVE. Fresh scratch
+migration preserved2 actual runs/history; actual BullMQ/gateway proof retained
+v1 through fixture approval/resume after v2 edit, while new requests used v2.
+Reviewed migration applied with main novel/chapter/run/step hashes unchanged;
+matching idle workflow worker replaced before API reload ready200. Owner GET
+read-back matches configuration version0 (Automatic), without config writes.
+Checkpoint464 saved/read back. Defaults author UI is now implemented in the
+existing workspace drawer under Novel AI models. Two shared model pickers,
+reason, versioned save and explicit reload handle CAS/unknown-save outcomes;
+rejected drafts remain until explicit reload. Request selector discloses novel
+inheritance. Web51PASS including axe, locale parity/fallback and navigation/save
+races; web types/scoped lint0. Separate six-file UI review APPROVE. Final native
+scratch EN1440/ID390 browser PASS: actual saves/read-back, retained history,
+desktop CAS conflict/reload, custom menu bounds and inherited label, pageerrors0.
+No owner configuration was changed; live owner read-back remains version0.
+
+Update: workflow request-wide/per-AI-step model preferences are implemented,
+reviewed and activated. Bounded shared validation, server-owned run JSON,
+graph-aware effective-choice preflight and scoped dependency fingerprints prevent
+arbitrary input or stale UI from changing queued choices. Existing idempotency,
+definition pins, approval/resume and orphan recovery retain the captured request.
+Native validation71/executor22PASS; API88 retained PASS plus corrected focused
+recovery case1PASS; API/worker types/scoped lint0. Separate ten-file APPROVE.
+Actual isolated BullMQ/configured gateway used MiniMax then deepseek across
+fixture approval/resume after definition edit. Stale preview refused without row;
+altered idempotent replay retained original choices. Migration preserved historical
+data and NULL legacy markers; matching worker32164 started before API reload200.
+Other consumer absences and notificationwait1 remain as previously recorded.
+
+Generation UI now provides per-step catalog choices and inherited source/identity,
+preview readiness gating and explicit reload after409. Uncertain POST retries
+retain the exact payload/key while the panel remains mounted; new starts and
+request controls stay disabled until resolved. Reload/remount reconciliation is
+still OPEN. Five focused web files45PASS, web types/scoped lint/diff-check0;
+separate nine-file review APPROVE. Actual scratch browser EN1440/ID390 at04:51:21Z
+enqueued selected choices/fingerprint through native API and isolated BullMQ,
+verified stored preferences, then cancelled both test runs. Pageerrors0, model
+menu horizontal bounds pass. Browser made no gateway call; backend gateway proof
+is separate. Programmatic fixture approvals are not author/human acceptance.
+
+Update: same-tab reload/remount recovery is now implemented. An account-scoped,
+validated sessionStorage journal stores the exact bounded request/key before POST,
+with write/read-back verification. Restore never dispatches automatically; explicit
+retry checks the session and reuses the saved request. Unreadable, unavailable or
+competing records block new starts. Matching cleanup follows confirmed response;
+overlapping recovery and old/unmounted responses are fenced. Account-change failure
+clears the old in-memory banner without deleting its journal. Private author notes
+may be held in this tab's journal, never credentials; no TTL or silent discard.
+Tab closure/new tab/device recovery is outside this browser-session mechanism.
+Focused3file27PASS, web types/scoped TS lint0; independent final6file APPROVE.
+Native scratch EN1440/ID390 browser05:01:30Z deliberately lost committed202,
+reloaded without POST, then exact-payload/key retry200 returned the same run ID.
+Four POSTs produced exactly two logical runs; both cancelled, queue empty,
+generations unchanged/pageerrors0. No new gateway calls or main story writes.
+
+Update: Studio definition model selectors are implemented and separately reviewed.
+New-version JSON and shared selector remain synchronized; Agent/Skill uses its
+profile, Workflow uses an authorized deduplicated enabled-model union. Empty
+choice means inheritance; arbitrary union membership does not prove all-step
+compatibility. Versioned save retains other fields/graph and existing history.
+Native API47 retained PASS + corrected union focused1PASS; UI23PASS before mobile
+containment, final sequential23PASS including list/dialog axe after containment;
+web/API types/scoped lint0. Final11file source review APPROVE. Native EN1440/ID390
+scratch browser saved/read back six immutable definition versions, preserving all
+earlier rows/content, with no workflow/gateway execution or main story writes.
+API-only activation05:16:48Z ready200/owner catalog DB parity/story hashes intact.
+Mobile inspection found overflow from history table and a long list button;
+constrained both, gave table its own distinct named keyboard scroll region.
+Final native width readback05:26:27Z PASS: all three kinds viewport390/document390,
+open dialog/menu and closed page fit, no configuration writes repeated.
+Author also reported absent mobile left sidebar/toggle; affected-page clarification
+pending. Writer currently has a Bab toggle opening a stacked panel, not leftdrawer.
+Sidebar change is not implemented or part of the model-selector review.
+
+Runtime memory interruption: latest host hook reports ENGRAM UNBOUND due
+engram.exe ETIMEDOUT. Attributed writes stopped. Checkpoint472 is intermediate;
+current verified source/evidence/remaining scope are preserved in the execution
+ledger. Do not infer a final checkpoint save or reuse the formerly bound identity.
+
+Update: author clarified editor story menus, not Chapters. Mobile editor now has
+a dedicated hamburger + Novel menu using all11 existing sidebar actions (Novel
+details/Characters/Relationships/World/Timeline/Canon/Research/Planning/Narrative/
+Novel models/Health). Bounded native dropdown opens the existing drawer and
+preserves unsaved text. Desktop sidebar retained, extra menu hidden>=1024.
+Regression18PASS, web types/scoped lint/diff0; separate exact5file APPROVE.
+Actual readonly native browser ID320/390, EN768 all11 panels opened/bounds/Escape
+pass; desktop1440 hidden. Landscape667x375/844x390 also fits and last item opens.
+No story/config/gateway writes. Receipts and current file handoff are in ledger.
+The above pending-sidebar and runtime paragraphs are historical: author clarified
+scope, implementation complete; host temporarily rebound and checkpoint472 was
+updated, then latest hook again reported UNBOUND/ETIMEDOUT. Stop attributed writes
+under that latest state; do not infer a new final memory checkpoint or summary.
+
+Update: B3 manual Studio creation is implemented/reviewed/verified. Managers see
+Create definition for Agent/Skill/Workflow, using current workspace only, immutable
+v1 DRAFT and explicit later publish/run. Form includes name/key/description,
+Agent/Skill instructions/profile/execution model or Workflow graph/default model.
+Unknown POST freezes exact draft and supports explicit same-key retry or matching
+tenant/full-content read-back. Closing a dialog does not cancel a sent request.
+Page capability/run reads and submissions are scoped/fenced across navigation;
+modal focus correctly includes native menu summaries and skips closed options.
+Canonical profile list reused by admin; existing read-only mapping prop corrected.
+11file80PASS plus final focused dialog9PASS; web types/scoped lint/diff0;
+independent final13file APPROVE. Actual initially empty scratch workspace browser
+EN1440/ID390 created/read6 v1DRAFT definitions, retained model choice, recovered a
+deliberately lost201, and verified AUTHOR/nonmember/cycle/cross-workspace refusals.
+No main story data/gateway execution, automatic publication or workflow run.
+No migration/API-worker restart/commit/push. Details and receipts in ledger.
+Latest host reconfirmed binding after earlier UNBOUND interruptions; checkpoint479
+for completed mobile menu saved with current session and read-back verified.
+Follow current host binding, not the historical interruption paragraphs above.
+
+Remaining: Studio starter pack/AI drafts/expanded CRUD,
+pack, AI chapter title+prose mode, real image cover batches and whole-novel atomic
+publication. These remain planned, not delivered. Execution details and exact
+review scopes: `tasks/workspace-authoring-execution-ledger.md`.
+
+Earlier Engram UNBOUND fetch failure is historical. Host reconfirmed this session
+binding; checkpoints456–460 saved and read back. File fallback remains retained.
+Author sign-off and human screen-reader acceptance remain separate from tests.
+
 ## Kaisar dari Masa Depan: character development connected — 2026-10-20
 
 Continuing the gap list. Character states, knowledge, and arcs created for

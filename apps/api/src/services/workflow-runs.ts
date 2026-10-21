@@ -15,14 +15,17 @@
  *   CANCELLED via a guarded update and best-effort removes the queued job.
  */
 import type { NovelForgeDb, WorkflowRunStatus } from "@novelforge/database";
+import { createHash } from "node:crypto";
 import { requireCapability } from "@novelforge/auth/authorization";
 import {
   validateGraph,
+  validateWorkflowModelPreferences,
+  type WorkflowModelPreferences,
   type WorkflowGraph,
 } from "@novelforge/validation";
 import { isUniqueViolation } from "@novelforge/workflow-executor";
 import { ConflictError, NotFoundError } from "@novelforge/ai-services";
-import { resolveAgent, resolveSkill } from "./definition-resolution.ts";
+import { resolveAgent, resolveSkill, type ResolvedAgent, type ResolvedSkill } from "./definition-resolution.ts";
 import { createAuditService, type AuditService } from "@novelforge/ai-services";
 import type { WorkflowQueue } from "./workflow-queue.ts";
 
@@ -89,6 +92,7 @@ export interface RunView {
   novelId: string | null;
   status: string;
   input: unknown;
+  requestedModelPreferences: unknown;
   output: unknown;
   errorMessage: string | null;
   stepCount: number;
@@ -106,12 +110,16 @@ export interface EnqueueResult {
 }
 
 export interface WorkflowRunServices {
+  modelPreferencePreview(input: { actorUserId: string; workspaceId: string; workflowId: string; novelId?: string }): Promise<WorkflowModelPreferencePreview>;
   enqueueRun(input: {
     actorUserId: string;
     workspaceId: string;
     workflowId: string;
     runInput?: Record<string, unknown>;
     novelId?: string;
+    preferredModelRef?: string;
+    stepModelRefs?: Record<string, string>;
+    expectedModelPreferenceFingerprint?: string;
     /** Client-generated opaque key, max 64 chars (validated at the route).
      * Null/undefined/empty keeps the legacy per-POST-row behavior. */
     idempotencyKey?: string | null;
@@ -158,6 +166,13 @@ export interface WorkflowRunServices {
   }): Promise<RunView>;
 }
 
+export interface WorkflowModelPreferencePreview {
+  workflowVersionId: string;
+  novelId: string | null;
+  fingerprint: string;
+  steps: Array<{ stepKey: string; kind: string; definitionKey: string; profile: string; inheritedModelRef: string | null; inheritedSource: "AGENT" | "SKILL" | "WORKFLOW" | "NOVEL" | "AUTOMATIC" }>;
+}
+
 export function createWorkflowRunServices(deps: {
   db: NovelForgeDb;
   audit: AuditService;
@@ -172,24 +187,15 @@ export function createWorkflowRunServices(deps: {
     workspaceId: string,
     userId: string,
     cap: "workflow:run" | "workflow:read" | "workflow:approve",
+    reader: Pick<NovelForgeDb, "membership"> = db,
   ): Promise<void> {
-    const membership = await db.membership.findUnique({
+    const membership = await reader.membership.findUnique({
       where: { workspaceId_userId: { workspaceId, userId } },
       select: { role: true },
     });
     if (!membership) throw new NotFoundError("workflow");
     requireCapability(membership.role, cap);
   }
-
-  /**
-   * Resolve a definition by key, preferring the workspace's own row over
-   * the shared platform catalog — the shared implementation lives in
-   * definition-resolution.ts so the orchestrator resolves identically.
-   */
-  const resolveAgentFor = (workspaceId: string, key: string) =>
-    resolveAgent(db, workspaceId, key);
-  const resolveSkillFor = (workspaceId: string, key: string) =>
-    resolveSkill(db, workspaceId, key);
 
   /**
    * Shared validation: published gate, version resolution, novel binding,
@@ -202,10 +208,10 @@ export function createWorkflowRunServices(deps: {
     actorUserId: string;
     workflowId: string;
     novelId?: string;
-  }) {
-    await gateWorkspace(input.workspaceId, input.actorUserId, "workflow:run");
+  }, reader: Pick<NovelForgeDb, "membership" | "workflow" | "novel" | "agent" | "agentVersion" | "skill" | "skillVersion" | "novelModelDefaultsVersion">) {
+    await gateWorkspace(input.workspaceId, input.actorUserId, "workflow:run", reader);
 
-    const workflow = await db.workflow.findUnique({
+    const workflow = await reader.workflow.findUnique({
       where: { id: input.workflowId },
       include: { currentVersion: true },
     });
@@ -236,7 +242,7 @@ export function createWorkflowRunServices(deps: {
       throw new ConflictError("workflow is bound to a different novel");
     }
     if (novelId) {
-      const novel = await db.novel.findFirst({
+      const novel = await reader.novel.findFirst({
         where: { id: novelId, workspaceId: input.workspaceId },
         select: { id: true },
       });
@@ -246,17 +252,36 @@ export function createWorkflowRunServices(deps: {
     // Fail fast: resolve every referenced definition before the row
     // exists, so a missing agent costs nothing and cannot leave a
     // half-enqueued run behind.
-    for (const key of version.agentKeys) {
-      await resolveAgentFor(input.workspaceId, key);
-    }
-    for (const key of version.skillKeys) {
-      await resolveSkillFor(input.workspaceId, key);
-    }
+    const agents = new Map<string, ResolvedAgent>();
+    const skills = new Map<string, ResolvedSkill>();
+    for (const key of version.agentKeys) agents.set(key, await resolveAgent(reader, input.workspaceId, key));
+    const skillKeys = new Set([...version.skillKeys, ...[...agents.values()].flatMap(agent => agent.skillKeys)]);
+    for (const key of skillKeys) skills.set(key, await resolveSkill(reader, input.workspaceId, key));
 
-    return { workflow, version, graph, order, novelId };
+    const modelDefaults = novelId ? await reader.novelModelDefaultsVersion.findFirst({ where: { novelId }, orderBy: { number: "desc" } }) : null;
+    return { workflow, version, graph, order, novelId, agents, skills, modelDefaults };
+  }
+
+  function previewOf(resolved: Awaited<ReturnType<typeof validateForEnqueue>>, workspaceId: string): WorkflowModelPreferencePreview {
+    const { workflow, version, graph, novelId, agents, skills, modelDefaults } = resolved;
+    const fingerprint = createHash("sha256").update(JSON.stringify({
+      workspaceId, novelId: novelId ?? null, workflowVersionId: version.id, modelDefaultsVersionId: modelDefaults?.id ?? null,
+      agents: [...agents.keys()].sort().map(key => [key, agents.get(key)!.versionId]),
+      skills: [...skills.keys()].sort().map(key => [key, skills.get(key)!.versionId]),
+    })).digest("hex");
+    return { workflowVersionId: version.id, novelId: novelId ?? null, fingerprint, steps: graph.steps.filter(step => step.kind === "AGENT" || step.kind === "SKILL").map(step => {
+      const definition = step.kind === "AGENT" ? agents.get(step.ref!)! : skills.get(step.ref!)!;
+      const chapter = (step.usageComponent ?? (workflow.key === "chapter-generation-review" ? "CHAPTER" : "OTHER")) === "CHAPTER";
+      return { stepKey: step.key, kind: step.kind, definitionKey: step.ref!, profile: definition.modelProfile,
+        inheritedModelRef: definition.preferredModelRef ?? version.defaultModelRef ?? (chapter ? modelDefaults?.generationModelRef : null) ?? null,
+        inheritedSource: definition.preferredModelRef != null ? step.kind as "AGENT" | "SKILL" : version.defaultModelRef != null ? "WORKFLOW" : chapter && modelDefaults?.generationModelRef != null ? "NOVEL" : "AUTOMATIC" };
+    }) };
   }
 
   return {
+    async modelPreferencePreview(input) {
+      return db.$transaction(async tx => previewOf(await validateForEnqueue(input, tx), input.workspaceId), { isolationLevel: "RepeatableRead" });
+    },
     async enqueueRun(input) {
       const key =
         input.idempotencyKey && input.idempotencyKey.length > 0
@@ -265,18 +290,21 @@ export function createWorkflowRunServices(deps: {
       const statusUrlFor = (runId: string) =>
         `/api/workspaces/${input.workspaceId}/workflow-runs/${runId}`;
 
-      const { workflow, version, graph, order, novelId } =
-        await validateForEnqueue(input);
       const runInput = input.runInput ?? {};
+      const checkIdempotentTarget = (run: { workflowId: string; novelId: string | null }) => {
+        if (run.workflowId !== input.workflowId || (input.novelId !== undefined && run.novelId !== input.novelId)) throw new ConflictError("idempotency key belongs to a different workflow or novel");
+      };
 
       // Idempotency (invariant 4): a repeat POST with the same key
       // returns the existing run with 200 — never a second row.
       if (key) {
+        await gateWorkspace(input.workspaceId, input.actorUserId, "workflow:run");
         const existing = await db.workflowRun.findFirst({
           where: { workspaceId: input.workspaceId, idempotencyKey: key },
-          select: { id: true },
+          select: { id: true, workflowId: true, novelId: true },
         });
         if (existing) {
+          checkIdempotentTarget(existing);
           return {
             run: await loadRun(db, existing.id),
             deduped: true,
@@ -285,14 +313,33 @@ export function createWorkflowRunServices(deps: {
         }
       }
 
-      const stepByKey = new Map(graph.steps.map((s) => [s.key, s]));
-
       // Create the PENDING run row AND PENDING step rows for every step in
       // the validated topological order, in one transaction (F7). The
       // worker's claims never race creation.
       let runId: string;
+      let captured: { id: string; novelId: string | undefined; workflowKey: string; workflowVersion: number };
       try {
         const created = await db.$transaction(async (tx) => {
+          const resolved = await validateForEnqueue(input, tx);
+          const { workflow, version, graph, order, novelId, agents, skills, modelDefaults } = resolved;
+          let persistedInput = runInput;
+          if (workflow.key === "chapter-creation-review") {
+            const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!novelId || typeof runInput.chapterId !== "string" || !uuid.test(runInput.chapterId) || typeof runInput.outlineRef !== "string" || !uuid.test(runInput.outlineRef) || !Number.isSafeInteger(runInput.chapterNumber) || Number(runInput.chapterNumber) < 1) throw new ConflictError("AI chapter creation requires a reserved chapter and approved outline");
+            const chapter = await tx.chapter.findFirst({ where: { id: runInput.chapterId, novelId, number: Number(runInput.chapterNumber), status: "DRAFT" }, select: { id: true, number: true, currentVersionId: true } });
+            const outline = await tx.outlineVersion.findFirst({ where: { id: runInput.outlineRef, novelId, status: "APPROVED" }, select: { id: true } });
+            const novel = await tx.novel.findUnique({ where: { id: novelId }, include: { currentBranch: true } });
+            if (!chapter || !outline || !novel?.currentBranch?.headRevisionId) throw new ConflictError("AI chapter target or approved outline changed; reload before starting");
+            persistedInput = { ...runInput, chapterCreationPins: { chapterId: chapter.id, chapterNumber: chapter.number, chapterVersionId: chapter.currentVersionId, outlineRef: outline.id, headRevisionId: novel.currentBranch.headRevisionId, workflowVersionNumber: version.number } };
+          }
+          const choices: WorkflowModelPreferences = {
+            ...(input.preferredModelRef !== undefined ? { preferredModelRef: input.preferredModelRef } : {}),
+            ...(input.stepModelRefs !== undefined ? { stepModelRefs: input.stepModelRefs } : {}),
+          };
+          const preferences = validateWorkflowModelPreferences(choices, graph);
+          if (!preferences.ok) throw new ConflictError(preferences.failures[0]!.message);
+          if (input.expectedModelPreferenceFingerprint !== undefined && input.expectedModelPreferenceFingerprint !== previewOf(resolved, input.workspaceId).fingerprint) throw new ConflictError("workflow model preview changed; refresh before starting");
+          const stepByKey = new Map(graph.steps.map(s => [s.key, s]));
           const run = await tx.workflowRun.create({
             data: {
               workflowId: workflow.id,
@@ -302,15 +349,26 @@ export function createWorkflowRunServices(deps: {
               novelId: novelId ?? null,
               triggeredById: input.actorUserId,
               status: "PENDING",
-              input: runInput as never,
+              input: persistedInput as never,
+              requestedModelPreferences: preferences.value,
+              definitionsPinnedAt: new Date(),
+              modelDefaultsPinnedAt: new Date(),
+              novelModelDefaultsVersionId: modelDefaults?.id ?? null,
               ...(key ? { idempotencyKey: key } : {}),
             },
             select: { id: true },
           });
+          const pins = [
+            ...[...agents.values()].map(agent => ({ runId: run.id, kind: "AGENT", key: agent.key, agentVersionId: agent.versionId, skillVersionId: null })),
+            ...[...skills.values()].map(skill => ({ runId: run.id, kind: "SKILL", key: skill.key, agentVersionId: null, skillVersionId: skill.versionId })),
+          ];
+          for (let offset = 0; offset < pins.length; offset += 500) await tx.workflowRunDefinitionPin.createMany({ data: pins.slice(offset, offset + 500) });
           let sequence = 0;
           for (const stepKey of order) {
             const step = stepByKey.get(stepKey);
             if (!step) continue;
+            const agent = step.kind === "AGENT" ? agents.get(step.ref!) : undefined;
+            const skill = step.kind === "SKILL" ? skills.get(step.ref!) : undefined;
             sequence += 1;
             await tx.workflowStepRun.create({
               data: {
@@ -319,12 +377,15 @@ export function createWorkflowRunServices(deps: {
                 sequence,
                 kind: step.kind,
                 status: "PENDING",
+                ...(agent ? { agentId: agent.id, agentVersionId: agent.versionId, agentVersionNumber: agent.versionNumber } : {}),
+                ...(skill ? { skillId: skill.id, skillVersionId: skill.versionId, skillVersionNumber: skill.versionNumber } : {}),
               },
             });
           }
-          return run;
-        });
+          return { id: run.id, novelId, workflowKey: workflow.key, workflowVersion: version.number };
+        }, { isolationLevel: "RepeatableRead" });
         runId = created.id;
+        captured = created;
       } catch (err) {
         // Race safety (F14): two concurrent POSTs with the same key can
         // both miss the lookup — the partial unique index is the backstop.
@@ -333,9 +394,10 @@ export function createWorkflowRunServices(deps: {
         if (key && isUniqueViolation(err)) {
           const winner = await db.workflowRun.findFirst({
             where: { workspaceId: input.workspaceId, idempotencyKey: key },
-            select: { id: true },
+            select: { id: true, workflowId: true, novelId: true },
           });
           if (winner) {
+            checkIdempotentTarget(winner);
             return {
               run: await loadRun(db, winner.id),
               deduped: true,
@@ -358,7 +420,7 @@ export function createWorkflowRunServices(deps: {
           workspaceId: input.workspaceId,
           workflowId: input.workflowId,
           runInput,
-          ...(novelId ? { novelId } : {}),
+          ...(captured.novelId ? { novelId: captured.novelId } : {}),
           ...(key ? { idempotencyKey: key } : {}),
           runId,
         },
@@ -372,8 +434,8 @@ export function createWorkflowRunServices(deps: {
         entityType: "WorkflowRun",
         entityId: runId,
         payload: {
-          workflowKey: workflow.key,
-          workflowVersion: version.number,
+          workflowKey: captured.workflowKey,
+          workflowVersion: captured.workflowVersion,
           ...(key ? { idempotencyKey: key } : {}),
         },
       });
@@ -670,6 +732,7 @@ export function createWorkflowRunServices(deps: {
         novelId: r.novelId,
         status: r.status,
         input: r.input,
+        requestedModelPreferences: r.requestedModelPreferences,
         output: r.output,
         errorMessage: r.errorMessage,
         stepCount: r.stepCount,
@@ -713,6 +776,7 @@ async function loadRun(db: NovelForgeDb, runId: string): Promise<RunView> {
     novelId: run.novelId,
     status: run.status,
     input: run.input,
+    requestedModelPreferences: run.requestedModelPreferences,
     output: run.output,
     errorMessage: run.errorMessage,
     stepCount: run.stepCount,

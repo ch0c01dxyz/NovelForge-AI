@@ -162,6 +162,7 @@ describe.each([
       props: {
         mappings,
         models,
+        catalog: models.map(model => ({ modelRef: model.id, providerModelId: model.modelId, displayName: model.displayName, gatewayId: model.gatewayId, gatewayName: model.gatewayId, selectable: true, unavailableReason: null })),
         profiles,
         loading: false,
         error: null,

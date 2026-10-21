@@ -9,6 +9,7 @@ export class ApiError extends Error {
   constructor(
     readonly code: string,
     readonly status: number,
+    readonly definitionKey?: string,
   ) {
     super(`${status} ${code}`);
     this.name = "ApiError";
@@ -24,12 +25,15 @@ export function useApi() {
     });
     if (!res.ok) {
       let code = String(res.status);
+      let definitionKey: string | undefined;
       try {
-        code = ((await res.json()) as { error?: string }).error ?? code;
+        const body = (await res.json()) as { error?: string; definitionKey?: unknown };
+        code = body.error ?? code;
+        if (typeof body.definitionKey === "string" && /^(agent|skill|workflow)\/[a-z0-9-]{1,64}$/.test(body.definitionKey)) definitionKey = body.definitionKey;
       } catch {
         /* non-JSON error body */
       }
-      throw new ApiError(code, res.status);
+      throw new ApiError(code, res.status, definitionKey);
     }
     // 204 / empty body is valid for some endpoints.
     if (res.status === 204) return undefined as T;

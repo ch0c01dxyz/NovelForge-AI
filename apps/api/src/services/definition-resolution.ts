@@ -9,16 +9,19 @@
  *
  * - workspace shadows platform: a tenant's own PUBLISHED definition wins
  *   over the shared catalog's row of the same key;
- * - only PUBLISHED executes: a DRAFT is mid-edit and pinning a run to an
- *   unfinished definition would make the run unexplainable after the next
- *   edit (documented regression — the gate once covered PLATFORM only).
+ * - fresh resolution requires PUBLISHED; internal version resolution reuses an
+ *   already authorized enqueue pin even after a later edit/archive. The exact
+ *   version must still belong to this key and workspace/platform scope.
  */
 import type { NovelForgeDb } from "@novelforge/database";
 import type { ModelProfile } from "@novelforge/ai-core";
 import { ConflictError } from "@novelforge/ai-services";
 
+type DefinitionReader = Pick<NovelForgeDb, "agent" | "agentVersion" | "skill" | "skillVersion">;
+
 /** A resolved definition pinned to the version the caller will use. */
 export interface ResolvedAgent {
+  preferredModelRef?: string | null;
   id: string;
   key: string;
   versionId: string;
@@ -32,6 +35,7 @@ export interface ResolvedAgent {
 }
 
 export interface ResolvedSkill {
+  preferredModelRef?: string | null;
   id: string;
   key: string;
   versionId: string;
@@ -42,14 +46,15 @@ export interface ResolvedSkill {
 }
 
 export async function resolveAgent(
-  db: NovelForgeDb,
+  db: DefinitionReader,
   workspaceId: string,
   key: string,
+  versionId?: string,
 ): Promise<ResolvedAgent> {
   const agent = await db.agent.findFirst({
     where: {
       key,
-      status: "PUBLISHED",
+      ...(versionId ? { versions: { some: { id: versionId } } } : { status: "PUBLISHED" as const }),
       OR: [
         { scope: "WORKSPACE", workspaceId },
         { scope: "PLATFORM" },
@@ -62,7 +67,7 @@ export async function resolveAgent(
     orderBy: { scope: "desc" },
   });
   if (!agent) throw new ConflictError(`agent "${key}" is not published or does not exist`);
-  const v = agent.currentVersion;
+  const v = versionId ? await db.agentVersion.findUnique({ where: { id: versionId } }) : agent.currentVersion;
   if (!v) throw new ConflictError(`agent "${key}" has no version`);
   return {
     id: agent.id,
@@ -71,6 +76,7 @@ export async function resolveAgent(
     versionNumber: v.number,
     instructions: v.instructions,
     modelProfile: v.modelProfile as ModelProfile,
+    preferredModelRef: v.preferredModelRef,
     skillKeys: v.skillKeys,
     outputSchema: v.outputSchema,
     temperature: v.temperature,
@@ -79,14 +85,15 @@ export async function resolveAgent(
 }
 
 export async function resolveSkill(
-  db: NovelForgeDb,
+  db: DefinitionReader,
   workspaceId: string,
   key: string,
+  versionId?: string,
 ): Promise<ResolvedSkill> {
   const skill = await db.skill.findFirst({
     where: {
       key,
-      status: "PUBLISHED",
+      ...(versionId ? { versions: { some: { id: versionId } } } : { status: "PUBLISHED" as const }),
       OR: [
         { scope: "WORKSPACE", workspaceId },
         { scope: "PLATFORM" },
@@ -98,7 +105,7 @@ export async function resolveSkill(
     orderBy: { scope: "desc" },
   });
   if (!skill) throw new ConflictError(`skill "${key}" is not published or does not exist`);
-  const v = skill.currentVersion;
+  const v = versionId ? await db.skillVersion.findUnique({ where: { id: versionId } }) : skill.currentVersion;
   if (!v) throw new ConflictError(`skill "${key}" has no version`);
   return {
     id: skill.id,
@@ -107,6 +114,7 @@ export async function resolveSkill(
     versionNumber: v.number,
     instructions: v.instructions,
     modelProfile: v.modelProfile as ModelProfile,
+    preferredModelRef: v.preferredModelRef,
     outputSchema: v.outputSchema,
   };
 }

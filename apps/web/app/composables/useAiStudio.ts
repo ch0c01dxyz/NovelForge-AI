@@ -33,6 +33,8 @@ export interface DefinitionSummary {
   createdAt: string;
   updatedAt: string;
   modelProfile?: string | null;
+  preferredModelRef?: string | null;
+  defaultModelRef?: string | null;
   skillKeys?: string[];
   agentKeys?: string[];
   category?: string;
@@ -137,6 +139,16 @@ const DECISION_REFUSAL_CODES: ReadonlySet<string> = new Set([
 
 export function useAiStudio() {
   const { api } = useApi();
+
+  function installStarterPack(workspaceId: string) {
+    return api<{ workflowId: string; created: boolean }>(`/workspaces/${workspaceId}/studio/starter-pack`, { method: "POST", body: "{}" });
+  }
+
+  function createDefinition(workspaceId: string, kind: DefinitionKind, content: Record<string, unknown>) {
+    const body: Record<string, unknown> = { ...content, scope: "WORKSPACE", workspaceId };
+    delete body.novelId;
+    return api<{ id: string }>(`/${KIND_PLURAL[kind]}`, { method: "POST", body: JSON.stringify(body) });
+  }
 
   function listDefinitions(workspaceId: string, kind: DefinitionKind) {
     return api<DefinitionSummary[]>(
@@ -275,6 +287,8 @@ export function useAiStudio() {
   }
 
   return {
+    createDefinition,
+    installStarterPack,
     listDefinitions,
     getDefinition,
     listVersions,

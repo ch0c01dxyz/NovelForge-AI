@@ -32,11 +32,12 @@ const ambiguous = ref(false);
 const completed = ref(false);
 const dialog = ref<HTMLDialogElement | null>(null);
 const eligible = computed(() => workspaces.value.filter((w) => w.canCreateNovel));
+const canCreateWorkspace = ref(false);
 const validSlug = (value: string) => value.length <= 80 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 const workspaceValid = computed(() =>
   mode.value === "existing"
     ? eligible.value.some((w) => w.id === workspaceId.value)
-    : !!workspaceName.value.trim() &&
+    : (canCreateWorkspace.value || !!createdWorkspaceId.value) && !!workspaceName.value.trim() &&
       workspaceName.value.trim().length <= 120 &&
       validSlug(workspaceSlug.value),
 );
@@ -53,10 +54,18 @@ async function loadWorkspaces() {
   loading.value = true;
   loadError.value = false;
   try {
-    workspaces.value = await api<Workspace[]>("/workspaces");
+    const [rows, policy] = await Promise.all([
+      api<Workspace[]>("/workspaces"),
+      api<{ canCreate: boolean }>("/workspaces/ownership-policy"),
+    ]);
+    workspaces.value = rows;
+    canCreateWorkspace.value = policy.canCreate === true;
     if (eligible.value.length) {
       mode.value = "existing";
       workspaceId.value = eligible.value[0]!.id;
+    } else if (canCreateWorkspace.value && !createdWorkspaceId.value) {
+      mode.value = "new";
+      workspaceId.value = "";
     }
   } catch {
     loadError.value = true;
@@ -120,11 +129,22 @@ async function create() {
     completed.value = true;
     emit("created", target, novel.id);
   } catch (e) {
+    if (e instanceof ApiError && e.code === "WORKSPACE_OWNERSHIP_LIMIT") {
+      canCreateWorkspace.value = false;
+      mode.value = "existing";
+      workspaceId.value = eligible.value[0]?.id ?? "";
+      step.value = 1;
+      await loadWorkspaces();
+      await nextTick();
+      heading.value?.focus();
+    }
     // A missing/5xx response may follow a committed write; never silently repeat it.
     ambiguous.value = !(e instanceof ApiError) || e.status >= 500;
     errorKey.value =
       !(e instanceof ApiError) || e.status >= 500
         ? "authorHome.ambiguous"
+        : e.code === "WORKSPACE_OWNERSHIP_LIMIT"
+          ? "authorHome.workspaceLimit"
         : e.status === 409
           ? "authorHome.conflict"
           : e.status === 401 || e.status === 403
@@ -199,11 +219,12 @@ async function create() {
             />{{ t("authorHome.existing") }}</label
           >
           <label class="flex items-center gap-2"
-            ><input v-model="mode" type="radio" value="new" :disabled="!!createdWorkspaceId" />{{
+            v-if="canCreateWorkspace"><input v-model="mode" type="radio" value="new" :disabled="!!createdWorkspaceId" />{{
               t("authorHome.newWorkspace")
             }}</label
           >
         </div>
+        <p v-if="!canCreateWorkspace" class="text-sm text-nf-text-dim" data-testid="workspace-limit">{{ t("authorHome.workspaceLimit") }}</p>
         <label v-if="mode === 'existing'" class="block text-sm"
           >{{ t("authorHome.workspace") }}
           <select
@@ -213,7 +234,7 @@ async function create() {
             <option v-for="w in eligible" :key="w.id" :value="w.id">{{ w.name }}</option>
           </select>
         </label>
-        <template v-else>
+        <template v-else-if="canCreateWorkspace || createdWorkspaceId">
           <label class="block text-sm"
             >{{ t("authorHome.workspaceName")
             }}<input

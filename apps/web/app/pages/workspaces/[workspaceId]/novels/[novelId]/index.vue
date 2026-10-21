@@ -13,7 +13,7 @@
  * (Candidate Canon), snapshot-bound approve/reject, and the guarded
  * apply bar. Every surface drives the real NF-WF-004/005/006 backend.
  */
-import { shallowRef } from "vue";
+import { nextTick, shallowRef } from "vue";
 import ActionMenu from "../../../../../components/ui/ActionMenu.vue";
 const chapterNavigationOpen = ref(false);
 const generationRailOpen = ref(false);
@@ -25,6 +25,7 @@ import { useSelectionAi } from "../../../../../composables/useSelectionAi";
 import type { Editor } from "@tiptap/core";
 import {
   SELECTION_AI_OPERATIONS,
+  SELECTION_MAX_CHARS,
   type SelectionAiOperationKey,
 } from "../../../../../utils/selectionAiOperations";
 import {
@@ -39,6 +40,10 @@ import FinalTextReviewPanel, { type FinalTextReviewResult } from "../../../../..
 // EditorRichEditor, …), so bare template names here need explicit imports.
 // Type-only imports are erased at runtime and do not register a component.
 import ApprovalDialog from "../../../../../components/generation/ApprovalDialog.vue";
+import ChapterCreateDialog from "../../../../../components/workspace/ChapterCreateDialog.vue";
+import { useAiChapterCreation, type AiChapterSetup } from "../../../../../composables/useAiChapterCreation";
+import { draftTitle } from "../../../../../utils/draftSelect";
+import ChapterActions from "../../../../../components/workspace/ChapterActions.vue";
 import GenerationPanel from "../../../../../components/generation/GenerationPanel.vue";
 import RunStatusPanel from "../../../../../components/generation/RunStatusPanel.vue";
 import OutlineMovedNotice from "../../../../../components/generation/OutlineMovedNotice.vue";
@@ -69,6 +74,7 @@ import TimelinePanel from "../../../../../components/workspace/TimelinePanel.vue
 import PlanningPanel from "../../../../../components/workspace/PlanningPanel.vue";
 import ResearchPanel from "../../../../../components/workspace/ResearchPanel.vue";
 import NarrativePanel from "../../../../../components/workspace/NarrativePanel.vue";
+import NovelModelDefaultsPanel from "../../../../../components/generation/NovelModelDefaultsPanel.vue";
 import HealthMemoryPanel from "../../../../../components/workspace/HealthMemoryPanel.vue";
 
 interface ChapterSummary {
@@ -136,11 +142,15 @@ const sortedChapters = computed(() =>
   ),
 );
 const activeId = ref<string | null>(null);
+const aiCreation = useAiChapterCreation();
+const aiCreationChapterId = ref<string | null>(null);
+const reviewedAiTitle = computed(() => gen.selectedRun.value?.workflowKey === "chapter-creation-review" ? draftTitle(gen.review.value?.draft.draft ?? null) : undefined);
+const chapterSelecting = ref(false);
 const content = ref("");
 const version = ref<number | null>(null);
 const loading = ref(true);
 const error = ref<string | null>(null);
-const reviewAction = ref<"save" | "publish" | null>(null);
+const reviewAction = ref<"save" | "publish" | "draft" | null>(null);
 const reviewNotice = ref<string | null>(null);
 const finalReview = ref<{ chapterId: string; version: number | null; text: string; result: FinalTextReviewResult } | null>(null);
 const reviewHighlight = ref<{ from: number; to: number } | null>(null);
@@ -215,6 +225,7 @@ const canDecide = computed(
   () =>
     gen.selectedRun.value?.status === "AWAITING_APPROVAL" &&
     gen.review.value !== null &&
+    !gen.review.value.blocked &&
     decideState.value.kind !== "forbidden",
 );
 
@@ -231,16 +242,23 @@ function onRunUpdated(run: RunView) {
 }
 
 async function loadReviewFor(run: RunView) {
+  const selected = selectSeq;
+  const chapterId = activeId.value;
+  const target = base.value;
+  const current = () => !disposed && selected === selectSeq && chapterId === activeId.value && target === base.value && run.id === reviewRunId.value;
   // Pin the diff against the chapter's server version at review time.
   // NF-WF-015: the diff view is text-only — strip HTML from the base.
   try {
-    const detail = await api<ChapterDetail>(`${base.value}/chapters/${activeId.value}`);
+    const detail = await api<ChapterDetail>(`${target}/chapters/${chapterId}`);
+    if (!current()) return;
     gen.diffPinnedVersion.value = detail.currentVersion;
     diffBaseText.value = stripHtmlTags(detail.content);
   } catch {
+    if (!current()) return;
     gen.diffPinnedVersion.value = version.value;
     diffBaseText.value = stripHtmlTags(content.value);
   }
+  if (!current()) return;
   decideState.value = { kind: "ok" };
   await gen.loadReview(workspaceId.value, novelId.value, run);
 }
@@ -248,6 +266,7 @@ async function loadReviewFor(run: RunView) {
 const diffBaseText = ref("");
 
 function onRunSelected(runId: string) {
+  if (reviewRunId.value === runId) { runPanel.value?.reload(); return; }
   reviewRunId.value = runId;
   reviewStatusUrl.value = null; // RunStatusPanel loads via getRun; no poll URL needed
   gen.clearReview();
@@ -341,11 +360,13 @@ function decideMessage(): string | null {
   }
 }
 
-async function onApplied(newVersion: number) {
+async function onApplied(newVersion: number, appliedTitle?: string) {
   version.value = newVersion;
   const chapter = activeChapter.value;
   if (chapter) {
     chapter.currentVersion = newVersion;
+    if (appliedTitle !== undefined) chapter.title = appliedTitle;
+    else if (reviewedAiTitle.value) chapter.title = reviewedAiTitle.value;
     // Re-pin the diff: the applied draft is now the chapter text.
     gen.diffPinnedVersion.value = newVersion;
     diffBaseText.value = gen.review.value?.prose ?? diffBaseText.value;
@@ -424,10 +445,13 @@ async function selectChapter(id: string) {
   selAi.reset();
   suggestionAnchor.value = null;
   const seq = ++selectSeq;
-  activeId.value = id;
-  const detail = await api<ChapterDetail>(`${base.value}/chapters/${id}`);
+  const target = base.value;
+  chapterSelecting.value = true;
+  try {
+  const detail = await api<ChapterDetail>(`${target}/chapters/${id}`);
   // A newer selection won the race — drop this stale response.
-  if (seq !== selectSeq) return;
+  if (seq !== selectSeq || disposed || target !== base.value) return false;
+  activeId.value = id;
   content.value = detail.content;
   version.value = detail.currentVersion;
   saveState.value = "saved";
@@ -435,6 +459,13 @@ async function selectChapter(id: string) {
   // NF-WF-015: load scene anchors for the active chapter + its
   // neighbours (the SceneNav lists adjacent chapters' scenes).
   await loadScenesFor([id, ...adjacentChapterIds(id)]);
+  return true;
+  } catch {
+    if (seq === selectSeq && !disposed) error.value = t("errors.loadFailed");
+    return false;
+  } finally {
+    if (seq === selectSeq) chapterSelecting.value = false;
+  }
 }
 
 /** Chapter ids adjacent by number (for the scene navigator). */
@@ -464,19 +495,136 @@ async function loadScenesFor(chapterIds: string[]) {
   }
 }
 
-async function createChapter() {
-  const title = globalThis.prompt(t("header.newChapter"));
-  if (!title?.trim()) return;
+const chapterCreateOpen = ref(false);
+const chapterCreating = ref(false);
+const chapterCreateError = ref<string | null>(null);
+const chapterCreateUncertain = ref(false);
+const chapterCreateOpener = ref<HTMLElement | null>(null);
+const confirmedCreatedChapterId = ref<string | null>(null);
+async function prepareChapterMutation() {
+  if (chapterSelecting.value) return false;
+  if (saveCompletion) await saveCompletion;
+  if (saveState.value === "dirty") await saveNow();
+  if (disposed || saveInFlight || saveState.value !== "saved") { error.value = t("recovery.saveBeforeLeaving"); return false; }
+  return true;
+}
+function onChapterRenamed(result: { id: string; title: string; currentVersion: number | null }) {
+  const chapter = chapters.value.find(c => c.id === result.id);
+  if (chapter) { chapter.title = result.title; chapter.currentVersion = result.currentVersion; }
+  if (activeId.value === result.id) {
+    version.value = result.currentVersion;
+    finalReview.value = null; reviewNotice.value = null; reviewHighlight.value = null;
+    gen.clearReview();
+  }
+}
+async function onChapterDeleted(id: string) {
+  const index = sortedChapters.value.findIndex(c => c.id === id);
+  const adjacent = sortedChapters.value[index + 1] ?? sortedChapters.value[index - 1];
+  chapters.value = chapters.value.filter(c => c.id !== id);
+  try {
+    if (activeId.value === id) {
+      if (adjacent) await selectChapter(adjacent.id);
+      else {
+        activeId.value = null; content.value = ""; version.value = null; saveState.value = "saved";
+        finalReview.value = null; reviewNotice.value = null; reviewHighlight.value = null; gen.clearReview();
+      }
+    }
+    await loadChapters();
+  } catch { error.value = t("chapterActions.refreshFailed"); }
+  await nextTick();
+  if (!disposed) (document.querySelector('#writer-chapters [aria-current="true"]') as HTMLElement | null
+    ?? document.querySelector<HTMLElement>('#writer-chapters [data-testid="chapter-list"]'))?.focus();
+}
+async function openChapterCreate(event: Event) {
+  const opener = event.currentTarget as HTMLElement | null;
+  if (chapterCreating.value || chapterSelecting.value) return;
+  if (saveCompletion) await saveCompletion;
+  if (saveState.value === "dirty") await saveNow();
+  if (disposed || saveState.value !== "saved") { error.value = t("recovery.saveBeforeLeaving"); return; }
+  try { await aiCreation.restore(); } catch { error.value = t("generation.recoveryFailed");return; }
+  if (chapterCreateUncertain.value || confirmedCreatedChapterId.value) {
+    try { await loadChapters(); } catch { error.value = t("errors.createChapterFailed"); return; }
+  }
+  chapterCreateOpener.value = opener;
+  chapterCreateError.value = null;
+  chapterCreateUncertain.value = false;
+  confirmedCreatedChapterId.value = null;
+  chapterCreateOpen.value = true;
+}
+async function closeChapterCreate() {
+  if (chapterCreating.value) return;
+  chapterCreateOpen.value = false;
+  await nextTick(); chapterCreateOpener.value?.focus();
+}
+async function createChapter({ title }: { title: string }) {
+  if (chapterCreating.value || chapterSelecting.value || chapterCreateUncertain.value || confirmedCreatedChapterId.value || !title.trim() || title.trim().length > 200) return;
+  const target = base.value;
+  chapterCreating.value = true;
+  chapterCreateError.value = null;
   try {
     const { id } = await api<{ id: string; number: number }>(
-      `${base.value}/chapters`,
+      `${target}/chapters`,
       { method: "POST", body: JSON.stringify({ title: title.trim() }) },
     );
-    await loadChapters();
-    await selectChapter(id);
-  } catch {
-    error.value = t("errors.createChapterFailed");
+    if (disposed || target !== base.value) return;
+    confirmedCreatedChapterId.value = id;
+    chapterCreateOpen.value = false;
+    try {
+      await loadChapters();
+      if (activeId.value !== id && !await selectChapter(id)) error.value = t("chapterCreation.refreshFailed");
+    } catch { error.value = t("chapterCreation.refreshFailed"); }
+    await nextTick(); chapterCreateOpener.value?.focus();
+  } catch (e) {
+    if (disposed || target !== base.value) return;
+    chapterCreateUncertain.value = !(e instanceof ApiError) || e.status >= 500;
+    chapterCreateError.value = t(chapterCreateUncertain.value ? "chapterCreation.uncertain" : "errors.createChapterFailed");
+  } finally {
+    chapterCreating.value = false;
   }
+}
+
+async function createAiChapter(setup?: AiChapterSetup) {
+  if (chapterCreating.value || chapterSelecting.value || saveState.value !== "saved") return;
+  const target = base.value;
+  const wid = workspaceId.value;
+  const nid = novelId.value;
+  chapterCreating.value = true;
+  chapterCreateError.value = null;
+  try {
+    const result = await aiCreation.start(wid, nid, t("chapterCreation.pendingTitle"), setup, async id => {
+      if (disposed || target !== base.value) throw new Error("Chapter scope changed");
+      aiCreationChapterId.value = id;
+      await loadChapters();
+      if (disposed || target !== base.value || !await selectChapter(id)) throw new Error("Reserved chapter could not be opened");
+    }, () => !disposed && target === base.value);
+    if (disposed || target !== base.value) return;
+    chapterCreateOpen.value = false;
+    generationRailOpen.value = true;
+    await onRunStarted({ runId: result.run.id, statusUrl: result.statusUrl });
+  } catch {
+    if (disposed || target !== base.value) return;
+    chapterCreateError.value = t(aiCreation.pending.value ? "chapterCreation.resumeHint" : "chapterCreation.startFailed");
+    if (!aiCreation.pending.value && aiCreationChapterId.value) {
+      chapterCreateOpen.value = false;
+      generationRailOpen.value = true;
+      error.value = t("chapterCreation.startFailed");
+    }
+  } finally { chapterCreating.value = false; }
+}
+
+async function resolveAiReservation() {
+  if (chapterCreating.value || saveState.value !== "saved") return;
+  const target = base.value;
+  chapterCreating.value = true;
+  try {
+    const chapter = await aiCreation.resolveReservation(workspaceId.value, novelId.value);
+    if (disposed || target !== base.value) return;
+    chapterCreateOpen.value = false;
+    await loadChapters();
+    if (chapter) await selectChapter(chapter.id);
+    reviewNotice.value = t(chapter ? "chapterCreation.resolvedExisting" : "chapterCreation.resolvedDeleted");
+  } catch { if (!disposed && target === base.value) chapterCreateError.value = t("chapterCreation.receiptFailed"); }
+  finally { chapterCreating.value = false; }
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -487,12 +635,17 @@ let selectSeq = 0;
 let disposed = false;
 onUnmounted(() => { disposed = true; clearTimeout(timer); });
 onBeforeRouteLeave(() => {
-  if (!saveInFlight && saveState.value === "saved") return true;
+  if (!chapterCreating.value && !chapterSelecting.value && !saveInFlight && saveState.value === "saved") return true;
   error.value = t("recovery.saveBeforeLeaving");
   return false;
 });
 
 function onInput() {
+  if (chapterSelecting.value) {
+    // A late edit still belongs to the old buffer: cancel the pending selection.
+    selectSeq += 1;
+    chapterSelecting.value = false;
+  }
   reviewNotice.value = null;
   reviewHighlight.value = null;reviewNavigationError.value = null;
   // NF-WF-015: autosave pauses while a version conflict is unresolved —
@@ -514,6 +667,7 @@ function onEditorBlur() {
 }
 
 async function saveNow() {
+  if (chapterSelecting.value) return;
   const chapter = activeChapter.value;
   if (!chapter || saveInFlight || saveState.value === "conflict") return;
   const savingId = chapter.id;
@@ -615,14 +769,19 @@ function onEditorReady(ed: Editor) {
 }
 
 function runSelectionOperation(op: SelectionAiOperationKey, freePrompt?: string) {
+  if (chapterSelecting.value) return;
+  if (op === "polish-language" && activeChapter.value?.status === "PUBLISHED") { aiNotice.value = t("apply.blockedPublished");return; }
+  if (op === "polish-language" && saveState.value === "conflict") { aiNotice.value = t("aiAssist.polishStale");return; }
+  if (op === "polish-language" && reviewAction.value) return;
   const ed = editorRef.value;
   if (!ed) return;
-  const sel = captureSelection(ed);
+  const sel = captureSelection(ed, op === "polish-language");
   if (!sel) {
     // Toolbar "Rewrite tone" with a collapsed selection: prompt to select.
-    aiNotice.value = t("editor.selectTextFirst");
+    aiNotice.value = t(op === "polish-language" ? "aiAssist.polishSelectParagraph" : "editor.selectTextFirst");
     return;
   }
+  if (op === "polish-language" && sel.text.length > SELECTION_MAX_CHARS) { aiNotice.value = t("aiAssist.selectionTooLong");return; }
   aiNotice.value = null;
   try {
     // Anchor the suggestion card below the selection.
@@ -657,7 +816,11 @@ function onSuggestionAccept() {
   if (!ed || !captured || !suggestion) return;
   // Stale-selection pin: the editor re-resolves the captured text in the
   // CURRENT document; a miss falls back to insert-after with a notice.
-  const outcome = applySuggestion(ed, captured, suggestion);
+  const polish = selAi.activeRequest.value?.operation === "polish-language";
+  if (polish && suggestion.trim() === captured.text.trim()) { closeSuggestion(true);return; }
+  if (polish && (!ed.isEditable || chapterSelecting.value || activeChapter.value?.status === "PUBLISHED" || reviewAction.value || saveState.value === "conflict" || selAi.streaming.value || selAi.errorKey.value)) return;
+  const outcome = applySuggestion(ed, captured, suggestion, polish);
+  if (outcome === "stale") { aiNotice.value = t("aiAssist.polishStale");closeSuggestion(false);return; }
   if (outcome === "inserted-after") aiNotice.value = t("aiAssist.staleSelection");
   closeSuggestion(false);
   // applySuggestion fires onUpdate → onEditorInput → dirty + autosave.
@@ -764,6 +927,7 @@ type WorkspacePanelKey =
   | "research"
   | "planning"
   | "narrative"
+  | "models"
   | "health";
 
 const workspacePanel = ref<WorkspacePanelKey | null>(null);
@@ -785,6 +949,7 @@ const workspaceNavItems: { key: WorkspacePanelKey; labelKey: string }[] = [
   { key: "research", labelKey: "workspace.nav.research" },
   { key: "planning", labelKey: "workspace.nav.planning" },
   { key: "narrative", labelKey: "workspace.nav.narrative" },
+  { key: "models", labelKey: "workspace.nav.models" },
   { key: "health", labelKey: "workspace.nav.health" },
 ];
 
@@ -875,6 +1040,26 @@ async function publish() {
   await saveAndReview(true);
 }
 
+async function returnToDraft() {
+  if (chapterSelecting.value || !activeChapter.value || reviewAction.value) return;
+  const chapter = activeChapter.value;
+  const target = base.value;
+  reviewAction.value = "draft";
+  error.value = null;
+  try {
+    if (saveCompletion) await saveCompletion;
+    if (saveState.value === "dirty") await saveNow();
+    if (disposed || target !== base.value || activeId.value !== chapter.id) return;
+    if (saveState.value !== "saved") { error.value = t("recovery.saveBeforeLeaving");return; }
+    await api(`${target}/chapters/${chapter.id}/status`, { method: "PATCH", body: JSON.stringify({ status: "DRAFT", expectedVersion: version.value }) });
+    if (disposed || target !== base.value || activeId.value !== chapter.id) return;
+    chapter.status = "DRAFT";
+    reviewNotice.value = t("chapterDraft.saved");
+  } catch (e) {
+    if (!disposed && target === base.value && activeId.value === chapter.id) error.value = t(e instanceof ApiError && e.status === 409 ? "chapterDraft.stale" : "chapterDraft.failed");
+  } finally { reviewAction.value = null; }
+}
+
 function showReviewText(target: ReviewTextTarget) {
   if (!finalReview.value || finalReviewStale.value || !editorRef.value) return;
   const range = locateReviewQuote(editorRef.value, finalReview.value.text, target.span, target.quote);
@@ -886,6 +1071,7 @@ function showReviewText(target: ReviewTextTarget) {
 }
 
 async function saveAndReview(publishAfter = false) {
+  if (chapterSelecting.value) return;
   const chapter = activeChapter.value;
   if (!chapter || reviewAction.value) return;
   const selected = selectSeq;
@@ -972,6 +1158,14 @@ async function saveAndReview(publishAfter = false) {
       <span class="hidden min-w-0 flex-1 truncate border-l border-nf-border pl-4 text-[13px] text-nf-text-dim md:block">{{ activeChapter?.title }}</span>
       <div class="flex-1 md:hidden" />
       <button class="nf-chapters-toggle rounded-lg border border-nf-border-strong px-3 py-1.5 text-[13px]" :aria-expanded="chapterNavigationOpen" aria-controls="writer-chapters" @click="chapterNavigationOpen = !chapterNavigationOpen">{{ t("chapters.title") }}</button>
+      <ActionMenu class="nf-mobile-story-menu" data-testid="mobile-story-menu" :label="t('workspace.nav.menu')">
+        <template #trigger>
+          <svg class="size-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14" /></svg>
+          <span>{{ t("workspace.nav.menu") }}</span>
+        </template>
+        <button v-for="item in workspaceNavItems" :key="item.key" type="button" :data-story-panel="item.key"
+          :aria-pressed="workspacePanel === item.key" @click="openWorkspacePanel(item.key)">{{ t(item.labelKey) }}</button>
+      </ActionMenu>
       <!-- NF-WF-016: the header outline button opens the planning panel
            (design mockup outline-btn :601). -->
       <button
@@ -984,12 +1178,12 @@ async function saveAndReview(publishAfter = false) {
       </button>
       <ActionMenu :label="t('workspace.tools')">
       <button class="nf-mobile-action text-nf-text-dim" @click="openWorkspacePanel('planning')">{{ t("workspace.nav.planning") }}</button>
-      <button class="nf-mobile-action text-nf-text-dim" :disabled="!activeChapter || reviewAction !== null" @click="saveAndReview()">{{ t(reviewAction === 'save' ? 'common.reviewing' : 'common.save') }}</button>
+      <button class="nf-mobile-action text-nf-text-dim" :disabled="chapterSelecting || !activeChapter || reviewAction !== null" @click="saveAndReview()">{{ t(reviewAction === 'save' ? 'common.reviewing' : 'common.save') }}</button>
       <!-- NF-WF-018A: AI Studio link — hidden for VIEWER (role-gated,
            progressive enhancement; the server enforces). -->
       <NuxtLink
         v-if="showStudioLink"
-        :to="`/workspaces/${workspaceId}/ai-studio`"
+        :to="`/workspaces/${workspaceId}/ai-studio?novelId=${novelId}`"
         class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
         data-testid="ai-studio-link"
       >
@@ -1065,9 +1259,12 @@ async function saveAndReview(publishAfter = false) {
           {{ l }}
         </button>
       </div>
+      <button class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 focus-visible:nf-focus disabled:opacity-50"
+        :disabled="chapterSelecting || !activeChapter || reviewAction !== null || saveState === 'saving'"
+        :title="t('chapterDraft.hint')" data-testid="writer-draft" data-writer-action="draft" @click="returnToDraft">{{ t(reviewAction === 'draft' ? 'common.saving' : 'chapterDraft.label') }}</button>
       <button
         class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus disabled:opacity-50"
-        :disabled="!activeChapter || reviewAction !== null"
+        :disabled="chapterSelecting || !activeChapter || reviewAction !== null"
         data-writer-action="save"
         @click="saveAndReview()"
       >
@@ -1075,7 +1272,7 @@ async function saveAndReview(publishAfter = false) {
       </button>
       <button
         class="rounded-lg bg-nf-accent px-3.5 py-1.5 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
-        :disabled="!activeChapter || saveState === 'saving' || reviewAction !== null"
+        :disabled="chapterSelecting || !activeChapter || saveState === 'saving' || reviewAction !== null"
         data-testid="writer-publish"
         @click="publish"
       >
@@ -1089,7 +1286,7 @@ async function saveAndReview(publishAfter = false) {
       :data-generation-open="generationRailOpen"
     >
       <nav id="writer-chapters" :aria-label="t('chapters.title')" class="nf-writer-chapters hidden min-h-0 max-h-full overflow-y-auto border-r border-nf-border bg-nf-bg-1 px-2.5 py-4 lg:block">
-        <div class="mb-2 flex items-center justify-between px-2.5 pb-2">
+        <div class="mb-2 flex flex-wrap items-center gap-2 px-2.5 pb-2">
           <span
             class="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint"
             >{{ t("chapters.title") }}</span
@@ -1097,9 +1294,11 @@ async function saveAndReview(publishAfter = false) {
           <button
             class="rounded border border-nf-border-strong px-1.5 text-[13px] leading-5 text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
             :aria-label="t('header.newChapter')"
-            @click="createChapter"
+            :title="t('header.newChapter')"
+            :disabled="chapterCreating || chapterSelecting"
+            @click="openChapterCreate"
           >
-            +
+            <svg class="mr-1 inline size-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>{{ t('chapterCreation.add') }}
           </button>
           <button
             class="rounded border border-nf-border-strong px-1.5 text-[13px] leading-5 text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
@@ -1108,7 +1307,7 @@ async function saveAndReview(publishAfter = false) {
             data-testid="import-open"
             @click="importDialogOpen = true"
           >
-            ⤒
+            <svg class="mr-1 inline size-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 13V3m-4 4 4-4 4 4M4 12v5h12v-5" /></svg>{{ t('chapterCreation.import') }}
           </button>
           <button
             class="rounded border border-nf-border-strong px-1.5 text-[13px] leading-5 text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text focus-visible:nf-focus"
@@ -1117,41 +1316,44 @@ async function saveAndReview(publishAfter = false) {
             data-testid="export-open"
             @click="exportPickerOpen = true"
           >
-            ⤓
+            <svg class="mr-1 inline size-3.5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3v10m-4-4 4 4 4-4M4 13v4h12v-4" /></svg>{{ t('chapterCreation.export') }}
           </button>
         </div>
         <div class="mb-3 px-2.5">
-          <label for="chapter-sort" class="mb-1 block text-[12px] text-nf-text-dim">{{ t("chapters.sortLabel") }}</label>
-          <select id="chapter-sort" v-model="chapterSort" data-testid="chapter-sort" class="w-full rounded-md border border-nf-border-strong bg-nf-bg-0 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus">
-            <option value="oldest">{{ t("chapters.oldestFirst") }}</option>
-            <option value="newest">{{ t("chapters.newestFirst") }}</option>
-          </select>
+          <p class="mb-1 text-[12px] text-nf-text-dim">{{ t("chapters.sortLabel") }}</p>
+          <ActionMenu :label="t('chapters.sortLabel')" data-testid="chapter-sort" class="nf-chapter-sort w-full">
+            <template #trigger>{{ t(chapterSort === 'oldest' ? 'chapters.oldestFirst' : 'chapters.newestFirst') }}</template>
+            <div role="group" :aria-label="t('chapters.sortLabel')">
+              <button v-for="order in (['oldest', 'newest'] as const)" :key="order" type="button" class="block w-full rounded-md px-3 py-2 text-left text-[13px] hover:bg-nf-bg-2 focus-visible:nf-focus" :class="chapterSort === order ? 'bg-nf-accent/10 text-nf-accent-hi' : 'text-nf-text-dim'" :aria-pressed="chapterSort === order" @click="chapterSort = order">{{ t(order === 'oldest' ? 'chapters.oldestFirst' : 'chapters.newestFirst') }}</button>
+            </div>
+          </ActionMenu>
         </div>
         <div data-testid="chapter-list" role="region" :aria-label="t('chapters.list')" tabindex="0" class="max-h-[20dvh] overflow-y-scroll overscroll-contain rounded-md [scrollbar-gutter:stable] focus-visible:nf-focus sm:max-h-[40dvh]">
           <p v-if="loading" class="px-2.5 text-[13px] text-nf-text-faint">{{ t("common.loading") }}</p>
           <p v-else-if="!chapters.length" class="px-2.5 text-[13px] text-nf-text-faint">
             {{ t("chapters.empty") }}
           </p>
-          <button
+          <div
             v-for="c in sortedChapters"
             :key="c.id"
             :data-chapter-number="c.number"
-            :aria-current="c.id === activeId ? 'true' : undefined"
-            class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] focus-visible:nf-focus"
+            class="flex w-full items-center gap-1 rounded-md text-[13px]"
             :class="
               c.id === activeId
                 ? 'border-l-2 border-nf-accent bg-nf-accent/10 font-semibold text-nf-accent-hi'
                 : 'text-nf-text-dim hover:bg-nf-bg-2 hover:text-nf-text'
             "
-            @click="selectChapter(c.id)"
           >
+            <button :disabled="chapterCreating || chapterSelecting" :aria-current="c.id === activeId ? 'true' : undefined" class="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left focus-visible:nf-focus disabled:opacity-60" @click="selectChapter(c.id)">
             <span class="truncate">{{ c.number }} — {{ c.title }}</span>
             <span
               class="ml-auto shrink-0 rounded bg-nf-bg-0 px-1.5 py-px text-[11px] tabular-nums text-nf-text-faint"
             >
               {{ c.wordCount.toLocaleString() }}
             </span>
-          </button>
+            </button>
+            <ChapterActions :base="base" :chapter="c" :before-change="prepareChapterMutation" @changed="onChapterRenamed" @deleted="onChapterDeleted" />
+          </div>
         </div>
         <!-- NF-WF-016: the story-structure nav (design mockup :655-663,
              extended per Invariant 7a) opens the authoring workspace
@@ -1174,8 +1376,8 @@ async function saveAndReview(publishAfter = false) {
       </nav>
 
       <main class="flex min-h-0 min-w-0 flex-col bg-nf-bg-0">
-        <div class="flex items-center gap-2 border-b border-nf-border bg-nf-bg-1 px-6 py-2">
-          <EditorToolbar :editor="editorRef" @rewrite-tone="() => runSelectionOperation('rewrite-tone')" />
+        <div :inert="chapterSelecting" class="flex items-center gap-2 border-b border-nf-border bg-nf-bg-1 px-6 py-2">
+          <EditorToolbar :editor="editorRef" @rewrite-tone="() => runSelectionOperation('rewrite-tone')" @polish-language="() => runSelectionOperation('polish-language')" />
           <div class="flex-1" />
           <span class="flex items-center gap-1.5 text-[12px] tabular-nums text-nf-text-faint">
             <span
@@ -1188,6 +1390,7 @@ async function saveAndReview(publishAfter = false) {
         </div>
 
         <div class="flex-1 overflow-y-auto">
+          <p v-if="chapterSelecting" role="status" class="px-6 py-4 text-[13px] text-nf-text-dim">{{ t("common.loading") }}</p>
           <p
             v-if="error"
             role="alert"
@@ -1210,8 +1413,10 @@ async function saveAndReview(publishAfter = false) {
               :changes="gen.outlineMoved.value.changes"
               :truncated="gen.outlineMoved.value.truncated"
             />
+            <p v-if="reviewedAiTitle && !gen.review.value.blocked" class="mt-3 text-base font-semibold text-nf-text">{{ t('chapterCreation.chapterTitle') }}: {{ reviewedAiTitle }}</p>
             <DraftDiffView
               :draft-prose="gen.review.value.prose"
+              :blocked="gen.review.value.blocked"
               :base-text="diffBaseText"
               :pinned-version="gen.diffPinnedVersion.value"
               :ordinal="gen.review.value.draft.ordinal"
@@ -1256,6 +1461,8 @@ async function saveAndReview(publishAfter = false) {
               :run-status="gen.selectedRun.value?.status ?? null"
               :run-id="gen.selectedRun.value?.id ?? null"
               :draft-prose="gen.review.value.prose"
+              :draft-title="reviewedAiTitle"
+              :chapter-title="activeChapter.title"
               @applied="onApplied"
               @reload-rediff="onReloadRediff"
               @continue-next="onContinueNext"
@@ -1328,6 +1535,7 @@ async function saveAndReview(publishAfter = false) {
             </p>
             <ClientOnly>
               <RichEditor
+                :read-only="chapterSelecting"
                 :model-value="content"
                 :review-highlight="reviewHighlight"
                 :aria-label="t('chapters.editorPlaceholder')"
@@ -1354,6 +1562,7 @@ async function saveAndReview(publishAfter = false) {
               "
               :streaming="selAi.streaming.value"
               :result="selAi.result.value"
+              :original-text="selAi.captured.value?.text"
               :error-key="selAi.errorKey.value"
               :anchor="suggestionAnchor"
               @accept="onSuggestionAccept"
@@ -1375,6 +1584,7 @@ async function saveAndReview(publishAfter = false) {
         <FinalTextReviewPanel :review="finalReview?.chapterId === activeId ? finalReview.result : null" :stale="finalReviewStale" :navigation-error="reviewNavigationError" @show="showReviewText" />
         <GenerationPanel
           ref="generationPanel"
+          :creation-mode="activeId === aiCreationChapterId"
           :workspace-id="workspaceId"
           :novel-id="novelId"
           :chapter="
@@ -1502,6 +1712,7 @@ async function saveAndReview(publishAfter = false) {
         :chapter-version-id="null"
         :has-saved-version="activeId !== null && saveState === 'saved'"
       />
+      <NovelModelDefaultsPanel v-else-if="workspacePanel === 'models'" :workspace-id="workspaceId" :novel-id="novelId" />
       <HealthMemoryPanel
         v-else-if="workspacePanel === 'health'"
         :workspace-id="workspaceId"
@@ -1516,6 +1727,7 @@ async function saveAndReview(publishAfter = false) {
       :novel-id="novelId"
       @close="exportPickerOpen = false"
     />
+    <ChapterCreateDialog v-if="chapterCreateOpen" :busy="chapterCreating" :error="chapterCreateError" :uncertain="chapterCreateUncertain" :workspace-id="workspaceId" :novel-id="novelId" :pending-ai="!!aiCreation.pending.value" :can-resolve-ai="!!aiCreation.pending.value" @manual="createChapter" @ai="createAiChapter" @resume-ai="createAiChapter()" @resolve-ai="resolveAiReservation" @close="closeChapterCreate" />
     <!-- NF-WF-017A: import dialog -->
     <ImportDialog
       :open="importDialogOpen"

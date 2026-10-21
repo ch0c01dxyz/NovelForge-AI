@@ -9,7 +9,7 @@
  *   the schema is restricted to the manuscript subset.
  * - EditorToolbar: B/I/H2/quote toggle real marks; rewrite-tone emits.
  * - SelectionAiMenu: the real @tiptap/vue-3/menus BubbleMenu lists the
- *   six pinned operations; free-prompt flow; Esc dismisses.
+ *   pinned operations; free-prompt flow; Esc dismisses.
  * - AiSuggestionCard: accept/insert/discard; streaming + error states.
  * - ConflictBanner: role=alert; the three explicit actions emit.
  * - SceneNav: breadcrumb; scene list; CRUD/move intents emit.
@@ -90,6 +90,17 @@ async function tickSettle(ms = 60) {
 }
 
 describe("RichEditor", () => {
+  it("makes a pending chapter selection read-only without emitting a manuscript edit", async () => {
+    const w = mount(RichEditor, { props: { modelValue: "Keep this chapter" } });
+    await vi.waitFor(() => expect(w.emitted("editor-ready")).toBeTruthy());
+    const ed = (w.emitted("editor-ready") as unknown as Array<[Editor]>)[0]![0];
+    await w.setProps({ readOnly: true });
+    expect(ed.isEditable).toBe(false);
+    expect(w.emitted("update:modelValue")).toBeUndefined();
+    await w.setProps({ readOnly: false });
+    expect(ed.isEditable).toBe(true);expect(ed.getText()).toBe("Keep this chapter");
+    ed.destroy();w.unmount();
+  });
   it("renders plain-text chapters as paragraphs", async () => {
     const w = mount(RichEditor, { props: { modelValue: "First line\n\nSecond line" } });
     await vi.waitFor(() => expect(w.find(".tiptap").exists()).toBe(true), { timeout: 5000 });
@@ -155,6 +166,13 @@ describe("RichEditor", () => {
 });
 
 describe("EditorToolbar", () => {
+  it("enables language polish after the editor becomes editable and selection changes", async () => {
+    const ed = manuscriptEditor("<p>Original text</p>");await tick(30);ed.setEditable(false);
+    const w = mount(EditorToolbar, { props: { editor: ed } });
+    const button = w.findAll("button").find(b => b.text() === "aiAssist.opPolishLanguage")!;
+    expect(button.attributes("disabled")).toBeDefined();ed.setEditable(true, false);ed.commands.setTextSelection({ from: 1, to: 5 });await nextTick();
+    expect(button.attributes("disabled")).toBeUndefined();await button.trigger("click");expect(w.emitted("polish-language")).toHaveLength(1);w.unmount();await settleAndDestroy(ed);
+  });
   let ed: Editor;
   beforeEach(async () => {
     ed = manuscriptEditor("<p>hello</p>");
@@ -192,7 +210,7 @@ describe("EditorToolbar", () => {
 });
 
 describe("SelectionAiMenu", () => {
-  it("lists the six pinned operations over a selection", async () => {
+  it("lists the pinned operations over a selection", async () => {
     const ed = manuscriptEditor("<p>hello world</p>");
     await tick(30);
     ed.commands.setTextSelection({ from: 1, to: 6 });
@@ -202,6 +220,7 @@ describe("SelectionAiMenu", () => {
     const items = w.findAll('[role="menuitem"]');
     const labels = items.map((i) => i.text());
     expect(labels).toContain("aiAssist.opRewriteTone");
+    expect(labels).toContain("aiAssist.opPolishLanguage");
     expect(labels).toContain("aiAssist.opExpand");
     expect(labels).toContain("aiAssist.opMoreDialogue");
     expect(labels).toContain("aiAssist.opShowDontTell");
@@ -260,6 +279,18 @@ describe("SelectionAiMenu", () => {
 });
 
 describe("AiSuggestionCard", () => {
+  it("shows before/proposal with only explicit use or ignore for language polish", async () => {
+    const w = mount(AiSuggestionCard, { props: { operation: "polish-language", operationLabelKey: "aiAssist.opPolishLanguage", originalText: "Original", result: "Proposed", streaming: false, errorKey: null, anchor: null } });
+    expect(w.text()).toContain("Original");expect(w.text()).toContain("Proposed");
+    expect(w.text()).toContain("aiAssist.before");expect(w.text()).toContain("aiAssist.proposal");
+    expect(w.findAll("button")).toHaveLength(2);expect(w.emitted("accept")).toBeUndefined();
+    await w.findAll("button")[1]!.trigger("click");expect(w.emitted("discard")).toHaveLength(1);expect(w.emitted("accept")).toBeUndefined();
+    await w.findAll("button")[0]!.trigger("click");expect(w.emitted("accept")).toHaveLength(1);
+    await w.setProps({ result: "Original" });expect(w.findAll("button")[0]!.attributes("disabled")).toBeDefined();expect(w.text()).toContain("aiAssist.polishUnchanged");
+    await w.setProps({ result: "Proposed" });
+    await w.setProps({ streaming: true });expect(w.findAll("button")[0]!.attributes("disabled")).toBeDefined();
+    await w.setProps({ streaming: false, errorKey: "aiAssist.incompleteSuggestion" });expect(w.findAll("button")[0]!.attributes("disabled")).toBeDefined();w.unmount();
+  });
   const props = {
     operation: "expand" as const,
     operationLabelKey: "aiAssist.opExpand",

@@ -32,7 +32,7 @@ export const RESTORE_SCOPE_CLASS_RATIONALE: Record<RestoreScopeClass, string> = 
   DERIVED:
     "Rebuildable derivations, never truth — outside restore scope entirely.",
   CONFIGURATION:
-    "Platform/novel configuration — not versioned, not story state.",
+    "Platform/novel configuration outside story-state restore.",
   SIMULATION:
     "Branch-isolated simulation state (NF-WF-027) — a story restore must not rewind it.",
   REFERENCE:
@@ -89,8 +89,9 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   chapter_versions: "PINNED", // Append-only; restoring a pointer would rewrite authorship history.
   publications: "PINNED", // Release lifecycle — restore must not unpublish (Invariant 8).
 
-  // OPERATIONAL (32) — execution history and audit trail.
+  // OPERATIONAL (34) — execution history and audit trail.
   workflow_runs: "OPERATIONAL",
+  workflow_run_definition_pins: "OPERATIONAL", // Immutable execution provenance follows its run.
   workflow_step_runs: "OPERATIONAL",
   workflow_versions: "OPERATIONAL",
   workflow_approval_decisions: "OPERATIONAL",
@@ -128,7 +129,8 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   embeddings: "DERIVED", // RAG derivations recomputed from truth (ADR-0007).
   chunks: "DERIVED",
 
-  // CONFIGURATION (15) — not versioned.
+  // CONFIGURATION (16) — outside story-state restore.
+  novel_model_defaults_versions: "CONFIGURATION", // Versioned routing settings, never story truth.
   novels: "CONFIGURATION", // Novel identity and slug — restore rewinds story state, not identity.
   novel_settings: "CONFIGURATION",
   novel_modules: "CONFIGURATION",

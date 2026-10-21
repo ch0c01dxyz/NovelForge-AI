@@ -256,6 +256,8 @@ model Novel {
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
   settings    NovelSettings?
+  coverBatches CoverGenerationBatch[]
+  coverVersions NovelCoverVersion[]
   modelDefaultsVersions NovelModelDefaultsVersion[]
   chapters    Chapter[]
   scaleEvidenceSets ScaleEvidenceSet[]
@@ -536,6 +538,75 @@ enum ModelProfile {
   STRUCTURED_EXTRACTOR
   LONG_CONTEXT_REVIEWER
   EMBEDDING
+  IMAGE_GENERATOR
+}
+
+/// Operational image requests; never story state or automatic cover approval.
+model CoverGenerationBatch {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId String @map("novel_id") @db.Uuid
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  workspaceId String @map("workspace_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  dispatchActorUserId String @map("dispatch_actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.Uuid
+  inputHash String @map("input_hash")
+  count Int
+  style String
+  notes String
+  prompt String
+  preferredModelRef String? @map("preferred_model_ref") @db.Uuid
+  sourceSnapshot Json @map("source_snapshot")
+  expectedCoverHash String? @map("expected_cover_hash")
+  cancelRequested Boolean @default(false) @map("cancel_requested")
+  queueRevision Int @default(0) @map("queue_revision")
+  enqueueError Boolean @default(false) @map("enqueue_error")
+  executionEpoch Int @default(0) @map("execution_epoch")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  items CoverGenerationItem[]
+
+  @@unique([novelId, actorUserId, idempotencyKey], map: "cover_batch_request_key")
+  @@index([novelId, createdAt])
+  @@map("cover_generation_batches")
+}
+
+model CoverGenerationItem {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  batchId String @map("batch_id") @db.Uuid
+  batch CoverGenerationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  slot Int
+  state String @default("PENDING")
+  activeGenerationId String? @map("active_generation_id") @db.Uuid
+  /// Normalized private image only; excluded from list/detail responses.
+  image Json?
+  originalSha256 String? @map("original_sha256")
+  originalBytes Int? @map("original_bytes")
+  errorCategory String? @map("error_category")
+  appliedAt DateTime? @map("applied_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([batchId, slot])
+  @@index([state])
+  @@map("cover_generation_items")
+}
+
+/// Immutable display configuration history, including an empty-cover baseline.
+model NovelCoverVersion {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  novelId String @map("novel_id") @db.Uuid
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  actorUserId String @map("actor_user_id") @db.Uuid
+  number Int
+  cover Json?
+  sha256 String?
+  sourceItemId String? @map("source_item_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([novelId, createdAt])
+  @@unique([novelId, number])
+  @@map("novel_cover_versions")
 }
 
 enum GenerationStatus {

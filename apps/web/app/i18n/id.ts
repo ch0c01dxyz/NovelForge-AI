@@ -3,6 +3,36 @@
  * Missing keys fall back to English per key (see useLocale).
  */
 export const id = {
+  coverGeneration: {
+    confirm: "Konfirmasi",
+    checkExisting: "Periksa proses yang sama", checkWarning: "Lanjutkan pengecekan proses yang sama di penyedia? Tindakan ini tidak meminta gambar baru.",
+    queuePosition: "Posisi antrean penyedia: {position}", estimatedWait: "Perkiraan penyedia: sekitar {minutes} menit (dapat berubah).",
+    description: "Buat pilihan cover dari konteks novel ini. Sesuaikan prompt dan tambahkan arahan visual, lalu pilih hasil yang ingin digunakan.",
+    currentCover: "Cover saat ini", noCover: "Belum ada cover", preserveCurrent: "Membuat dan memilih kandidat tidak mengubah cover ini. Cover sebelumnya tetap dapat dipulihkan setelah Diterapkan.",
+    model: "Model gambar", modelHint: "Hanya model gambar aktif yang dipetakan admin yang dapat dipilih. Otomatis mengikuti urutan prioritas konfigurasi.",
+    style: "Gaya visual", count: "Jumlah gambar (1–9)", prompt: "Prompt cover", notes: "Arahan tambahan Anda",
+    notesPlaceholder: "Contoh: pertahankan jubah merah, gunakan latar cahaya bulan, hindari tulisan…",
+    recommended: "Rekomendasi", recommendationReason: "Disarankan berdasarkan genre novel ini; Anda tetap bebas memilih gaya lain.",
+    generate: "Buat cover", refreshContext: "Perbarui konteks novel", contextRefreshed: "Konteks novel diperbarui. Prompt dan catatan Anda dipertahankan; periksa kembali sebelum membuat gambar.",
+    results: "Pilihan cover", candidate: "Kandidat {slot}", apply: "Terapkan cover pilihan", applied: "Cover diperbarui. Versi sebelumnya tetap tersimpan dalam riwayat cover.",
+    previousBatches: "Generasi sebelumnya", batch: "Generasi {number} · {count} gambar", history: "Riwayat cover", version: "Versi cover {number}", emptyVersion: "Versi {number} · tanpa cover", restore: "Pulihkan",
+    confirmTitle: "Konfirmasi tindakan cover", applyWarning: "Gunakan gambar pilihan ini sebagai cover novel? Cover sebelumnya tetap dapat dipulihkan dari riwayat.",
+    restoreWarning: "Pulihkan versi cover ini? Cover saat ini juga tetap disimpan dalam riwayat.",
+    retryWarning: "Buat ulang kandidat ini? Jika hasil sebelumnya belum pasti, penyedia mungkin sudah memprosesnya. Mengulang dapat membuat permintaan dan biaya tambahan.",
+    refreshResults: "Perbarui hasil", cancel: "Hentikan gambar tersisa", resume: "Lanjutkan antrean gambar", stillRunning: "Satu gambar masih dibuat. Tunggu hasilnya sebelum mencoba ulang.",
+    queueFailed: "Permintaan tersimpan, tetapi pengirimannya ke antrean belum terkonfirmasi. Perbarui hasil atau lanjutkan secara eksplisit.",
+    requestUncertain: "Hasil permintaan belum dapat dikonfirmasi. Periksa permintaan yang sama di bawah sebelum memulai generasi lain.", recoverRequest: "Periksa permintaan yang sama",
+    sourceChanged: "Novel berubah setelah cover ini disiapkan. Perbarui konteks dan periksa prompt sebelum membuat gambar lagi.",
+    coverChanged: "Cover berubah setelah kandidat ini disiapkan. Perbarui konteks dan tentukan langkah berikutnya; cover saat ini tetap dipertahankan.",
+    modelUnavailable: "Belum ada model gambar yang sesuai. Minta admin mengaktifkan dan memetakan model gambar.",
+    noAccess: "Anda tidak lagi memiliki akses ke novel atau tindakan ini.", actionFailed: "Tindakan belum dapat diselesaikan. Perbarui hasil sebelum mencoba lagi.", invalidInput: "Pilih 1–9 gambar dan isi prompt cover.",
+    itemUncertain: "Hasil dari penyedia belum dapat dikonfirmasi. Ulangi hanya jika Anda ingin mengirim permintaan baru.", itemFailed: "Gambar ini belum berhasil disiapkan. Perbarui hasil, periksa model dan konteks, lalu ulangi jika diperlukan.",
+    itemRateLimited: "Penyedia gambar sedang membatasi permintaan. Tunggu sebelum mencoba lagi, atau pilih model dari penyedia lain. Cover Anda tetap aman.",
+    itemInvalidResponse: "Model ini belum dapat memberikan gambar yang bisa digunakan. Pilih model gambar lain atau minta admin memeriksa koneksinya. Mengulang permintaan yang sama mungkin tidak membantu.",
+    itemProviderAccess: "Koneksi ke penyedia gambar perlu diperiksa oleh admin. Prompt dan cover Anda saat ini tetap tersimpan.",
+    styles: { "3d": "3D", artistic: "Artistik", sketch: "Sketsa", "2d": "2D", manga: "Manga", manhua: "Manhua", manhwa: "Manhwa", custom: "Kustom (jelaskan di bawah)" },
+    states: { PENDING: "Dalam antrean", RUNNING: "Sedang dibuat", SUCCEEDED: "Siap", FAILED: "Gagal", UNCERTAIN: "Hasil belum pasti", CANCELLED: "Dihentikan", PARTIAL: "Sebagian gambar siap" },
+  },
   studioStarter: {
     title: "Paket awal workspace",
     description: "Pasang lima agen bab, dua skill pakai ulang (penyusunan konteks dan pemeriksaan kontinuitas), serta workflow Chapter Generation & Review dengan persetujuan manusia. Skill tersedia untuk langkah workflow buatan Anda; workflow bab tetap sama. Instruksi template berbahasa Inggris dan dapat disesuaikan melalui versi baru.",
@@ -748,6 +778,7 @@ export const id = {
   workspace: {
     tools: "Alat workspace",
     nav: {
+      cover: "Studio cover",
       story: "Cerita",
       menu: "Menu novel",
       discovery: "Detail novel",
@@ -2156,6 +2187,7 @@ export const id = {
       },
     },
     profiles: {
+      syncImages: "Sinkronkan katalog gambar",
       heading: "Pemetaan profil",
       modelResultCount: "Menampilkan {shown} dari {count} hasil · {total} model gateway",
       catalogHint: "Katalog gateway langsung lengkap untuk administrator platform. Sinkronkan model baru pada menu Gateway sebelum memetakannya. Model nonaktif dapat dikonfigurasi di sini, tetapi tetap tidak tersedia bagi author sampai diaktifkan.",
@@ -2178,6 +2210,7 @@ export const id = {
         STRUCTURED_EXTRACTOR: "Ekstraktor terstruktur",
         LONG_CONTEXT_REVIEWER: "Peninjau konteks panjang",
         EMBEDDING: "Embedding",
+        IMAGE_GENERATOR: "Pembuat gambar cover",
       },
       errors: {
         invalid: "Beberapa isian tidak valid.",

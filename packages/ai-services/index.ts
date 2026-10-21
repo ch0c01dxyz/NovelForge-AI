@@ -13,6 +13,7 @@
  */
 
 // Core AI path
+export { createCoverGenerationServices, CoverGenerationError, COVER_QUEUE_NAME, COVER_STYLES, type CoverScope, type CoverGenerationServices } from "./src/cover-generation.ts";
 export {
   createAiServices,
   type AiServices,

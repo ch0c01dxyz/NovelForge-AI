@@ -30,7 +30,7 @@ const generationParams = z.object({
   generationId: uuid,
 });
 
-const PROFILE_VALUES = [
+const TEXT_PROFILE_VALUES = [
   "CREATIVE_WRITER",
   "DEEP_PLANNER",
   "CONTINUITY_REVIEWER",
@@ -39,6 +39,7 @@ const PROFILE_VALUES = [
   "LONG_CONTEXT_REVIEWER",
   "EMBEDDING",
 ] as const;
+const PROFILE_VALUES = [...TEXT_PROFILE_VALUES, "IMAGE_GENERATOR"] as const;
 
 const createGatewayBody = z.object({
   name: z.string().trim().min(1).max(120),
@@ -104,7 +105,7 @@ const generateBody = z.object({
   task: z.string().trim().min(1).max(200),
   component: z.enum(GENERATION_COMPONENTS).optional(),
   artifactId: uuid.optional(),
-  profile: z.enum(PROFILE_VALUES),
+  profile: z.enum(TEXT_PROFILE_VALUES),
   preferredModelRef: uuid.optional(),
   novelId: uuid.optional(),
   messages: z
@@ -257,6 +258,12 @@ export function registerAiRoutes(
   });
 
   // --- Models + profile mappings (platform-admin) ---
+  app.post("/api/gateways/:gatewayId/sync-image-models", async (request, reply) => {
+    const actor = await requireActor(request, reply); if (!actor) return;
+    const params = gatewayParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.syncModels({ actorPlatformRole: actor.platformRole, actorUserId: actor.userId, gatewayId: params.data.gatewayId, kind: "image" });
+  });
 
   app.get("/api/models", async (request, reply) => {
     const actor = await requireActor(request, reply);
@@ -267,7 +274,9 @@ export function registerAiRoutes(
   app.get("/api/model-catalog", async (request, reply) => {
     const actor = await requireActor(request, reply);
     if (!actor) return;
-    return services.listModelCatalog({ actorUserId: actor.userId, actorPlatformRole: actor.platformRole });
+    const query = z.object({ profile: z.enum(PROFILE_VALUES).optional() }).safeParse(request.query);
+    if (!query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.listModelCatalog({ actorUserId: actor.userId, actorPlatformRole: actor.platformRole, profile: query.data.profile });
   });
 
   app.get("/api/model-profiles", async (request, reply) => {

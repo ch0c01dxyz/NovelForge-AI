@@ -66,6 +66,7 @@ import ExportPicker from "../../../../../components/import-export/ExportPicker.v
 // ---------- NF-WF-016 workspace panels ----------
 import WorkspaceDrawer from "../../../../../components/workspace/WorkspaceDrawer.vue";
 import NovelDiscoveryEditor from "../../../../../components/workspace/NovelDiscoveryEditor.vue";
+import NovelCoverEditor from "../../../../../components/workspace/NovelCoverEditor.vue";
 import CharacterPanel from "../../../../../components/workspace/CharacterPanel.vue";
 import RelationshipPanel from "../../../../../components/workspace/RelationshipPanel.vue";
 import WorldPanel from "../../../../../components/workspace/WorldPanel.vue";
@@ -918,6 +919,7 @@ async function onMoveScene(payload: {
 // header outline button opens planning. No AI calls here — the panels are
 // deterministic authoring UI over the frozen routes.
 type WorkspacePanelKey =
+  | "cover"
   | "discovery"
   | "characters"
   | "relationships"
@@ -941,6 +943,7 @@ async function onImported() {
 
 const workspaceNavItems: { key: WorkspacePanelKey; labelKey: string }[] = [
   { key: "discovery", labelKey: "workspace.nav.discovery" },
+  { key: "cover", labelKey: "workspace.nav.cover" },
   { key: "characters", labelKey: "workspace.nav.characters" },
   { key: "relationships", labelKey: "workspace.nav.relationships" },
   { key: "world", labelKey: "workspace.nav.world" },
@@ -1694,6 +1697,7 @@ async function saveAndReview(publishAfter = false) {
         :workspace-id="workspaceId"
         :novel-id="novelId"
       />
+      <NovelCoverEditor v-else-if="workspacePanel === 'cover'" :workspace-id="workspaceId" :novel-id="novelId" />
       <ResearchPanel
         v-else-if="workspacePanel === 'research'"
         :workspace-id="workspaceId"

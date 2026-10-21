@@ -175,6 +175,7 @@ export interface AiServices {
     actorPlatformRole: PlatformRole;
     actorUserId: string;
     gatewayId: string;
+    kind?: "image";
   }): Promise<{ discovered: number }>;
   listModels(actorPlatformRole: PlatformRole): Promise<ModelView[]>;
   listModelCatalog(input: { actorUserId: string; workspaceId?: string; actorPlatformRole?: PlatformRole; profile?: ModelProfile }): Promise<Array<{ modelRef: string | null; providerModelId: string; displayName: string | null; gatewayId: string; gatewayName: string; selectable: boolean; unavailableReason: "NOT_SYNCED" | "MODEL_DISABLED" | "NOT_MAPPED" | null }>>;
@@ -595,7 +596,7 @@ export function createAiServices(deps: {
       let models;
       const started = Date.now();
       try {
-        models = await manager.listModelsFor(input.gatewayId);
+        models = input.kind === "image" ? await manager.listImageModelsFor(input.gatewayId) : await manager.listModelsFor(input.gatewayId);
       } catch (err) {
         const isGatewayError = err instanceof GatewayError;
         const category = isGatewayError ? err.category : "INTERNAL";
@@ -665,7 +666,7 @@ export function createAiServices(deps: {
         const observed = new Map(
           existing.map((r) => [
             r.modelId,
-            r.capabilities.filter((c) => c.startsWith(OBSERVED_CAPABILITY_PREFIX)),
+            r.capabilities.filter((c) => c.startsWith(OBSERVED_CAPABILITY_PREFIX) || c === "image-generation"),
           ]),
         );
         for (const m of models) {
@@ -683,7 +684,7 @@ export function createAiServices(deps: {
             },
             update: {
               displayName: m.displayName ?? null,
-              capabilities: [...new Set([...m.capabilities, ...keep])],
+              capabilities: [...new Set([...m.capabilities, ...keep, ...(input.kind === "image" ? existing.find(row => row.modelId === m.modelId)?.capabilities ?? [] : [])])],
               contextWindow: m.contextWindow ?? null,
               discoveredAt: new Date(),
             },
@@ -764,7 +765,7 @@ export function createAiServices(deps: {
     async listModelOptions(input) {
       await gateWorkspace(input.workspaceId, input.actorUserId, "generation:create");
       const rows = await db.modelProfileMapping.findMany({
-        where: { profile: input.profile, enabled: true, model: { enabled: true, gateway: { enabled: true } } },
+        where: { profile: input.profile ?? { not: "IMAGE_GENERATOR" }, enabled: true, model: { enabled: true, gateway: { enabled: true }, ...(input.profile === "IMAGE_GENERATOR" ? { capabilities: { has: "image-generation" } } : {}) } },
         orderBy: [{ priority: "asc" }, { modelRef: "asc" }],
         select: { modelRef: true, profile: true, model: { select: { modelId: true, displayName: true, gatewayId: true } } },
       });
@@ -777,10 +778,10 @@ export function createAiServices(deps: {
       else requirePlatformCapability(input.actorPlatformRole ?? null, "model:read");
       const gateways = await db.aIGateway.findMany({ where: { enabled: true }, select: { id: true, name: true }, orderBy: [{ priority: "asc" }, { id: "asc" }] });
       const [models, mappings, catalogs] = await Promise.all([
-        db.aIModel.findMany({ where: { gatewayId: { in: gateways.map(g => g.id) } }, select: { id: true, gatewayId: true, modelId: true, enabled: true, displayName: true } }),
-        db.modelProfileMapping.findMany({ where: { profile: input.profile, enabled: true }, select: { modelRef: true } }),
+        db.aIModel.findMany({ where: { gatewayId: { in: gateways.map(g => g.id) } }, select: { id: true, gatewayId: true, modelId: true, enabled: true, displayName: true, capabilities: true } }),
+        db.modelProfileMapping.findMany({ where: { profile: input.profile ?? { not: "IMAGE_GENERATOR" }, enabled: true }, select: { modelRef: true } }),
         Promise.all(gateways.map(async gateway => {
-          try { return { gateway, models: await manager.listModelsFor(gateway.id) }; }
+          try { return { gateway, models: input.profile === "IMAGE_GENERATOR" ? await manager.listImageModelsFor(gateway.id) : await manager.listModelsFor(gateway.id) }; }
           catch (error) {
             if (error instanceof GatewayError) throw new BadGatewayError("live model catalog could not be loaded");
             throw error;
@@ -796,7 +797,8 @@ export function createAiServices(deps: {
           if (seen.has(model.modelId)) continue;
           seen.add(model.modelId);
           const local = known.get(JSON.stringify([gateway.id, model.modelId]));
-          const reason = !local ? "NOT_SYNCED" : !local.enabled ? "MODEL_DISABLED" : !eligible.has(local.id) ? "NOT_MAPPED" : null;
+          const imageUnavailable = input.profile === "IMAGE_GENERATOR" && (!local?.capabilities.includes("image-generation") || local.capabilities.includes("nf:image-output=incompatible"));
+          const reason = !local ? "NOT_SYNCED" : !local.enabled || imageUnavailable ? "MODEL_DISABLED" : !eligible.has(local.id) ? "NOT_MAPPED" : null;
           rows.push({ modelRef: local?.id ?? null, providerModelId: model.modelId, displayName: model.displayName ?? local?.displayName ?? null, gatewayId: gateway.id, gatewayName: gateway.name, selectable: reason === null, unavailableReason: reason });
         }
       }
@@ -818,6 +820,7 @@ export function createAiServices(deps: {
       requirePlatformCapability(input.actorPlatformRole, "model:manage");
       const model = await db.aIModel.findUnique({ where: { id: input.modelId } });
       if (!model) throw new NotFoundError("model");
+      if (input.profile === "IMAGE_GENERATOR" && !model.capabilities.includes("image-generation")) throw new ConflictError("model has no image-output catalog capability");
       await db.$transaction(async tx => {
       const mapping = await tx.modelProfileMapping.upsert({
         where: {

@@ -17,7 +17,7 @@ import { useLocale } from "../../composables/useLocale";
 import VersionHistory from "./VersionHistory.vue";
 import ModelPreferenceSelect from "../generation/ModelPreferenceSelect.vue";
 import ActionMenu from "../ui/ActionMenu.vue";
-import { MODEL_PROFILES } from "../../composables/usePlatformAdmin";
+import { TEXT_MODEL_PROFILES as MODEL_PROFILES } from "../../composables/usePlatformAdmin";
 
 const props = defineProps<{
   kind: DefinitionKind;

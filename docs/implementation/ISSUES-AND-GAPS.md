@@ -1,5 +1,263 @@
 # Technical Issues and Implementation Gaps
 
+## Durable Horde job recovery must not duplicate accepted work — 2026-10-21
+
+CLOSED for the approved bounded Horde slice; owner approved Horde cover jobs
+plan. Gateway18, core142, API cover24, UI10 tests and relevant types/lint PASS;
+separate exact reviews APPROVE. Real scratch AbsoluteReality job survived worker
+restart and gateway reload, completing with the same job/Generation and one
+terminal attempt;278560 bytes normalized to154667, main story/cover unchanged.
+Official exact R2-host correction is active; intermediate429 recovered using
+the same job. Receipt `.nf-artifacts/horde-live-receipt.json` read back.
+Historical investigation follows; pending statements are superseded here.
+
+Independent investigation found
+Live recovery proof submitted one real Horde image in the scratch database,
+restarted its isolated worker after receipt persistence, and observed gateway
+SUCCEEDED. NovelForge result retrieval remains pending; investigate the actual
+same-job result failure without another submission. This is not end-to-end
+success evidence yet. Same-job read-only diagnostic confirms provider status200,
+done=true, faulted=false, one uncensored generation; result fails UNSAFE_RESULT_URL
+because Horde returns its official transient R2 account host
+`a223539ccf6caa2d76459c9727d276e6.r2.cloudflarestorage.com` rather than imgen.
+Allow only that observed exact HTTPS host (also declared in Horde's official
+.env_template), retaining no redirects, credentials, ports and byte/signature
+bounds. Do not loosen completion checks or accept wildcard R2 hosts.
+
+two unsafe recovery shortcuts: persisting job ID only after submit loses the
+acceptance/receipt crash window, and append-only attempt#1 recording outside
+item finalization races recovered executors. Persist stable request identity
+before POST; gateway atomically reserves/deduplicates it and exposes owned
+lookup/status/result. Unknown submission never automatically submits again.
+Finalize the item, generation and terminal attempt together under fencing.
+
+Exact review found two async integration blockers: manual observation recovery
+was still behind the fresh-request source fingerprint check, and pinned route
+enablement was checked only once during a long poll loop. Observation-only
+recovery must read the accepted job even after story edits (Apply stays strict),
+and every subsequent status/result boundary must recheck the same model/gateway
+without rerouting. Gateway review also found combo-name authorization could
+permit an unintended direct model; use resolved provider/model authorization.
+Actual production-handler regression was RED before that fix and17 gateway
+tests PASS after it; gateway exact source review APPROVE,10files, not11.
+
+Integration regression: strengthening final epoch checks initially skipped the
+existing late-output audit (19/20 cover cases passed). Keep the audit metadata
+when discarding an old executor before item CAS; do not weaken fencing or drop
+the prior regression. Initial typecheck also identified Generation.createdAt as
+the real start boundary (no Generation.startedAt); use the actual schema field.
+
+Gateway worker found existing urlToBase64 follows arbitrary URLs without byte
+bounds. New jobs must use restricted HTTPS Horde image-host retrieval, refuse
+redirects and validate bounded streamed bytes/signatures. Its sql.js fallback
+debounces persistence100ms, unsuitable for pre-submit durability; fail closed
+for that driver on job submission, retaining native node:sqlite/bun:sqlite.
+Native SQLite's existing synchronous=NORMAL also does not guarantee power-loss
+durability at reservation acknowledgement. Use synchronous=FULL for each job
+receipt write, restoring the prior connection setting without any async yield;
+verify reservation survives reopen and the original setting is restored.
+No schema/dependency change or bypass of gateway/key ownership is authorized.
+
+## AI Horde cover queue exceeds the generic gateway timeout — 2026-10-21
+
+CLOSED for local Horde integration; owner workspace-authoring-cover-generation.
+Sixteen live gateway Horde rows now use async jobs and30-minute image deadlines;
+generic text timeout and author mappings/defaults preserved, Gemini disabled.
+Synchronous router compatibility allows25 minutes with transient polling
+recovery; virtual timer regression is separate from actual provider timing.
+New authenticated job API and NF consumers are active after controlled reloads.
+One real scratch job completed after worker restart and gateway reload without
+resubmission; see recovery entry above. Author's15–20-minute queue observation
+is retained, not relabeled as this test's measured provider generation time.
+Historical investigation follows; pending runtime claims are superseded here.
+
+Author reports successful
+AI Horde generation requires15–20 minutes and requests a longer deadline.
+Observed NovelForge image transport currently inherits the generic gateway
+timeout; gateway API caps that shared value at10 minutes. Avoid extending all
+text requests or retrying an ambiguously submitted image. Add a bounded optional
+per-model image deadline, configured through observed model capability data;
+use30 minutes for verified AI Horde catalog entries. Preserve one POST and the
+existing UNCERTAIN outcome on timeout, byte bounds and Gemini disable.
+
+The separate router checkout's AI Horde adapter contains a10-minute polling cap,
+but the previously serving installed9router0.5.104 bundle is no longer present
+at its retained path, and no listener was observed on20128 during this check.
+Do not claim the checkout is the current runtime, silently patch another repo,
+restart a missing gateway, or claim a live20-minute test. Verify runtime readiness
+and its upstream/proxy deadline before end-to-end closure. Reuse the author's
+reported timing as author observation, not independently witnessed evidence.
+
+Correction after direct HTTP check: configured gatewaylocalhost20127 root returns
+200/Akanesia-Gateway. Absence from Windows socket enumeration did not establish
+unavailability. Checkout287253b5 compiled/standalone image routes also contain
+the10-minute poll deadline; the exact serving process/build remains unverified.
+Author requests analysis first, not a router write exception.
+
+Application preparation verified: optional per-image deadline bounded1000..3600000,
+sixteen existing Horde rows carry1800000ms after pre-mutation rollback/read-back
+and audited transaction. Enablement/mappings/shared gateway settings preserved.
+Core133/types/focused lint PASS, independent review APPROVE. Initial private
+inspection used an incorrect Prisma relation; corrected before mutation. Runtime
+reload and live long-wait acceptance remain pending; no image request repeated.
+
+## Non-Gemini cover route rate limit — 2026-10-21
+
+PARTIALLY RESOLVED: NanoBanana response mismatch CLOSED; Cloudflare rate-limit
+availability remains OPEN. Author-approved binary opt-in implemented and
+independently reviewed. One real Flash binary request SUCCEEDED, one attempt,
+1,995,068 original bytes ->223,479 normalized bytes, old cover unchanged,
+no Gemini requests. Core123/coverUI9 PASS, core/web types/rootlint PASS. Default
+Flash and binary markers configured with pre-mutation rollback-plan/read-back,
+audited changes and verified completion. Gemini157/0enabled, existing main source
+hashes unchanged. Pro shares adapter configuration but is not individually proved.
+The earlier failure observations below are historical, not the current Flash
+outcome. Private new receipt: `cover-nanobanana-binary-receipt.json`.
+
+Runtime diagnosis follow-up: port20128 is served by installed 9router0.5.104,
+not the separate router checkout. Its compiled images route confirms NanoBanana
+normalizes success to `data[].url` and selects raw binary only via the
+`response_format=binary` query. NovelForge's persisted attempt says "invalid or
+oversized image response", rather than HTTP request rejection. This establishes
+a response-contract mismatch; the exact prior response body was not retained.
+The author explicitly approved bounded binary transport through the configured
+gateway on 2026-10-21. Amend ADR0019/task; use model capability data for opt-in,
+retain base64 default and one dispatch, refuse redirects/unsupported MIME, and
+normalize bytes through the same existing decoder. No application URL fetch,
+router modification or Gemini reactivation. Regression must prove byte limits,
+unknown attribution and failure safety before one real post-fix request.
+
+Binary configuration review caught rollback receipt ordering before main writes:
+the first draft saved before-state only after the mutations. Persist a distinct
+rollback plan before the first mutation and refuse overwriting it on retry;
+write completion only after final read-back. Check Gemini remains disabled both
+before and after configuration. No main binary configuration was applied from
+the rejected draft; retain the successful scratch proof without provider replay.
+
+OPEN external availability; owner workspace-authoring-cover-generation.
+After the author's temporary Gemini disable, one actual isolated-worker request
+to `cf/@cf/leonardo/lucid-origin` returned RATE_LIMIT (one RATE_LIMITED attempt,
+no output or cover mutation). Do not present it as a working default or blindly
+retry other Cloudflare models against the same provider limit. Preserve the
+historical ten successful Gemini candidates, without claiming current Gemini
+availability. Main configuration read-back confirms 154 matching catalog models
+disabled, zero remaining enabled; story/account/workspace hashes unchanged.
+NanoBanana uses a separate adapter/credential boundary; its quota independence
+is unknown. Any bounded probe must retain actual attribution and cannot silently
+reactivate a Gemini catalog model. Private receipt:
+`.nf-artifacts/cover-nongemini-receipt.json`.
+
+One bounded NanoBanana flash request also failed (INVALID_REQUEST, one FAILED
+attempt, no output/cover change). Receipt: `.nf-artifacts/cover-nanobanana-receipt.json`.
+The adapter's separate credentials do not establish a working replacement or
+Google quota independence. Stop provider probes here; actual non-Gemini image
+success remains unknown. No Gemini requests were dispatched by either probe.
+Closure requires a successful real image on an enabled route, not catalog sync.
+Local maintenance initially invoked an unavailable `tsx` loader and exited
+before model writes; the repository's existing Node transform-types runner
+subsequently completed the audited disable successfully.
+
+## Cover generation needs image transport and bounded normalization — 2026-10-21
+
+Implementation gap CLOSED after the following historical findings were fixed.
+Final regression: core115, API/AI69 (cover20), normalization12, restore8 and
+cover/admin UI13 PASS; root lint/typecheck PASS; separate exact-source review
+APPROVE. Real isolated worker/native UI proves ten generated images, gallery,
+Apply and byte-exact restore; later reload recovery adds zero dispatches.
+Encrypted preactivation backup clone-restore verified. Additive local migration,
+eleven non-Gemini mappings, targeted API restart and dedicated cover consumer
+verified; main story/cover/account/workspace hashes and existing queues retained.
+The earlier "not implemented" statements below describe intermediate evidence,
+superseded by this closure. Current non-Gemini provider availability remains OPEN
+in the separate entry above; no current successful provider output is fabricated.
+
+Migration review follow-up: initial draft used a 67-character request-uniqueness
+index name, exceeding PostgreSQL's identifier limit, and added three models
+before their restore classifications. Pre-activation review caught both. Use an
+explicit short mapped index name and classify batches/items as OPERATIONAL and
+cover history as CONFIGURATION (102 models); story restore targets stay fixed.
+Bound DDL lock waits and group table/index creation in a transaction. Verification
+requires scratch migration/constraint evidence and classification regression;
+no main activation or old-consumer compatibility is inferred from schema files.
+
+Backend pre-activation review found a lock-order defect: the first cover lock
+helper acquired branch SHARE before the novel write lock, opposite the existing
+manuscript/checkout order. Concurrent saves could deadlock. Align all cover
+mutations to workspace SHARE -> novel NO KEY UPDATE -> current branch SHARE,
+then recheck authorization and source. Add concurrent save/apply refusal proof;
+do not activate the reviewed draft before this fix is verified.
+
+Retry/recovery review follow-up: initial cancel/resume/retry lacked audit rows
+and always attributed execution to the original batch creator. Record each
+requesting actor and old/new queue revision atomically, keep the original creator,
+and store a separate dispatch actor for newly requested execution. Slot claim
+must fail terminally without dispatch after membership/capability revocation.
+Regression must prove alternate-author retry attribution, explicit uncertainty
+acknowledgement, cancellation and no endless unauthorized pending requeue.
+
+UI verification follow-up: the initial standalone cover panel lacked a named
+landmark (axe region finding), and its new test hook accidentally returned the
+mock function as a cleanup callback. Name the real panel region and fix the hook
+return; retain full accessibility assertions. No canvas dependency is needed for
+jsdom's known color-contrast limitation; visual contrast is checked in-browser.
+
+Admin profile regression: clearing the model for every profile change broke the
+existing model-before-profile authoring order. Clear only when crossing between
+image and text catalog types; preserve valid selection inside the text catalog.
+Regression remains the existing thousands-model searchable selection test.
+
+Scratch preflight: the checked-in-host `.env` database credential was rejected
+before the cover suite setup (four skipped, no assertions or migration). Reuse
+the running acceptance PostgreSQL container's actual local connection settings
+privately for a dedicated test database; do not alter credentials or print them.
+
+OPEN; owner workspace-authoring-cover-generation (approved parent lane D).
+Current application gateway interface supports chat/embeddings only. Read-only
+discovery found3045 text-catalog models,36 imageOutput declarations, but those do
+not establish image endpoint support. Router source exposes a separate authenticated
+/v1/models/image catalog:16 native image models. Real count1 probe of the observed
+bansosmontera/gpt-image-2 fails400 PROVIDER_IMAGE_ADAPTER_UNSUPPORTED. This is a
+provider adapter limitation, not an image candidate or permission to patch the
+separate router repository. Native gemini/gemini-3.1-flash-image-preview succeeds
+200 with691769 real image bytes; no story/configuration writes or automatic retry.
+Image exceeds existing512KiB cover limit. Preserve that boundary and normalize
+server-side with a reviewed standard image library, bounded decoded pixels/bytes,
+before candidate Apply. No mock images, Codex image-tool substitution, inferred
+output capability from vision-only tags, or cover replacement during generation.
+Private receipts: cover-capability-receipt.json, cover-image-catalog-receipt.json,
+cover-image-transport-receipt.json and cover-image-native-transport-receipt.json
+under .nf-artifacts. Initial private Node strip-only import refused parameter
+properties before network calls; used supported transform-types mode for that
+probe. Actual interface/storage/normalization contract review precedes code.
+
+Foundation update: independent review approved the amended contract and optional
+transport/Sharp dependency boundary. Adapter regression 37 PASS, normalization
+10 PASS, both package types PASS. Real retained Gemini bytes normalize from
+691,769 to 111,400 bytes; original/normalized SHA256 stay distinct. No additional
+provider call or story/configuration write. The issue remains OPEN: durable
+storage/routing/worker/API/UI/Apply/recovery/count-nine acceptance are not yet
+implemented. The author's fourteen proposed model identifiers are recorded in
+the task; unsupported custom transport is not relabeled as compatible.
+
+Cover concurrency follow-up: the revoked-access fallback was not fenced and
+could fail a newer actor's pending slot. Require the current batch revision,
+execution epoch and dispatch actor under the batch lock before that update.
+Prove a delayed old failure cannot terminalize a newer authorized request.
+
+Live cover preflight stopped before image dispatch: the new worker pinged an
+IORedis connection with offline queuing disabled before readiness. Explicitly
+connect before constructing consumers/probing. Preserve the failed preflight as
+evidence; no count-one/count-nine success is inferred from it.
+
+Apply regression found two cover-history edge cases: hash-only comparison missed
+manual uploads with identical bytes, and an author's first Apply prevented any
+further selection from its own batch. Pin the initial cover-version identity in
+the batch source snapshot as well as its hash. Require fresh client hash CAS;
+allow forward selection only from that same batch's current applied lineage,
+never an intervening manual cover. Preserve already-applied candidate replay
+rules. Add both negative/positive regressions; legacy unpinned batches fail closed
+unless their already-applied candidate is still current.
+
 ## Publication integration gaps and outdated acceptance fixtures — 2026-10-21
 
 CLOSED with focused regression evidence; owner authoring-batch-publication.

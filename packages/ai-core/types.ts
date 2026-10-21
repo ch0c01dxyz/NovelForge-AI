@@ -15,7 +15,8 @@ export type ModelProfile =
   | "FAST_CLASSIFIER"
   | "STRUCTURED_EXTRACTOR"
   | "LONG_CONTEXT_REVIEWER"
-  | "EMBEDDING";
+  | "EMBEDDING"
+  | "IMAGE_GENERATOR";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -64,6 +65,36 @@ export interface EmbedResult {
   inputTokens: number | null;
 }
 
+export const MAX_GENERATED_IMAGE_BYTES = 12 * 1024 * 1024;
+export const MAX_GENERATED_IMAGE_BASE64_LENGTH = 4 * Math.ceil(MAX_GENERATED_IMAGE_BYTES / 3);
+export const MAX_IMAGE_TIMEOUT_MS = 3_600_000;
+
+export interface GenerateImageRequest {
+  model: string;
+  prompt: string;
+  responseFormat?: "binary";
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+export interface GenerateImageResult {
+  /** Untrusted image encoding; the cover service must decode and normalize it. */
+  dataBase64: string;
+  model: string;
+  reportedModel: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+export interface ImageJobReceipt {
+  id: string;
+  model: string;
+  state: "SUBMITTING" | "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | "UNKNOWN";
+  progress?: { queuePosition?: number; waitSeconds?: number; processing?: number };
+}
+export interface ImageJobRoute { gatewayId: string; modelRef: string; modelId: string; timeoutMs: number }
+export interface ImageJobContext extends ImageJobRoute { requestId: string; jobId?: string; deadlineAt: number; state?: ImageJobReceipt["state"]; progress?: ImageJobReceipt["progress"] }
+
 export interface GatewayModel {
   modelId: string;
   displayName?: string;
@@ -82,6 +113,7 @@ export interface GatewayModel {
 export const JSON_MODE_PREFIX = "nf:json_object=";
 export const JSON_MODE_OK = `${JSON_MODE_PREFIX}ok`;
 export const JSON_MODE_INCOMPATIBLE = `${JSON_MODE_PREFIX}incompatible`;
+export const IMAGE_OUTPUT_INCOMPATIBLE = "nf:image-output=incompatible";
 
 /**
  * Namespace reserved for application-managed (observed/authorized)
@@ -115,11 +147,19 @@ export interface HealthResult {
 }
 
 export interface AIGateway {
+  submitImageJob?(input: { model: string; prompt: string; requestId: string; signal?: AbortSignal }): Promise<ImageJobReceipt>;
+  findImageJob?(requestId: string, signal?: AbortSignal): Promise<ImageJobReceipt>;
+  getImageJob?(id: string, signal?: AbortSignal): Promise<ImageJobReceipt>;
+  getImageJobResult?(id: string, model: string, signal?: AbortSignal): Promise<GenerateImageResult>;
   /** Stable gateway identifier (row id) for attempt records. */
   readonly id: string;
   readonly name: string;
   /** Discover the models this gateway serves (capability catalog). */
   listModels(signal?: AbortSignal): Promise<GatewayModel[]>;
+  /** Separate output-image catalog; absence does not imply text models can render images. */
+  listImageModels?(signal?: AbortSignal): Promise<GatewayModel[]>;
+  /** Exactly one image per request; no automatic transport retry. */
+  generateImage?(req: GenerateImageRequest): Promise<GenerateImageResult>;
   /** Non-streaming chat completion. */
   generate(req: GenerateRequest): Promise<GenerateResult>;
   /** Streamed chat completion; each yield is an incremental delta. */

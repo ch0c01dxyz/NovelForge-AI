@@ -7,7 +7,8 @@
 import { useApi } from "./useApi";
 
 export type PlatformRole = "SUPER_ADMIN" | null;
-export const MODEL_PROFILES = ["CREATIVE_WRITER", "DEEP_PLANNER", "CONTINUITY_REVIEWER", "FAST_CLASSIFIER", "STRUCTURED_EXTRACTOR", "LONG_CONTEXT_REVIEWER", "EMBEDDING"] as const;
+export const TEXT_MODEL_PROFILES = ["CREATIVE_WRITER", "DEEP_PLANNER", "CONTINUITY_REVIEWER", "FAST_CLASSIFIER", "STRUCTURED_EXTRACTOR", "LONG_CONTEXT_REVIEWER", "EMBEDDING"] as const;
+export const MODEL_PROFILES = [...TEXT_MODEL_PROFILES, "IMAGE_GENERATOR"] as const;
 
 export interface GatewayView {
   id: string;
@@ -150,9 +151,10 @@ export function usePlatformAdmin() {
     return api<ModelView[]>(`/models`);
   }
 
-  function listModelCatalog() {
-    return api<PlatformModelCatalogOption[]>("/model-catalog");
+  function listModelCatalog(profile?: string) {
+    return api<PlatformModelCatalogOption[]>(`/model-catalog${profile ? `?profile=${encodeURIComponent(profile)}` : ''}`);
   }
+  function syncImageModels(gatewayId: string) { return api<{ discovered: number }>(`/gateways/${encodeURIComponent(gatewayId)}/sync-image-models`, { method: "POST" }); }
 
   async function setModelEnabled(
     modelId: string,
@@ -208,6 +210,7 @@ export function usePlatformAdmin() {
     deleteGateway,
     healthCheck,
     syncModels,
+    syncImageModels,
     listModels,
     listModelCatalog,
     setModelEnabled,

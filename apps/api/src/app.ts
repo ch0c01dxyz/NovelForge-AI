@@ -16,7 +16,7 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import type { Env } from "@novelforge/config";
 import type { NovelForgeDb } from "@novelforge/database";
-import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
+import { GatewayManager, type AIGateway, type GatewayRecord } from "@novelforge/ai-core";
 import { createAuthService } from "@novelforge/auth";
 import { prismaSessionStore, prismaUserStore } from "./auth-stores.ts";
 import { registerAuthRoutes } from "./auth-routes.ts";
@@ -26,6 +26,9 @@ import { registerScaleEvidenceRoutes } from "./scale-evidence-routes.ts";
 import { registerScaleDecisionRoutes } from "./scale-decision-routes.ts";
 import { registerScaleS3Routes } from "./scale-s3-routes.ts";
 import { registerAiRoutes } from "./ai-routes.ts";
+import { registerCoverGenerationRoutes } from "./cover-generation-routes.ts";
+import { createCoverGenerationServices } from "@novelforge/ai-services";
+import { createCoverQueue, type CoverQueue } from "./services/cover-queue.ts";
 import { registerDefinitionRoutes } from "./definition-routes.ts";
 import { registerRetrievalRoutes } from "./retrieval-routes.ts";
 import { registerCanonRoutes } from "./canon-routes.ts";
@@ -158,6 +161,7 @@ export interface BuildAppOptions {
    */
   memoryQueue?: MemoryQueue;
   workflowQueue?: WorkflowQueue;
+  coverQueue?: CoverQueue;
   /**
    * Queue seam for the publication routes. Tests supply a fake so no test
    * needs a live BullMQ exchange; the handler is covered in the worker
@@ -343,6 +347,11 @@ export async function buildApp(
       ...(options.createGateway ? { createGateway: options.createGateway } : {}),
     });
     registerAiRoutes(app, { auth, services: aiServices, platformRoleOf });
+    const coverQueue = options.coverQueue ?? createCoverQueue(env.REDIS_URL);
+    if (!options.coverQueue) app.addHook("onClose", () => coverQueue.close());
+    registerCoverGenerationRoutes(app, { auth, services: createCoverGenerationServices({ db: options.db,
+      manager: new GatewayManager(createGatewayRegistry(options.db, env.APP_ENCRYPTION_KEY), { ...(options.createGateway ? { createGateway: options.createGateway } : {}), defaultStrategy: env.AI_ROUTING_STRATEGY }),
+      enqueue: (batchId, revision) => coverQueue.enqueue(batchId, revision) }) });
 
     // NF-WF-050C: optional S3 SCALE proposal assistance. Registered after
     // aiServices exists so the extraction path reuses the ONE sanctioned

@@ -20,6 +20,7 @@ import { startWorkflowWorkerApp } from "./workflow-jobs.ts";
 import { startMemoryWorkerApp } from "./memory-jobs.ts";
 import { startPublicationWorkerApp } from "./publication-jobs.ts";
 import { startNotificationFanoutWorkerApp } from "./notification-fanout-jobs.ts";
+import { startCoverWorkerApp } from "./cover-jobs.ts";
 
 const logger: WorkerLogger = {
   info: (msg, meta) => console.log(JSON.stringify({ level: "info", msg, ...meta })),
@@ -34,6 +35,7 @@ const memory = await startMemoryWorkerApp(env, logger);
 const publication = await startPublicationWorkerApp(env, logger);
 // NF-WF-019C: the `notifications` fan-out consumer (novel.chapter_published).
 const notifications = await startNotificationFanoutWorkerApp(env, logger);
+const covers = await startCoverWorkerApp(env, logger);
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
@@ -41,6 +43,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   logger.info("shutdown signal received", { signal });
   try {
+    await covers.stop();
     await notifications.stop();
     await publication.stop();
     await memory.stop();
@@ -63,4 +66,5 @@ logger.info("worker started", {
   memoryStarted: memory.started,
   publicationStarted: publication.started,
   notificationsStarted: notifications.started,
+  coversStarted: covers.started,
 });

@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useAiStudio, type DefinitionKind } from "../../composables/useAiStudio";
 import { ApiError } from "../../composables/useApi";
-import { MODEL_PROFILES } from "../../composables/usePlatformAdmin";
+import { TEXT_MODEL_PROFILES as MODEL_PROFILES } from "../../composables/usePlatformAdmin";
 import { useLocale } from "../../composables/useLocale";
 import { trapDialogFocus } from "../../utils/trapDialogFocus";
 import ActionMenu from "../ui/ActionMenu.vue";

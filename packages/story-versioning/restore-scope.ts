@@ -129,7 +129,11 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   embeddings: "DERIVED", // RAG derivations recomputed from truth (ADR-0007).
   chunks: "DERIVED",
 
-  // CONFIGURATION (16) — outside story-state restore.
+  cover_generation_batches: "OPERATIONAL",
+  cover_generation_items: "OPERATIONAL",
+
+  // CONFIGURATION (17) — outside story-state restore.
+  novel_cover_versions: "CONFIGURATION",
   novel_model_defaults_versions: "CONFIGURATION", // Versioned routing settings, never story truth.
   novels: "CONFIGURATION", // Novel identity and slug — restore rewinds story state, not identity.
   novel_settings: "CONFIGURATION",

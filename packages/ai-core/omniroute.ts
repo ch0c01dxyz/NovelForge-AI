@@ -24,10 +24,13 @@ import type {
   GatewayModel,
   GenerateRequest,
   GenerateResult,
+  GenerateImageRequest,
+  GenerateImageResult,
   HealthResult,
   StreamChunk,
+  ImageJobReceipt,
 } from "./types.ts";
-import { reportedTokens } from "./types.ts";
+import { MAX_GENERATED_IMAGE_BASE64_LENGTH, MAX_GENERATED_IMAGE_BYTES, MAX_IMAGE_TIMEOUT_MS, reportedTokens } from "./types.ts";
 
 export interface OmniRouteConfig {
   id: string;
@@ -43,6 +46,21 @@ export type FetchLike = (
   input: string,
   init?: RequestInit,
 ) => Promise<Response>;
+
+async function boundedBytes(res: Response, limit: number): Promise<Buffer> {
+  const reader = res.body?.getReader();
+  if (!reader) throw new GatewayError("INVALID_REQUEST", "invalid or oversized gateway response");
+  const chunks: Uint8Array[] = []; let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      length += value.byteLength;
+      if (length > limit) throw new GatewayError("INVALID_REQUEST", "invalid or oversized gateway response");
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks, length);
+  } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
+}
 
 interface OpenAIChatResponse {
   model?: string;
@@ -182,7 +200,7 @@ export class OmniRouteGateway implements AIGateway {
    * set when OUR timer fired (distinguishing a timeout from a caller
    * cancellation, which must not be retried).
    */
-  private withTimeout(callerSignal?: AbortSignal): {
+  private withTimeout(callerSignal?: AbortSignal, timeoutMs = this.timeoutMs): {
     signal: AbortSignal;
     timedOut: () => boolean;
     cleanup: () => void;
@@ -192,7 +210,7 @@ export class OmniRouteGateway implements AIGateway {
     const timer = setTimeout(() => {
       fired = true;
       controller.abort();
-    }, this.timeoutMs);
+    }, timeoutMs);
     const onAbort = () => controller.abort();
     if (callerSignal) {
       if (callerSignal.aborted) controller.abort();
@@ -229,9 +247,17 @@ export class OmniRouteGateway implements AIGateway {
   }
 
   async listModels(signal?: AbortSignal): Promise<GatewayModel[]> {
+    return this.listCatalog(false, signal);
+  }
+
+  async listImageModels(signal?: AbortSignal): Promise<GatewayModel[]> {
+    return this.listCatalog(true, signal);
+  }
+
+  private async listCatalog(images: boolean, signal?: AbortSignal): Promise<GatewayModel[]> {
     const t = this.withTimeout(signal);
     try {
-      const res = await this.fetchImpl(`${this.base}/v1/models`, {
+      const res = await this.fetchImpl(`${this.base}/v1/models${images ? "/image" : ""}`, {
         headers: this.headers(),
         signal: t.signal,
       });
@@ -244,7 +270,7 @@ export class OmniRouteGateway implements AIGateway {
         .map((m) => ({
           modelId: m.id,
           displayName: m.name,
-          capabilities: normalizeCapabilities(m.capabilities),
+          capabilities: images ? ["image-generation"] : normalizeCapabilities(m.capabilities),
           contextWindow: m.context_length,
         }));
     } catch (err) {
@@ -254,6 +280,100 @@ export class OmniRouteGateway implements AIGateway {
     } finally {
       t.cleanup();
     }
+  }
+
+  private async imageJobRequest<T>(path: string, init: RequestInit, read: (res: Response) => Promise<T>): Promise<T> {
+    const t = this.withTimeout(init.signal ?? undefined, Math.min(this.timeoutMs, 30_000));
+    try {
+      const res = await this.fetchImpl(`${this.base}/v1/images/jobs${path}`, { ...init, headers: { ...this.headers(), ...init.headers }, redirect: "error", signal: t.signal });
+      if (!res.ok) { await res.body?.cancel().catch(() => undefined); throw new GatewayError(classifyStatus(res.status), "image job request could not be completed", res.status); }
+      return await read(res);
+    } catch (error) {
+      if (error instanceof GatewayError) throw error;
+      throw new GatewayError(classifyThrown(error, t.timedOut()), "image job request could not be completed");
+    } finally { t.cleanup(); }
+  }
+
+  private async imageJobReceipt(res: Response): Promise<ImageJobReceipt> {
+    let value: ImageJobReceipt;
+    try { value = JSON.parse((await boundedBytes(res, 16_384)).toString("utf8")) as ImageJobReceipt; }
+    catch { throw new GatewayError("INVALID_REQUEST", "invalid image job receipt"); }
+    if (!value || !/^[a-f0-9]{64}$/.test(value.id) || typeof value.model !== "string" || !value.model.length || value.model.length > 512 ||
+      !["SUBMITTING", "QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "UNKNOWN"].includes(value.state)) throw new GatewayError("INVALID_REQUEST", "invalid image job receipt");
+    const progress: NonNullable<ImageJobReceipt["progress"]> = {};
+    for (const key of ["queuePosition", "waitSeconds", "processing"] as const) {
+      const n = value.progress?.[key]; if (typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 2_147_483_647) progress[key] = n;
+    }
+    return { id: value.id, model: value.model, state: value.state, ...(Object.keys(progress).length ? { progress } : {}) };
+  }
+
+  async submitImageJob(input: { model: string; prompt: string; requestId: string; signal?: AbortSignal }): Promise<ImageJobReceipt> {
+    if (!/^[a-f0-9-]{36}$/i.test(input.requestId)) throw new GatewayError("INVALID_REQUEST", "invalid image request identity");
+    return this.imageJobRequest("", { method: "POST", signal: input.signal, headers: { "idempotency-key": input.requestId }, body: JSON.stringify({ model: input.model, prompt: input.prompt, n: 1 }) }, res => this.imageJobReceipt(res));
+  }
+  async findImageJob(requestId: string, signal?: AbortSignal): Promise<ImageJobReceipt> {
+    if (!/^[a-f0-9-]{36}$/i.test(requestId)) throw new GatewayError("INVALID_REQUEST", "invalid image request identity");
+    return this.imageJobRequest(`/by-request/${requestId}`, { method: "GET", signal }, res => this.imageJobReceipt(res));
+  }
+  async getImageJob(id: string, signal?: AbortSignal): Promise<ImageJobReceipt> {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw new GatewayError("INVALID_REQUEST", "invalid image job identity");
+    return this.imageJobRequest(`/${id}`, { method: "GET", signal }, res => this.imageJobReceipt(res));
+  }
+  async getImageJobResult(id: string, model: string, signal?: AbortSignal): Promise<GenerateImageResult> {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw new GatewayError("INVALID_REQUEST", "invalid image job identity");
+    return this.imageJobRequest(`/${id}/result`, { method: "GET", signal }, async res => {
+      if (!["image/jpeg", "image/png", "image/webp"].includes((res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase())) { await res.body?.cancel().catch(() => undefined); throw new GatewayError("INVALID_REQUEST", "invalid image job result"); }
+      const bytes = await boundedBytes(res, MAX_GENERATED_IMAGE_BYTES);
+      if (!bytes.length) throw new GatewayError("INVALID_REQUEST", "empty image job result");
+      return { dataBase64: bytes.toString("base64"), model, reportedModel: null, inputTokens: null, outputTokens: null };
+    });
+  }
+
+  async generateImage(req: GenerateImageRequest): Promise<GenerateImageResult> {
+    if (req.timeoutMs !== undefined && (!Number.isSafeInteger(req.timeoutMs) || req.timeoutMs < 1000 || req.timeoutMs > MAX_IMAGE_TIMEOUT_MS)) {
+      throw new GatewayError("INVALID_REQUEST", "image timeout configuration is invalid");
+    }
+    const t = this.withTimeout(req.signal, req.timeoutMs);
+    try {
+      const binary = req.responseFormat === "binary";
+      const res = await this.fetchImpl(`${this.base}/v1/images/generations${binary ? "?response_format=binary" : ""}`, {
+        method: "POST", headers: this.headers(), signal: t.signal, redirect: "error",
+        body: JSON.stringify({ model: req.model, prompt: req.prompt, n: 1, response_format: "b64_json" }),
+      });
+      if (!res.ok) {
+        await res.body?.cancel().catch(() => undefined);
+        const category = classifyStatus(res.status);
+        throw new GatewayError(category, `generateImage: ${messageFor(category, res.status)}`, res.status);
+      }
+      // Cap the stream before parsing: Content-Length is optional and untrusted.
+      const invalid = () => new GatewayError("INVALID_REQUEST", "generateImage: invalid or oversized image response");
+      if (binary && !["image/jpeg", "image/png", "image/webp"].includes((res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase())) { await res.body?.cancel().catch(() => undefined); throw invalid(); }
+      const payload = await boundedBytes(res, binary ? MAX_GENERATED_IMAGE_BYTES : MAX_GENERATED_IMAGE_BASE64_LENGTH + 64 * 1024);
+      if (binary) {
+        if (!payload.length) throw invalid();
+        return { dataBase64: payload.toString("base64"), model: req.model, reportedModel: null, inputTokens: null, outputTokens: null };
+      }
+      let body: { data?: Array<{ b64_json?: unknown }>; model?: unknown; usage?: { input_tokens?: unknown; output_tokens?: unknown; prompt_tokens?: unknown; completion_tokens?: unknown } };
+      try { body = JSON.parse(payload.toString("utf8")); }
+      catch { throw invalid(); }
+      if (!body || !Array.isArray(body.data) || body.data.length !== 1) throw invalid();
+      const dataBase64 = body.data[0]?.b64_json;
+      if (typeof dataBase64 !== "string" || !dataBase64.length ||
+        dataBase64.length > MAX_GENERATED_IMAGE_BASE64_LENGTH || dataBase64.length % 4 !== 0 ||
+        !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) throw invalid();
+      const bytes = Buffer.from(dataBase64, "base64");
+      if (bytes.length > MAX_GENERATED_IMAGE_BYTES || bytes.toString("base64") !== dataBase64) throw invalid();
+      const reportedModel = typeof body.model === "string" && body.model.trim().length > 0 ? body.model : null;
+      return {
+        dataBase64, model: reportedModel ?? req.model, reportedModel,
+        inputTokens: reportedTokens(body.usage?.input_tokens ?? body.usage?.prompt_tokens),
+        outputTokens: reportedTokens(body.usage?.output_tokens ?? body.usage?.completion_tokens),
+      };
+    } catch (err) {
+      if (err instanceof GatewayError) throw err;
+      const category = classifyThrown(err, t.timedOut());
+      throw new GatewayError(category, `generateImage: ${messageFor(category)}`);
+    } finally { t.cleanup(); }
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {

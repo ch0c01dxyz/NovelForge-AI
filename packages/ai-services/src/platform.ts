@@ -16,6 +16,7 @@ import {
 } from "@novelforge/auth/authorization";
 import type { AuditService } from "./audit.ts";
 import { validateNovelCover, novelCoverUrl, type NovelCover } from "./novel-cover.ts";
+import { writeCoverWithHistory } from "./cover-history.ts";
 
 export class NotFoundError extends Error {
   readonly code = "NOT_FOUND" as const;
@@ -291,14 +292,7 @@ export function createPlatformServices(deps: {
         requireCapability(member.role, "novel:update");
         const novel = await tx.novel.findFirst({ where: { id: novelId, workspaceId } });
         if (!novel) throw new NotFoundError("novel");
-        const row = await tx.novelSettings.findUnique({ where: { novelId } });
-        const base = row?.settings && typeof row.settings === "object" && !Array.isArray(row.settings) ? row.settings : {};
-        const settings = { ...base, cover: { ...cover } };
-        await tx.novelSettings.upsert({ where: { novelId }, create: { novelId, settings }, update: { settings } });
-        const previousCover = base.cover;
-        const previousSha256 = previousCover && typeof previousCover === "object" && !Array.isArray(previousCover) && typeof previousCover.sha256 === "string" ? previousCover.sha256 : null;
-        await tx.auditLog.create({ data: { actorUserId, workspaceId, action: "novel.cover-updated", entityType: "Novel", entityId: novelId,
-          payload: { sha256: cover.sha256, previousSha256, mimeType: cover.mimeType, bytes: Buffer.from(cover.dataBase64, "base64").length } } });
+        await writeCoverWithHistory(tx, { novelId, workspaceId, actorUserId, cover });
       });
       return { coverUrl: novelCoverUrl(workspaceId, novelId, cover.sha256), sha256: cover.sha256 };
     },

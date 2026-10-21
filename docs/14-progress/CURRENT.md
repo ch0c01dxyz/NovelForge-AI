@@ -1,5 +1,143 @@
 # Current Project State
 
+## Resumable Horde jobs activation — 2026-10-21
+
+Author approved the prior recommendation and cross-repository implementation.
+Durable authenticated gateway jobs, request-scoped idempotency/ownership, pinned
+connection recovery and bounded binary results are implemented. NovelForge pins
+request identity before dispatch, resumes the same Generation with GET only,
+fences recovered executors and atomically records one terminal attempt. The
+cover drawer can explicitly check the existing job without requesting an image.
+
+Observed verification: core142, API cover24 and cover UI10 tests PASS; core,
+ai-services, API, worker and web types plus root lint PASS. Independent source
+reviews APPROVE. Gateway18 tests and production build PASS, including exact
+official Horde R2-host regression after the live proof exposed its omission.
+The2-file R2 amendment has independent APPROVE, manifest
+`611b84c2f0d231c98b3e5286a2c080441d61c16e63e5b4f92636357769d9f7ba`.
+
+After the author's gateway restart, authenticated job lookup is available on
+20127. Audited catalog read-back confirms16 Horde image models with async and
+30-minute settings; current mappings/priorities/defaults are preserved, Gemini
+remains disabled. Dedicated API/cover consumers were safely reloaded; API ready
+and Nuxt return200, workflow/Nuxt processes and notification backlog preserved.
+
+One real scratch AbsoluteReality image SUCCEEDED after an isolated worker restart
+and the author's second gateway reload: same persisted job/Generation, one
+SUCCEEDED terminal attempt,278560 provider bytes ->154667 normalized bytes.
+Result retrieval exposed the official transient R2 host missing from the strict
+allowlist; the reviewed correction is now active. An intermediate status429
+recovered without resubmission. Total observation lasted20m09s including diagnosis,
+build/reload and retrieval; this does not establish a20-minute provider queue.
+Reported model/usage remain unknown. Main story/cover hashes and scratch cover
+unchanged, no Gemini request. Private receipt `.nf-artifacts/horde-live-receipt.json`
+records the proof. No main cover Apply, commit or push. Earlier analysis-only/
+pending implementation paragraphs below are historical, superseded by this entry.
+
+## AI Horde queue investigation — 2026-10-21
+
+Author reports satisfactory real Horde images with15–20-minute waits and requests
+analysis of akanesia-router before gateway changes. Standing author instruction:
+inspect that repository for streaming, buffering, model/API/catalog and other AI
+integration problems; inspection is not blanket write authorization.
+
+NovelForge has a bounded optional per-image deadline selected by model capability
+`nf:image-timeout-ms=1800000`; sixteen current Horde image rows are configured
+with30 minutes, with audited pre-change rollback/read-back. Current author Horde
+mappings/priorities/defaults and shared gateway600000ms timeout are preserved;
+the earlier NanoBanana default must not be restored. Core133/types/focused lint
+PASS; independent code/config review APPROVE. Runtime reload is pending current
+analysis; do not claim the new deadline affects already-running consumers.
+
+Gateway20127 root returns200/Akanesia-Gateway. Earlier Windows socket inspection
+found no listener; this did not establish HTTP unavailability. Checkout287253b5
+source/local compiled/standalone images use Horde10-minute polling,5-second checks,
+six consecutive check-failure cutoff, request-local upstream job ID and URL image
+results. Exact serving process/build for the author's long test is unverified.
+No router change/restart, new image test, commit or push.
+
+Recommendation for author review: align bounded client/gateway/proxy deadlines;
+retain job identity and retrieve after reconnect instead of resubmitting. Reuse
+existing cover batches/queue/gallery. A durable authenticated gateway image-job
+submit/status/result contract is proposed follow-up, not implemented work.
+
+## Cover generation integration and temporary Gemini disable — 2026-10-21
+
+Latest resolution: author-approved bounded gateway binary transport fixes the
+NanoBanana response mismatch. Serving runtime is installed 9router0.5.104;
+its NanoBanana JSON output contains URLs even when the body asks for base64.
+Model capability `nf:image-output=binary` opts into the same gateway's binary
+query mode. JSON default remains available; no provider URL fetch, redirect,
+automatic POST retry or Gemini reactivation. Existing decoder/normalizer applies.
+One genuine scratch NanoBanana Flash binary request SUCCEEDED: 1,995,068 input
+bytes -> 223,479 normalized JPEG bytes, one attributed attempt, reported model/
+usage unknown and prior cover unchanged. No repeat of the ten-image proof.
+
+Audited main configuration/read-back selects `nb/nanobanana-flash` as default;
+both NanoBanana models have the binary marker because they share the verified
+runtime adapter, while Pro remains individually untested. A separate rollback
+plan was written/read-back before mutation; completion receipt followed final
+checks. Main hashes unchanged, zero main image requests, Gemini157/0enabled,
+eleven eligible author image models. API PID35940 and cover PID20404 replace the
+previous API/cover processes only; workflow4180/Nuxt29248 stay. Cloudflare rate
+limit remains an external issue, but a non-Gemini cover route is now proved.
+Final binary regression: core123 and cover UI9 PASS, core/web types and root lint
+PASS. Independent binary delta and corrected configuration script APPROVE.
+The earlier "current non-Gemini success unknown" statements below describe the
+pre-fix state, superseded by this observed Flash success.
+
+Approved parent lane D implementation includes the bounded active-novel brief,
+image-only profile/catalog routing, durable 1–9-slot generation, isolated BullMQ
+consumer, authenticated API, searchable model picker, EN/ID cover drawer,
+recommendation badges, editable notes/prompt, gallery, explicit Apply and cover
+history/restore. Generation does not replace the current cover. Source revision,
+cover-version identity and current-cover CAS protect Apply; retries retain
+attribution and require explicit acknowledgement of uncertain submissions.
+
+Observed verification: ai-core 115 PASS; API/AI 69 PASS (20 cover cases);
+normalizer 12 PASS; restore classification 8 PASS; final cover/admin UI 13 PASS;
+root lint and typecheck PASS. Independent read-only final source/rollout review
+APPROVE; retained 40-file implementation manifest SHA256
+`afb24c986a798a918ee67f99ea087bab51c42bc3d38d07b72f925e1ae18eabf9`.
+Actual scratch worker/gateway produced count1+count9 = ten genuine Gemini images.
+Native EN desktop/ID mobile proof covers polling, decoded gallery images,
+explicit Apply, library refresh and byte-exact old-cover restore. A later native
+recovery proof reuses these images with zero additional image dispatches.
+Main story hashes and another novel's cover remained unchanged. Fixture actors
+prove programmatic behavior, never human author acceptance.
+
+Latest author amendment: Gemini is temporarily disabled after the author's Google
+quota-limit report. Audited local configuration disabled 154 matching catalog
+models; read-back found zero enabled Gemini entries and unchanged story, cover,
+account and workspace hashes. Historical image successes do not prove current
+availability. One actual Cloudflare Lucid request returned RATE_LIMIT with one
+recorded attempt and no cover change; no blind retry. Custom bansosmontera image
+transport remains unsupported. Other catalog entries are not assumed working.
+
+Local activation completed with read-back: migration
+`20261021042000_cover_generation` applied; no pending migrations; author catalog
+contains eleven eligible non-Gemini models. Image-catalog sync added three more
+Gemini entries, also disabled: final 157 matching entries, zero enabled. API
+`/ready` and Nuxt return 200; the new protected cover route returns 401 without
+authentication. API PID8344 and dedicated cover consumer PID36932 are running;
+existing workflow PID4180 and Nuxt PID29248 were preserved. Cover/workflow queues
+are idle with one consumer each; the two waiting notifications are untouched.
+No main image request, story/cover/account/workspace hash change or Docker reset.
+NanoBanana flash's single real probe failed INVALID_REQUEST; successful current
+non-Gemini generation remains an external availability gap, separate from the
+historical ten-image success and completed implementation tests.
+
+An encrypted 1,181,403-byte preactivation dump was
+decrypted/read-back and restored into a disposable clone; source counts/hashes
+matched and the clone was removed. Keep candidates/history on code rollback;
+do not drop additive tables or restore the main database without authorization.
+No commit/push. OpenDesign MCP is unavailable;
+UI follows the approved checked-in design without claiming an MCP run.
+
+Retained publication evidence: ce6f361 is on origin/main; GitHub CI39525189557
+succeeded with 245 files / 2966 tests, lint, types and Compose checks. This is the
+published baseline, not validation of the subsequent uncommitted image changes.
+
 ## Authoring batch publication preparation — 2026-10-21
 
 Author explicitly authorized committing and pushing all current changes.

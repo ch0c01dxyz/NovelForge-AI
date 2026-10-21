@@ -32,11 +32,14 @@ const emit = defineEmits<{
   (e: "save", input: { profile: string; modelId: string; priority: number; enabled: boolean }): void;
   (e: "remove", mapping: ProfileMapping): void;
   (e: "reload-catalog"): void;
+  (e: "profile-selected", profile: string): void;
+  (e: "sync-image-models"): void;
 }>();
 
 const { t } = useLocale();
 
 const profile = ref("");
+watch(profile, (value, previous) => { if ((value === "IMAGE_GENERATOR") !== (previous === "IMAGE_GENERATOR")) modelId.value = ""; emit("profile-selected", value); });
 const modelId = ref("");
 const priority = ref(100);
 const enabled = ref(true);
@@ -194,6 +197,7 @@ const { query, page, pageCount, paged, total } = usePagedList<ProfileMapping>(
           <button v-if="visibleModels.length < filteredModels.length" type="button" @click.stop="modelLimit += 100">{{ t('modelPreference.showMore') }}</button>
         </ActionMenu>
         <p class="mt-2 text-[11.5px] font-normal text-nf-text-faint">{{ t('platformAdmin.profiles.catalogHint') }}</p>
+        <button v-if="profile === 'IMAGE_GENERATOR'" type="button" :disabled="saving || catalogLoading" class="mt-2 rounded-lg border border-nf-border-strong px-3 py-2 text-xs focus-visible:nf-focus disabled:opacity-50" @click="emit('sync-image-models')">{{ t('platformAdmin.profiles.syncImages') }}</button>
         <p v-if="catalogLoading" role="status" class="mt-2 font-normal">{{ t('common.loading') }}</p>
         <div v-if="catalogError" role="alert" class="mt-2 font-normal text-nf-warn">{{ t('modelPreference.loadFailed') }}<button type="button" class="ml-1 rounded border border-nf-border px-2 py-1 focus-visible:nf-focus" :disabled="saving || catalogLoading" @click="emit('reload-catalog')">{{ t('common.retry') }}</button></div>
       </div>

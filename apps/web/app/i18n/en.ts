@@ -3,6 +3,36 @@
  * Source of truth for every UI string; `id` falls back here per key.
  */
 export const en = {
+  coverGeneration: {
+    confirm: "Confirm",
+    checkExisting: "Check existing job", checkWarning: "Continue checking the same provider job? This does not request another image.",
+    queuePosition: "Provider queue position: {position}", estimatedWait: "Provider estimate: about {minutes} minutes (may change).",
+    description: "Create cover candidates from this novel's context. Edit the prompt and add your visual direction, then choose a result to apply.",
+    currentCover: "Current cover", noCover: "No cover yet", preserveCurrent: "Generating and selecting candidates keeps this cover unchanged. Previous covers remain recoverable after Apply.",
+    model: "Image model", modelHint: "Only enabled image models mapped by your administrator can be selected. Automatic uses the configured priority.",
+    style: "Visual style", count: "Number of images (1–9)", prompt: "Cover prompt", notes: "Your additional direction",
+    notesPlaceholder: "For example: keep the red cloak, use a moonlit background, avoid lettering…",
+    recommended: "Recommended", recommendationReason: "Suggested from this novel's genres; you can choose any style.",
+    generate: "Generate covers", refreshContext: "Refresh novel context", contextRefreshed: "Novel context refreshed. Your prompt and notes were preserved; review them before generating.",
+    results: "Cover candidates", candidate: "Candidate {slot}", apply: "Apply selected cover", applied: "Cover updated. The previous version remains in cover history.",
+    previousBatches: "Previous generations", batch: "Generation {number} · {count} images", history: "Cover history", version: "Cover version {number}", emptyVersion: "Version {number} · no cover", restore: "Restore",
+    confirmTitle: "Confirm cover action", applyWarning: "Use this selected image as the novel cover? The previous cover will remain recoverable in history.",
+    restoreWarning: "Restore this cover version? The current cover will also remain in history.",
+    retryWarning: "Generate this candidate again? If the earlier result is uncertain, the provider may already have processed it. Retrying can create another request and charge.",
+    refreshResults: "Refresh results", cancel: "Stop remaining images", resume: "Resume queued images", stillRunning: "An image is still being generated. Wait for its result before retrying.",
+    queueFailed: "The request was saved, but queue delivery could not be confirmed. Refresh results or explicitly resume it.",
+    requestUncertain: "The request result could not be confirmed. Check the same request below before starting another generation.", recoverRequest: "Check the same request",
+    sourceChanged: "The novel changed after this cover was prepared. Refresh its context and review your prompt before generating again.",
+    coverChanged: "The cover has changed since these candidates were prepared. Refresh the context and choose how to proceed; your current cover was preserved.",
+    modelUnavailable: "No suitable image model is available. Ask your administrator to enable and map an image model.",
+    noAccess: "You no longer have access to this novel or action.", actionFailed: "The action could not be completed. Refresh the results before trying again.", invalidInput: "Choose 1–9 images and enter a cover prompt.",
+    itemUncertain: "The provider's result could not be confirmed. Retry only if you want another request.", itemFailed: "This image could not be prepared. Refresh the results, review your model and context, then retry if needed.",
+    itemRateLimited: "The image provider is limiting requests. Wait before trying again, or choose a model from another provider. Your cover is unchanged.",
+    itemInvalidResponse: "This model could not provide a usable image. Try another image model or ask your administrator to check its connection. Repeating the same request may not help.",
+    itemProviderAccess: "The image provider connection needs your administrator's attention. Your prompt and current cover were preserved.",
+    styles: { "3d": "3D", artistic: "Artistic", sketch: "Sketch", "2d": "2D", manga: "Manga", manhua: "Manhua", manhwa: "Manhwa", custom: "Custom (describe below)" },
+    states: { PENDING: "Queued", RUNNING: "Generating", SUCCEEDED: "Ready", FAILED: "Failed", UNCERTAIN: "Result unconfirmed", CANCELLED: "Stopped", PARTIAL: "Some images ready" },
+  },
   studioStarter: {
     title: "Workspace starter pack",
     description: "Install five chapter agents, two reusable skills (context distillation and continuity checking), and the Chapter Generation & Review workflow with human approval. Skills are available for your own workflow steps; the chapter workflow is unchanged. Template instructions are in English and can be customized through new versions.",
@@ -747,6 +777,7 @@ export const en = {
   workspace: {
     tools: "Workspace tools",
     nav: {
+      cover: "Cover studio",
       story: "Story",
       menu: "Novel menu",
       discovery: "Novel details",
@@ -2155,6 +2186,7 @@ export const en = {
       },
     },
     profiles: {
+      syncImages: "Sync image catalog",
       heading: "Profile mappings",
       modelResultCount: "Showing {shown} of {count} matches · {total} gateway models",
       catalogHint: "Full live gateway catalog for platform administrators. Sync new models in Gateways before mapping them. Disabled models can be configured here but remain unavailable to authors until enabled.",
@@ -2177,6 +2209,7 @@ export const en = {
         STRUCTURED_EXTRACTOR: "Structured extractor",
         LONG_CONTEXT_REVIEWER: "Long-context reviewer",
         EMBEDDING: "Embedding",
+        IMAGE_GENERATOR: "Cover image generator",
       },
       errors: {
         invalid: "Some fields are invalid.",

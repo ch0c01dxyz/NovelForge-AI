@@ -150,12 +150,20 @@ async function refreshModels() {
   }
 }
 
+const catalogProfile = ref<string | undefined>();
 async function refreshCatalog() {
   const request = ++catalogRequest;
   catalogLoading.value = true;catalogError.value = null;modelCatalog.value = [];
-  try { const result = await admin.listModelCatalog();if (request === catalogRequest) modelCatalog.value = result; }
+  try { const result = await admin.listModelCatalog(catalogProfile.value);if (request === catalogRequest) modelCatalog.value = result; }
   catch (err) { if (request === catalogRequest) catalogError.value = errText(err); }
   finally { if (request === catalogRequest) catalogLoading.value = false; }
+}
+function selectCatalogProfile(profile: string) { catalogProfile.value = profile === "IMAGE_GENERATOR" ? profile : undefined; void refreshCatalog(); }
+async function syncImageModels() {
+  mappingsSaving.value = true; actionError.value = null;
+  try { for (const gateway of gateways.value.filter(g => g.enabled)) await admin.syncImageModels(gateway.id); await Promise.all([refreshModels(), refreshCatalog()]); }
+  catch (cause) { actionError.value = errText(cause); }
+  finally { mappingsSaving.value = false; }
 }
 
 async function refreshMappings() {
@@ -428,6 +436,8 @@ onMounted(async () => {
         @save="saveMapping"
         @remove="removeMapping"
         @reload-catalog="refreshCatalog"
+        @profile-selected="selectCatalogProfile"
+        @sync-image-models="syncImageModels"
       />
 
       <RoutingOverview

@@ -14,7 +14,7 @@ import {
   type ErrorCategory,
 } from "./errors.ts";
 import { OmniRouteGateway, type FetchLike } from "./omniroute.ts";
-import { reportedTokens, JSON_MODE_INCOMPATIBLE } from "./types.ts";
+import { reportedTokens, JSON_MODE_INCOMPATIBLE, IMAGE_OUTPUT_INCOMPATIBLE, MAX_IMAGE_TIMEOUT_MS } from "./types.ts";
 import {
   backoffDelayMs,
   DEFAULT_GATEWAY_RETRIES,
@@ -29,6 +29,10 @@ import type {
   EmbedResult,
   GatewayModel,
   GenerateResult,
+  GenerateImageResult,
+  ImageJobRoute,
+  ImageJobContext,
+  ImageJobReceipt,
   ModelProfile,
   StreamChunk,
 } from "./types.ts";
@@ -165,6 +169,10 @@ export interface EmbedOptions extends RouteAttemptOptions {
   input: string[];
 }
 
+export interface GenerateImageOptions extends Omit<RouteAttemptOptions, "profile" | "outputMode" | "maxAttempts"> {
+  prompt: string;
+}
+
 /**
  * No model is mapped to the requested capability profile. This is a
  * configuration gap the operator must fix (map a model to the profile),
@@ -244,7 +252,10 @@ export class GatewayManager {
   private requestEligible(
     candidates: Candidate[],
     outputMode: RouteAttemptOptions["outputMode"],
+    profile?: ModelProfile,
   ): Candidate[] {
+    if (profile === "IMAGE_GENERATOR") return candidates.filter(c =>
+      c.capabilities?.includes("image-generation") && !c.capabilities.includes(IMAGE_OUTPUT_INCOMPATIBLE));
     if (outputMode !== "json_object") return candidates;
     return candidates.filter(
       (c) => !c.capabilities?.includes(JSON_MODE_INCOMPATIBLE),
@@ -257,7 +268,7 @@ export class GatewayManager {
    * falling back to a candidate the request excluded).
    */
   private planFor(opts: RouteAttemptOptions, candidates: Candidate[]): Candidate[] {
-    const eligible = this.requestEligible(candidates, opts.outputMode);
+    const eligible = this.requestEligible(candidates, opts.outputMode, opts.profile);
     this.assertPreference(opts, eligible);
     const plan = planAttempts(eligible, opts.strategy ?? this.deps.defaultStrategy ?? "PRIORITY", {
       random: opts.random,
@@ -291,7 +302,7 @@ export class GatewayManager {
   async validatePreference(opts: Pick<RouteAttemptOptions, "profile" | "preferredModelRef" | "outputMode">): Promise<void> {
     if (opts.preferredModelRef === undefined) return;
     const { candidates } = await this.candidates(opts.profile);
-    this.assertPreference(opts, this.requestEligible(candidates, opts.outputMode));
+    this.assertPreference(opts, this.requestEligible(candidates, opts.outputMode, opts.profile));
   }
 
   /**
@@ -339,6 +350,7 @@ export class GatewayManager {
    * category, never the raw provider message.
    */
   async generate(opts: GenerateOptions): Promise<GenerateResult> {
+    if (opts.profile === "IMAGE_GENERATOR") throw new GatewayError("UNSUPPORTED", "image profiles require image transport");
     return this.routeAttempts(opts, "generate", (adapter, target) =>
       adapter.generate({
         model: target.modelId,
@@ -353,7 +365,7 @@ export class GatewayManager {
 
   private async retryGateway(opts: RouteAttemptOptions, target: Candidate): Promise<GatewayRecord | undefined> {
     const live = await this.candidates(opts.profile);
-    const eligible = this.requestEligible(live.candidates, opts.outputMode).some(c =>
+    const eligible = this.requestEligible(live.candidates, opts.outputMode, opts.profile).some(c =>
       c.enabled && c.gatewayId === target.gatewayId && c.modelId === target.modelId && c.modelRef === target.modelRef);
     return eligible ? live.gateways.get(target.gatewayId) : undefined;
   }
@@ -370,6 +382,7 @@ export class GatewayManager {
    * than N calls; the caller decides the batch size.
    */
   async embed(opts: EmbedOptions): Promise<EmbedResult> {
+    if (opts.profile === "IMAGE_GENERATOR") throw new GatewayError("UNSUPPORTED", "image profiles require image transport");
     if (opts.input.length === 0) {
       // Not a gateway failure, and retrying it would only loop: an empty
       // batch is a caller bug. Return immediately rather than opening a
@@ -379,6 +392,74 @@ export class GatewayManager {
     return this.routeAttempts(opts, "embed", (adapter, target) =>
       adapter.embed({ model: target.modelId, input: opts.input, signal: opts.signal }),
     );
+  }
+
+  async prepareImageJob(preferredModelRef?: string): Promise<ImageJobRoute | null> {
+    const { candidates } = await this.candidates("IMAGE_GENERATOR");
+    const target = this.planFor({ profile: "IMAGE_GENERATOR", generationId: "prepare", maxAttempts: 1, preferredModelRef }, candidates)[0];
+    if (!target?.capabilities?.includes("nf:image-jobs=v1")) return null;
+    const deadlines = target.capabilities.filter(c => c.startsWith("nf:image-timeout-ms="));
+    const timeoutMs = deadlines.length ? Number(deadlines[0]!.slice("nf:image-timeout-ms=".length)) : 1_800_000;
+    if (!target.modelRef || deadlines.length > 1 || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > MAX_IMAGE_TIMEOUT_MS) throw new GatewayError("INVALID_REQUEST", "invalid image job route configuration");
+    return { gatewayId: target.gatewayId, modelRef: target.modelRef, modelId: target.modelId, timeoutMs };
+  }
+
+  /** Polls are not generation attempts; the cover transaction records one terminal outcome. */
+  async runImageJob(job: ImageJobContext, input: { prompt: string; resumeOnly: boolean; onReceipt: (receipt: ImageJobReceipt) => Promise<boolean>; sleep?: (ms: number) => Promise<void> }): Promise<GenerateImageResult> {
+    const resolve = async () => {
+      const mappings = await this.registry.resolveProfile("IMAGE_GENERATOR"), gateways = await this.registry.listGateways();
+      const mapping = mappings.find(m => m.modelRef === job.modelRef && m.gatewayId === job.gatewayId && m.modelId === job.modelId);
+      const gateway = gateways.find(g => g.id === job.gatewayId && g.enabled);
+      if (!mapping || !gateway) throw new NoRouteError("IMAGE_GENERATOR", "the original image job route is disabled");
+      const adapter = this.build(gateway);
+      if (!adapter.submitImageJob || !adapter.findImageJob || !adapter.getImageJob || !adapter.getImageJobResult) throw new GatewayError("UNSUPPORTED", "gateway does not support image jobs");
+      return adapter as Required<Pick<AIGateway, "submitImageJob" | "findImageJob" | "getImageJob" | "getImageJobResult">>;
+    };
+    let receipt: ImageJobReceipt | undefined;
+    if (!input.resumeOnly) {
+      try { receipt = await (await resolve()).submitImageJob({ model: job.modelId, prompt: input.prompt, requestId: job.requestId }); }
+      catch (error) {
+        if (!(error instanceof GatewayError) || !["TRANSIENT", "RATE_LIMIT"].includes(error.category)) throw error;
+      }
+    }
+    while (Date.now() < job.deadlineAt) {
+      try {
+        const adapter = await resolve();
+        receipt ??= job.jobId ? await adapter.getImageJob(job.jobId) : await adapter.findImageJob(job.requestId);
+        if (receipt.model !== job.modelId || (job.jobId && receipt.id !== job.jobId)) throw new GatewayError("INVALID_REQUEST", "image job identity does not match the pinned request");
+        if (!await input.onReceipt(receipt)) throw new GatewayError("DETERMINISTIC", "image job observer is no longer current");
+        job = { ...job, jobId: receipt.id, state: receipt.state };
+        if (receipt.state === "SUCCEEDED") return await (await resolve()).getImageJobResult(receipt.id, job.modelId);
+        if (receipt.state === "FAILED") throw new GatewayError("DETERMINISTIC", "image provider confirmed job failure");
+        if (receipt.state === "UNKNOWN") throw new GatewayError("INTERNAL", "image submission outcome remains unknown");
+      } catch (error) {
+        if (!(error instanceof GatewayError) || !["TRANSIENT", "RATE_LIMIT"].includes(error.category)) throw error;
+      }
+      receipt = undefined;
+      await (input.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms))))(Math.min(5000, Math.max(0, job.deadlineAt - Date.now())));
+    }
+    throw new GatewayError("TRANSIENT", "image job observation timed out; the original job remains recoverable");
+  }
+
+  async generateImage(opts: GenerateImageOptions): Promise<GenerateImageResult> {
+    return this.routeAttempts({ ...opts, profile: "IMAGE_GENERATOR", maxAttempts: 1 }, "generateImage", (adapter, target) => {
+      if (!adapter.generateImage) throw new GatewayError("UNSUPPORTED", "gateway does not support image transport");
+      const deadlines = target.capabilities?.filter(capability => capability.startsWith("nf:image-timeout-ms=")) ?? [];
+      const timeoutMs = deadlines.length ? Number(deadlines[0]!.slice("nf:image-timeout-ms=".length)) : undefined;
+      if (deadlines.length > 1 || (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > MAX_IMAGE_TIMEOUT_MS))) {
+        throw new GatewayError("INVALID_REQUEST", "image timeout configuration is invalid");
+      }
+      return adapter.generateImage({ model: target.modelId, prompt: opts.prompt, signal: opts.signal,
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        ...(target.capabilities?.includes("nf:image-output=binary") ? { responseFormat: "binary" as const } : {}) });
+    });
+  }
+
+  async validateImagePreference(preferredModelRef?: string): Promise<void> {
+    const { candidates } = await this.candidates("IMAGE_GENERATOR");
+    const eligible = this.requestEligible(candidates, undefined, "IMAGE_GENERATOR").filter(c => c.enabled);
+    this.assertPreference({ profile: "IMAGE_GENERATOR", preferredModelRef }, eligible);
+    if (!eligible.length) throw new NoRouteError("IMAGE_GENERATOR");
   }
 
   /**
@@ -476,6 +557,7 @@ export class GatewayManager {
   async *generateStream(
     opts: GenerateOptions,
   ): AsyncGenerator<StreamChunk, void, unknown> {
+    if (opts.profile === "IMAGE_GENERATOR") throw new GatewayError("UNSUPPORTED", "image profiles require image transport");
     const { candidates, gateways } = await this.candidates(opts.profile);
     const plan = this.planFor(opts, candidates);
 
@@ -579,6 +661,14 @@ export class GatewayManager {
 
   /** Discover a single gateway's model catalog (admin sync path). */
   async listModelsFor(gatewayId: string): Promise<GatewayModel[]> {
+    return this.listCatalogFor(gatewayId, false);
+  }
+
+  async listImageModelsFor(gatewayId: string): Promise<GatewayModel[]> {
+    return this.listCatalogFor(gatewayId, true);
+  }
+
+  private async listCatalogFor(gatewayId: string, images: boolean): Promise<GatewayModel[]> {
     const rec = (await this.registry.listGateways()).find((g) => g.id === gatewayId);
     if (!rec) {
       // The registry omits gateways whose credential cannot be decrypted,
@@ -589,7 +679,10 @@ export class GatewayManager {
         "gateway not found, disabled, or credential unreadable",
       );
     }
-    return this.build(rec).listModels();
+    const adapter = this.build(rec);
+    if (!images) return adapter.listModels();
+    if (!adapter.listImageModels) throw new GatewayError("UNSUPPORTED", "gateway does not support image catalog discovery");
+    return adapter.listImageModels();
   }
 
   /** Health probe across all enabled gateways (background job entry). */

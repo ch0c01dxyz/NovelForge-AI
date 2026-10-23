@@ -1,1043 +1,333 @@
 # NovelForge AI
 
-> **AI Writing + Narrative Intelligence + Story Simulation + Long-Form Memory + Story Versioning Platform**
+An AI-assisted webnovel authoring platform with structured story knowledge,
+chapter workflows, continuity review, recoverable revisions, and a public reader.
 
-**NovelForge AI** adalah platform authoring webnovel berbasis AI yang dirancang untuk membantu penulis merencanakan, menulis, mengembangkan, dan menjaga konsistensi cerita dalam skala sangat panjang—termasuk webnovel dengan **2.000–2.500+ chapter**.
+> The LLM writes and reasons. NovelForge remembers, validates, versions, and protects the story.
 
-NovelForge tidak dirancang sebagai sekadar *AI text generator*. Platform ini dibangun agar AI dapat bekerja bersama sistem yang memahami **canon, karakter, relationship, timeline, worldbuilding, plot thread, sebab-akibat, perkembangan dunia, ritme cerita, hingga ending**.
+NovelForge targets stories of **2,000–2,500+ chapters**. This is a design goal,
+not a production-scale acceptance claim. The UI supports **English and Bahasa Indonesia**.
 
-> **LLM menulis dan menalar. NovelForge mengingat, memvalidasi, mensimulasikan, mengatur, dan melindungi cerita.**
+## Project status
 
----
+**Active development — not a general production release.** Updated 2026-10-23.
 
-## Project Status
+Implementation, automated verification, live integration, author acceptance and
+release approval are tracked separately. Read the [current progress](docs/14-progress/CURRENT.md),
+[delivery plan](docs/implementation/DELIVERY-PLAN.md) and
+[issues and gaps](docs/implementation/ISSUES-AND-GAPS.md) for actual evidence.
+Historical test receipts do not prove a fresh installation on your host.
 
-> 🚧 **NovelForge V2 is currently under active development.**
+This documentation update does not publish outstanding local application changes.
+The development additions listed separately below may be absent from a clean
+checkout until their implementation commits are integrated.
 
-Arsitektur utama telah dirancang dan implementasi dilakukan secara bertahap menggunakan workflow orchestration berbasis coding agents.
+## Features
 
-Project ini masih dalam tahap pengembangan dan belum ditujukan untuk penggunaan production umum.
+| Area | Capabilities |
+| --- | --- |
+| Author workspace | Novel setup wizard, workspace management, rich-text editor, chapter navigation/sorting, create/rename/delete, import/export, active-chapter save/draft, and whole-novel publication. |
+| AI chapters | Author instructions and outlines, bounded story context, planning/writing/review workflows, per-step model preferences, structured validation, draft comparison/application and explicit author approval. |
+| Story knowledge | Characters and historical states/knowledge, relationships, world/lore, timeline/events, approved canon and candidate proposals. |
+| Planning and narrative | Outlines, arcs, planning horizons, Narrative DNA, threads, promises/payoffs, simulation, causality and endgame tooling. |
+| Research and memory | Reference library/ingestion, provenance, lexical/vector retrieval, hierarchical memory and rebuildable projections. Embeddings require a compatible configured model. |
+| AI Studio | Workspace-scoped agents, skills and workflows, versioned definitions, starter packages, AI-assisted creation, run history, model choices and usage analytics. |
+| Cover Studio | Author notes, style choices, batches of 1–9 images, cover selection and history. Supported models/transports depend on gateway configuration. |
+| Public reader | Published-novel discovery, novel/chapter pages, search, genre filters, progress, reader library, comments, follows and notifications. |
+| Administration | Server-enforced SUPER_ADMIN gateway/model/profile configuration, routing information and audit history. Workspace ownership does not grant platform administration. |
+| Recovery | Revisions, checkpoints, branches, impact analysis, non-destructive restore, durable queues and source/version checks. Generation, canon approval and publication remain distinct. |
 
----
+### Latest local development additions
 
-## Quickstart (Development)
+The working tree also includes these separately tracked additions; availability
+on `main` depends on integrating their implementation commits:
 
-Prasyarat: **Node.js >= 22**, **pnpm 12** (`corepack enable`), dan **Docker** (Docker Desktop/WSL2 di Windows, Docker Engine + Compose plugin di Ubuntu).
+- Character discovery and identity linking; proposed references and clan/organization
+  information with author approve/edit/reject controls.
+- Internal chapter safeguards for outline authority, consistent context and readable
+  language, including custom AI definitions.
+- Reader floating controls, reading preferences, chapter search, modal comments,
+  public covers/details and a public browse landing page.
+- Platform identity settings for product name, logo letters and mark color.
+- Cover payload retention controls and additional gateway/catalog support.
+- Failed-step retry preserving successful work, settings recovery for failures
+  requiring a new run, and brighter text selection.
+
+See [CURRENT.md](docs/14-progress/CURRENT.md) for scope and limitations. AI safeguards
+and schema validation do not guarantee factual accuracy, prose quality or consistency.
+Generated proposals become canon only through the relevant author decision or an
+explicitly authorized policy.
+
+## Architecture
+
+```text
+Nuxt web :3001 → same-origin /api proxy → Fastify API :3000
+                                            │
+                              PostgreSQL 16 + pgvector
+                              Redis 7 / BullMQ workers
+                                            │
+                       Model Manager → Gateway adapter → LLM gateway
+```
+
+The TypeScript/pnpm monorepo uses Nuxt/Vue, Fastify, Prisma, PostgreSQL/pgvector
+and Redis/BullMQ. The AI boundary is `AIGateway` → `OmniRouteGateway`; a compatible
+gateway, such as the author's separately operated akanesia-router, supplies model
+services. Model IDs and profile mappings are configuration. The external gateway
+enforces quotas; NovelForge records reported generation usage.
+
+## Installation options
+
+| Setup | Application | Databases |
+| --- | --- | --- |
+| Windows | Native Node.js / pnpm | Existing Docker Desktop services, or fresh dedicated development services |
+| Linux | Native Node.js / pnpm | Native PostgreSQL/pgvector and Redis; required path for repository coding agents |
+| Docker-assisted development | Native Node.js / pnpm | Selected infrastructure services from `docker-compose.yml` |
+
+**There is no complete application Docker image or all-in-one web/API/worker
+Compose deployment in this repository.** Compose runs infrastructure; start the
+application processes separately.
+
+### Prerequisites
+
+- Git and **Node.js 24**, the exercised baseline. The manifest declares `>=22`,
+  but runtime scripts need `--experimental-transform-types`; use a compatible
+  recent runtime rather than an early Node 22 build.
+- **pnpm 12.5.1**, pinned in `package.json`.
+- PostgreSQL **16** with matching **pgvector**, and Redis **7**.
+- A reachable compatible LLM gateway and authorized profile/model mappings for
+  AI operations. Text, embedding and image capabilities are separate.
+- S3-compatible storage and valid `S3_*` configuration for operations using object
+  storage. Compose does not provision storage or the gateway.
+
+Inspect existing services before provisioning. On the author's Windows host,
+reuse running Docker services and preserve their credentials/data/volumes. Follow
+the [environment preflight](docs/11-deployment/ENVIRONMENT-PREFLIGHT.md) for host
+requirements, extension privileges and disposable test database permissions.
+
+### 1. Clone, install and configure
+
+Windows / PowerShell:
+
+```powershell
+git clone https://github.com/ch0c01dxyz/NovelForge-AI.git
+Set-Location NovelForge-AI
+npm install --global pnpm@12.5.1
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+pnpm install --frozen-lockfile
+```
+
+Linux / Bash:
 
 ```bash
-# 1. Install dependencies (semua workspace)
+git clone https://github.com/ch0c01dxyz/NovelForge-AI.git
+cd NovelForge-AI
+npm install --prefix "$HOME/.local/share/novelforge-tools" pnpm@12.5.1
+export PATH="$HOME/.local/share/novelforge-tools/node_modules/.bin:$PATH"
+test -f .env || cp .env.example .env
 pnpm install --frozen-lockfile
+```
 
-# 2. Salin konfigurasi environment
-cp .env.example .env   # sesuaikan bila perlu; default aman untuk dev lokal
+Install Node using your approved distribution/version manager first. Persist the
+Linux tools directory in your shell's PATH if needed. Configure `.env` privately:
 
-# 3. Jalankan infrastruktur (PostgreSQL+pgvector, Redis)
-docker compose up -d
-# Catatan: jika port 5432 di host sudah terpakai, set POSTGRES_PORT di .env
+| Variable | Required configuration |
+| --- | --- |
+| `DATABASE_URL` | Actual PostgreSQL host, published port, database and authorized credentials. Native processes use a host address such as `127.0.0.1`, not Compose DNS name `postgres`. |
+| `REDIS_URL` | Actual Redis endpoint, such as `redis://127.0.0.1:6379` for fresh local development. |
+| `POSTGRES_*`, `REDIS_PORT` | Compose settings; match credentials to `DATABASE_URL`. Editing them does not change credentials in an initialized database volume. |
+| `APP_ENCRYPTION_KEY` | Strong private encryption secret. Preserve across restarts/backups; changing it can prevent saved gateway credential decryption. |
+| `OMNIROUTE_BASE_URL`, `OMNIROUTE_API_KEY` | Actual gateway endpoint/secret. Persisted gateway and profile settings also require administration setup. |
+| `S3_*` | Actual endpoint, bucket, region and credentials. Startup requires nonempty credential settings; placeholders do not provide working storage. |
+| `NODE_ENV`, `PORT` | `development` and API port `3000` for this guide. |
+| `NUXT_API_BASE` | `http://localhost:3000` for the web server's API proxy. |
 
-# 4. Quality gates
+The example file uses container-network PostgreSQL/Redis addresses: adjust them
+for native processes. Do not assume the example gateway port is running. Keep
+`.env`, credentials, backups and private manuscripts/evidence out of Git.
+Generate an encryption secret locally and store its output privately:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+### 2A. Windows / Docker-assisted infrastructure
+
+On a new Windows host, install/start Docker Desktop with Linux containers and
+its WSL2 backend. Reuse healthy existing services instead of recreating them.
+
+```powershell
+docker ps
+docker compose config --quiet
+# Fresh development infrastructure only; omit when reusing existing services.
+docker compose up -d --no-deps postgres redis
+docker compose ps postgres redis
+```
+
+These commands also work for a deliberately chosen Docker-assisted Linux setup
+with Docker Engine and the Compose plugin already installed. Linux coding agents
+follow native preflight instead of installing Docker.
+
+Compose additionally declares acceptance services and host-specific external
+volumes. **Do not use an unqualified `docker compose up -d` on a fresh clone**,
+create substitute acceptance volumes, or use the working acceptance database for
+disposable tests. Start only `postgres redis` for fresh development. Never use
+`docker compose down -v` as an installation/troubleshooting step.
+
+### 2B. Linux native infrastructure
+
+On Ubuntu, inspect versions and package candidates first:
+
+```bash
+node --version
+pnpm --version
+psql --version
+redis-server --version
+apt-cache policy postgresql-16 postgresql-16-pgvector redis-server
+```
+
+An administrator can install missing compatible packages from repositories
+appropriate for that Ubuntu release:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates \
+  postgresql-16 postgresql-client-16 postgresql-16-pgvector redis-server
+sudo systemctl start postgresql redis-server
+```
+
+If these versions are unavailable, follow [native setup guidance](docs/11-deployment/ENVIRONMENT-PREFLIGHT.md).
+Other distributions require their native package manager/service names. Create
+a dedicated development role/database, set a private password, grant database
+ownership and configure `DATABASE_URL`. Arrange pgvector extension privileges;
+do not grant superuser on a shared database merely to pass tests.
+
+For a **fresh dedicated local instance**, an administrator can provision the
+development database as follows. Skip creation when reusing existing resources:
+
+```bash
+sudo -u postgres createuser --pwprompt novelforge
+sudo -u postgres createdb --owner=novelforge novelforge
+sudo -u postgres psql --dbname=novelforge --command='CREATE EXTENSION IF NOT EXISTS vector;'
+redis-cli ping
+```
+
+Use the private password entered at the prompt in `DATABASE_URL` (URL-encode
+reserved characters). Test database creation/extension permissions are a separate
+preflight step; the development role above is not granted cluster-wide administration.
+
+### 3. Generate the database client and apply migrations
+
+From the repository root, after services and `.env` are ready (PowerShell or Bash):
+
+```bash
+node --env-file=.env packages/database/node_modules/prisma/build/index.js generate --config packages/database/prisma.config.ts
+node --env-file=.env packages/database/node_modules/prisma/build/index.js migrate deploy --config packages/database/prisma.config.ts
+```
+
+Back up populated databases and review pending migrations before upgrades.
+Never use migration reset or test preparation against working data.
+
+### 4. Start the application
+
+Open three terminals at the repository root:
+
+```bash
+# Terminal 1: API
+node --env-file=.env --experimental-transform-types apps/api/src/server.ts
+```
+
+```bash
+# Terminal 2: workflow, memory, publication, notification and cover consumers
+node --env-file=.env --experimental-transform-types apps/worker/src/index.ts
+```
+
+```bash
+# Terminal 3: Nuxt development server
+pnpm --filter @novelforge/web dev --dotenv ../../.env --port 3001
+```
+
+The worker does not automatically load the root `.env`; keep `--env-file=.env`
+or supply variables through your process manager. Nuxt's `--dotenv` explicitly
+loads the same root file; `--port 3001` avoids inheriting API `PORT=3000`.
+API and worker must share the intended database/Redis configuration.
+
+- Web: <http://localhost:3001>
+- API liveness: <http://localhost:3000/health>
+- Datastore readiness: <http://localhost:3000/ready>
+- Public catalog: <http://localhost:3001/browse>
+- Sign in / register: <http://localhost:3001/sign-in>
+- Administration: <http://localhost:3001/admin> (SUPER_ADMIN only)
+
+Use one hostname consistently for session cookies. `/ready` checks database and
+Redis; it does not certify models, storage, worker progress or production readiness.
+The public browse landing page and `/author` / `/login` aliases belong to the
+local development additions; use the root author home and `/sign-in` on older revisions.
+
+### 5. First-use setup
+
+1. Register through the sign-in page, then create a workspace and novel through
+   the author home. Normal authors may own one workspace with unlimited novels;
+   SUPER_ADMIN is exempt from the workspace limit.
+2. Have the operator provision the initial trusted SUPER_ADMIN through an
+   authorized database administration procedure. Registration does not grant
+   this role; there is no universal default admin login.
+3. Configure a gateway in administration, synchronize its catalog, enable
+   compatible models and map them to Model Profiles. A catalog entry alone does
+   not prove enablement, compatibility or successful dispatch.
+4. Install/publish the chapter starter package through AI Studio and review model
+   choices. Existing installations may already have these definitions.
+5. Save story information and approved planning, then generate/review chapters.
+   Prose acceptance, canon approval and publication remain separate actions.
+
+## Checks and troubleshooting
+
+```bash
 pnpm lint
 pnpm typecheck
 pnpm test
-
-# 5. Jalankan aplikasi
-pnpm --filter @novelforge/web dev      # Nuxt web shell
-pnpm --filter @novelforge/api start    # Fastify API (/health, /ready)
-pnpm --filter @novelforge/worker start # BullMQ heartbeat worker
+pnpm -r --filter './apps/*' build
 ```
 
-### Verifikasi clean-clone
+Database suites need confirmed disposable databases, extensions and test-role
+permissions. Some create/drop their own databases: read the selected suite and
+[preflight](docs/11-deployment/ENVIRONMENT-PREFLIGHT.md) before running it.
+The `scripts/verify-clone.ps1` / `.sh` helpers contain Compose-specific checks;
+this README refresh is not a new Windows/Linux clean-install test receipt.
 
-Skrip verifikasi end-to-end (fresh clone → install → lint → typecheck → test → build semua apps → `docker compose config`):
+| Symptom | Check |
+| --- | --- |
+| Startup refused | Missing environment values, root `.env` not loaded, or unconfigured example endpoints/secrets. |
+| Database/Redis unreachable | Host/published ports for native processes; Compose DNS names only inside the corresponding network. |
+| `vector` migration fails | Matching pgvector binaries/image and extension privileges on the intended database. |
+| Draft stays pending | Workflow consumer running against the same database/Redis as the API; inspect history before starting more workers. |
+| Model/profile mismatch | Enabled mappings and per-step/inherited preferences. Repeating an invalid selection does not repair configuration. |
+| Gateway limit/connection failure | Recorded attempts and gateway health. Where integrated, use explicit retry; otherwise review settings before another run. |
+| Cover/vector search unavailable | Verify image/embedding capabilities and profile mappings separately from chat. |
 
-```powershell
-# Windows (PowerShell 7+)
-scripts\verify-clone.ps1
-```
-
-```bash
-# Ubuntu/Linux
-scripts/verify-clone.sh
-```
-
-Status verifikasi terakhir: **Windows PASSED (2026-09-23)**; **Ubuntu 24.04 PASSED (2026-09-23, via container)** — lihat `docs/implementation/test-matrix.md`.
-
----
-
-# Why NovelForge?
-
-Model AI dapat menghasilkan prose yang bagus, tetapi webnovel panjang mempunyai masalah yang jauh lebih kompleks.
-
-Setelah ratusan atau ribuan chapter, AI harus mampu memahami hal-hal seperti:
-
-* Apa yang sudah menjadi canon?
-* Apa yang diketahui masing-masing karakter?
-* Bagaimana hubungan antar karakter berubah?
-* Apa saja misteri yang belum terjawab?
-* Setup apa yang belum mendapatkan payoff?
-* Apakah timeline masih konsisten?
-* Apakah teknologi yang muncul masuk akal untuk dunia tersebut?
-* Apakah karakter mengingat sesuatu yang seharusnya belum mereka ketahui?
-* Apakah konflik mulai terasa berulang?
-* Apakah outline masih sesuai dengan perkembangan cerita?
-* Apakah cerita sudah siap memasuki endgame?
-* Bagaimana melakukan rollback jika perubahan worldbuilding ternyata merusak cerita?
-
-NovelForge dibangun untuk menangani masalah-masalah tersebut secara terstruktur.
-
----
-
-# Core Philosophy
-
-NovelForge menggunakan beberapa prinsip fundamental.
-
-### Canon is the source of truth
-
-LLM bukan database cerita.
-
-Canon, story state, timeline, relationship, dan informasi penting lainnya disimpan sebagai structured data.
-
-### AI proposes, NovelForge validates
-
-AI dapat mengusulkan:
-
-* canon baru;
-* perubahan karakter;
-* perkembangan relationship;
-* event;
-* perubahan world state;
-* outline adjustment.
-
-Namun perubahan penting tidak boleh diam-diam menjadi canon tanpa melewati policy dan validation.
-
-### Synopsis is direction, not a permanent script
-
-Synopsis terutama digunakan untuk membentuk arah awal cerita.
-
-Setelah cerita berkembang, keputusan chapter lebih banyak mengikuti:
+## Repository and documentation
 
 ```text
-Author Instruction
-        ↓
-Current Approved Outline
-        ↓
-Current Arc / Saga
-        ↓
-Canon
-        ↓
-Character / Relationship / World State
-        ↓
-Timeline
-        ↓
-Recent Story Memory
-        ↓
-Relevant Historical Memory
-        ↓
-Synopsis
+apps/web/                 Author, reader and administration UI
+apps/api/                 Fastify routes and application services
+apps/worker/              BullMQ consumers and recovery
+packages/                 Shared domain, AI, retrieval and validation
+packages/database/        Prisma schema and reviewed migrations
+docs/                     Architecture, design, operations and evidence
+tasks/                    Implementation and acceptance contracts
 ```
 
-### Long stories require structured memory
-
-NovelForge tidak mengirim seluruh 2.500 chapter ke model.
-
-Context dibangun secara dinamis berdasarkan kebutuhan generation saat itu.
-
-### Story changes must be recoverable
-
-Perubahan besar pada cerita menggunakan:
-
-```text
-Impact Analysis
-        ↓
-Checkpoint
-        ↓
-Story Transaction
-        ↓
-Validation
-        ↓
-Commit
-```
-
-Rollback tidak menghapus history.
-
----
-
-# Major Systems
-
-NovelForge terdiri dari beberapa intelligence system yang saling bekerja sama.
-
-## Story Intelligence
-
-Mengelola:
-
-* Canon
-* Story State
-* Timeline
-* Story Events
-* Story Threads
-* Promise / Payoff
-* Foreshadowing
-* Narrative Debt
-* Causal Graph
-* Planning Horizon
-* Continuity
-* Story Health
-
-Tujuannya adalah memahami:
-
-> Apa yang benar, apa yang sedang terjadi, bagaimana kita sampai ke keadaan sekarang, dan apa yang masih belum selesai?
-
----
-
-## Character Intelligence
-
-Menyimpan perkembangan karakter secara historis.
-
-Contohnya:
-
-```text
-Character
-├── Identity
-├── Goals
-├── Motivation
-├── Knowledge
-├── Beliefs
-├── Abilities
-├── Reputation
-├── Location
-├── Possessions
-├── Relationships
-├── Character Arc
-└── Historical State
-```
-
-NovelForge juga memiliki **Character Knowledge Boundary** agar karakter tidak mengetahui informasi yang belum pernah mereka dapatkan.
-
----
-
-## Relationship Intelligence
-
-Relationship tidak dibatasi pada satu `mainLoveInterest`.
-
-NovelForge menggunakan relationship graph untuk mendukung:
-
-* Friendship
-* Rivalry
-* Romance
-* Political Marriage
-* Multiple Love Interests
-* Harem
-* Reverse Harem
-* Polygamy
-* Polyamory
-* Family
-* Custom Relationship Structures
-
-Relationship memiliki history dan progression.
-
-```text
-HOSTILE
-   ↓
-RIVAL
-   ↓
-RELUCTANT RESPECT
-   ↓
-COOPERATION
-   ↓
-TRUST
-   ↓
-ALLY
-```
-
-Marriage juga bukan akhir dari relationship arc.
-
----
-
-## Narrative DNA
-
-Setiap novel memiliki konfigurasi mengenai bagaimana cerita tersebut seharusnya terasa.
-
-Contoh:
-
-```text
-Progression:
-SLOW → MEDIUM
-
-Protagonist Competence:
-VERY HIGH
-
-Drama Density:
-LOW
-
-Typical Drama Gap:
-~30–50 chapters
-
-Occasional Extended Calm:
-~70–140 chapters
-
-Political Complexity:
-HIGH
-
-Technology Realism:
-HIGH
-
-Romance:
-HAREM / POLYGAMY
-
-Ending:
-TRIUMPHANT + NOSTALGIC
-```
-
-Narrative DNA adalah **soft narrative policy**, bukan script.
-
----
-
-## Narrative Rhythm
-
-Mengontrol ritme cerita tanpa menjadikannya formula kaku.
-
-Termasuk:
-
-* Drama density
-* Drama cooldown
-* Calm periods
-* Emotional temperature
-* Conflict density
-* Temporary antagonists
-* Enemy-to-ally progression
-* Payoff frequency
-* Pattern detection
-* Conflict scale
-
-Konfigurasi drama tidak berarti NovelForge membuat drama tepat pada interval tertentu. Story state dan causality tetap menentukan apakah drama tersebut masuk akal.
-
----
-
-## Story Simulation
-
-Untuk novel yang membutuhkan perkembangan dunia secara kompleks.
-
-Modul dapat mencakup:
-
-* Civilization
-* Settlements
-* Economy
-* Technology
-* Politics
-* Factions
-* Reputation
-* Information Diffusion
-* Historical Divergence
-* Conflict / War State
-
-Contohnya:
-
-```text
-Better Agriculture
-        ↓
-Food Surplus
-        ↓
-Population Growth
-        ↓
-Migration
-        ↓
-Specialized Workers
-        ↓
-Industry
-        ↓
-Commerce
-        ↓
-Tax Revenue
-        ↓
-Infrastructure
-```
-
-Tetapi perkembangan juga dapat menimbulkan konsekuensi:
-
-```text
-New Industry
-        ↓
-Old Guild Loses Influence
-        ↓
-Political Opposition
-        ↓
-Conflict
-```
-
----
-
-## Technology Intelligence
-
-NovelForge membedakan antara:
-
-```text
-Knowing a technology
-```
-
-dan:
-
-```text
-Being able to build that technology
-```
-
-Technology dapat mempunyai dependency:
-
-```text
-Knowledge
-   ↓
-Materials
-   ↓
-Tools
-   ↓
-Manufacturing Precision
-   ↓
-Skills
-   ↓
-Energy
-   ↓
-Supply Chain
-   ↓
-Prototype
-   ↓
-Iteration
-   ↓
-Production
-   ↓
-Adoption
-```
-
----
-
-## Historical Intelligence
-
-Untuk karakter yang kembali ke masa lalu atau mengetahui sejarah masa depan.
-
-NovelForge membedakan:
-
-```text
-Original History
-```
-
-dengan:
-
-```text
-Current History
-```
-
-Semakin banyak protagonist mengubah sejarah:
-
-```text
-RELIABLE FUTURE KNOWLEDGE
-        ↓
-PARTIALLY DIVERGED
-        ↓
-HIGHLY DIVERGED
-        ↓
-UNRELIABLE
-```
-
----
-
-## Planning Horizon
-
-NovelForge tidak membuat detailed outline untuk 2.500 chapter sekaligus.
-
-```text
-Novel Vision
-     ↓
-Saga
-     ↓
-Major Arc
-     ↓
-Mini Arc
-     ↓
-Chapter Group
-     ↓
-Chapter
-     ↓
-Scene
-```
-
-Semakin dekat chapter dengan posisi cerita sekarang, semakin detail planning-nya.
-
----
-
-## Endgame Intelligence
-
-Ending bukan sekadar:
-
-```text
-chapter == 2500
-```
-
-NovelForge menggunakan:
-
-* Ending Vision
-* Ending Conditions
-* Resolution Ledger
-* Narrative Debt Burn-down
-* Character Resolution
-* Relationship Resolution
-* World Resolution
-* Callback Engine
-* Legacy
-* Epilogue
-* After Story
-
-Sebuah cerita selesai ketika perjalanan naratifnya memang siap selesai, bukan hanya karena target chapter tercapai.
-
----
-
-# Story Versioning & Checkpoints
-
-NovelForge memiliki versioning system khusus cerita.
-
-```text
-Story Versioning
-│
-├── Revisions
-├── Change Sets
-├── Snapshots
-├── Checkpoints
-├── Branches
-├── Semantic Diff
-├── Impact Analysis
-├── Restore Preview
-├── Selective Restore
-└── Recovery Center
-```
-
-### Non-destructive rollback
-
-Jika:
-
-```text
-Current Revision:
-R58
-
-Checkpoint:
-R42
-```
-
-melakukan restore tidak menghapus R43–R58.
-
-NovelForge membuat revision baru berdasarkan R42 sehingga history tetap tersedia.
-
----
-
-## Story Branches
-
-Author dapat melakukan eksperimen tanpa mengubah main canon.
-
-```text
-MAIN
- │
- ├──────────── MAIN
- │
- └──────────── EXPERIMENT
-                 │
-                 └── Alternative Story
-```
-
-Branch dapat digunakan untuk *What-If*, alternative ending, perubahan worldbuilding, atau eksperimen besar lainnya.
-
----
-
-# Story Brain
-
-NovelForge dirancang memiliki Story Brain yang dapat menjawab pertanyaan seperti:
-
-> Siapa yang mengetahui identitas asli protagonist?
-
-> Mengapa karakter A membenci karakter B?
-
-> Setup apa yang belum mendapatkan payoff?
-
-> Apakah ada plot hole?
-
-> Apa akibatnya jika event ini dihapus?
-
-> Karakter mana yang sudah lama tidak mendapat perkembangan?
-
-> Kapan relationship tertentu terakhir berkembang?
-
-> Apa penyebab perang ini?
-
-Jawaban seharusnya menggunakan **story evidence**, bukan hanya tebakan model.
-
----
-
-# AI Architecture
-
-AI request tidak langsung dikirim dari editor ke model.
-
-```text
-User
-  ↓
-Story Intent
-  ↓
-AI Orchestrator
-  ↓
-Story Intelligence
-  ↓
-Context Compiler
-  ↓
-Workflow
-  ↓
-Agent
-  ↓
-Skills
-  ↓
-Model Manager
-  ↓
-Gateway Manager
-  ↓
-OmniRoute
-  ↓
-LLM
-```
-
-Setelah generation:
-
-```text
-Generation
-    ↓
-Validation
-    ↓
-Continuity Review
-    ↓
-Lore Review
-    ↓
-Knowledge Boundary
-    ↓
-Character Review
-    ↓
-Relationship Review
-    ↓
-Outline Alignment
-    ↓
-Candidate Fact Extraction
-    ↓
-Canon Proposal
-    ↓
-Approved Canon
-```
-
----
-
-# OmniRoute
-
-NovelForge menggunakan **OmniRoute** sebagai primary LLM gateway.
-
-Integrasi berada di belakang abstraction:
-
-```text
-AI Orchestrator
-        ↓
-Model Manager
-        ↓
-Gateway Manager
-        ↓
-AIGateway
-        ↓
-OmniRouteGateway
-        ↓
-OmniRoute
-```
-
-Model dipilih melalui **Model Profile** seperti:
-
-```text
-CREATIVE_WRITER
-DEEP_PLANNER
-CONTINUITY_REVIEWER
-STRUCTURED_EXTRACTOR
-FAST_CLASSIFIER
-LONG_CONTEXT_REVIEWER
-EMBEDDING
-```
-
----
-
-# Agent Architecture
-
-Agent bukan model.
-
-```text
-Agent
-=
-Role
-+ Instructions
-+ Skills
-+ Context Policy
-+ Model Profile
-+ Output Schema
-+ Validators
-```
-
-Contoh agent:
-
-* Story Architect
-* Saga Planner
-* Arc Planner
-* Scene Planner
-* Chapter Writer
-* Continuity Guardian
-* Lore Guardian
-* Character Analyst
-* Relationship Analyst
-* Narrative Rhythm Analyst
-* Simulation Analyst
-* Canon Extractor
-* Endgame Planner
-* Story Debugger
-
----
-
-# Multi-LLM Orchestration
-
-NovelForge dikembangkan dengan workflow yang dirancang agar dapat dikerjakan oleh coding agents seperti Claude, GLM, DeepSeek, Kimi, dan model lain yang kompatibel dengan workflow project.
-
-Setiap task mempunyai kontrak eksplisit:
-
-```text
-Task ID
-Goal
-Required Reading
-Dependencies
-Allowed Paths
-Forbidden Paths
-Inputs
-Requirements
-Invariants
-Acceptance Criteria
-Tests
-Documentation Updates
-Out of Scope
-```
-
-Project dibangun secara incremental menggunakan task graph, bukan dengan meminta satu agent membangun seluruh sistem sekaligus.
-
----
-
-# Technology Stack
-
-## Frontend
-
-```text
-Nuxt
-Vue
-TypeScript
-Tailwind CSS
-```
-
-## Backend
-
-```text
-Node.js
-TypeScript
-Fastify
-```
-
-## Data
-
-```text
-PostgreSQL
-pgvector
-```
-
-## Queue & Cache
-
-```text
-Redis
-BullMQ
-```
-
-## AI
-
-```text
-AI Orchestrator
-Model Manager
-Gateway Manager
-OmniRoute
-```
-
-## Storage
-
-```text
-S3-compatible Object Storage
-```
-
-## Deployment
-
-```text
-Docker
-Docker Compose
-```
-
-Primary environments:
-
-```text
-Windows 11
-└── Docker Desktop / WSL2
-
-Ubuntu
-└── Docker Engine
-```
-
----
-
-# Architecture
-
-NovelForge dimulai sebagai:
-
-> **Modular Monolith + Background Workers**
-
-```text
-apps/
-├── web/
-├── api/
-└── worker/
-
-packages/
-├── contracts/
-├── database/
-├── config/
-├── auth/
-├── story-core/
-├── story-intelligence/
-├── character-intelligence/
-├── relationship-intelligence/
-├── story-simulation/
-├── narrative-rhythm/
-├── endgame-intelligence/
-├── story-versioning/
-├── ai-core/
-├── retrieval/
-├── validation/
-└── shared/
-```
-
----
-
-# Database Philosophy
-
-PostgreSQL menjadi canonical source of truth.
-
-```text
-PostgreSQL
-     ↓
-Canonical State
-     ↓
-Derived Data
-├── Embeddings
-├── Summaries
-├── AI Memory
-├── Search Index
-└── Cache
-```
-
-Derived data dapat dibangun ulang.
-
-Vector database **bukan canon**.
-
----
-
-# Long-Form Context Management
-
-Untuk novel ribuan chapter:
-
-```text
-L0 — Current Generation
-L1 — Current Chapter
-L2 — Recent Chapters
-L3 — Current Arc
-L4 — Saga
-L5 — Global Novel Memory
-L6 — Historical Archive
-```
-
-Context Compiler mengambil hanya informasi yang relevan.
-
----
-
-# Repository Documentation
-
-```text
-START-HERE.md
-
-CLAUDE.md
-AGENTS.md
-
-docs/
-├── 00-product/
-├── 01-principles/
-├── 02-architecture/
-├── 03-domain/
-├── 04-data/
-├── 05-api/
-├── 06-ai/
-├── 07-workflows/
-├── 08-frontend/
-├── 09-security/
-├── 10-testing/
-├── 11-deployment/
-├── 12-roadmap/
-├── 13-decisions/
-├── 14-progress/
-└── 15-operations/
-```
-
-Coding agent harus membaca `START-HERE.md` terlebih dahulu.
-
----
-
-# Development Roadmap
-
-```text
-Phase 0  — Repository & Architecture Foundation
-Phase 1  — Platform Core
-Phase 2  — Writing Core
-Phase 3  — AI Infrastructure + OmniRoute
-Phase 4  — Agent / Skill / Workflow Platform
-Phase 5  — Knowledge & Retrieval
-Phase 6  — Story Intelligence
-Phase 7  — Planning System
-Phase 8  — Character & Relationship Intelligence
-Phase 9  — Narrative DNA & Narrative Rhythm
-Phase 10 — Story Simulation
-Phase 11 — Story Versioning & Recovery
-Phase 12 — Endgame Intelligence
-Phase 13 — Publishing & Production Hardening
-Phase 14 — Advanced Narrative Intelligence
-```
-
-Detailed implementation requirements berada di direktori `docs/`.
-
----
-
-# Development Principles
-
-Setiap feature dianggap selesai hanya jika bagian yang relevan telah memiliki:
-
-* implementation;
-* database migration;
-* validation;
-* authorization;
-* error handling;
-* tests;
-* documentation;
-* observability;
-* loading/empty/error UI states;
-* versioning implications;
-* acceptance criteria.
-
-> **A file existing does not mean a feature is complete.**
-
----
-
-# Current Status
-
-NovelForge V2 saat ini berada dalam tahap aktif pengembangan.
-
-```text
-Architecture
-↓
-Foundation
-↓
-Platform Core
-↓
-Writing Core
-↓
-AI Infrastructure
-↓
-Narrative Intelligence
-```
-
-Arsitektur sengaja dibangun terlebih dahulu agar kemampuan AI yang kompleks tidak tumbuh di atas fondasi data yang tidak konsisten.
-
----
-
-# Development & Contributions
-
-NovelForge saat ini merupakan **personal development project** yang dikembangkan dan dikelola oleh **ch0c01dxyz**.
-
-External pull requests dan kontribusi kode dari pihak lain **belum dibuka untuk saat ini**.
-
-Repository ini tetap menggunakan issue tracking, commit history, Architecture Decision Records, task contracts, dan dokumentasi development untuk menjaga proses pengembangan tetap terstruktur, terutama karena implementasi NovelForge menggunakan multi-LLM coding orchestration.
-
-Development workflow utama:
-
-```text
-Architecture / Specification
-        ↓
-Task Contract
-        ↓
-Coding Agent
-        ↓
-Implementation
-        ↓
-Tests
-        ↓
-Independent Review
-        ↓
-Documentation Update
-        ↓
-Commit
-```
-
-Perubahan arsitektur besar harus terdokumentasi melalui ADR dan tidak boleh dilakukan diam-diam oleh coding agent.
-
----
-
-# License
-
-Copyright © NovelForge contributors.
-
-Licensed under the **Apache License, Version 2.0**.
-
-Anda dapat menggunakan, memodifikasi, dan mendistribusikan software ini sesuai dengan ketentuan Apache License 2.0.
-
-Lihat file `LICENSE` pada repository untuk teks lisensi lengkap.
-
----
-
-# Vision
-
-NovelForge dibangun berdasarkan satu gagasan sederhana:
-
-> **AI seharusnya tidak hanya mampu menulis chapter berikutnya. AI harus mampu memahami perjalanan yang membawa cerita sampai ke chapter tersebut.**
-
-Untuk novel yang berlangsung ribuan chapter, kualitas bukan hanya persoalan prose.
-
-Kualitas juga berasal dari:
-
-```text
-Memory
-+
-Continuity
-+
-Character Growth
-+
-Relationships
-+
-Causality
-+
-World Evolution
-+
-Planning
-+
-Payoff
-+
-Recovery
-+
-Ending
-```
-
-Itulah masalah yang ingin diselesaikan oleh **NovelForge AI**.
-
----
-
-**NovelForge AI**
-
-*Build worlds. Remember everything. Let stories evolve.*
+- [Start here](START-HERE.md) and [operating rules](AGENTS.md)
+- [Delivery plan](docs/implementation/DELIVERY-PLAN.md) and [current evidence](docs/14-progress/CURRENT.md)
+- [AI orchestration](docs/06-ai/MULTI-LLM-ORCHESTRATION.md) and [evidence policy](docs/06-ai/MODEL-EVIDENCE-POLICY.md)
+- [Foundational design](docs/design/writer-workspace/index.html) and [design tokens](docs/design/DESIGN-TOKENS.md)
+- [Deployment](docs/11-deployment/DEPLOYMENT.md), [environment preflight](docs/11-deployment/ENVIRONMENT-PREFLIGHT.md), [backup/restore](docs/11-deployment/BACKUP-RESTORE-RUNBOOK.md)
+- [Security](docs/09-security/SECURITY.md)
+
+Contributions follow bounded tasks, tenant authorization, recoverable mutations,
+focused checks, independent review and updated evidence. Roadmap entries and
+model-generated text are not completion evidence.
+
+## License
+
+Copyright © NovelForge contributors. Licensed under the
+[Apache License, Version 2.0](LICENSE).

@@ -699,7 +699,10 @@ describe("author-preview E2E loop (G4 + G6)", () => {
 
 describe("loop determinism support", () => {
   it("hashes step outputs deterministically (restart-resume compares these)", async () => {
-    const started = await startChapterRun(3);
+    // The restore flow leaves later predecessors in draft; use the saved first chapter.
+    const target = await db.chapter.findUniqueOrThrow({ where: { novelId_number: { novelId, number: 1 } } });
+    expect(target.currentVersionId).not.toBeNull();
+    const started = await startChapterRun(target.number);
     expect([200, 202]).toContain(started.res.statusCode);
     const runId = (asObj(started.res) as { id: string }).id;
     const status = await driveToParkOrTerminal(runId);

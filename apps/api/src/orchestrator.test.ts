@@ -68,7 +68,7 @@ const env: Env = {
   NODE_ENV: "test",
   PORT: 3000,
   DATABASE_URL: TEST_URL,
-  REDIS_URL: "redis://localhost:6379",
+  REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
   S3_ENDPOINT: "http://localhost:9000",
   S3_REGION: "us-east-1",
   S3_BUCKET: "novelforge",
@@ -99,7 +99,7 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
     id: rec.id,
     name: rec.name,
     async listModels() {
-      return [{ modelId: "fake-writer", capabilities: ["chat"] }];
+      return [{ modelId: "fake-writer", capabilities: ["chat", "embeddings"] }];
     },
     async generate(req): Promise<GenerateResult> {
       seenPrompts.push({

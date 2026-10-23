@@ -1,5 +1,22 @@
 # Current Project State
 
+## CI fixture compatibility repair verified locally — 2026-10-23
+
+GitHub39971942675 at3a4d9dd passed lint/typecheck but failed83tests/10suites.
+Nine test fixtures now match current production contracts: canonical embeddings
+capability, role-based agent/user prompt checks after safeguard injection, real
+target chapter fixtures, and saved chapter1 for post-restore determinism rather
+than a blocked draft predecessor. Safeguard presence, original output hashing,
+approval/citation/authorization assertions remain; no production guard weakened.
+Test Redis endpoints honor supplied environment for isolated execution.
+
+Local proof: ten affected suites250PASS/1FAIL before the last fixture correction;
+then the complete corrected author-preview suite3PASS. API types/scoped lint and
+diff check PASS; separate final nine-file manifest APPROVE. Two task-owned
+disposable PostgreSQL/Redis containers reused cached Docker images; existing
+working stack and104databases untouched. Remote CI confirmation follows the
+repair push; this paragraph is local evidence, not a claim of green GitHub CI.
+
 ## Accumulated authoring update prepared for publication — 2026-10-23
 
 Author explicitly authorized committing/pushing the remaining project changes

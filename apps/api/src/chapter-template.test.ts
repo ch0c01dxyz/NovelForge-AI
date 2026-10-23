@@ -59,7 +59,7 @@ const env: Env = {
   NODE_ENV: "test",
   PORT: 3000,
   DATABASE_URL: TEST_URL,
-  REDIS_URL: "redis://localhost:6379",
+  REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
   S3_ENDPOINT: "http://localhost:9000",
   S3_REGION: "us-east-1",
   S3_BUCKET: "novelforge",
@@ -143,9 +143,9 @@ function fakeCreateGateway(_rec: GatewayRecord): AIGateway {
       return [{ modelId: "fake-writer", capabilities: ["chat"] }];
     },
     async generate(req) {
-      const system = typeof req.messages[0]?.content === "string" ? req.messages[0].content : "";
-      const user = typeof req.messages[1]?.content === "string" ? req.messages[1].content : "";
-      seenPrompts.push({ system, user: req.messages[1]?.content });
+      const system = req.messages.filter(message => message.role === "system").at(-1)?.content ?? "";
+      const user = req.messages.find(message => message.role === "user")?.content ?? "";
+      seenPrompts.push({ system, user });
       let payload: unknown;
       if (system.includes("scene planner") || system.includes("WORKSPACE-PLANNER-INSTRUCTIONS"))
         payload = planJson();
@@ -276,6 +276,7 @@ async function seedWorkspace(ownerId: string, slug: string) {
     title: `Novel ${slug}`,
     slug,
   });
+  await db.chapter.create({ data: { novelId: novel.id, number: 1, title: "Chapter 1", createdById: ownerId } });
   return { workspaceId: ws.id, novelId: novel.id };
 }
 

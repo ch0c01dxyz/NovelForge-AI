@@ -55,7 +55,7 @@ const env: Env = {
   NODE_ENV: "test",
   PORT: 3000,
   DATABASE_URL: TEST_URL,
-  REDIS_URL: "redis://localhost:6379",
+  REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
   S3_ENDPOINT: "http://localhost:9000",
   S3_REGION: "us-east-1",
   S3_BUCKET: "novelforge",
@@ -81,7 +81,7 @@ function fakeCreateGateway(_rec: GatewayRecord): AIGateway {
       return [{ modelId: "fake-writer", capabilities: ["chat"] }];
     },
     async generate(req: GenerateRequest) {
-      const system = typeof req.messages[0]?.content === "string" ? req.messages[0].content : "";
+      const system = req.messages.filter(message => message.role === "system").at(-1)?.content ?? "";
       let payload: unknown;
       if (system.includes("scene planner")) {
         payload = {

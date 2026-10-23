@@ -63,7 +63,7 @@ const env: Env = {
   NODE_ENV: "test",
   PORT: 3000,
   DATABASE_URL: TEST_URL,
-  REDIS_URL: "redis://localhost:6379",
+  REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
   S3_ENDPOINT: "http://localhost:9000",
   S3_REGION: "us-east-1",
   S3_BUCKET: "novelforge",
@@ -681,7 +681,7 @@ describe("Phase 4 — definitions", () => {
     await db.workflowRun.update({ where: { id: fixture.runId }, data: { definitionsPinnedAt: null } });
     expect((await app.inject({ method: "POST", url: `/api/agents/${fixture.agentId}/versions`, headers: { cookie: fixture.owner.cookie }, payload: { instructions: "LEGACY_CURRENT", modelProfile: "CREATIVE_WRITER" } })).statusCode).toBe(200);
     expect((await driveRun(fixture.runId)).status).toBe("SUCCEEDED");
-    expect(seenPrompts[0]!.messages[0]!.content).toContain("LEGACY_CURRENT");
+    expect(seenPrompts[0]!.messages.filter(m => m.role === "system").at(-1)!.content).toContain("LEGACY_CURRENT");
     expect((await db.workflowRun.findUniqueOrThrow({ where: { id: fixture.runId } })).definitionsPinnedAt).toBeNull();
     expect(await db.workflowRunDefinitionPin.count({ where: { runId: fixture.runId } })).toBe(0);
   });
@@ -717,8 +717,9 @@ describe("Phase 4 — definitions", () => {
     for (const [kind, id] of [["agents", agent], ["skills", granted], ["skills", action]]) expect((await app.inject({ method: "POST", url: `/api/${kind}/${id}/versions`, headers: { cookie: owner.cookie }, payload: { instructions: "LATER_INSTRUCTIONS", modelProfile: "CREATIVE_WRITER", preferredModelRef: id === action ? original.id : later.id } })).statusCode).toBe(200);
     expect((await driveRun(runId)).status).toBe("AWAITING_APPROVAL");
     expect(seenPrompts).toHaveLength(1);
-    expect(seenPrompts[0]!.messages[0]!.content).toContain("PINNED_AGENT");
-    expect(seenPrompts[0]!.messages[0]!.content).toContain("PINNED_GRANTED");
+    expect(seenPrompts[0]!.messages[0]!.content).toContain("NovelForge shared text safeguards");
+    expect(seenPrompts[0]!.messages.filter(m => m.role === "system").at(-1)!.content).toContain("PINNED_AGENT");
+    expect(seenPrompts[0]!.messages.filter(m => m.role === "system").at(-1)!.content).toContain("PINNED_GRANTED");
     expect(seenPrompts[0]!.model).toBe("fake-writer");
     const approval = await db.workflowStepRun.findFirstOrThrow({ where: { runId, stepKey: "approve" } });
     const hash = (approval.approvalSnapshot as { snapshotHash: string }).snapshotHash;
@@ -727,7 +728,7 @@ describe("Phase 4 — definitions", () => {
     expect(response.statusCode, response.body).toBe(200);
     expect((await driveRun(runId)).status).toBe("SUCCEEDED");
     expect(seenPrompts).toHaveLength(2);
-    expect(seenPrompts[1]!.messages[0]!.content).toContain("PINNED_ACTION");
+    expect(seenPrompts[1]!.messages.filter(m => m.role === "system").at(-1)!.content).toContain("PINNED_ACTION");
     expect(seenPrompts[1]!.model).toBe("later-writer");
     const steps = await db.workflowStepRun.findMany({ where: { runId }, orderBy: { sequence: "asc" } });
     expect(steps[0]!.agentVersionId).toBe(originalAgent.id);
@@ -1196,7 +1197,7 @@ describe("Phase 4 — authorization", () => {
       edges: [],
     });
     await runToCompletion(owner.cookie, workspaceId, workflowId, {});
-    expect(seenPrompts.at(-1)!.messages[0]!.content).toBe("TENANT-INSTRUCTIONS");
+    expect(seenPrompts.at(-1)!.messages.filter(m => m.role === "system").at(-1)!.content).toBe("TENANT-INSTRUCTIONS");
   });
 
   it("does not let a platform admin manage a workspace's definitions", async () => {
@@ -1459,10 +1460,10 @@ describe("Phase 4 — workflow execution", () => {
     // The agent's own instructions became the system message, and the
     // previous step's text reached the second call.
     expect(seenPrompts).toHaveLength(2);
-    expect(seenPrompts[0]!.messages[0]!.content).toBe("FIRST-INSTRUCTIONS");
-    expect(seenPrompts[1]!.messages[0]!.content).toBe("SECOND-INSTRUCTIONS");
-    expect(seenPrompts[1]!.messages[1]!.content).toContain("produce draft");
-    expect(seenPrompts[1]!.messages[1]!.content).toContain("step output for");
+    expect(seenPrompts[0]!.messages.filter(m => m.role === "system").at(-1)!.content).toBe("FIRST-INSTRUCTIONS");
+    expect(seenPrompts[1]!.messages.filter(m => m.role === "system").at(-1)!.content).toBe("SECOND-INSTRUCTIONS");
+    expect(seenPrompts[1]!.messages.find(m => m.role === "user")!.content).toContain("produce draft");
+    expect(seenPrompts[1]!.messages.find(m => m.role === "user")!.content).toContain("step output for");
   });
 
   it("refuses to run a workflow that references an unpublished agent", async () => {
@@ -1568,7 +1569,7 @@ describe("Phase 4 — workflow execution", () => {
 
     // The absent value must be rendered as an absence, never as the string
     // "undefined" and never as a function's stringification.
-    const sent = seenPrompts[0]!.messages[1]!.content;
+    const sent = seenPrompts[0]!.messages.find(m => m.role === "user")!.content;
     expect(sent).toContain("(not available)");
     expect(sent).not.toContain("function");
   });
@@ -1699,7 +1700,7 @@ describe("Phase 4 — workflow execution", () => {
 
     await runToCompletion(owner.cookie, workspaceId, workflowId, {});
 
-    const system = seenPrompts[0]!.messages[0]!.content;
+    const system = seenPrompts[0]!.messages.filter(m => m.role === "system").at(-1)!.content;
     expect(system).toContain("AGENT-INSTRUCTIONS");
     expect(system).toContain("SKILL-INSTRUCTIONS-VOICE");
   });
@@ -1722,7 +1723,7 @@ describe("Phase 4 — workflow execution", () => {
 
     await runToCompletion(owner.cookie, workspaceId, workflowId, {});
 
-    const system = seenPrompts[0]!.messages[0]!.content;
+    const system = seenPrompts[0]!.messages.filter(m => m.role === "system").at(-1)!.content;
     expect(system).toContain("AGENT-INSTRUCTIONS");
     expect(system).not.toContain("SKILL-INSTRUCTIONS-UNGRANTED");
   });
@@ -1745,7 +1746,7 @@ describe("Phase 4 — workflow execution", () => {
     expect(run.steps[0]!.skillVersionNumber).toBe(1);
     // A SKILL step has no agent, so nothing is attributed to one.
     expect(run.steps[0]!.agentKey).toBeNull();
-    expect(seenPrompts[0]!.messages[0]!.content).toBe("Perform extract-facts.");
+    expect(seenPrompts[0]!.messages.filter(m => m.role === "system").at(-1)!.content).toBe("Perform extract-facts.");
   });
 
   it("reports a provider failure with its classified message, never the raw body", async () => {

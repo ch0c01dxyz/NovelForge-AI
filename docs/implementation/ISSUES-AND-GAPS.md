@@ -1,5 +1,34 @@
 # Technical Issues and Implementation Gaps
 
+## CI fixture drift after safeguards and embedding capabilities — 2026-10-23
+
+Status: REPAIRED (local verification; fresh remote CI tracked separately).
+Owner: CI repair for commit3a4d9dd/run39971942675. Nine fixture files corrected;
+production and CI workflow unchanged. Isolated ten-suite run250PASS/1FAIL, then
+the corrected full author-preview suite3PASS; all originally affected coverage
+verified across these runs. API typecheck/scoped lint/diff check PASS; separate
+exact nine-file review APPROVE. Only task-owned temporary containers used; main
+Docker/data/queues untouched. Historical diagnosis and corrections follow.
+GitHub lint and
+typecheck passed; test phase reported83failed/3107passed/21skipped across10failed
+suites. Embedding fixtures use obsolete singular capability or chat-only mapping;
+workflow fakes/assertions assume agent instructions at message0 although shared
+safeguards now precede them; two chapter workflow fixtures omit a target chapter
+required by source validation. Preserve production safeguards/modality/source
+validation. Repair fixture contracts and verify affected suites in an isolated
+test environment without resetting any existing104local databases or Redis data.
+Separate review and actual new GitHub result are required before claiming CI fixed.
+
+First isolated rerun:250PASS/1FAIL across10suites. Once setup failures were fixed,
+the author-preview determinism test exposed another invalid fixture: it generated
+chapter3 after the preceding restore test deliberately left chapter2 as a draft.
+Production correctly returned PREVIOUS_CHAPTER_UNAVAILABLE. Hash an existing
+published chapter1 (assert its status first) rather than weakening continuity
+checks or publishing a fixture chapter merely to make the hash test run.
+The first follow-up incorrectly asserted chapter1 remained PUBLISHED; restore
+actually leaves it IN_REVIEW. The hash test requires saved source, not publication:
+assert its non-null saved version and keep publication/acceptance separate.
+
 ## Comment report response crosses closed reader modal — 2026-10-23
 
 Status: RESOLVED. Owner: final publication review. Independent review found pending

@@ -52,7 +52,7 @@ const env: Env = {
   NODE_ENV: "test",
   PORT: 3000,
   DATABASE_URL: TEST_URL,
-  REDIS_URL: "redis://localhost:6379",
+  REDIS_URL: process.env.REDIS_URL ?? "redis://localhost:6379",
   S3_ENDPOINT: "http://localhost:9000",
   S3_REGION: "us-east-1",
   S3_BUCKET: "novelforge",
@@ -107,7 +107,7 @@ function fakeCreateGateway(_rec: GatewayRecord): AIGateway {
       return [{ modelId: "fake-writer", capabilities: ["chat"] }];
     },
     async generate(req: GenerateRequest) {
-      const system = typeof req.messages[0]?.content === "string" ? req.messages[0].content : "";
+      const system = req.messages.filter(message => message.role === "system").at(-1)?.content ?? "";
       let payload: unknown;
       if (system.includes("scene planner")) {
         payload = {
@@ -252,6 +252,7 @@ async function seedWorkspace(
     title: `Novel ${slug}`,
     slug,
   });
+  await db.chapter.create({ data: { novelId: novel.id, number: 1, title: "Chapter 1", createdById: ownerId } });
   return { workspaceId: ws.id, novelId: novel.id };
 }
 
@@ -855,14 +856,7 @@ describe("staleness, atomicity, and audit", () => {
 
     // The draft was applied to manuscript chapter 1: the chapter version
     // carries the draft prose.
-    const chapter = await db.chapter.create({
-      data: {
-        novelId,
-        number: 1,
-        title: "Chapter 1",
-        createdById: admin.userId,
-      },
-    });
+    const chapter = await db.chapter.findUniqueOrThrow({ where: { novelId_number: { novelId, number: 1 } } });
     const version = await db.chapterVersion.create({
       data: {
         chapterId: chapter.id,
@@ -906,14 +900,7 @@ describe("staleness, atomicity, and audit", () => {
     // content where the first evidence quote ("Wren swore the oath of
     // silence", from the extraction draft) is split by inline tags.
     // The old `content.includes(firstQuote)` pin yielded null here.
-    const chapter = await db.chapter.create({
-      data: {
-        novelId,
-        number: 1,
-        title: "Chapter 1",
-        createdById: admin.userId,
-      },
-    });
+    const chapter = await db.chapter.findUniqueOrThrow({ where: { novelId_number: { novelId, number: 1 } } });
     const version = await db.chapterVersion.create({
       data: {
         chapterId: chapter.id,

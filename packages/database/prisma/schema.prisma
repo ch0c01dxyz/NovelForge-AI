@@ -13,6 +13,17 @@ datasource db {
   provider = "postgresql"
 }
 
+model PlatformBranding {
+  id        String   @id @default("platform")
+  name      String   @default("NovelForge")
+  mark      String   @default("N")
+  markColor String   @default("#1c1207") @map("mark_color")
+  version   Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_branding")
+}
+
 enum MembershipRole {
   OWNER
   ADMIN
@@ -258,6 +269,8 @@ model Novel {
   settings    NovelSettings?
   coverBatches CoverGenerationBatch[]
   coverVersions NovelCoverVersion[]
+  characterDiscoveries CharacterDiscoveryBatch[]
+  storyDiscoveries StoryDiscoveryBatch[]
   modelDefaultsVersions NovelModelDefaultsVersion[]
   chapters    Chapter[]
   scaleEvidenceSets ScaleEvidenceSet[]
@@ -582,6 +595,7 @@ model CoverGenerationItem {
   image Json?
   originalSha256 String? @map("original_sha256")
   originalBytes Int? @map("original_bytes")
+  payloadExpiredAt DateTime? @map("payload_expired_at")
   errorCategory String? @map("error_category")
   appliedAt DateTime? @map("applied_at")
   createdAt DateTime @default(now()) @map("created_at")
@@ -592,7 +606,7 @@ model CoverGenerationItem {
   @@map("cover_generation_items")
 }
 
-/// Immutable display configuration history, including an empty-cover baseline.
+/// Immutable display metadata; older image payloads expire under cover retention.
 model NovelCoverVersion {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   novelId String @map("novel_id") @db.Uuid
@@ -602,6 +616,7 @@ model NovelCoverVersion {
   cover Json?
   sha256 String?
   sourceItemId String? @map("source_item_id") @db.Uuid
+  payloadExpiredAt DateTime? @map("payload_expired_at")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([novelId, createdAt])
@@ -705,6 +720,52 @@ model ModelProfileMapping {
   @@unique([profile, modelRef])
   @@index([profile, enabled, priority])
   @@map("model_profile_mappings")
+}
+
+/// Operational, evidence-bound character suggestions; never automatic canon.
+model StoryDiscoveryBatch {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  novelId String @map("novel_id") @db.Uuid
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  runId String @unique @map("run_id") @db.Uuid
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  chapterId String @map("chapter_id") @db.Uuid
+  sourceBranchId String @map("source_branch_id") @db.Uuid
+  sourceRevisionId String @map("source_revision_id") @db.Uuid
+  artifactHash String @map("artifact_hash")
+  generationId String? @map("generation_id") @db.Uuid
+  status String @default("RUNNING")
+  epoch Int @default(0)
+  candidates Json @default("[]")
+  errorCategory String? @map("error_category")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@index([novelId, createdAt])
+  @@map("story_discovery_batches")
+}
+
+model CharacterDiscoveryBatch {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  novelId String @map("novel_id") @db.Uuid
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  runId String @unique @map("run_id") @db.Uuid
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  chapterId String @map("chapter_id") @db.Uuid
+  sourceBranchId String @map("source_branch_id") @db.Uuid
+  sourceRevisionId String? @map("source_revision_id") @db.Uuid
+  artifactHash String @map("artifact_hash")
+  generationId String? @map("generation_id") @db.Uuid
+  status String @default("RUNNING")
+  epoch Int @default(0)
+  candidates Json @default("[]")
+  errorCategory String? @map("error_category")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([novelId, createdAt])
+  @@map("character_discovery_batches")
 }
 
 /// One logical AI request. Owned by NovelForge regardless of how many
@@ -1053,6 +1114,8 @@ model WorkflowRun {
   /// Approval decisions on this run's HUMAN_APPROVAL steps (NF-WF-005).
   /// At most one decision per (runId, stepKey).
   decisions         WorkflowApprovalDecision[]
+  characterDiscovery CharacterDiscoveryBatch?
+  storyDiscovery StoryDiscoveryBatch?
 
   @@index([workflowId, startedAt])
   @@index([novelModelDefaultsVersionId])

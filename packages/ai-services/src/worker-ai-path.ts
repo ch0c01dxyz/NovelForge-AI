@@ -19,6 +19,8 @@ import type {
   StepRetriever,
 } from "@novelforge/workflow-executor";
 import { createAuditService } from "./audit.ts";
+import { createChapterSourceReader } from "./chapter-source.ts";
+import type { ChapterSourceReader } from "@novelforge/workflow-executor";
 import { createAiServices } from "./ai.ts";
 import { createGatewayRegistry } from "./ai-registry.ts";
 import { createRetrievalServices } from "./retrieval.ts";
@@ -36,6 +38,7 @@ import {
 } from "./context-compiler.ts";
 
 export interface WorkerAiPath {
+  chapterSource: ChapterSourceReader;
   generate: StepGenerator;
   retrieval: StepRetriever;
   compiler: ContextCompilerPort;
@@ -154,6 +157,7 @@ export function createWorkerAiPath(
   };
 
   return {
+    chapterSource: createChapterSourceReader(db),
     generate: aiServices,
     retrieval: retrievalServices,
     compiler,

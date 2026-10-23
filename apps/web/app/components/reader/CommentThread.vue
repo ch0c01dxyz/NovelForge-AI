@@ -17,6 +17,7 @@
  */
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
+import { nextTick, watch, onUnmounted } from "vue";
 
 interface CommentAuthor {
   displayName: string;
@@ -41,6 +42,7 @@ const REPORT_REASONS = ["SPAM", "HARASSMENT", "SPOILER", "OFF_TOPIC", "OTHER"] a
 const props = defineProps<{
   novelSlug: string;
   chapterNumber: number;
+  active?: boolean;
 }>();
 
 const { api } = useApi();
@@ -74,6 +76,27 @@ const reportingId = ref<string | null>(null);
 const reportReason = ref<string>("SPAM");
 const reportError = ref<string | null>(null);
 const reportDone = ref(false);
+const reportBusy = ref(false);
+let reportEpoch = 0;
+const reportView = ref<HTMLElement | null>(null);
+let reportOpener: HTMLElement | null = null;
+async function openReport(id: string, event: MouseEvent) {
+  closeReportDialog(false);
+  const epoch = reportEpoch;
+  reportOpener = event.currentTarget as HTMLElement;
+  reportingId.value = id;
+  await nextTick();
+  if (epoch === reportEpoch) reportView.value?.focus();
+}
+function reportEscape(event: KeyboardEvent) {
+  if (event.key !== "Escape" || !reportingId.value) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeReportDialog();
+}
+watch(() => props.active, active => { if (active === false) closeReportDialog(false); });
+watch(() => [props.novelSlug, props.chapterNumber, sessionUserId.value], () => closeReportDialog(false));
+onUnmounted(() => { reportEpoch++; });
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -249,6 +272,9 @@ async function confirmDelete(id: string) {
 }
 
 async function submitReport(id: string) {
+  if (reportBusy.value || reportingId.value !== id) return;
+  const epoch = reportEpoch;
+  reportBusy.value = true;
   reportError.value = null;
   reportDone.value = false;
   try {
@@ -256,28 +282,33 @@ async function submitReport(id: string) {
       method: "POST",
       body: JSON.stringify({ reason: reportReason.value }),
     });
-    reportDone.value = true;
+    if (epoch === reportEpoch && reportingId.value === id) reportDone.value = true;
   } catch (e) {
+    if (epoch !== reportEpoch || reportingId.value !== id) return;
     if (e instanceof ApiError && e.status === 429) {
       reportError.value = t("comments.reportDailyLimited");
     } else {
       reportError.value = t("comments.postFailed");
     }
-  }
+  } finally { if (epoch === reportEpoch) reportBusy.value = false; }
 }
 
-function closeReportDialog() {
+function closeReportDialog(restoreFocus = true) {
+  reportEpoch++;
+  reportBusy.value = false;
   reportingId.value = null;
   reportReason.value = "SPAM";
   reportError.value = null;
   reportDone.value = false;
+  if (restoreFocus) void nextTick(() => reportOpener?.isConnected && reportOpener.focus());
 }
 
 onMounted(loadFirst);
 </script>
 
 <template>
-  <section aria-labelledby="comments-heading" class="mt-14 border-t border-nf-border pt-8">
+  <section aria-labelledby="comments-heading" @keydown="reportEscape">
+    <div :hidden="!!reportingId">
     <h2 id="comments-heading" class="nf-overline">{{ t("comments.title") }}</h2>
 
     <div v-if="loading" role="status" class="mt-4 text-sm text-nf-text-dim">
@@ -285,6 +316,7 @@ onMounted(loadFirst);
     </div>
     <div v-else-if="loadError" role="alert" class="mt-4 text-sm text-nf-text-dim">
       {{ loadError }}
+      <button type="button" class="nf-btn mt-2" @click="loadFirst">{{ t('readerTools.retry') }}</button>
     </div>
     <template v-else>
       <p v-if="!comments.length" class="mt-4 text-sm text-nf-text-dim">
@@ -370,7 +402,7 @@ onMounted(loadFirst);
                     <button
                       v-if="r.status === 'VISIBLE'"
                       class="text-nf-text-dim underline hover:text-nf-text focus-visible:nf-focus"
-                      @click="reportingId = r.id"
+                      @click="openReport(r.id, $event)"
                     >
                       {{ t("comments.report") }}
                     </button>
@@ -423,7 +455,7 @@ onMounted(loadFirst);
               <button
                 v-if="c.status === 'VISIBLE'"
                 class="text-nf-text-dim underline hover:text-nf-text focus-visible:nf-focus"
-                @click="reportingId = c.id"
+                @click="openReport(c.id, $event)"
               >
                 {{ t("comments.report") }}
               </button>
@@ -541,17 +573,19 @@ onMounted(loadFirst);
       </div>
       <p v-else class="mt-8 text-sm text-nf-text-dim">
         {{ t("comments.signInPrompt") }}
+        <NuxtLink :to="`/login?redirect=${encodeURIComponent(`/read/${encodeURIComponent(novelSlug)}/${chapterNumber}`)}`" class="ml-2 underline focus-visible:nf-focus">{{ t('readerTools.signIn') }}</NuxtLink>
       </p>
     </template>
+    </div>
 
-    <!-- Report dialog. -->
+    <!-- Inline view keeps a single modal and preserves the comment composer. -->
     <div
       v-if="reportingId"
-      class="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
-      role="dialog"
-      aria-modal="true"
+      ref="reportView"
+      tabindex="-1"
+      role="region"
+      data-testid="comment-report"
       :aria-label="t('comments.reportTitle')"
-      @click.self="closeReportDialog"
     >
       <div class="w-full max-w-md rounded-xl border border-nf-border bg-nf-bg-1 p-6">
         <h3 class="text-[16px] font-semibold text-nf-text">{{ t("comments.reportTitle") }}</h3>
@@ -583,12 +617,13 @@ onMounted(loadFirst);
           <div class="mt-4 flex justify-end gap-2">
             <button
               class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 focus-visible:nf-focus"
-              @click="closeReportDialog"
+              @click="closeReportDialog()"
             >
               {{ t("comments.cancel") }}
             </button>
             <button
               class="rounded-lg bg-nf-accent px-3.5 py-1.5 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus"
+              :disabled="reportBusy"
               @click="submitReport(reportingId)"
             >
               {{ t("comments.report") }}
@@ -598,7 +633,7 @@ onMounted(loadFirst);
         <div v-if="reportDone" class="mt-4 flex justify-end">
           <button
             class="rounded-lg border border-nf-border-strong px-3.5 py-1.5 text-[13px] text-nf-text-dim hover:bg-nf-bg-2 focus-visible:nf-focus"
-            @click="closeReportDialog"
+            @click="closeReportDialog()"
           >
             {{ t("comments.close") }}
           </button>

@@ -13,6 +13,9 @@
  */
 
 // Core AI path
+export { createChapterSourceReader } from "./src/chapter-source.ts";
+export { createCharacterDiscoveryServices, parseCharacterCandidates, type CharacterDiscoveryServices, type DiscoveryView } from "./src/character-discovery.ts";
+export { createStoryDiscoveryServices, parseStoryCandidates, type StoryDiscoveryServices, type StoryCandidate } from "./src/story-discovery.ts";
 export { createCoverGenerationServices, CoverGenerationError, COVER_QUEUE_NAME, COVER_STYLES, type CoverScope, type CoverGenerationServices } from "./src/cover-generation.ts";
 export {
   createAiServices,
@@ -176,4 +179,4 @@ export {
   type ReviewGateTx,
   type ProofCompletenessResult,
 } from "./src/final-text-review-gate.ts";
-export { InvalidNovelCoverError, MAX_COVER_BASE64_LENGTH } from "./src/novel-cover.ts";
+export { InvalidNovelCoverError, MAX_COVER_BASE64_LENGTH, validateNovelCover, type NovelCover } from "./src/novel-cover.ts";

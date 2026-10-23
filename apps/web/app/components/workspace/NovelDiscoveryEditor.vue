@@ -52,6 +52,8 @@ const loadError = ref(false);
 const genres = ref<string[]>([]);
 const audience = ref<string | null>(null);
 const coverUrl = ref<string | null>(null);
+const publicSynopsis = ref("");
+const savedPublicSynopsis = ref<string | null>(null);
 const saveState = ref<"idle" | "saving" | "saved">("idle");
 const errorKey = ref("");
 let savedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -66,6 +68,9 @@ onMounted(async () => {
     genres.value = novel.genres ?? [];
     audience.value = novel.audience ?? null;
     coverUrl.value = novel.coverUrl ?? null;
+    const details = await api<{ publicSynopsis: string | null }>(`${base.value}/reader-details`);
+    publicSynopsis.value = details.publicSynopsis ?? "";
+    savedPublicSynopsis.value = details.publicSynopsis ?? null;
   } catch {
     loadError.value = true;
   } finally {
@@ -99,7 +104,7 @@ async function save() {
   errorKey.value = "";
   clearTimeout(savedTimer);
   try {
-    const [genreResult, audienceResult] = await Promise.allSettled([
+    const [genreResult, audienceResult, synopsisResult] = await Promise.allSettled([
       api<{ genres: string[] }>(`${base.value}/genres`, {
         method: "PATCH",
         body: JSON.stringify({ genres: genres.value }),
@@ -108,9 +113,17 @@ async function save() {
         method: "PATCH",
         body: JSON.stringify({ audience: audience.value }),
       }),
+      api<{ publicSynopsis: string | null }>(`${base.value}/reader-details`, {
+        method: "PATCH", body: JSON.stringify({ publicSynopsis: publicSynopsis.value, expectedPublicSynopsis: savedPublicSynopsis.value }),
+      }),
     ]);
+    if (synopsisResult.status === "fulfilled") {
+      savedPublicSynopsis.value = synopsisResult.value.publicSynopsis ?? null;
+      publicSynopsis.value = synopsisResult.value.publicSynopsis ?? "";
+    }
     if (genreResult.status === "rejected") throw genreResult.reason;
     if (audienceResult.status === "rejected") throw audienceResult.reason;
+    if (synopsisResult.status === "rejected") throw synopsisResult.reason;
     genres.value = genreResult.value.genres;
     audience.value = audienceResult.value.audience ?? null;
     saveState.value = "saved";
@@ -118,7 +131,7 @@ async function save() {
   } catch (e) {
     saveState.value = "idle";
     errorKey.value =
-      e instanceof ApiError && (e.status === 401 || e.status === 403)
+      e instanceof ApiError && e.status === 409 ? "publicNovel.synopsisChanged" : e instanceof ApiError && (e.status === 401 || e.status === 403)
         ? "workspace.discovery.forbidden"
         : "workspace.discovery.saveError";
   }
@@ -142,6 +155,11 @@ onUnmounted(() => {
     </div>
     <template v-else>
       <img v-if="coverUrl" :src="coverUrl" alt="" class="mb-4 aspect-[2/3] w-32 rounded-lg border border-nf-border object-cover" />
+      <label class="mb-5 block text-[13px] font-semibold text-nf-text">
+        {{ t('publicNovel.publicSynopsis') }}
+        <textarea v-model="publicSynopsis" data-testid="discovery-synopsis" :disabled="saveState === 'saving'" maxlength="6000" rows="6" class="nf-input mt-2 w-full font-normal" :placeholder="t('publicNovel.synopsisPlaceholder')" />
+        <span class="mt-2 block text-xs font-normal leading-relaxed text-nf-text-dim">{{ t('publicNovel.synopsisHint') }}</span>
+      </label>
       <fieldset :disabled="saveState === 'saving'">
         <legend class="text-[13px] font-semibold text-nf-text">
           {{ t("workspace.discovery.genresLabel") }}

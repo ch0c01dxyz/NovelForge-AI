@@ -16,7 +16,7 @@
  */
 import type { NovelForgeDb, WorkflowRunStatus } from "@novelforge/database";
 import { createHash } from "node:crypto";
-import { requireCapability } from "@novelforge/auth/authorization";
+import { requireCapability, ForbiddenError } from "@novelforge/auth/authorization";
 import {
   validateGraph,
   validateWorkflowModelPreferences,
@@ -28,6 +28,7 @@ import { ConflictError, NotFoundError } from "@novelforge/ai-services";
 import { resolveAgent, resolveSkill, type ResolvedAgent, type ResolvedSkill } from "./definition-resolution.ts";
 import { createAuditService, type AuditService } from "@novelforge/ai-services";
 import type { WorkflowQueue } from "./workflow-queue.ts";
+import { createWorkflowRetry, inspectWorkflowRetry, type WorkflowRetry } from "./workflow-retry.ts";
 
 /**
  * Typed 409 for approval-decision refusals (NF-WF-005, invariant 4).
@@ -85,6 +86,7 @@ export interface StepRunView {
 }
 
 export interface RunView {
+  retry?: WorkflowRetry;
   id: string;
   workflowId: string;
   workflowKey: string;
@@ -110,6 +112,7 @@ export interface EnqueueResult {
 }
 
 export interface WorkflowRunServices {
+  retryRun(input: { actorUserId: string; workspaceId: string; runId: string }): Promise<EnqueueResult>;
   modelPreferencePreview(input: { actorUserId: string; workspaceId: string; workflowId: string; novelId?: string }): Promise<WorkflowModelPreferencePreview>;
   enqueueRun(input: {
     actorUserId: string;
@@ -279,6 +282,12 @@ export function createWorkflowRunServices(deps: {
   }
 
   return {
+    async retryRun(input) {
+      const result = await createWorkflowRetry(db, input);
+      const run = await loadRun(db, result.id);
+      if (run.status === "PENDING") await queue.add("workflow-run", { runId: result.id }, { jobId: result.id });
+      return { run, deduped: result.deduped, statusUrl: `/api/workspaces/${input.workspaceId}/workflow-runs/${result.id}` };
+    },
     async modelPreferencePreview(input) {
       return db.$transaction(async tx => previewOf(await validateForEnqueue(input, tx), input.workspaceId), { isolationLevel: "RepeatableRead" });
     },
@@ -287,6 +296,7 @@ export function createWorkflowRunServices(deps: {
         input.idempotencyKey && input.idempotencyKey.length > 0
           ? input.idempotencyKey
           : null;
+      if (key?.startsWith("retry:")) throw new ConflictError("idempotency key prefix is reserved");
       const statusUrlFor = (runId: string) =>
         `/api/workspaces/${input.workspaceId}/workflow-runs/${runId}`;
 
@@ -330,7 +340,7 @@ export function createWorkflowRunServices(deps: {
             const outline = await tx.outlineVersion.findFirst({ where: { id: runInput.outlineRef, novelId, status: "APPROVED" }, select: { id: true } });
             const novel = await tx.novel.findUnique({ where: { id: novelId }, include: { currentBranch: true } });
             if (!chapter || !outline || !novel?.currentBranch?.headRevisionId) throw new ConflictError("AI chapter target or approved outline changed; reload before starting");
-            persistedInput = { ...runInput, chapterCreationPins: { chapterId: chapter.id, chapterNumber: chapter.number, chapterVersionId: chapter.currentVersionId, outlineRef: outline.id, headRevisionId: novel.currentBranch.headRevisionId, workflowVersionNumber: version.number } };
+            persistedInput = { ...runInput, chapterCreationPins: { chapterId: chapter.id, chapterNumber: chapter.number, chapterVersionId: chapter.currentVersionId, outlineRef: outline.id, headRevisionId: novel.currentBranch.headRevisionId, sourceBranchId: novel.currentBranch.id, workflowVersionNumber: version.number } };
           }
           const choices: WorkflowModelPreferences = {
             ...(input.preferredModelRef !== undefined ? { preferredModelRef: input.preferredModelRef } : {}),
@@ -748,7 +758,16 @@ export function createWorkflowRunServices(deps: {
         select: { id: true },
       });
       if (!run) throw new NotFoundError("run");
-      return loadRun(db, run.id);
+      const view = await loadRun(db, run.id);
+      if (view.status === "FAILED") {
+        try {
+          const inspected = await db.$transaction(tx => inspectWorkflowRetry(tx as unknown as NovelForgeDb, input.workspaceId, input.runId, input.actorUserId), { timeout: 20_000 });
+          view.retry = inspected.retry;
+        } catch (error) {
+          if (!(error instanceof ConflictError) && !(error instanceof NotFoundError) && !(error instanceof ForbiddenError)) throw error;
+        }
+      }
+      return view;
     },
   };
 }

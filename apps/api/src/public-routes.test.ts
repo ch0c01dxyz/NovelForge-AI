@@ -564,10 +564,14 @@ describe("spoiler boundary", () => {
     const novelId = await seedNovel(owner.userId, wsId, "spoiler-novel");
     const ids = { workspaceId: wsId, novelId };
     await publishChapter(owner.cookie, ids, "Clean", "clean chapter text");
+    await db.synopsis.create({ data: { novelId, content: "PRIVATE_PLANNING_ENDING", createdById: owner.userId } });
 
     const novel = await api("GET", publicNovel("spoiler-novel"));
     const chapter = await api("GET", publicChapter("spoiler-novel", 1));
     const dump = JSON.stringify([novel.body, chapter.body]).toLowerCase();
+    expect((novel.body as { novel: object }).novel).not.toHaveProperty("synopsis");
+    expect((novel.body as { novel: object }).novel).toHaveProperty("publicSynopsis", null);
+    expect(dump).not.toContain("private_planning_ending");
     for (const leaked of [
       "canonfact",
       "review",
@@ -575,7 +579,6 @@ describe("spoiler boundary", () => {
       "receipt",
       "scheduledfor",
       "outline",
-      "synopsis",
       "password",
       "token",
       "email",

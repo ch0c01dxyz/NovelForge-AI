@@ -18,9 +18,8 @@ release approval are tracked separately. Read the [current progress](docs/14-pro
 [issues and gaps](docs/implementation/ISSUES-AND-GAPS.md) for actual evidence.
 Historical test receipts do not prove a fresh installation on your host.
 
-This documentation update does not publish outstanding local application changes.
-The development additions listed separately below may be absent from a clean
-checkout until their implementation commits are integrated.
+The additions below are included in this development update. Their bounded
+verification does not imply production release approval.
 
 ## Features
 
@@ -37,10 +36,9 @@ checkout until their implementation commits are integrated.
 | Administration | Server-enforced SUPER_ADMIN gateway/model/profile configuration, routing information and audit history. Workspace ownership does not grant platform administration. |
 | Recovery | Revisions, checkpoints, branches, impact analysis, non-destructive restore, durable queues and source/version checks. Generation, canon approval and publication remain distinct. |
 
-### Latest local development additions
+### Latest development additions
 
-The working tree also includes these separately tracked additions; availability
-on `main` depends on integrating their implementation commits:
+This update includes the following separately tracked additions:
 
 - Character discovery and identity linking; proposed references and clan/organization
   information with author approve/edit/reject controls.
@@ -260,8 +258,8 @@ API and worker must share the intended database/Redis configuration.
 
 Use one hostname consistently for session cookies. `/ready` checks database and
 Redis; it does not certify models, storage, worker progress or production readiness.
-The public browse landing page and `/author` / `/login` aliases belong to the
-local development additions; use the root author home and `/sign-in` on older revisions.
+The root page opens the public catalog. Use `/author` for the author home;
+`/login` is an alias for `/sign-in`.
 
 ### 5. First-use setup
 

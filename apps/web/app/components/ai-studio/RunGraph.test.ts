@@ -71,6 +71,15 @@ const run = {
 };
 
 describe("RunGraph", () => {
+  it("keeps step diagnostics in closed support details behind a plain explanation", () => {
+    const wrapper = mount(RunGraph, { props: { run } });
+    const step = wrapper.get('[data-testid="step-review"]');
+    expect(step.get('[role="alert"]').text()).toBe("run.failedMessage");
+    expect(step.get("details").attributes("open")).toBeUndefined();
+    expect(step.get("summary").text()).toBe("run.technicalDetails");
+    expect(step.get("details").text()).toContain("boom: model refused");
+    expect(wrapper.get('[data-testid="step-draft"]').find("details").exists()).toBe(false);
+  });
   it("renders the run header with pinned workflow version", () => {
     const wrapper = mount(RunGraph, { props: { run } });
     const text = wrapper.text();

@@ -185,8 +185,7 @@ async function startRun() {
     if (!pendingStart.value) {
     if (version !== selectionVersion) return;
     if (!props.chapter || !workflowId.value || !modelPreferenceFingerprint.value) return;
-    const input: Record<string, unknown> = { chapterNumber: props.chapter.number, outlineRef: outlineId.value };
-    if (creationWorkflow.value) input.chapterId = props.chapter.id;
+    const input: Record<string, unknown> = { chapterId: props.chapter.id, chapterNumber: props.chapter.number, outlineRef: outlineId.value };
     const words = Number.parseInt(targetWords.value, 10);
     if (Number.isFinite(words) && words > 0) input.targetWordCount = words;
     if (styleNotes.value.trim()) input.styleNotes = styleNotes.value.trim();
@@ -303,7 +302,7 @@ watch(
 );
 onUnmounted(() => { mounted = false;selectionVersion++;recoveryRequest++; });
 
-defineExpose({ refresh: loadOutlinesAndHistory });
+defineExpose({ refresh: loadOutlinesAndHistory, prepareFailedRun });
 </script>
 
 <template>
@@ -381,8 +380,9 @@ defineExpose({ refresh: loadOutlinesAndHistory });
             <span class="font-medium text-nf-text-dim">{{ t("generation.styleNotes") }}</span>
             <textarea
               v-model="styleNotes"
+              maxlength="12000"
               :disabled="starting || preparingRetry || !!pendingStart"
-              rows="2"
+              rows="4"
               :placeholder="t('generation.styleNotesPlaceholder')"
               class="resize-none rounded-lg border border-nf-border-strong bg-nf-bg-2 px-2.5 py-1.5 text-[13px] text-nf-text placeholder:text-nf-text-faint focus-visible:nf-focus"
             />

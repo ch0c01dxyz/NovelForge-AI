@@ -174,8 +174,13 @@ onMounted(load);
           {{ t(`workspace.research.library.status.${detail.status}`) }} ·
           {{ t("workspace.research.library.chunks", { count: detail.chunkCount }) }}
         </p>
-        <p v-if="detail.source" class="mt-1 text-[12px] text-nf-text-dim">{{ detail.source }}</p>
+        <p v-if="detail.source" class="mt-1 break-words text-[12px] text-nf-text-dim">{{ detail.source }}</p>
       </div>
+
+      <section v-if="detail.content" :aria-label="t('workspace.research.library.contentLabel')" class="rounded-lg border border-nf-border bg-nf-bg-2 p-3">
+        <h3 class="mb-2 text-[12px] font-semibold text-nf-text-dim">{{ t("workspace.research.library.contentLabel") }}</h3>
+        <div class="max-h-72 overflow-y-auto whitespace-pre-wrap break-words text-[13px] leading-relaxed text-nf-text">{{ detail.content }}</div>
+      </section>
 
       <!-- Publish -->
       <div v-if="detail.status !== 'ACTIVE'" class="flex flex-col gap-2">

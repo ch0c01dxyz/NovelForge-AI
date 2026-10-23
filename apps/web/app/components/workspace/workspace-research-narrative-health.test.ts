@@ -185,6 +185,13 @@ describe("ReferenceLibrary", () => {
 });
 
 describe("ReferenceIngest", () => {
+  it("shows saved reference content as text without interpreting markup", async () => {
+    apiMock.mockResolvedValueOnce({ ...refDetail, content: "Research notes <script>not executable</script>" });
+    const w = mount(ReferenceIngest, { props: { referenceId: "r1" } });
+    await tick();
+    expect(w.get('section[aria-label="workspace.research.library.contentLabel"]').text()).toContain("Research notes <script>not executable</script>");
+    expect(w.find("script").exists()).toBe(false);
+  });
   it("adds a version, then publishes only after explicit confirmation", async () => {
     apiMock.mockResolvedValueOnce(refDetail);
     const w = mount(ReferenceIngest, { props: { referenceId: "r1" } });
@@ -592,6 +599,31 @@ describe("HealthMemoryPanel", () => {
     expect(unresolvedCalls.length).toBe(2);
   });
 
+
+  it("refreshes both health registers after an explicit character link", async () => {
+    apiMock.mockResolvedValueOnce(healthResult).mockResolvedValueOnce({ unresolved: [{ rule: "UNRESOLVED_IDENTITY", evidence: [{ kind: "character", id: "character" }] }] }).mockResolvedValueOnce({ statuses: [] });
+    const w = mount(HealthMemoryPanel, { props }); await tick();
+    apiMock.mockResolvedValueOnce(healthResult).mockResolvedValueOnce({ unresolved: [] });
+    w.findComponent({ name: "CharacterIdentityLink" }).vm.$emit("linked"); await tick();
+    expect(w.text()).toContain("characterIdentity.linked");
+    expect(w.find('[data-testid="unresolved-item-0"]').exists()).toBe(false);
+    expect(apiMock.mock.calls.filter(([url]) => String(url).endsWith("/story-health")).length).toBe(2);
+    expect(apiMock.mock.calls.filter(([url]) => String(url).endsWith("/story-health/unresolved")).length).toBe(2);
+    w.unmount();
+  });
+
+  it("keeps same-rule character findings at the same revision independent", async () => {
+    const finding = (id: string) => ({ ...healthResult.findings[0], rule: "UNRESOLVED_IDENTITY", evidence: [{ kind: "character", id, detail: `Diagnostic for ${id}` }], affectedEntities: [{ type: "character", id }] });
+    apiMock.mockResolvedValueOnce({ ...healthResult, findings: [finding("first"), finding("second")] }).mockResolvedValueOnce({ unresolved: [] }).mockResolvedValueOnce({ statuses: [] });
+    const w = mount(HealthMemoryPanel, { props }); await tick();
+    const toggles = w.findAll("button").filter(button => button.text() === "workspace.health.findings.evidenceToggle");
+    await toggles[0]!.trigger("click");
+    expect(w.text()).toContain("Diagnostic for first");
+    expect(w.text()).not.toContain("Diagnostic for second");
+    expect(toggles[0]!.attributes("aria-expanded")).toBe("true");
+    expect(toggles[1]!.attributes("aria-expanded")).toBe("false");
+    w.unmount();
+  });
 
   it("maps a 403 health failure to the forbidden message", async () => {
     apiMock

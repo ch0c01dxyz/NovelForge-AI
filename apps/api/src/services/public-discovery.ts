@@ -23,7 +23,8 @@ import {
   requireCapability,
   type Capability,
 } from "@novelforge/auth/authorization";
-import { NotFoundError } from "@novelforge/ai-services";
+import { ConflictError, NotFoundError, validateNovelCover, type NovelCover } from "@novelforge/ai-services";
+import { publicNovelPresentations } from "./public-novel-presentation.ts";
 import {
   areKnownGenreKeys,
   MAX_GENRES_PER_NOVEL,
@@ -52,6 +53,7 @@ export interface DiscoveryNovel {
   genres: string[];
   /** Reader-facing content rating; null = author has not set one. */
   audience: string | null;
+  coverUrl: string | null;
   publishedChapterCount: number;
   firstPublishedAt: string;
   lastPublishedAt: string;
@@ -286,6 +288,7 @@ export function createPublicDiscoveryServices({ db }: { db: NovelForgeDb }) {
       const rows = await db.$queryRawUnsafe<ListedRow[]>(sql, ...values);
       const hasMore = rows.length > limit;
       const page = rows.slice(0, limit);
+      const presentations = await publicNovelPresentations(db, page.map(row => row.id));
       const last = page[page.length - 1];
       let nextCursor: string | null = null;
       if (hasMore && last) {
@@ -305,6 +308,7 @@ export function createPublicDiscoveryServices({ db }: { db: NovelForgeDb }) {
           author: { id: r.authorId, displayName: r.authorName },
           genres: r.genres ?? [],
           audience: r.audience ?? null,
+          coverUrl: presentations.get(r.id)?.coverUrl ?? null,
           publishedChapterCount: r.publishedChapterCount,
           firstPublishedAt: r.firstPublishedAt.toISOString(),
           lastPublishedAt: r.lastPublishedAt.toISOString(),
@@ -453,6 +457,40 @@ export function createPublicDiscoveryServices({ db }: { db: NovelForgeDb }) {
      * `novel:update` capability; unknown novel → 404; unknown keys or
      * more than MAX_GENRES_PER_NOVEL → rejected by the caller (400).
      */
+    async getPublicCover(novelId: string): Promise<NovelCover | null> {
+      const novel = await db.novel.findFirst({ where: { id: novelId, status: "ACTIVE", publications: { some: { status: "PUBLISHED" } } }, select: { settings: { select: { settings: true } } } });
+      const settings = novel?.settings?.settings;
+      const cover = settings && typeof settings === "object" && !Array.isArray(settings) ? settings.cover : null;
+      if (!cover || typeof cover !== "object" || Array.isArray(cover) || typeof cover.mimeType !== "string" || typeof cover.dataBase64 !== "string") return null;
+      try { return validateNovelCover({ mimeType: cover.mimeType, dataBase64: cover.dataBase64 }); }
+      catch { return null; }
+    },
+
+    async getReaderDetails(input: { actorUserId: string; workspaceId: string; novelId: string }) {
+      await gate(input.workspaceId, input.novelId, input.actorUserId, "novel:read");
+      const details = (await publicNovelPresentations(db, [input.novelId])).get(input.novelId);
+      return { publicSynopsis: details?.publicSynopsis ?? null };
+    },
+
+    async setPublicSynopsis(input: { actorUserId: string; workspaceId: string; novelId: string; publicSynopsis: string; expectedPublicSynopsis: string | null }) {
+      if (input.publicSynopsis.length > 6000) throw new Error("INVALID_SYNOPSIS");
+      return db.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM memberships WHERE workspace_id = ${input.workspaceId}::uuid AND user_id = ${input.actorUserId}::uuid FOR SHARE`;
+        await tx.$queryRaw`SELECT id FROM novels WHERE id = ${input.novelId}::uuid FOR NO KEY UPDATE`;
+        const member = await tx.membership.findUnique({ where: { workspaceId_userId: { workspaceId: input.workspaceId, userId: input.actorUserId } } });
+        if (!member || !await tx.novel.findFirst({ where: { id: input.novelId, workspaceId: input.workspaceId } })) throw new NotFoundError("novel");
+        requireCapability(member.role, "novel:update");
+        const current = (await publicNovelPresentations(tx, [input.novelId])).get(input.novelId)?.publicSynopsis ?? null;
+        if (current !== input.expectedPublicSynopsis) throw new ConflictError("public synopsis changed");
+        const publicSynopsis = input.publicSynopsis.trim() || null;
+        await tx.$executeRaw`INSERT INTO novel_settings(novel_id, settings, updated_at)
+          VALUES (${input.novelId}::uuid, jsonb_build_object('publicSynopsis', ${publicSynopsis}::text), now())
+          ON CONFLICT (novel_id) DO UPDATE SET settings = jsonb_set(novel_settings.settings, '{publicSynopsis}', jsonb_build_object('value', ${publicSynopsis}::text)->'value'), updated_at = now()`;
+        await tx.auditLog.create({ data: { workspaceId: input.workspaceId, actorUserId: input.actorUserId, action: "novel.public-synopsis-updated", entityType: "Novel", entityId: input.novelId, payload: { length: publicSynopsis?.length ?? 0 } } });
+        return { publicSynopsis };
+      });
+    },
+
     async setNovelGenres({
       actorUserId,
       workspaceId,

@@ -265,6 +265,13 @@ export function registerAiRoutes(
     return services.syncModels({ actorPlatformRole: actor.platformRole, actorUserId: actor.userId, gatewayId: params.data.gatewayId, kind: "image" });
   });
 
+  app.post("/api/gateways/:gatewayId/sync-embedding-models", async (request, reply) => {
+    const actor = await requireActor(request, reply); if (!actor) return;
+    const params = gatewayParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.syncModels({ actorPlatformRole: actor.platformRole, actorUserId: actor.userId, gatewayId: params.data.gatewayId, kind: "embedding" });
+  });
+
   app.get("/api/models", async (request, reply) => {
     const actor = await requireActor(request, reply);
     if (!actor) return;

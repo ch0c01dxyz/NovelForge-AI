@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { ref, type Ref } from "vue";
-import Home from "./index.vue";
+import Home from "./author.vue";
 import Wizard from "../components/author/NewNovelWizard.vue";
 import { ApiError } from "../composables/useApi";
 import { useLocale } from "../composables/useLocale";
@@ -25,7 +25,7 @@ vi.stubGlobal("onNuxtReady", () => {});
 const navigate = vi.fn();
 vi.stubGlobal("navigateTo", navigate);
 const wrappers: VueWrapper[] = [];
-const links = { NuxtLink: { props: ["to"], template: '<a :href="to"><slot /></a>' } };
+const links = { BrandLogo: true, NuxtLink: { props: ["to"], template: '<a :href="to"><slot /></a>' } };
 function mounted(component: typeof Home | typeof Wizard) {
   const wrapper = mount(component, { global: { stubs: links } });
   wrappers.push(wrapper);
@@ -199,7 +199,7 @@ describe("author home and creation", () => {
     const w = mounted(Home);
     await flushPromises();
     expect(w.find('a[href="/admin"]').exists()).toBe(false);
-    expect(navigate).toHaveBeenCalledWith("/sign-in?redirect=/");
+    expect(navigate).toHaveBeenCalledWith("/login?redirect=/author");
     expect(api).toHaveBeenCalledTimes(1);
   });
   it("saves nothing before final confirmation, then opens the actual created workspace", async () => {

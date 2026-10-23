@@ -247,17 +247,21 @@ export class OmniRouteGateway implements AIGateway {
   }
 
   async listModels(signal?: AbortSignal): Promise<GatewayModel[]> {
-    return this.listCatalog(false, signal);
+    return this.listCatalog("text", signal);
   }
 
   async listImageModels(signal?: AbortSignal): Promise<GatewayModel[]> {
-    return this.listCatalog(true, signal);
+    return this.listCatalog("image", signal);
   }
 
-  private async listCatalog(images: boolean, signal?: AbortSignal): Promise<GatewayModel[]> {
+  async listEmbeddingModels(signal?: AbortSignal): Promise<GatewayModel[]> {
+    return this.listCatalog("embedding", signal);
+  }
+
+  private async listCatalog(kind: "text" | "image" | "embedding", signal?: AbortSignal): Promise<GatewayModel[]> {
     const t = this.withTimeout(signal);
     try {
-      const res = await this.fetchImpl(`${this.base}/v1/models${images ? "/image" : ""}`, {
+      const res = await this.fetchImpl(`${this.base}/v1/models${kind === "text" ? "" : `/${kind}`}`, {
         headers: this.headers(),
         signal: t.signal,
       });
@@ -270,7 +274,7 @@ export class OmniRouteGateway implements AIGateway {
         .map((m) => ({
           modelId: m.id,
           displayName: m.name,
-          capabilities: images ? ["image-generation"] : normalizeCapabilities(m.capabilities),
+          capabilities: kind === "image" ? ["image-generation"] : kind === "embedding" ? ["embeddings"] : normalizeCapabilities(m.capabilities),
           contextWindow: m.context_length,
         }));
     } catch (err) {

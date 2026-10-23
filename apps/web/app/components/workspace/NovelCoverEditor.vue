@@ -8,16 +8,16 @@ import ConfirmDialog from "./ConfirmDialog.vue";
 const props = defineProps<{ workspaceId: string; novelId: string }>();
 const emit = defineEmits<{ changed: [coverUrl: string | null] }>();
 const { api } = useApi(); const { t } = useLocale();
-type Candidate = { id: string; slot: number; state: string; imageUrl: string | null; errorCategory?: string | null; resumeExisting?: boolean; progress?: { queuePosition?: number; waitSeconds?: number } | null };
+type Candidate = { id: string; slot: number; state: string; imageUrl: string | null; payloadExpiredAt?: string | null; canDelete?: boolean; errorCategory?: string | null; resumeExisting?: boolean; progress?: { queuePosition?: number; waitSeconds?: number } | null };
 type Batch = { id: string; count: number; status: string; expectedCoverHash: string | null; enqueueError?: boolean; items: Candidate[]; prompt?: string; notes?: string; style?: string; preferredModelRef?: string | null };
 type Brief = { prompt: string; sourceFingerprint: string; expectedCoverHash: string | null; coverUrl: string | null; recommendedStyles: string[] };
-type CoverVersion = { id: string; number: number; sha256: string | null };
+type CoverVersion = { id: string; number: number; sha256: string | null; payloadExpiredAt?: string | null };
 const styles = ["3d", "artistic", "sketch", "2d", "manga", "manhua", "manhwa", "custom"];
 const base = computed(() => `/workspaces/${encodeURIComponent(props.workspaceId)}/novels/${encodeURIComponent(props.novelId)}`);
 const brief = ref<Brief | null>(null), prompt = ref(""), notes = ref(""), count = ref(1), style = ref("manhwa"), model = ref("");
 const batch = ref<Batch | null>(null), batches = ref<{ id: string; count: number; style: string }[]>([]), history = ref<CoverVersion[]>([]);
 const selected = ref(""), error = ref(""), notice = ref(""), loading = ref(true), busy = ref(false), pendingRequest = ref<string | null>(null);
-const confirmation = ref<{ kind: "apply" | "retry" | "check" | "restore"; id: string } | null>(null);
+const confirmation = ref<{ kind: "apply" | "retry" | "check" | "restore" | "remove"; id: string } | null>(null);
 let epoch = 0, batchSequence = 0; let timer: ReturnType<typeof setTimeout> | undefined;
 let journalKey: string | null = null;
 function savePending(value: string | null) {
@@ -27,7 +27,7 @@ function savePending(value: string | null) {
 }
 const active = computed(() => batch.value && ["PENDING", "RUNNING"].includes(batch.value.status));
 const locked = computed(() => busy.value || !!pendingRequest.value || !!active.value);
-const dialogBody = computed(() => t(`coverGeneration.${confirmation.value?.kind === "check" ? "checkWarning" : confirmation.value?.kind === "retry" ? "retryWarning" : confirmation.value?.kind === "restore" ? "restoreWarning" : "applyWarning"}`));
+const dialogBody = computed(() => t(`coverGeneration.${confirmation.value?.kind === "remove" ? "removeWarning" : confirmation.value?.kind === "check" ? "checkWarning" : confirmation.value?.kind === "retry" ? "retryWarning" : confirmation.value?.kind === "restore" ? "restoreWarning" : "applyWarning"}`));
 function itemMessage(item: Candidate) {
   if (item.state === "UNCERTAIN") return t("coverGeneration.itemUncertain");
   const keys: Record<string, string> = { RATE_LIMIT: "itemRateLimited", INVALID_REQUEST: "itemInvalidResponse", AUTH: "itemProviderAccess" };
@@ -35,6 +35,8 @@ function itemMessage(item: Candidate) {
 }
 function message(cause: unknown) {
   if (cause instanceof ApiError) {
+    if (["COVER_IMAGE_EXPIRED", "COVER_VERSION_EXPIRED"].includes(cause.code)) return t("coverGeneration.imageExpired");
+    if (cause.code === "COVER_IMAGE_PROTECTED") return t("coverGeneration.imageProtected");
     if (cause.code === "COVER_SOURCE_CHANGED") return t("coverGeneration.sourceChanged");
     if (["COVER_CHANGED", "COVER_ALREADY_REPLACED"].includes(cause.code)) return t("coverGeneration.coverChanged");
     if (["COVER_MODEL_UNAVAILABLE", "NO_ROUTE"].includes(cause.code)) return t("coverGeneration.modelUnavailable");
@@ -109,9 +111,15 @@ async function change(action: "cancel" | "resume") {
 }
 async function confirm() {
   const action = confirmation.value; if (!action || busy.value || !brief.value) return;
+  batchSequence++; stopPoll();
   const current = epoch; busy.value = true; error.value = "";
   try {
-    if (action.kind === "retry" || action.kind === "check") {
+    if (action.kind === "remove") {
+      const result = await api<Batch>(`${base.value}/cover-generations/${batch.value!.id}/items/${action.id}`, { method: "DELETE" });
+      if (current !== epoch) return;
+      batch.value = result; if (selected.value === action.id) selected.value = "";
+      notice.value = t("coverGeneration.removed");
+    } else if (action.kind === "retry" || action.kind === "check") {
       const result = await api<Batch>(`${base.value}/cover-generations/${batch.value!.id}/items/${action.id}/retry`, { method: "POST", body: JSON.stringify({ acknowledgeUncertain: action.kind === "retry" }) });
       if (current !== epoch) return; batch.value = result; schedule();
     } else {
@@ -119,6 +127,7 @@ async function confirm() {
       const result = await api<{ coverUrl: string | null; sha256: string | null }>(url, { method: "POST", body: JSON.stringify({ expectedCoverHash: brief.value.expectedCoverHash }) });
       if (current !== epoch) return; brief.value = { ...brief.value, expectedCoverHash: result.sha256, coverUrl: result.coverUrl }; emit("changed", result.coverUrl); notice.value = t("coverGeneration.applied");
       const versions = await api<CoverVersion[]>(`${base.value}/cover-history`); if (current !== epoch) return; history.value = versions;
+      await refreshBatch();
     }
     confirmation.value = null;
   } catch (cause) { if (current === epoch) error.value = message(cause); }
@@ -167,7 +176,8 @@ onUnmounted(() => { epoch++; stopPoll(); });
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <article v-for="item in batch.items" :key="item.id" class="min-w-0 rounded-xl border bg-nf-bg-0 p-2" :class="selected === item.id ? 'border-nf-accent ring-1 ring-nf-accent/30' : 'border-nf-border'">
             <label v-if="item.imageUrl" class="block cursor-pointer"><img :src="item.imageUrl" :alt="t('coverGeneration.candidate', { slot: item.slot })" class="aspect-[2/3] w-full rounded-lg object-cover" loading="lazy" /><span class="mt-2 flex items-center gap-2 text-xs"><input v-model="selected" :data-testid="`cover-candidate-${item.id}`" type="radio" name="cover-candidate" :value="item.id" class="accent-nf-accent" />{{ t('coverGeneration.candidate', { slot: item.slot }) }}</span></label>
-            <div v-else class="flex aspect-[2/3] items-center justify-center rounded-lg border border-dashed border-nf-border p-2 text-center text-xs text-nf-text-dim">{{ t(`coverGeneration.states.${item.state}`) }}</div>
+            <div v-else class="flex aspect-[2/3] items-center justify-center rounded-lg border border-dashed border-nf-border p-2 text-center text-xs text-nf-text-dim">{{ t(item.payloadExpiredAt ? 'coverGeneration.payloadRemoved' : `coverGeneration.states.${item.state}`) }}</div>
+            <button v-if="item.canDelete && item.imageUrl" type="button" :data-testid="`cover-remove-${item.id}`" class="nf-cover-button mt-2 w-full text-xs" :disabled="busy || !!active" @click="confirmation = { kind: 'remove', id: item.id }">{{ t('coverGeneration.removeCandidate') }}</button>
             <p v-if="item.errorCategory" class="mt-2 text-xs leading-relaxed text-nf-warn">{{ itemMessage(item) }}</p>
             <p v-if="item.progress?.queuePosition !== undefined" class="mt-2 text-xs text-nf-text-dim">{{ t('coverGeneration.queuePosition', { position: item.progress.queuePosition }) }}</p>
             <p v-if="item.progress?.waitSeconds !== undefined" class="mt-1 text-xs text-nf-text-dim">{{ t('coverGeneration.estimatedWait', { minutes: Math.ceil(item.progress.waitSeconds / 60) }) }}</p>
@@ -177,7 +187,7 @@ onUnmounted(() => { epoch++; stopPoll(); });
         <button type="button" class="nf-cover-button border-nf-accent/50 bg-nf-accent/15 text-nf-accent" :disabled="busy || !selected" @click="confirmation = { kind: 'apply', id: selected }">{{ t('coverGeneration.apply') }}</button>
       </section>
       <details v-if="batches.length" class="rounded-xl border border-nf-border p-3"><summary class="cursor-pointer text-sm text-nf-text-dim">{{ t('coverGeneration.previousBatches') }}</summary><div class="mt-3 flex max-h-48 flex-col gap-2 overflow-y-auto"><button v-for="(saved, index) in batches" :key="saved.id" type="button" class="nf-cover-button text-left" :disabled="busy || !!active" @click="selected = ''; refreshBatch(saved.id)">{{ t('coverGeneration.batch', { number: batches.length - index, count: saved.count }) }}</button></div></details>
-      <details v-if="history.length" class="rounded-xl border border-nf-border p-3"><summary class="cursor-pointer text-sm text-nf-text-dim">{{ t('coverGeneration.history') }}</summary><ol class="mt-3 max-h-48 space-y-2 overflow-y-auto"><li v-for="version in history" :key="version.id" class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-nf-bg-0 p-2 text-xs"><span>{{ t(version.sha256 ? 'coverGeneration.version' : 'coverGeneration.emptyVersion', { number: version.number }) }}</span><button type="button" class="nf-cover-button" :disabled="busy" @click="confirmation = { kind: 'restore', id: version.id }">{{ t('coverGeneration.restore') }}</button></li></ol></details>
+      <details v-if="history.length" class="rounded-xl border border-nf-border p-3"><summary class="cursor-pointer text-sm text-nf-text-dim">{{ t('coverGeneration.history') }}</summary><p class="mt-2 text-xs leading-relaxed text-nf-text-dim">{{ t('coverGeneration.retentionHint') }}</p><ol class="mt-3 max-h-48 space-y-2 overflow-y-auto"><li v-for="version in history" :key="version.id" class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-nf-bg-0 p-2 text-xs"><span>{{ t(version.sha256 ? 'coverGeneration.version' : 'coverGeneration.emptyVersion', { number: version.number }) }}<span v-if="version.payloadExpiredAt" class="ml-2 text-nf-text-dim">{{ t('coverGeneration.payloadRemoved') }}</span></span><button type="button" class="nf-cover-button" :disabled="busy || !!version.payloadExpiredAt" @click="confirmation = { kind: 'restore', id: version.id }">{{ t('coverGeneration.restore') }}</button></li></ol></details>
     </template>
     <ConfirmDialog :open="!!confirmation" :title="t('coverGeneration.confirmTitle')" :body="dialogBody" :confirm-label="t('coverGeneration.confirm')" :cancel-label="t('common.cancel')" :busy="busy" :error="error" @confirm="confirm" @cancel="confirmation = null" />
   </section>

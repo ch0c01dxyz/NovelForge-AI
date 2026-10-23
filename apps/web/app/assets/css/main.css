@@ -118,8 +118,8 @@ select option {
 /* Shared reference controls. Utility classes still own layout and semantic
  * variants; these rules own the consistent interactive treatment. */
 ::selection {
-  background: var(--color-nf-accent-dim);
-  color: var(--color-nf-text);
+  background: var(--color-nf-accent-hi);
+  color: var(--color-nf-accent-ink);
 }
 
 /* Author-home cover placeholder (NF author-home redesign): a stable

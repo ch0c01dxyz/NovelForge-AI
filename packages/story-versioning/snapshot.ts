@@ -142,6 +142,7 @@ export function isCoveredTable(table: string): boolean {
  * (C1, C7). Preview lists these verbatim so the author sees the boundary.
  */
 export const OUTSIDE_SCOPE: readonly { readonly table: string; readonly reason: string }[] = [
+  { table: "character_discovery_batches", reason: "author decisions and AI evidence history — never rewound or automatically reapproved" },
   { table: "users", reason: "identity — restoring a story must not revoke an account" },
   { table: "sessions", reason: "identity — restoring a story must not revoke an account" },
   { table: "workspaces", reason: "identity — restoring a story must not revoke an account" },

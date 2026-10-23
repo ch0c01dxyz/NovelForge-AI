@@ -9,10 +9,13 @@
 import { computed } from "vue";
 import type { RunDetail, StepView } from "../../composables/useAiStudio";
 import { useLocale } from "../../composables/useLocale";
+import WorkflowRetryAction from "../generation/WorkflowRetryAction.vue";
 
 const props = defineProps<{
   run: RunDetail;
+  workspaceId?: string;
 }>();
+const emit = defineEmits<{ (e: "retried", payload: { runId: string; statusUrl: string }): void }>();
 
 const { t } = useLocale();
 
@@ -36,7 +39,6 @@ function formatDate(value: string | null): string {
 }
 
 function outcomeText(step: StepView): string {
-  if (step.errorMessage) return step.errorMessage;
   if (typeof step.output === "string") return step.output;
   if (step.output == null) return "";
   try {
@@ -69,6 +71,7 @@ const pinnedSkills = computed(() => {
 
 <template>
   <section :aria-label="t('aiStudio.steps.title')">
+    <WorkflowRetryAction v-if="workspaceId" class="mb-3" :workspace-id="workspaceId" :run="run" @retried="emit('retried', $event)" />
     <div class="mb-4 rounded-xl border border-nf-border bg-nf-bg-1 p-4">
       <div class="flex flex-wrap items-center gap-2">
         <h2 class="text-[16px] font-semibold text-nf-text">
@@ -174,8 +177,15 @@ const pinnedSkills = computed(() => {
               {{ t("aiStudio.runs.skillVersion", { key: step.skillKey, version: step.skillVersionNumber ?? t("aiStudio.runs.noVersionPin") }) }}
             </template>
           </p>
+          <template v-if="step.errorMessage">
+            <p class="mt-1.5 text-[12px] text-nf-warn" role="alert">{{ t("run.failedMessage") }}</p>
+            <details class="mt-2 text-[12px] text-nf-text-dim">
+              <summary class="cursor-pointer focus-visible:nf-focus">{{ t("run.technicalDetails") }}</summary>
+              <p class="mt-2 whitespace-pre-wrap break-words font-mono">{{ step.errorMessage }}</p>
+            </details>
+          </template>
           <p
-            v-if="outcomeText(step)"
+            v-else-if="outcomeText(step)"
             class="mt-1.5 whitespace-pre-wrap break-words font-mono text-[12px] text-nf-text-dim"
             :class="{ 'text-nf-warn': step.status === 'FAILED' }"
           >

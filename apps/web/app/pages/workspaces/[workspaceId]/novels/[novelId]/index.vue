@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BrandLogo from "../../../../../components/ui/BrandLogo.vue";
 /**
  * Writer workspace (Phase 2 + NF-WF-007). Layout per docs/design/writer-workspace
  * + DESIGN-TOKENS.md: header / nav | editor | context rail / status footer.
@@ -51,6 +52,8 @@ import DraftDiffView from "../../../../../components/generation/DraftDiffView.vu
 import FindingsPanel from "../../../../../components/generation/FindingsPanel.vue";
 import ProposalsPanel from "../../../../../components/generation/ProposalsPanel.vue";
 import ApplyBar from "../../../../../components/generation/ApplyBar.vue";
+import NewCharactersPanel from "../../../../../components/generation/NewCharactersPanel.vue";
+import StorySuggestionsPanel from "../../../../../components/generation/StorySuggestionsPanel.vue";
 import RichEditor from "../../../../../components/editor/RichEditor.vue";
 import EditorToolbar from "../../../../../components/editor/EditorToolbar.vue";
 import SceneNav from "../../../../../components/editor/SceneNav.vue";
@@ -278,6 +281,13 @@ async function onRunStarted(payload: { runId: string; statusUrl: string }) {
   reviewStatusUrl.value = payload.statusUrl;
   gen.clearReview();
   decideState.value = { kind: "ok" };
+}
+
+async function configureFailedRun(runId: string) {
+  generationRailOpen.value = true;
+  await generationPanel.value?.prepareFailedRun(runId);
+  await nextTick();
+  document.getElementById("writer-generation")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function decide(decision: "approve" | "reject", reason: string | undefined) {
@@ -1149,14 +1159,10 @@ async function saveAndReview(publishAfter = false) {
       class="nf-writer-header flex items-center gap-3.5 border-b border-nf-border bg-nf-bg-1 px-5 shadow-nf-sm"
     >
       <NuxtLink
-        to="/"
+        to="/author"
         class="flex items-center gap-2.5 text-[14.5px] font-semibold tracking-tight hover:opacity-80 focus-visible:nf-focus"
       >
-        <span
-          class="grid size-6.5 place-items-center rounded-md bg-nf-accent font-nf-literary text-[15px] font-bold text-nf-accent-ink"
-          >N</span
-        >
-        NovelForge
+        <BrandLogo compact />
       </NuxtLink>
       <span class="hidden min-w-0 flex-1 truncate border-l border-nf-border pl-4 text-[13px] text-nf-text-dim md:block">{{ activeChapter?.title }}</span>
       <div class="flex-1 md:hidden" />
@@ -1470,6 +1476,21 @@ async function saveAndReview(publishAfter = false) {
               @reload-rediff="onReloadRediff"
               @continue-next="onContinueNext"
             />
+            <NewCharactersPanel
+              v-if="activeChapter && !gen.review.value.blocked"
+              :workspace-id="workspaceId"
+              :novel-id="novelId"
+              :chapter-id="activeChapter.id"
+              :run-id="gen.review.value.runId"
+              :current-version="version"
+              :run-status="gen.selectedRun.value?.status ?? ''"
+            />
+            <StorySuggestionsPanel
+              v-if="activeChapter && !gen.review.value.blocked"
+              :workspace-id="workspaceId" :novel-id="novelId" :chapter-id="activeChapter.id"
+              :run-id="gen.review.value.runId" :current-version="version"
+              :run-status="gen.selectedRun.value?.status ?? ''"
+            />
           </div>
 
           <div v-if="activeChapter" class="mx-auto max-w-[700px] px-6 pb-24 pt-[52px] lg:px-10">
@@ -1610,7 +1631,10 @@ async function saveAndReview(publishAfter = false) {
             :workspace-id="workspaceId"
             :run-id="reviewRunId"
             :status-url="reviewStatusUrl"
+            can-configure
+            @configure="configureFailedRun"
             @run-updated="onRunUpdated"
+            @retried="onRunStarted"
             @cancelled="onCancelled"
           />
         </div>

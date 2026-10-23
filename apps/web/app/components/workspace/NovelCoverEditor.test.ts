@@ -24,6 +24,33 @@ beforeEach(() => { sessionStorage.clear(); authUser = "author"; api.mockReset().
 }); });
 
 describe("cover candidate author flow", () => {
+  it("requires confirmation to remove an unused image and displays the retained record without Apply", async () => {
+    const w = mount(NovelCoverEditor, { props }); await flushPromises();
+    api.mockResolvedValueOnce({ ...batch, items: [{ ...batch.items[0], canDelete: true }] });
+    await w.get("form").trigger("submit"); await flushPromises();
+    await w.get('[data-testid="cover-remove-candidate"]').trigger("click");
+    expect(api.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+    expect(w.findComponent(ConfirmDialog).props("body")).toBe("coverGeneration.removeWarning");
+    api.mockResolvedValueOnce({ ...batch, items: [{ ...batch.items[0], imageUrl: null, canDelete: false, payloadExpiredAt: "2026-10-22T00:00:00Z" }] });
+    w.findComponent(ConfirmDialog).vm.$emit("confirm"); await flushPromises();
+    expect(api).toHaveBeenCalledWith(base + "/cover-generations/batch/items/candidate", { method: "DELETE" });
+    expect(w.text()).toContain("coverGeneration.payloadRemoved");
+    expect(w.find('img[src="/api/candidate/image"]').exists()).toBe(false);
+    expect(w.emitted("changed")).toBeUndefined(); w.unmount();
+  });
+
+  it("shows expired cover history while disabling restoration", async () => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation(async (url: string, init?: RequestInit) => url.endsWith("/cover-history")
+      ? [{ id: "expired", number: 1, sha256: "hash", payloadExpiredAt: "2026-10-22T00:00:00Z" }]
+      : original(url, init));
+    const w = mount(NovelCoverEditor, { props }); await flushPromises();
+    expect(w.text()).toContain("coverGeneration.retentionHint");
+    expect(w.text()).toContain("coverGeneration.payloadRemoved");
+    expect(w.findAll("button").find(button => button.text() === "coverGeneration.restore")!.attributes("disabled")).toBeDefined();
+    w.unmount();
+  });
+
   it("offers observation of the same job separately from a new image retry", async () => {
     const w = mount(NovelCoverEditor, { props }); await flushPromises();
     api.mockResolvedValueOnce({ ...batch, status: "UNCERTAIN", items: [{ id: "waiting", slot: 1, state: "UNCERTAIN", imageUrl: null, errorCategory: "TRANSIENT", resumeExisting: true, progress: { queuePosition: 0, waitSeconds: 1200 } }] });

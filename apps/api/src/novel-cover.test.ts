@@ -12,6 +12,7 @@ import { SESSION_COOKIE } from "./auth-routes.ts";
 import { createCoverGenerationServices, createGatewayRegistry } from "@novelforge/ai-services";
 import { encryptCredential, GatewayError, GatewayManager, OmniRouteGateway } from "@novelforge/ai-core";
 import { randomUUID } from "node:crypto";
+import { crc32, deflateSync } from "node:zlib";
 
 const BASE_URL = process.env.DATABASE_URL;
 if (!BASE_URL) throw new Error("DATABASE_URL required for dedicated cover test database");
@@ -55,10 +56,20 @@ async function actor(role?: "VIEWER") {
   if (role) await db.membership.create({ data: { workspaceId, userId: user.id, role } });
   return { userId: user.id, cookie: token };
 }
-function request(method: "GET" | "PUT" | "POST", url: string, body?: object, token: string | null = cookie) {
+function request(method: "GET" | "PUT" | "POST" | "DELETE", url: string, body?: object, token: string | null = cookie) {
   return app.inject({ method, url, ...(body ? { payload: body } : {}), ...(token ? { cookies: { [SESSION_COOKIE]: token } } : {}) });
 }
 const base = () => `/api/workspaces/${workspaceId}/novels/${novelId}`;
+function coloredCover(red: number) {
+  const chunk = (type: string, data: Buffer) => {
+    const name = Buffer.from(type), length = Buffer.alloc(4), checksum = Buffer.alloc(4);
+    length.writeUInt32BE(data.length); checksum.writeUInt32BE(crc32(Buffer.concat([name, data])));
+    return Buffer.concat([length, name, data, checksum]);
+  };
+  const header = Buffer.alloc(13); header.writeUInt32BE(1); header.writeUInt32BE(1, 4); header[8] = 8; header[9] = 2;
+  return { mimeType: "image/png", dataBase64: Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"),
+    chunk("IHDR", header), chunk("IDAT", deflateSync(Buffer.from([0, red, 0, 0]))), chunk("IEND", Buffer.alloc(0))]).toString("base64") };
+}
 beforeEach(async () => {
   const owner = await actor();
   cookie = owner.cookie; userId = owner.userId;
@@ -67,6 +78,23 @@ beforeEach(async () => {
 });
 
 describe("authenticated novel cover configuration", () => {
+  it("keeps current and two distinct previous images, preserving expired metadata and refusing expired restore", async () => {
+    const hashes: string[] = [];
+    for (const red of [10, 20, 30, 20, 40]) {
+      const response = await request("PUT", `${base()}/cover`, coloredCover(red));
+      expect(response.statusCode, response.body).toBe(200); hashes.push(response.json().sha256);
+    }
+    const rows = await db.novelCoverVersion.findMany({ where: { novelId }, orderBy: { number: "asc" } });
+    const expired = rows.find(row => row.sha256 === hashes[0])!;
+    expect(expired.payloadExpiredAt).not.toBeNull(); expect(expired.cover).toBeNull();
+    expect(new Set(rows.filter(row => row.sha256 && !row.payloadExpiredAt).map(row => row.sha256))).toEqual(new Set([hashes[1], hashes[2], hashes[4]]));
+    expect(rows[0]!.sha256).toBeNull(); expect(rows[0]!.payloadExpiredAt).toBeNull();
+    const restore = await request("POST", `${base()}/cover-history/${expired.id}/restore`, { expectedCoverHash: hashes[4] });
+    expect(restore.statusCode).toBe(410); expect(restore.json().error).toBe("COVER_VERSION_EXPIRED");
+    expect((await request("GET", `${base()}/cover`)).rawPayload.toString("base64")).toBe(coloredCover(40).dataBase64);
+    expect(await db.auditLog.count({ where: { workspaceId, action: "novel.cover-payloads-expired" } })).toBeGreaterThan(0);
+  });
+
   it("stores bytes exactly, preserves sibling settings, audits metadata and returns only cover URLs in novel views", async () => {
     await db.novelSettings.update({ where: { novelId }, data: { settings: { scaleS3: { enabled: true }, unrelated: "preserve" } } });
     expect((await request("GET", `${base()}/cover`)).statusCode).toBe(404);
@@ -179,6 +207,52 @@ describe("durable cover candidates", () => {
   const scope = () => ({ actorUserId: userId, workspaceId, novelId });
   const input = (modelRef: string, count = 1) => ({ ...scope(), count, style: "manhwa", notes: "", prompt: "An abstract book cover", preferredModelRef: modelRef, idempotencyKey: randomUUID() });
   const result = () => new Response(JSON.stringify({ data: [{ b64_json: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }] }));
+
+  it("deletes only unused completed candidates, retains records and gates tenant/role/replay", async () => {
+    const { covers, modelRef } = await service(); const batch = await covers.create(input(modelRef));
+    const itemId = batch.items[0]!.id, url = `${base()}/cover-generations/${batch.id}/items/${itemId}`;
+    expect((await request("DELETE", url)).statusCode).toBe(409);
+    await covers.process(batch.id, 0);
+    const viewer = await actor("VIEWER"), outsider = await actor();
+    expect((await request("DELETE", url, undefined, null)).statusCode).toBe(401);
+    expect((await request("DELETE", url, undefined, viewer.cookie)).statusCode).toBe(403);
+    expect((await request("DELETE", url, undefined, outsider.cookie)).statusCode).toBe(404);
+    expect((await covers.get(scope(), batch.id)).items[0]!.canDelete).toBe(true);
+    expect((await request("DELETE", url)).statusCode).toBe(200);
+    expect((await request("DELETE", url)).statusCode).toBe(200);
+    const item = await db.coverGenerationItem.findUniqueOrThrow({ where: { id: itemId } });
+    expect(item.image).toBeNull(); expect(item.payloadExpiredAt).not.toBeNull();
+    expect(item.state).toBe("SUCCEEDED"); expect(item.originalSha256).toBeTruthy();
+    expect((await request("GET", url + "/image")).statusCode).toBe(410);
+    await expect(covers.apply({ ...scope(), batchId: batch.id, itemId, expectedCoverHash: null })).rejects.toMatchObject({ code: "COVER_IMAGE_EXPIRED" });
+    expect(await db.auditLog.count({ where: { entityId: itemId, action: "cover.candidate-removed" } })).toBe(1);
+  });
+
+  it("protects active cover references and expires old applied copies only after retention releases them", async () => {
+    const { covers, modelRef } = await service(); const batch = await covers.create(input(modelRef));
+    await covers.process(batch.id, 0); const itemId = batch.items[0]!.id;
+    await covers.apply({ ...scope(), batchId: batch.id, itemId, expectedCoverHash: null });
+    await expect(covers.remove(scope(), batch.id, itemId)).rejects.toMatchObject({ code: "COVER_IMAGE_PROTECTED" });
+    const pending = await covers.create(input(modelRef));
+    for (const red of [11, 22, 33]) expect((await request("PUT", `${base()}/cover`, coloredCover(red))).statusCode).toBe(200);
+    expect((await db.coverGenerationItem.findUniqueOrThrow({ where: { id: itemId } })).image).not.toBeNull();
+    await covers.change(scope(), pending.id, { cancel: true }); await covers.process(pending.id, 0);
+    expect((await request("PUT", `${base()}/cover`, coloredCover(44))).statusCode).toBe(200);
+    const old = await db.coverGenerationItem.findUniqueOrThrow({ where: { id: itemId } });
+    expect(old.image).toBeNull(); expect(old.payloadExpiredAt).not.toBeNull();
+    expect(old.appliedAt).not.toBeNull();
+  });
+
+  it("serializes removal against Apply without losing an active image", async () => {
+    const { covers, modelRef } = await service(); const batch = await covers.create(input(modelRef));
+    await covers.process(batch.id, 0); const itemId = batch.items[0]!.id;
+    const results = await Promise.allSettled([covers.apply({ ...scope(), batchId: batch.id, itemId, expectedCoverHash: null }), covers.remove(scope(), batch.id, itemId)]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    const item = await db.coverGenerationItem.findUniqueOrThrow({ where: { id: itemId } });
+    const image = await request("GET", `${base()}/cover`);
+    if (item.payloadExpiredAt) expect(image.statusCode).toBe(404);
+    else { expect(image.statusCode).toBe(200); expect(item.appliedAt).not.toBeNull(); expect(item.image).not.toBeNull(); }
+  });
 
   it("persists the request before POST and recovers a lost receipt using GET without another submit", async () => {
     const { covers, calls, modelRef } = await jobService("lost"); const batch = await covers.create(input(modelRef));

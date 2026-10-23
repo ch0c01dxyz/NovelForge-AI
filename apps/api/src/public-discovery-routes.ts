@@ -98,6 +98,32 @@ export function registerPublicDiscoveryRoutes(
   // NOTE: no setErrorHandler here — platform-routes owns the single
   // app-wide handler (same convention as public-routes.ts).
 
+  app.get("/api/public/novels/:novelId/cover", async (request, reply) => {
+    const params = z.object({ novelId: uuid }).safeParse(request.params);
+    const query = z.object({ v: z.string().regex(/^[a-f0-9]{64}$/).optional() }).safeParse(request.query);
+    if (!params.success || !query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    const cover = await services.getPublicCover(params.data.novelId);
+    if (!cover || (query.data.v && query.data.v !== cover.sha256)) return reply.code(404).send({ error: "NOT_FOUND" });
+    const etag = `"${cover.sha256}"`;
+    reply.header("Cache-Control", "no-cache").header("ETag", etag).header("X-Content-Type-Options", "nosniff");
+    if (request.headers["if-none-match"] === etag) return reply.code(304).send();
+    return reply.type(cover.mimeType).send(Buffer.from(cover.dataBase64, "base64"));
+  });
+
+  app.get("/api/workspaces/:workspaceId/novels/:novelId/reader-details", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply); if (!actorUserId) return;
+    const params = novelParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.getReaderDetails({ actorUserId, ...params.data });
+  });
+  app.patch("/api/workspaces/:workspaceId/novels/:novelId/reader-details", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply); if (!actorUserId) return;
+    const params = novelParams.safeParse(request.params);
+    const body = z.object({ publicSynopsis: z.string().max(6000), expectedPublicSynopsis: z.string().max(6000).nullable() }).strict().safeParse(request.body);
+    if (!params.success || !body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.setPublicSynopsis({ actorUserId, ...params.data, ...body.data });
+  });
+
   /**
    * GET /api/public/novels — anonymous novel listing. ACTIVE novels
    * with ≥1 PUBLISHED publication only. Cursor pagination

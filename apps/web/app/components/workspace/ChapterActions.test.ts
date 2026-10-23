@@ -32,7 +32,7 @@ describe("chapter actions", () => {
     api.mockRejectedValueOnce(new ApiError("CONFLICT", 409));
     await w.get("form").trigger("submit"); await flushPromises();
     expect((w.get("input").element as HTMLInputElement).value).toBe("After");
-    expect(w.get('[role="alert"]').text()).toContain("changed or is protected");
+    expect(w.get('[role="alert"]').text()).toContain("Your changes were not applied");
     expect(JSON.parse(api.mock.calls[1]![1].body)).toEqual({ title: "After", expectedTitle: "Before", expectedChapterVersionId: "version" });
     expect(w.emitted("changed")).toBeUndefined();
   });
@@ -46,7 +46,7 @@ describe("chapter actions", () => {
     expect(api.mock.calls).toHaveLength(1);
     api.mockRejectedValueOnce(new ApiError("CONFLICT", 409));
     await w.get('[data-testid="confirm-ok"]').trigger("click"); await flushPromises();
-    expect(w.get('[role="alertdialog"] [role="alert"]').text()).toContain("retained evidence");
+    expect(w.get('[role="alertdialog"] [role="alert"]').text()).toContain("still be used by other story records");
     expect(w.emitted("deleted")).toBeUndefined();
     expect(JSON.parse(api.mock.calls[1]![1].body)).toEqual({ expectedTitle: "Before", expectedChapterVersionId: "version" });
   });

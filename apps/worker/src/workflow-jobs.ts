@@ -24,7 +24,7 @@ import {
   type WorkflowExecutor,
 } from "@novelforge/workflow-executor";
 import { createDb, type NovelForgeDb } from "@novelforge/database";
-import { createWorkerAiPath } from "@novelforge/ai-services";
+import { createWorkerAiPath, createCharacterDiscoveryServices, createStoryDiscoveryServices } from "@novelforge/ai-services";
 import type { AIGateway, GatewayRecord } from "@novelforge/ai-core";
 import type { WorkerLogger } from "./worker.ts";
 
@@ -48,6 +48,7 @@ export interface WorkflowJobPort {
 export interface WorkflowJobHandlerDeps {
   executor: WorkflowExecutor;
   logger: WorkerLogger;
+  enqueueCharacterDiscovery?: (runId: string) => Promise<unknown>;
 }
 
 /**
@@ -76,6 +77,10 @@ export function createWorkflowJobHandler(deps: WorkflowJobHandlerDeps) {
         status: result.status,
         stoppedForCancellation: result.stoppedForCancellation ?? false,
       });
+      if (result.status && ["AWAITING_APPROVAL", "SUCCEEDED"].includes(result.status)) {
+        try { await deps.enqueueCharacterDiscovery?.(runId); }
+        catch { logger.warn("character discovery delivery failed; chapter outcome preserved", { runId }); }
+      }
     } catch (err) {
       // executeRun marks FAILED internally for step failures; an escape
       // here is infrastructure (db down). Log and rethrow so BullMQ marks
@@ -162,6 +167,7 @@ export function createWorkerExecutor(deps: WorkerExecutorDeps): WorkflowExecutor
     },
     resolvers: createDbDefinitionResolvers(db),
     generate: aiPath.generate,
+    chapterSource: aiPath.chapterSource,
     retrieval: aiPath.retrieval,
     compiler: aiPath.compiler,
     dbg: { error: (message, meta) => logger.error(message, meta as Record<string, unknown>) },
@@ -192,6 +198,7 @@ export type WorkflowRedisConnection = ConnectionOptions & {
 export interface WorkflowWorkerDeps {
   createDb(url: string): NovelForgeDb;
   createExecutor(db: NovelForgeDb, logger: WorkerLogger, encryptionKey: string): WorkflowExecutor;
+  createDiscovery(db: NovelForgeDb, encryptionKey: string): { discoverRun(runId: string): Promise<unknown> };
   createConnection(url: string): WorkflowRedisConnection;
   createQueue(name: string, connection: unknown): RecoveryQueuePort & { close(): Promise<void> };
   createWorker(
@@ -215,6 +222,16 @@ const defaultWorkflowWorkerDeps = (logger: WorkerLogger): WorkflowWorkerDeps => 
   createDb: (url) => createDb(url),
   createExecutor: (db, l, encryptionKey) =>
     createWorkerExecutor({ db, logger: l, encryptionKey }),
+  createDiscovery: (db, encryptionKey) => {
+    const ai = createWorkerAiPath(db, { encryptionKey }).generate;
+    const characters = createCharacterDiscoveryServices({ db, ai }), story = createStoryDiscoveryServices({ db, ai });
+    return { discoverRun: async runId => {
+      // Both analyses are independent sidecars; neither applies a story mutation.
+      const results = await Promise.allSettled([characters.discoverRun(runId), story.discoverRun(runId)]);
+      const failure = results.find(result => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+    } };
+  },
   createConnection: (url) =>
     new IORedis(url, {
       maxRetriesPerRequest: null,
@@ -304,7 +321,13 @@ export async function startWorkflowWorkerApp(
   }
 
   const queue = d.createQueue(WORKFLOW_QUEUE_NAME, queueConnection);
-  const handler = createWorkflowJobHandler({ executor, logger: d.logger });
+  // Separate queue identity: a slow AI extraction must never retain a parked chapter job.
+  const discoveryQueue = d.createQueue("character-discoveries", queueConnection);
+  const discovery = d.createDiscovery(db, env.APP_ENCRYPTION_KEY);
+  const discoveryWorker = d.createWorker("character-discoveries", async job => { await discovery.discoverRun(job.data.runId); }, workerConnection, { lockDuration: WORKFLOW_WORKER_LOCK_DURATION_MS });
+  discoveryWorker.on("error", () => { if (!stopped) d.logger.warn("character discovery worker error", {}); });
+  discoveryWorker.on("failed", () => { if (!stopped) d.logger.warn("character discovery job interrupted; explicit retry may be needed", {}); });
+  const handler = createWorkflowJobHandler({ executor, logger: d.logger, enqueueCharacterDiscovery: runId => discoveryQueue.add("discover", { runId }, { jobId: runId }) });
   const worker = d.createWorker(
     WORKFLOW_QUEUE_NAME,
     handler,
@@ -354,7 +377,9 @@ export async function startWorkflowWorkerApp(
       stopped = true;
       clearInterval(sweepTimer);
       await worker.close();
+      await discoveryWorker.close();
       await queue.close();
+      await discoveryQueue.close();
       queueConnection.disconnect();
       workerConnection.disconnect();
       await db.$disconnect();

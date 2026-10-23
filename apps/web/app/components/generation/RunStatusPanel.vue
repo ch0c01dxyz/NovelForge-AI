@@ -13,16 +13,20 @@ import { ref, computed, watch, onUnmounted } from "vue";
 import { useWorkflowRuns, type RunView } from "../../composables/useWorkflowRuns";
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
+import WorkflowRetryAction from "./WorkflowRetryAction.vue";
 
 const props = defineProps<{
   workspaceId: string;
   runId: string | null;
   statusUrl: string | null;
+  canConfigure?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: "run-updated", run: RunView): void;
   (e: "cancelled", run: RunView): void;
+  (e: "retried", payload: { runId: string; statusUrl: string }): void;
+  (e: "configure", runId: string): void;
 }>();
 
 const { t } = useLocale();
@@ -223,6 +227,7 @@ defineExpose({ reload: load, run });
         </details>
       </template>
 
+      <WorkflowRetryAction :workspace-id="workspaceId" :run="run" :can-configure="canConfigure" @retried="emit('retried', $event)" @configure="emit('configure', $event)" />
       <div v-if="sortedSteps.length">
         <h3
           class="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint"

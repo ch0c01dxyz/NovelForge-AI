@@ -47,6 +47,7 @@ import {
   type Capability,
 } from "@novelforge/auth/authorization";
 import { NotFoundError, ConflictError, PolicyError } from "@novelforge/ai-services";
+import { publicNovelPresentations } from "./public-novel-presentation.ts";
 import { PublicationError } from "@novelforge/ai-services";
 import type { AuditService } from "@novelforge/ai-services";
 import { advanceForMutation, type RevisionTx } from "./revisions.ts";
@@ -151,6 +152,10 @@ export interface PublicationServices {
     slug: string;
     // NF-WF-019A (Q8, GAP-068): additive aggregate count.
     followerCount: number;
+    genres: string[];
+    audience: string | null;
+    coverUrl: string | null;
+    publicSynopsis: string | null;
     author: { id: string; displayName: string };
   } | null>;
   listPublishedChapters(input: {
@@ -199,6 +204,9 @@ async function resolvePublicNovelBySlug(db: NovelForgeDb, novelSlug: string) {
       id: true,
       title: true,
       slug: true,
+      genres: true,
+      audience: true,
+      publications: { where: { status: "PUBLISHED" }, select: { id: true }, take: 1 },
       // NF-WF-019A (Q8, GAP-068): additive aggregate count on the frozen
       // 013 novel shape. Backward-compatible: no existing field renamed,
       // removed, or restructured; no auth object, no session handling,
@@ -211,12 +219,17 @@ async function resolvePublicNovelBySlug(db: NovelForgeDb, novelSlug: string) {
     },
     orderBy: { createdAt: "asc" },
   });
-  if (!novel) return null;
+  if (!novel || !novel.publications.length) return null;
+  const presentation = (await publicNovelPresentations(db, [novel.id])).get(novel.id);
   return {
     id: novel.id,
     title: novel.title,
     slug: novel.slug,
     followerCount: novel.followerCount,
+    genres: novel.genres,
+    audience: novel.audience,
+    coverUrl: presentation?.coverUrl ?? null,
+    publicSynopsis: presentation?.publicSynopsis ?? null,
     author: { id: novel.createdBy.id, displayName: novel.createdBy.displayName },
   };
 }

@@ -38,6 +38,35 @@ afterEach(() => wrappers.splice(0).forEach((w) => w.unmount()));
 const chip = (w: VueWrapper, key: string) => w.get(`[data-testid="genre-chip-${key}"]`);
 
 describe("novel discovery editor", () => {
+  it("retains the acknowledged synopsis after a sibling write fails so retry uses the latest comparison", async () => {
+    let genreAttempts = 0;
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith('/reader-details')) return init?.method === 'PATCH' ? { publicSynopsis: 'Saved introduction' } : { publicSynopsis: null };
+      if (path.endsWith('/genres')) { if (++genreAttempts === 1) throw new Error('Connection lost'); return { genres: ['fantasy'] }; }
+      return { genres: ['fantasy'], audience: 'teen' };
+    });
+    const w = mounted(); await flushPromises();
+    await w.get('[data-testid="discovery-synopsis"]').setValue('Saved introduction');
+    await w.get('[data-testid="discovery-save"]').trigger('click'); await flushPromises();
+    await w.get('[data-testid="discovery-save"]').trigger('click'); await flushPromises();
+    const calls = api.mock.calls.filter(([path, init]) => path.endsWith('/reader-details') && init?.method === 'PATCH');
+    expect(JSON.parse(calls[1]![1].body).expectedPublicSynopsis).toBe('Saved introduction');
+    expect(w.find('[data-testid="discovery-saved"]').exists()).toBe(true);
+  });
+  it("loads and explicitly saves the public synopsis with its comparison value", async () => {
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith('/reader-details')) return init?.method === 'PATCH' ? { publicSynopsis: 'A new introduction.' } : { publicSynopsis: 'Old public text' };
+      if (path.endsWith('/genres')) return { genres: ['fantasy'] };
+      return { genres: ['fantasy'], audience: 'teen' };
+    });
+    const w = mounted(); await flushPromises();
+    expect((w.get('[data-testid="discovery-synopsis"]').element as HTMLTextAreaElement).value).toBe('Old public text');
+    await w.get('[data-testid="discovery-synopsis"]').setValue('A new introduction.');
+    await w.get('[data-testid="discovery-save"]').trigger('click'); await flushPromises();
+    const call = api.mock.calls.find(([path, init]) => path.endsWith('/reader-details') && init?.method === 'PATCH');
+    expect(JSON.parse(call![1].body)).toEqual({ publicSynopsis: 'A new introduction.', expectedPublicSynopsis: 'Old public text' });
+    expect(w.find('[data-testid="discovery-saved"]').exists()).toBe(true);
+  });
   it("locks editing until both successful writes settle", async () => {
     let finishGenres!: (value: { genres: string[] }) => void;
     let finishAudience!: (value: { audience: string }) => void;

@@ -10,6 +10,8 @@
  * drop cap on the opening paragraph.
  */
 import { onUnmounted } from "vue";
+import ReaderControls from "../../../components/reader/ReaderControls.vue";
+import { DEFAULT_READER_PREFERENCES, READER_FONT_STACKS, type ReaderPreferences } from "../../../utils/readerPreferences";
 import { useLocale } from "../../../composables/useLocale";
 import { useApi, ApiError } from "../../../composables/useApi";
 import { useReadingProgress } from "../../../composables/useReadingProgress";
@@ -59,6 +61,26 @@ const notFound = ref(false);
 const error = ref<string | null>(null);
 /** Resolved novel id for progress sync (authenticated users only). */
 const novelId = ref<string | null>(null);
+const novelTitle = ref("");
+const publishedChapters = ref<NavLink[]>([]);
+const listFailed = ref(false);
+const controlsVisible = ref(false);
+const preferences = ref<ReaderPreferences>({ ...DEFAULT_READER_PREFERENCES });
+let disposed = false;
+const readerStyle = computed(() => ({
+  '--reader-font': READER_FONT_STACKS[preferences.value.font],
+  '--reader-size': `${preferences.value.size}px`, '--reader-line': preferences.value.line,
+  '--reader-spacing': `${preferences.value.spacing}em`,
+  ...(preferences.value.theme === 'light' ? {
+    '--color-nf-bg-0': '#faf8f4', '--color-nf-bg-1': '#f2eee8', '--color-nf-bg-2': '#e9e3db', '--color-nf-bg-3': '#ded6cb',
+    '--color-nf-text': '#292524', '--color-nf-text-dim': '#57534e', '--color-nf-text-faint': '#68625b',
+    '--color-nf-border': '#d6cec3', '--color-nf-border-strong': '#8c8175', '--color-nf-accent-hi': '#a63e08',
+  } : {}),
+}));
+function toggleControls(event: MouseEvent) {
+  if ((event.target as HTMLElement).closest('a,button,input,select,textarea,dialog') || window.getSelection()?.isCollapsed === false) return;
+  controlsVisible.value = !controlsVisible.value;
+}
 
 /** NF-WF-019A: the caller's like state for this chapter. Anonymous
  * readers see the count as static text (buttons render only with a
@@ -130,17 +152,24 @@ function onScroll(): void {
  * bypassed (anonymous readers keep zero-sync-network behavior).
  */
 async function syncProgress(): Promise<void> {
+  listFailed.value = false;
   try {
-    const novel = await api<{ novel: { id: string } }>(
+    const novel = await api<{ novel: { id: string; title?: string }; chapters?: NavLink[] }>(
       `/public/novels/${encodeURIComponent(slug.value)}`,
     );
+    if (disposed) return;
     novelId.value = novel.novel.id;
+    novelTitle.value = novel.novel.title ?? slug.value;
+    publishedChapters.value = novel.chapters ?? [];
   } catch {
+    if (!disposed) listFailed.value = true;
     return;
   }
   const merged = await loadSyncedProgress(slug.value, novelId.value);
+  if (disposed) return;
   if (merged && merged.scrollRatio !== null && typeof window !== "undefined") {
     await nextTick();
+    if (disposed) return;
     const max =
       document.documentElement.scrollHeight - window.innerHeight;
     if (max > 0) window.scrollTo(0, merged.scrollRatio * max);
@@ -160,6 +189,7 @@ onMounted(async () => {
       prevChapter: NavLink | null;
       nextChapter: NavLink | null;
     }>(`/public/novels/${encodeURIComponent(slug.value)}/chapters/${number.value}`);
+    if (disposed) return;
     chapter.value = data.chapter;
     prevChapter.value = data.prevChapter;
     nextChapter.value = data.nextChapter;
@@ -179,12 +209,14 @@ onMounted(async () => {
     loading.value = false;
   }
   await syncPromise;
+  if (disposed) return;
   // NF-WF-019A: the caller's like state (signed-in readers only; the
   // engagement endpoint 404s for invisible chapters, matching the
   // page's own 404 — no oracle).
   if (!notFound.value && novelId.value) {
     try {
       await checkSession();
+      if (disposed) return;
       if (signedIn.value) {
         const state = await getEngagement(novelId.value, number.value);
         liked.value = state.liked;
@@ -197,6 +229,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  disposed = true;
   if (typeof window !== "undefined") {
     window.removeEventListener("scroll", onScroll);
   }
@@ -204,7 +237,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-[700px] px-5 py-12 sm:px-10">
+  <div class="min-h-dvh bg-nf-bg-0 text-nf-text" :style="readerStyle">
+  <main class="mx-auto max-w-[760px] px-5 pt-24 pb-32 sm:px-10" @click="toggleControls">
     <div class="mb-6 flex justify-end">
       <NotificationBell />
     </div>
@@ -267,16 +301,18 @@ onUnmounted(() => {
       <div v-else class="nf-reader-prose mt-10">
         <p v-for="(p, i) in paragraphs" :key="i" :class="{ opening: i === 0 }">{{ p }}</p>
       </div>
-      <ReaderChapterNav
-        :novel-slug="slug"
-        :prev-chapter="prevChapter"
-        :next-chapter="nextChapter"
-      />
       <!-- NF-WF-019B: chapter comment thread. The list is
            anonymous-readable; the composer and the
            reply/edit/delete/report affordances render only with a
            session (progressive enhancement — the server enforces). -->
-      <CommentThread :novel-slug="slug" :chapter-number="number" />
+      <ReaderControls :slug="slug" :novel-title="novelTitle || slug" :chapter="chapter" :chapters="publishedChapters" :prev-chapter="prevChapter" :next-chapter="nextChapter" :visible="controlsVisible" :list-failed="listFailed" @toggle="controlsVisible = !controlsVisible" @preferences="preferences = $event" @retry-list="syncProgress">
+        <template #comments="{ active }"><CommentThread :novel-slug="slug" :chapter-number="number" :active="active" /></template>
+      </ReaderControls>
     </article>
   </main>
+  </div>
 </template>
+
+<style scoped>
+.nf-reader-prose { font-family:var(--reader-font);font-size:var(--reader-size);line-height:var(--reader-line);letter-spacing:var(--reader-spacing); }
+</style>

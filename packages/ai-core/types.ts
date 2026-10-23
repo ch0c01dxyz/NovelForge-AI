@@ -158,6 +158,8 @@ export interface AIGateway {
   listModels(signal?: AbortSignal): Promise<GatewayModel[]>;
   /** Separate output-image catalog; absence does not imply text models can render images. */
   listImageModels?(signal?: AbortSignal): Promise<GatewayModel[]>;
+  /** Separate embedding catalog; a text catalog alone does not advertise vector support. */
+  listEmbeddingModels?(signal?: AbortSignal): Promise<GatewayModel[]>;
   /** Exactly one image per request; no automatic transport retry. */
   generateImage?(req: GenerateImageRequest): Promise<GenerateImageResult>;
   /** Non-streaming chat completion. */

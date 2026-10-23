@@ -34,6 +34,7 @@ export function registerCoverGenerationRoutes(app: FastifyInstance, deps: { auth
     return services.create({ ...scope, ...body.data });
   }));
   app.get(`${base}/cover-generations/:batchId`, (request, reply) => handle(request, reply, (scope, params) => services.get(scope, params.batchId!)));
+  app.delete(`${base}/cover-generations/:batchId/items/:itemId`, (request, reply) => handle(request, reply, (scope, params) => services.remove(scope, params.batchId!, params.itemId!)));
   app.get(`${base}/cover-generations/:batchId/items/:itemId/image`, (request, reply) => handle(request, reply, async (scope, params) => {
     const image = await services.image(scope, params.batchId!, params.itemId!);
     return reply.type(image.mimeType).header("X-Content-Type-Options", "nosniff").header("Cache-Control", "private, no-store").header("Content-Disposition", "inline").send(Buffer.from(image.dataBase64, "base64"));

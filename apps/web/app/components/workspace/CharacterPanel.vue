@@ -144,6 +144,8 @@ export interface WorkspaceCharacter {
   name: string;
   summary: string | null;
   storyEntityId: string | null;
+  affiliations?: { groupId: string; name: string; statement: string; role: string | null }[];
+  affiliationsTruncated?: boolean;
 }
 
 const props = defineProps<{

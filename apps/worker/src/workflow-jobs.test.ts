@@ -171,6 +171,7 @@ describe("startWorkflowWorkerApp — fakes", () => {
       {
         createDb: () => ({ $disconnect: vi.fn(async () => {}) }) as unknown as NovelForgeDb,
         createExecutor: () => executor,
+        createDiscovery: () => ({ discoverRun: vi.fn(async () => null) }),
         createConnection: () =>
           ({
             ping: vi.fn(async () => "PONG"),
@@ -200,8 +201,8 @@ describe("startWorkflowWorkerApp — fakes", () => {
 
     await app.stop();
     expect(app.stopped).toBe(true);
-    expect(worker.close).toHaveBeenCalledOnce();
-    expect(queue.close).toHaveBeenCalledOnce();
+    expect(worker.close).toHaveBeenCalledTimes(2);
+    expect(queue.close).toHaveBeenCalledTimes(2);
   });
 
   it("degrades gracefully when redis is unavailable", async () => {

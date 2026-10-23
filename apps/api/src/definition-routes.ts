@@ -584,6 +584,18 @@ export function registerDefinitionRoutes(
   );
 
   app.post(
+    "/api/workspaces/:workspaceId/workflow-runs/:runId/retry",
+    async (request, reply) => {
+      const actor = await requireActor(request, reply);
+      if (!actor) return;
+      const params = z.object({ workspaceId: uuid, runId: uuid }).safeParse(request.params);
+      if (!params.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+      const { run, deduped, statusUrl } = await runs.retryRun({ actorUserId: actor.userId, ...params.data });
+      return reply.code(deduped ? 200 : 202).send({ ...run, statusUrl });
+    },
+  );
+
+  app.post(
     "/api/workspaces/:workspaceId/workflow-runs/:runId/cancel",
     async (request, reply) => {
       const actor = await requireActor(request, reply);

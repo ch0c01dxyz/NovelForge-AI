@@ -194,9 +194,13 @@ defineExpose({ refresh });
       <div v-if="detailLoading" class="py-6 text-center text-nf-text-faint" role="status">{{ t("common.loading") }}</div>
       <div v-else-if="detailError" class="py-6 text-center" role="alert"><p class="text-nf-warn">{{ detailError }}</p></div>
       <div v-else-if="detail">
-        <p v-if="detail.errorMessage" class="mb-3 rounded-lg bg-nf-warn/10 px-3 py-2 text-[12.5px] text-nf-warn">
-          {{ detail.errorMessage }}
-        </p>
+        <template v-if="detail.errorMessage">
+          <p class="mb-3 rounded-lg bg-nf-warn/10 px-3 py-2 text-[12.5px] text-nf-warn" role="alert">{{ t("run.failedMessage") }}</p>
+          <details class="mb-3 text-[12.5px] text-nf-text-dim">
+            <summary class="cursor-pointer focus-visible:nf-focus">{{ t("run.technicalDetails") }}</summary>
+            <p class="mt-2 whitespace-pre-wrap break-words font-mono">{{ detail.errorMessage }}</p>
+          </details>
+        </template>
         <table class="w-full border-collapse text-left text-[12.5px]">
           <caption class="sr-only">{{ t("receipts.ledger.attempts") }}</caption>
           <thead>

@@ -99,6 +99,18 @@ describe("ReaderChapterNav", () => {
 });
 
 describe("public novel page", () => {
+  it("shows public cover, synopsis, genres, rating and only published chapter metadata", async () => {
+    const novel = { id: 'n1', title: 'The Visible Novel', slug: 'my-novel', author: { id: 'a1', displayName: 'Pen' }, coverUrl: '/api/public/novels/n1/cover?v=hash', publicSynopsis: '<script>Plain text, never HTML</script>\nA public introduction.', genres: ['science_fiction'], audience: 'teen' };
+    apiMock.mockImplementation(async (path: string) => path.startsWith('/public/') ? { novel, chapters: [{ number: 3, title: 'Published', publishedAt: '2026-10-06T00:00:00.000Z' }] } : null);
+    const w = mount(NovelPage, { global: { stubs: { NuxtLink: NuxtLinkStub } } }); await flushPromises();
+    expect(w.get('img').attributes('src')).toBe(novel.coverUrl);
+    expect(w.get('[data-testid="public-synopsis"]').text()).toBe(novel.publicSynopsis);
+    expect(w.find('script').exists()).toBe(false);
+    expect(w.text()).toContain('genre.science_fiction'); expect(w.text()).toContain('audience.teen');
+    expect(w.findAll('a').some(a => a.text() === 'publicNovel.startReading' && a.attributes('href') === '/read/my-novel/3')).toBe(true);
+    w.unmount();
+  });
+
   it("renders title, byline, and the published chapter list", async () => {
     apiMock.mockResolvedValue({
       novel: { id: "n1", title: "The Visible Novel", slug: "my-novel", author: { id: "a1", displayName: "Pen Author" } },
@@ -161,8 +173,9 @@ describe("public chapter page", () => {
     expect(w.text()).toContain("reader.chapterOverline|n=2");
     expect(w.text()).toContain("reader.wordCount|n=3");
     expect(w.text()).toContain("reader.version|n=1");
-    expect(w.text()).toContain("reader.prevChapter");
-    expect(w.text()).not.toContain("reader.nextChapter");
+    await w.get('[data-testid="reader-show-controls"]').trigger('click');
+    expect(w.get('a[aria-label="reader.prevChapter"]').attributes('href')).toBe('/read/my-novel/1');
+    expect(w.get('button[aria-label="reader.nextChapter"]').attributes('disabled')).toBeDefined();
   });
 
   it("renders the 404 state for an invisible chapter", async () => {
@@ -173,7 +186,7 @@ describe("public chapter page", () => {
     expect(w.text()).toContain("reader.notFoundTitle");
   });
 
-  it("has no search input and no AI-generated content", async () => {
+  it("keeps published text unchanged and limits search to the closed chapter-list dialog", async () => {
     apiMock.mockResolvedValue({
       chapter: {
         number: 1,
@@ -188,8 +201,9 @@ describe("public chapter page", () => {
     });
     const w = mount(ChapterPage, { global: { stubs: { NuxtLink: NuxtLinkStub } } });
     await flushPromises();
-    expect(w.findAll('input[type="search"]')).toHaveLength(0);
-    expect(w.findAll("input")).toHaveLength(0);
+    expect(w.get('.nf-reader-prose').text()).toBe('Plain pinned text.');
+    expect(w.findAll('input[type="search"]')).toHaveLength(1);
+    expect(w.get('input[type="search"]').element.closest('dialog')?.open).toBe(false);
   });
 });
 

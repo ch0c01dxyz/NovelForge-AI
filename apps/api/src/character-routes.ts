@@ -59,6 +59,17 @@ const pageQuery = z.object({
   skip: z.coerce.number().int().min(0).max(100_000).optional(),
 });
 
+const identityQuery = z.object({
+  q: z.string().trim().max(120).optional(),
+  take: z.coerce.number().int().min(1).max(50).default(50),
+  skip: z.coerce.number().int().min(0).max(100_000).default(0),
+}).strict();
+const linkIdentityBody = z.object({
+  storyEntityId: uuid,
+  expectedBranchId: uuid,
+  expectedHeadRevisionId: uuid.nullable(),
+}).strict();
+
 export interface CharacterRoutesOptions {
   auth: AuthService;
   services: CharacterServices;
@@ -82,6 +93,24 @@ export function registerCharacterRoutes(
   };
 
   // --- Characters ---
+
+  app.get("/api/workspaces/:workspaceId/novels/:novelId/characters/:characterId/identity-options", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = characterParams.safeParse(request.params);
+    const query = identityQuery.safeParse(request.query ?? {});
+    if (!params.success || !query.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.getIdentityOptions({ actorUserId, ...params.data, ...query.data });
+  });
+
+  app.put("/api/workspaces/:workspaceId/novels/:novelId/characters/:characterId/story-entity", async (request, reply) => {
+    const actorUserId = await requireActor(request, reply);
+    if (!actorUserId) return;
+    const params = characterParams.safeParse(request.params);
+    const body = linkIdentityBody.safeParse(request.body ?? {});
+    if (!params.success || !body.success) return reply.code(400).send({ error: "INVALID_INPUT" });
+    return services.linkStoryEntity({ actorUserId, ...params.data, ...body.data });
+  });
 
   app.post("/api/workspaces/:workspaceId/novels/:novelId/characters", async (request, reply) => {
     const actorUserId = await requireActor(request, reply);

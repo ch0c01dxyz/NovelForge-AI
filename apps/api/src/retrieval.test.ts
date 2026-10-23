@@ -101,6 +101,7 @@ function fakeVector(text: string): number[] {
 }
 
 let embedCalls = 0;
+let reportedEmbeddingModel: string | null = null;
 /** When set, the fake embed returns this verbatim instead of a real vector. */
 let poisonVector: number[] | null = null;
 /**
@@ -141,7 +142,8 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
       }
       return {
         vectors: poisonVector ? req.input.map(() => poisonVector!) : req.input.map(fakeVector),
-        model: modelId,
+        model: reportedEmbeddingModel ?? modelId,
+        reportedModel: reportedEmbeddingModel ?? modelId,
         inputTokens: req.input.length,
       };
     },
@@ -186,6 +188,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   embedCalls = 0;
+  reportedEmbeddingModel = null;
   poisonVector = null;
   embedHook = null;
   // Self-heal before anything else: the all-legs-down test renames the
@@ -374,6 +377,37 @@ function searchBody(query: string, extra: Record<string, unknown> = {}) {
 }
 
 describe("reference ingestion", () => {
+  it("skips re-ingest using an observed provider-reported model alias on the same route", async () => {
+    const owner = await seedUser("alias@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "alias");
+    await seedEmbeddingRoute();
+    reportedEmbeddingModel = "reported-embedding-model";
+    const { referenceId, versionId } = await seedReference(owner.cookie, workspaceId, { key: "alias", content: "A verified botanical reference." });
+    const callsBefore = embedCalls;
+    const again = await app.inject({ method: "POST", url: `/api/reference-versions/${versionId}/ingest`, headers: { cookie: owner.cookie }, payload: {} });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().skipped).toBe(true);
+    expect(embedCalls).toBe(callsBefore);
+    const detail = await app.inject({ method: "GET", url: `/api/references/${referenceId}`, headers: { cookie: owner.cookie } });
+    expect(detail.json().versions[0].ingested).toBe(true);
+    const search = await app.inject({ method: "POST", url: `/api/workspaces/${workspaceId}/retrieval/search`, headers: { cookie: owner.cookie }, payload: searchBody("botanical") });
+    expect(search.statusCode).toBe(200);
+    expect(search.json().hits[0].referenceId).toBe(referenceId);
+  });
+  it("returns immutable version metadata needed by the reference detail screen", async () => {
+    const owner = await seedUser("history@example.com");
+    const { workspaceId } = await seedWorkspace(owner.userId, "history");
+    const created = await app.inject({ method: "POST", url: `/api/workspaces/${workspaceId}/references`, headers: { cookie: owner.cookie }, payload: { key: "history", title: "History", content: "Initial research." } });
+    expect(created.statusCode).toBe(201);
+    const { id, versionId } = created.json();
+    const detail = await app.inject({ method: "GET", url: `/api/references/${id}`, headers: { cookie: owner.cookie } });
+    expect(detail.json().versions).toEqual([expect.objectContaining({ id: versionId, version: 1, charCount: 17, ingested: false, note: null })]);
+    const appended = await app.inject({ method: "POST", url: `/api/references/${id}/versions`, headers: { cookie: owner.cookie }, payload: { content: "Updated research.", note: "New source" } });
+    expect(appended.statusCode).toBe(201);
+    const updated = await app.inject({ method: "GET", url: `/api/references/${id}`, headers: { cookie: owner.cookie } });
+    expect(updated.json().versions.map((v: { version: number }) => v.version)).toEqual([2, 1]);
+    expect(updated.json().versions[0].note).toBe("New source");
+  });
   it("chunks an ingested reference and makes it citable to its exact span", async () => {
     const owner = await seedUser("owner@example.com");
     const { workspaceId } = await seedWorkspace(owner.userId, "ws-a");

@@ -39,6 +39,8 @@ review-receipts/
 .nf-artifacts/
 # Local manuscript imports and cover assets are private working data.
 /imports/
+# Author-supplied local debugging screenshot.
+/capt.png
 
 # Encrypted backup passphrase (never committed)
 backup/.passwd

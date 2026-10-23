@@ -50,6 +50,8 @@ export {
   type DefinitionResolvers,
   type CompiledStepContext,
   type ContextCompilerPort,
+  type ChapterSourceReader,
+  type ChapterSourceContext,
   type AuditPort,
   type DebugPort,
   type RecoveryJobPort,

@@ -42,7 +42,7 @@ function schemaModels(): { model: string; table: string }[] {
 describe("RESTORE_SCOPE_CLASS completeness (NF-WF-032)", () => {
   it("classifies every Prisma model", () => {
     const models = schemaModels();
-    expect(models.length).toBe(102);
+    expect(models.length).toBe(105);
     for (const { model, table } of models) {
       expect(
         RESTORE_SCOPE_CLASS[table],
@@ -53,8 +53,8 @@ describe("RESTORE_SCOPE_CLASS completeness (NF-WF-032)", () => {
 
   it("classifies each table exactly once (no duplicates possible by construction)", () => {
     const tables = Object.keys(RESTORE_SCOPE_CLASS);
-    expect(tables.length).toBe(102);
-    expect(new Set(tables).size).toBe(102);
+    expect(tables.length).toBe(105);
+    expect(new Set(tables).size).toBe(105);
   });
 
   it("REWOUND equals COVERED_TABLES with restoreTarget: true", () => {
@@ -72,7 +72,7 @@ describe("RESTORE_SCOPE_CLASS completeness (NF-WF-032)", () => {
     expect(new Set(actual)).toEqual(new Set(["chapters", "chapter_versions", "publications"]));
   });
 
-  it("class counts match the contract (33+3+36+2+17+9+2=102)", () => {
+  it("class counts match the contract (33+3+38+2+18+9+2=105)", () => {
     const counts: Record<RestoreScopeClass, number> = {
       REWOUND: tablesInClass("REWOUND").length,
       PINNED: tablesInClass("PINNED").length,
@@ -85,9 +85,9 @@ describe("RESTORE_SCOPE_CLASS completeness (NF-WF-032)", () => {
     expect(counts).toEqual({
       REWOUND: 33,
       PINNED: 3,
-      OPERATIONAL: 36,
+      OPERATIONAL: 38,
       DERIVED: 2,
-      CONFIGURATION: 17,
+      CONFIGURATION: 18,
       SIMULATION: 9,
       REFERENCE: 2,
     });

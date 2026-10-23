@@ -32,6 +32,7 @@ import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import { createAuditService } from "@novelforge/ai-services";
 import { createPlatformServices } from "@novelforge/ai-services";
+import { validateNovelCover } from "@novelforge/ai-services";
 import type { Env } from "@novelforge/config";
 import type { PublicationJobData } from "@novelforge/workflow-executor";
 
@@ -375,6 +376,59 @@ async function setGenres(
 }
 
 describe("GET /api/public/novels (anonymous listing)", () => {
+  it("serves the applied cover anonymously only while published, including conditional requests", async () => {
+    const owner = await seedUser('public-cover@example.invalid'), workspaceId = await seedWorkspace(owner.userId, 'public-cover');
+    const novelId = await seedNovel(owner.userId, workspaceId, 'public-cover');
+    const cover = validateNovelCover({ mimeType: 'image/png', dataBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY5cAAAAASUVORK5CYII=' });
+    await db.novelSettings.upsert({ where: { novelId }, create: { novelId, settings: { cover: { ...cover }, secret: 'PRIVATE_SETTINGS' } }, update: { settings: { cover: { ...cover }, secret: 'PRIVATE_SETTINGS' } } });
+    const path = `/api/public/novels/${novelId}/cover?v=${cover.sha256}`;
+    expect((await app.inject({ method: 'GET', url: path })).statusCode).toBe(404);
+    expect((await api('GET', '/api/public/novels/public-cover')).status).toBe(404);
+    const chapter = await makeChapter(owner.cookie, workspaceId, novelId, 'Published');
+    const version = await saveVersion(owner.cookie, workspaceId, novelId, chapter.id, 'Public text.');
+    await publishChapter(owner.cookie, workspaceId, novelId, chapter.id, version.id);
+    const listing = await api('GET', '/api/public/novels');
+    const listed = (listing.json.novels as { coverUrl: string }[])[0]!;
+    expect(listed.coverUrl).toBe(path); expect(JSON.stringify(listing.json)).not.toContain(cover.dataBase64);
+    expect(JSON.stringify(listing.json)).not.toContain('PRIVATE_SETTINGS'); expect(JSON.stringify(listing.json)).not.toContain(workspaceId);
+    const response = await app.inject({ method: 'GET', url: path });
+    expect(response.statusCode).toBe(200); expect(response.headers['content-type']).toContain('image/png');
+    expect(response.rawPayload).toEqual(Buffer.from(cover.dataBase64, 'base64')); expect(response.headers['cache-control']).toBe('no-cache');
+    const etag = response.headers.etag!;
+    expect((await app.inject({ method: 'GET', url: path, headers: { 'if-none-match': etag } })).statusCode).toBe(304);
+    expect((await app.inject({ method: 'GET', url: path.replace(cover.sha256, 'a'.repeat(64)) })).statusCode).toBe(404);
+    await db.publication.updateMany({ where: { novelId }, data: { status: 'UNPUBLISHED' } });
+    expect((await app.inject({ method: 'GET', url: path, headers: { 'if-none-match': etag } })).statusCode).toBe(404);
+    expect((await api('GET', '/api/public/novels/public-cover')).status).toBe(404);
+  });
+
+  it("keeps the public synopsis separate, escapes nothing into HTML, preserves cover and rejects stale or unauthorized writes", async () => {
+    const owner = await seedUser('public-synopsis@example.invalid'), workspaceId = await seedWorkspace(owner.userId, 'public-synopsis');
+    const novelId = await seedNovel(owner.userId, workspaceId, 'public-synopsis');
+    const chapter = await makeChapter(owner.cookie, workspaceId, novelId, 'Published');
+    const version = await saveVersion(owner.cookie, workspaceId, novelId, chapter.id, 'Public text.');
+    await publishChapter(owner.cookie, workspaceId, novelId, chapter.id, version.id);
+    await db.synopsis.create({ data: { novelId, content: 'PRIVATE_ENDING', createdById: owner.userId } });
+    await db.novelSettings.upsert({ where: { novelId }, create: { novelId, settings: { cover: { marker: 'PRESERVE_COVER' }, private: true } }, update: { settings: { cover: { marker: 'PRESERVE_COVER' }, private: true } } });
+    const path = `/api/workspaces/${workspaceId}/novels/${novelId}/reader-details`;
+    const payload = { publicSynopsis: 'An introduction. <b>Plain text</b>', expectedPublicSynopsis: null };
+    expect((await api('PATCH', path, undefined, payload)).status).toBe(401);
+    expect((await api('PATCH', path, owner.cookie, { ...payload, publicSynopsis: 'x'.repeat(6001) })).status).toBe(400);
+    expect((await api('PATCH', path, owner.cookie, payload)).status).toBe(200);
+    expect((await api('PATCH', path, owner.cookie, payload)).status).toBe(409);
+    expect((await api('GET', path, owner.cookie)).json).toEqual({ publicSynopsis: payload.publicSynopsis });
+    const settings = (await db.novelSettings.findUniqueOrThrow({ where: { novelId } })).settings;
+    expect(settings).toMatchObject({ cover: { marker: 'PRESERVE_COVER' }, private: true, publicSynopsis: payload.publicSynopsis });
+    const publicPage = await api('GET', '/api/public/novels/public-synopsis');
+    expect((publicPage.json.novel as { publicSynopsis: string }).publicSynopsis).toBe(payload.publicSynopsis);
+    expect(JSON.stringify(publicPage.json)).not.toMatch(/PRIVATE_ENDING|PRESERVE_COVER|workspaceId|createdById/);
+    const other = await seedUser('public-other@example.invalid');
+    expect((await api('PATCH', path, other.cookie, payload)).status).toBe(404);
+    await db.membership.update({ where: { workspaceId_userId: { workspaceId, userId: owner.userId } }, data: { role: 'VIEWER' } });
+    expect((await api('PATCH', path, owner.cookie, payload)).status).toBe(403);
+    expect(await db.auditLog.count({ where: { entityId: novelId, action: 'novel.public-synopsis-updated' } })).toBe(1);
+  });
+
   it("lists only ACTIVE novels with at least one PUBLISHED publication", async () => {
     const owner = await seedUser("owner@example.com");
     const ws = await seedWorkspace(owner.userId, "ws");

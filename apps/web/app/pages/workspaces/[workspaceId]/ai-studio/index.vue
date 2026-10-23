@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BackLink from "../../../../components/ui/BackLink.vue";
+import BrandLogo from "../../../../components/ui/BrandLogo.vue";
 import { studioReturnTo } from "../../../../utils/studioReturnTo";
 /**
  * AI Studio page (NF-WF-018A): the management surface for the 004/005
@@ -103,11 +104,14 @@ const kindLabel = computed(() => t(`aiStudio.kinds.${kind.value}`));
 
 let roleRequest = 0;
 let runRequest = 0;
+let runPollTimer: ReturnType<typeof setTimeout> | undefined;
+onUnmounted(() => { clearTimeout(runPollTimer); });
 let mounted = false;
-async function selectRun(runId: string) {
+async function selectRun(runId: string, background = false) {
+  clearTimeout(runPollTimer);
   const request = ++runRequest;const target = workspaceId.value;
   selectedRunId.value = runId;
-  runDetailLoading.value = true;
+  if (!background) runDetailLoading.value = true;
   runDetailError.value = null;
   try {
     const detail = await studio.getRun(target, runId);
@@ -115,11 +119,22 @@ async function selectRun(runId: string) {
   } catch (err) {
     if (request === runRequest && target === workspaceId.value) runDetailError.value = err instanceof Error ? err.message : "unknown";
   } finally {
-    if (request === runRequest && target === workspaceId.value) runDetailLoading.value = false;
+    if (request === runRequest && target === workspaceId.value) {
+      runDetailLoading.value = false;
+      if (["PENDING", "RUNNING"].includes(runDetail.value?.status ?? "")) {
+        const poll = () => {
+          if (!mounted || selectedRunId.value !== runId || workspaceId.value !== target) return;
+          if (document.hidden) runPollTimer = setTimeout(poll, 2000);
+          else void selectRun(runId, true);
+        };
+        runPollTimer = setTimeout(poll, 2000);
+      }
+    }
   }
 }
 
 function backToRuns() {
+  clearTimeout(runPollTimer);
   runRequest++;
   selectedRunId.value = null;
   runDetail.value = null;
@@ -161,21 +176,17 @@ onUnmounted(() => { mounted = false;roleRequest++;runRequest++; });
       class="flex min-h-[52px] flex-wrap items-center gap-5 border-b border-nf-border bg-nf-bg-1 px-5 py-2 shadow-nf-sm"
     >
       <NuxtLink
-        to="/"
+        to="/author"
         class="flex items-center gap-2.5 text-[14.5px] font-semibold tracking-tight hover:opacity-80 focus-visible:nf-focus"
       >
-        <span
-          class="grid size-6.5 place-items-center rounded-md bg-nf-accent font-nf-literary text-[15px] font-bold text-nf-accent-ink"
-          >N</span
-        >
-        NovelForge
+        <BrandLogo compact />
       </NuxtLink>
       <h1 class="text-[15px] font-semibold text-nf-text">
         {{ t("aiStudio.title") }}
       </h1>
     </header>
 
-    <div class="mx-auto max-w-[1280px] px-5 pt-6"><BackLink :to="returnTo" :label="t(returnTo === '/' ? 'authorHome.backHome' : 'recovery.backToWorkspace')" /></div>
+    <div class="mx-auto max-w-[1280px] px-5 pt-6"><BackLink :to="returnTo" :label="t(returnTo === '/author' ? 'authorHome.backHome' : 'recovery.backToWorkspace')" /></div>
     <div v-if="!roleLoaded" class="px-5 py-10 text-center text-nf-text-faint" role="status">
       {{ t("common.loading") }}
     </div>
@@ -271,7 +282,7 @@ onUnmounted(() => { mounted = false;roleRequest++;runRequest++; });
           <div v-else-if="runDetailError" class="py-10 text-center" role="alert">
             <p class="text-nf-warn">{{ runDetailError }}</p>
           </div>
-          <RunGraph v-else-if="runDetail" :run="runDetail" />
+          <RunGraph v-else-if="runDetail" :run="runDetail" :workspace-id="workspaceId" @retried="selectRun($event.runId)" />
         </div>
         <RunList v-else :workspace-id="workspaceId" @select="selectRun" />
       </div>

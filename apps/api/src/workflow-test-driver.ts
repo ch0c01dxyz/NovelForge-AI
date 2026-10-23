@@ -18,6 +18,7 @@ import {
   type WorkflowExecutor,
 } from "@novelforge/workflow-executor";
 import { createAuditService } from "@novelforge/ai-services";
+import { createChapterSourceReader } from "@novelforge/ai-services";
 import { createAiServices } from "@novelforge/ai-services";
 import { createGatewayRegistry } from "@novelforge/ai-services";
 import { createRetrievalServices } from "@novelforge/ai-services";
@@ -152,6 +153,7 @@ export function createTestDriver(
 
   const executor = createWorkflowExecutor({
     db,
+    chapterSource: createChapterSourceReader(db),
     audit: {
       record: (entry) =>
         audit.record({

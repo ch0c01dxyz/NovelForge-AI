@@ -21,12 +21,17 @@ import { createAuthService } from "@novelforge/auth";
 import { prismaSessionStore, prismaUserStore } from "./auth-stores.ts";
 import { registerAuthRoutes } from "./auth-routes.ts";
 import { registerPlatformRoutes } from "./platform-routes.ts";
+import { registerBrandingRoutes } from "./branding-routes.ts";
 import { registerManuscriptRoutes } from "./manuscript-routes.ts";
 import { registerScaleEvidenceRoutes } from "./scale-evidence-routes.ts";
 import { registerScaleDecisionRoutes } from "./scale-decision-routes.ts";
 import { registerScaleS3Routes } from "./scale-s3-routes.ts";
 import { registerAiRoutes } from "./ai-routes.ts";
 import { registerCoverGenerationRoutes } from "./cover-generation-routes.ts";
+import { registerCharacterDiscoveryRoutes } from "./character-discovery-routes.ts";
+import { createCharacterDiscoveryServices } from "@novelforge/ai-services";
+import { createStoryDiscoveryServices } from "@novelforge/ai-services";
+import { registerStoryDiscoveryRoutes } from "./story-discovery-routes.ts";
 import { createCoverGenerationServices } from "@novelforge/ai-services";
 import { createCoverQueue, type CoverQueue } from "./services/cover-queue.ts";
 import { registerDefinitionRoutes } from "./definition-routes.ts";
@@ -238,6 +243,7 @@ export async function buildApp(
       platformRoleOf,
       profileOf: (userId) => options.db!.user.findUnique({ where: { id: userId }, select: { displayName: true, email: true } }),
     });
+    await registerBrandingRoutes(app, { auth, db: options.db });
     await registerPlatformRoutes(app, {
       auth,
       services: createPlatformServices({
@@ -347,6 +353,8 @@ export async function buildApp(
       ...(options.createGateway ? { createGateway: options.createGateway } : {}),
     });
     registerAiRoutes(app, { auth, services: aiServices, platformRoleOf });
+    registerCharacterDiscoveryRoutes(app, { auth, services: createCharacterDiscoveryServices({ db: options.db, ai: aiServices }) });
+    registerStoryDiscoveryRoutes(app, { auth, services: createStoryDiscoveryServices({ db: options.db, ai: aiServices }) });
     const coverQueue = options.coverQueue ?? createCoverQueue(env.REDIS_URL);
     if (!options.coverQueue) app.addHook("onClose", () => coverQueue.close());
     registerCoverGenerationRoutes(app, { auth, services: createCoverGenerationServices({ db: options.db,

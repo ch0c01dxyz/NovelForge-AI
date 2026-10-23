@@ -87,6 +87,7 @@ export interface ReferenceView {
 export interface ReferenceDetail extends ReferenceView {
   content: string | null;
   charCount: number | null;
+  versions: Array<{ id: string; version: number; note: string | null; charCount: number; ingested: boolean; createdAt: Date }>;
 }
 
 export interface RetrievalHit {
@@ -280,7 +281,7 @@ export function createRetrievalServices(deps: {
    * reach, so the skip guard computed `modelsMatch` and refused the one
    * operation that could repair the reference.
    */
-  async function embeddingModelFor(): Promise<string | null> {
+  async function embeddingModelFor(workspaceId: string): Promise<string | null> {
     // resolveProfile-shaped: the filter matches the router's candidate set
     // exactly (mapping enabled, model enabled, gateway enabled), so a model
     // id returned here is one the vector leg can actually route through.
@@ -294,14 +295,21 @@ export function createRetrievalServices(deps: {
         model: { enabled: true, gateway: { enabled: true } },
       },
       orderBy: [{ priority: "asc" }],
-      select: { model: { select: { modelId: true } } },
+      select: { model: { select: { modelId: true, gatewayId: true } } },
     });
     // Several enabled mappings may route different models at different
     // times; there is no single model the vector leg would filter on, so
     // the guard cannot prove the stored vectors match what search will
     // use and must not skip.
-    const ids = new Set(mappings.map((m) => m.model.modelId));
-    return ids.size === 1 ? (mappings[0]?.model.modelId ?? null) : null;
+    if (mappings.length !== 1) return null;
+    const model = mappings[0]!.model;
+    // Provider aliases are evidence only for this observed route and tenant.
+    const attempt = await db.generationAttempt.findFirst({
+      where: { gatewayId: model.gatewayId, requestedModelId: model.modelId, status: "SUCCEEDED", generation: { workspaceId, modelProfile: "EMBEDDING", status: "SUCCEEDED" } },
+      orderBy: [{ startedAt: "desc" }, { attemptNumber: "desc" }],
+      select: { reportedModelId: true },
+    });
+    return attempt?.reportedModelId || model.modelId;
   }
 
   function checkKey(key: string): void {
@@ -619,6 +627,10 @@ export function createRetrievalServices(deps: {
       const row = await db.reference.findUniqueOrThrow({
         where: { id: ref.id },
         include: {
+          versions: {
+            orderBy: { number: "desc" },
+            select: { id: true, number: true, note: true, charCount: true, createdAt: true, _count: { select: { chunks: true } } },
+          },
           currentVersion: {
             select: { id: true, number: true, content: true, charCount: true, _count: { select: { chunks: true } } },
           },
@@ -638,6 +650,7 @@ export function createRetrievalServices(deps: {
         chunkCount: row.currentVersion?._count.chunks ?? 0,
         content: row.currentVersion?.content ?? null,
         charCount: row.currentVersion?.charCount ?? null,
+        versions: row.versions.map(v => ({ id: v.id, version: v.number, note: v.note, charCount: v.charCount, ingested: v._count.chunks > 0, createdAt: v.createdAt })),
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       };
@@ -691,7 +704,7 @@ export function createRetrievalServices(deps: {
       // `embeddingModelFor` applies the same enabled-model/enabled-gateway
       // filter the router does, so this compares against a route the vector
       // leg can actually use.
-      const profileModel = await embeddingModelFor();
+      const profileModel = await embeddingModelFor(workspaceId);
 
       const modelsMatch =
         profileModel !== null && storedModels === 1 && storedModel === profileModel;

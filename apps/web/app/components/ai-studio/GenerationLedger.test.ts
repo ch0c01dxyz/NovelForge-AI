@@ -94,6 +94,17 @@ function mountLedger(props: Record<string, unknown> = {}) {
 }
 
 describe("GenerationLedger", () => {
+  it("shows a plain explanation and retains the full error in closed support details", async () => {
+    const wrapper = mountLedger();
+    await flushPromises();
+    await wrapper.findAll("tbody tr")[1]!.trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toBe(en.run.failedMessage);
+    expect(wrapper.get("details").attributes("open")).toBeUndefined();
+    expect(wrapper.get("summary").text()).toBe(en.run.technicalDetails);
+    expect(wrapper.get("details").text()).toContain(generations[1]!.errorMessage);
+    wrapper.unmount();
+  });
   beforeEach(() => {
     listGenerationsMock.mockReset().mockResolvedValue(generations);
     getGenerationMock.mockReset().mockResolvedValue(detail);

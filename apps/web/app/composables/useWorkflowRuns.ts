@@ -27,6 +27,11 @@ export interface StepRow {
   approvalSnapshot: unknown;
 }
 
+export interface WorkflowRetry {
+  stepKey: string;
+  reason: "TRANSIENT" | "RATE_LIMIT" | "INVALID_AI_OUTPUT";
+}
+
 export interface RunView {
   id: string;
   workflowId: string;
@@ -37,6 +42,7 @@ export interface RunView {
   input: unknown;
   output: unknown;
   errorMessage: string | null;
+  retry?: WorkflowRetry;
   stepCount: number;
   startedAt: string;
   completedAt: string | null;
@@ -161,6 +167,7 @@ export function useWorkflowRuns() {
   }
 
   return {
+    retryRun: (workspaceId: string, runId: string) => api<RunView & { statusUrl: string }>(`/workspaces/${encodeURIComponent(workspaceId)}/workflow-runs/${encodeURIComponent(runId)}/retry`, { method: "POST" }),
     previewModelPreferences: (workspaceId: string, workflowId: string, novelId: string) => api<WorkflowModelPreferencePreview>(`/workspaces/${encodeURIComponent(workspaceId)}/workflows/${encodeURIComponent(workflowId)}/model-preferences?novelId=${encodeURIComponent(novelId)}`),
     resolveWorkflowId,
     startRun,

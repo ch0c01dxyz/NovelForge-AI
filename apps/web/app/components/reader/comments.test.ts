@@ -120,6 +120,32 @@ beforeEach(() => {
 });
 
 describe("CommentThread", () => {
+  it.each([false, true])("ignores a delayed report after closing and opening another comment (failure: %s)", async fail => {
+    mockApi({ session: true });
+    const base = apiMock.getMockImplementation()!;
+    let settle!: () => void;
+    apiMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/reader/comments?')) return Promise.resolve({ comments: [topComment, { ...topComment, id: 'c2' }], page: { cursor: null, hasMore: false } });
+      if (path.endsWith('/reports')) return new Promise((resolve, reject) => { settle = () => fail ? reject(new Error('late failure')) : resolve({}); });
+      return base(path, init);
+    });
+    const wrapper = mount(CommentThread, { props: { novelSlug: 'my-novel', chapterNumber: 2, active: true } });
+    try {
+      await flushPromises();
+      const openers = () => wrapper.findAll('button').filter(b => b.text() === 'comments.report');
+      await openers()[0]!.trigger('click');await flushPromises();
+      const submit = wrapper.get('[data-testid="comment-report"]').findAll('button').find(b => b.text() === 'comments.report')!;
+      await submit.trigger('click');await submit.trigger('click');
+      expect(apiMock.mock.calls.filter(([path]) => path.endsWith('/reports'))).toHaveLength(1);
+      expect(submit.attributes('disabled')).toBeDefined();
+      await wrapper.setProps({ active: false });await wrapper.setProps({ active: true });
+      await openers().at(-1)!.trigger('click');await flushPromises();
+      settle();await flushPromises();
+      expect(wrapper.text()).not.toContain('comments.reportThanks');
+      expect(wrapper.text()).not.toContain('comments.postFailed');
+      expect(wrapper.get('[data-testid="comment-report"]').findAll('button').find(b => b.text() === 'comments.report')!.attributes('disabled')).toBeUndefined();
+    } finally { wrapper.unmount(); }
+  });
   it("renders the anonymous-readable list without a composer", async () => {
     mockApi({ session: false });
     const wrapper = mount(CommentThread, {
@@ -180,7 +206,7 @@ describe("CommentThread", () => {
     expect(replyButtons).toHaveLength(1);
   });
 
-  it("opens the report dialog with the pinned reasons and submits", async () => {
+  it("opens the inline report view with the pinned reasons and submits", async () => {
     mockApi({ session: true });
     const wrapper = mount(CommentThread, {
       props: { novelSlug: "my-novel", chapterNumber: 2 },
@@ -197,7 +223,7 @@ describe("CommentThread", () => {
     await reportBtn!.trigger("click");
     await flushPromises();
 
-    const dialog = wrapper.find('[role="dialog"]');
+    const dialog = wrapper.find('[data-testid="comment-report"]');
     expect(dialog.exists()).toBe(true);
     // All five pinned reasons are offered.
     for (const reason of ["SPAM", "HARASSMENT", "SPOILER", "OFF_TOPIC", "OTHER"]) {
@@ -213,6 +239,28 @@ describe("CommentThread", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(wrapper.text()).toContain("comments.reportThanks");
+  });
+
+  it("returns report focus on Escape and clears the report when comments close, preserving the draft", async () => {
+    mockApi({ session: true });
+    const wrapper = mount(CommentThread, { attachTo: document.body,
+      props: { novelSlug: "my-novel", chapterNumber: 2, active: true } });
+    try {
+      await flushPromises();
+      await wrapper.get('#comment-composer').setValue('Keep this draft');
+      const opener = wrapper.findAll('button').find(b => b.text() === 'comments.report')!;
+      await opener.trigger('click'); await flushPromises();
+      const report = wrapper.get('[data-testid="comment-report"]');
+      expect(document.activeElement).toBe(report.element);
+      await report.trigger('keydown', { key: 'Escape' }); await flushPromises();
+      expect(wrapper.find('[data-testid="comment-report"]').exists()).toBe(false);
+      expect(document.activeElement).toBe(opener.element);
+      await opener.trigger('click');
+      await wrapper.setProps({ active: false });
+      await wrapper.setProps({ active: true });
+      expect(wrapper.find('[data-testid="comment-report"]').exists()).toBe(false);
+      expect((wrapper.get('#comment-composer').element as HTMLTextAreaElement).value).toBe('Keep this draft');
+    } finally { wrapper.unmount(); }
   });
 
   it("renders markup in a body as text, never as markup (XSS)", async () => {

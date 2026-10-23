@@ -785,6 +785,23 @@ export function createCanonServices(deps: {
       // attribute another caller's action to this one).
       const deleted = await db
         .$transaction(async (tx) => {
+          // Serialize deletion with explicit identity linking and checked-out branch changes.
+          await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${workspaceId}::uuid FOR SHARE`;
+          await tx.$queryRaw`SELECT id FROM memberships WHERE workspace_id = ${workspaceId}::uuid AND user_id = ${actorUserId}::uuid FOR SHARE`;
+          await tx.$queryRaw`SELECT id FROM novels WHERE id = ${novelId}::uuid AND workspace_id = ${workspaceId}::uuid FOR NO KEY UPDATE`;
+          const membership = await tx.membership.findUnique({ where: { workspaceId_userId: { workspaceId, userId: actorUserId } }, select: { role: true } });
+          const novel = await tx.novel.findFirst({ where: { id: novelId, workspaceId }, select: { currentBranchId: true } });
+          if (!membership || !novel) throw new NotFoundError("novel");
+          requireCapability(membership.role, "canon:manage");
+          const branch = await tx.novelBranch.findFirst({
+            where: { novelId, ...(novel.currentBranchId ? { id: novel.currentBranchId } : { name: "main" }) },
+            select: { id: true, name: true },
+          });
+          if (!branch) throw new ConflictError("the current story branch is unavailable");
+          await tx.$queryRaw`SELECT id FROM novel_branches WHERE id = ${branch.id}::uuid FOR UPDATE`;
+          if (await tx.character.findFirst({ where: { storyEntityId: entityId }, select: { id: true } })) {
+            throw new ConflictError("this story identity is linked to a character and cannot be deleted");
+          }
           const result = await tx.storyEntity.deleteMany({
             where: { id: entityId, novelId, novel: { workspaceId } },
           });
@@ -794,6 +811,7 @@ export function createCanonServices(deps: {
           await advanceForMutation(tx, {
             workspaceId,
             novelId,
+            branchName: branch.name,
             operation: "entity.delete",
             origin: "MANUAL",
             actorUserId,

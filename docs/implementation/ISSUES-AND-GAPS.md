@@ -1,5 +1,792 @@
 # Technical Issues and Implementation Gaps
 
+## Comment report response crosses closed reader modal — 2026-10-23
+
+Status: RESOLVED. Owner: final publication review. Independent review found pending
+report A can finish after comments close and report B opens, falsely confirming
+B or showing A's error; duplicate submit clicks also dispatch twice. Add pending
+guard and report/scope epoch fencing on close, identity/scope change and unmount.
+Resolved with pending/epoch/ID guards, invalidation on close/scope/session/unmount,
+and deferred success/failure plus duplicate-click regressions. Reviewer APPROVE;
+final full web129suites/893tests PASS. Optional active prop remains compatible
+with standalone callers; close invalidation, rather than an omitted Boolean prop,
+guards submission. No reports were submitted to working data during verification.
+
+The same review found character/story proposal fields editable during pending
+save, allowing later typing to be discarded when old submitted values return.
+Native disabled fieldsets now lock all editable controls while saving; deferred
+save regressions and separate source review PASS. Initial broad tests also found
+two stale ChapterActions assertions for superseded technical warning prose;
+updated assertions retain exact request payload and no-mutation checks. Full web
+rerun passed; no compatibility/security check was weakened.
+
+## Engram final bookkeeping timeout after README push — 2026-10-23
+
+Status: RESOLVED (tooling only). Later publication checkpoint602 save succeeded;
+all three pending historical relations were subsequently judged scoped using
+the host-confirmed identity. The retained timeout/fallback history follows.
+README publication completed at6fe8d80 and remote
+hash verified. Checkpoint600 and summary601 saved/read-back successfully, but
+mem_judge/update was blocked by PreToolUse spawnSync engram.exe ETIMEDOUT; no
+claim of completed final conflict bookkeeping. Relations rel-50254fa250e1124d,
+rel-fed2be78c960e1d9 and rel-2e3e90ad06f88e8a await scoped historical verdicts.
+Their fetched records485/50/545 concern earlier starter skills, an old backlog
+push and Horde publication; they do not conflict with this README-only commit.
+Final current dirty-path count136 corrects memory's135. Keep this fallback and
+finish memory bookkeeping after hook health recovers; do not repeat the push or
+reopen old sessions. No application/service/data issue observed from the timeout.
+
+## Failed-run recovery action missing for model configuration — 2026-10-23
+
+Status: RESOLVED. Owner tasks/workflow-step-retry-and-selection.md follow-up.
+Writer failure panel now offers localized settings recovery when direct retry is
+unavailable, forwards to the existing scoped settings loader and explains an
+explicit new process from the beginning. Forty-one focused UI tests, web types,
+diff check and separate exact source review APPROVE passed. Actual main run
+ID1440/EN390 browser proof: recovery button visible, previous instructions/model
+settings restored, no mutation requests/page errors; screenshots inspected.
+Temporary session removed/absence verified; original run still FAILED at plan
+with no generation. No configuration, story, approval or publication changes.
+Private receipt: .nf-artifacts/retry-config-browser-receipt.json. Historical
+diagnosis and proof-harness corrections follow.
+
+First regression exposed the action being nested under a nonempty step list;
+move it outside that condition so every configured failed-run panel can recover.
+Browser harness initially raced chapter/model loading and used ambiguous status/
+summary locators; wait for exact chapter/readiness and scope to the recovery
+notice and direct summary. Final proof passed against live authenticated API,
+without mocked data or model calls.
+
+Observed author run 5395b845-66d7-4e31-b4d8-3d14164e7ab3 failed at plan before
+generation creation: selected model was not enabled/compatible with the profile
+and request. Direct step retry correctly refused, but the UI hid all next actions
+and showed only generic failure prose. Previous real-gateway proof covered an
+eligible invalid-output failure, not this configuration branch. Reuse existing
+failed-settings preparation from the failure panel, explain that the author must
+review model/settings and explicitly start a new process. Do not bypass selection
+validation, silently change model mappings, or restart the failed run. Close with
+focused UI regression plus actual run read-only browser preparation/no POST proof.
+Private diagnosis initially used startsWith on a UUID Prisma filter; corrected
+to a bounded parameter-free fixed-prefix SQL lookup before reading the exact run.
+
+## Failed AI step recovery and selection visibility — 2026-10-23
+
+Initial24UItests PASS; subsequent vue-tsc failed because the fallback test tried
+to delete/restore a readonly locale property. Simulate a missing translation in
+the test's locale lookup instead of mutating resource objects. Checkpoint596's
+initial statement that web types passed was premature and is explicitly corrected
+to pending until the rerun exits successfully; no completion claimed from it.
+
+Correction verified: the final web vue-tsc rerun exited0; the corrected retry UI
+test has11passing cases, and the separate exact UI review approved the submitted
+hashes. Backend isolated worktree initially lacked ignored generated Prisma files
+and dependency links; reuse existing generated files/dependency junctions without
+installation or generation. Root Vitest project discovery also selected absent
+web dependencies in that tree; use a private scoped backend test configuration.
+These are tooling prerequisites, not product behavior changes.
+
+Status: RESOLVED. Owner tasks/workflow-step-retry-and-selection.md (root).
+Closure: explicit eligibility/retry UI and audited idempotent child implemented;
+10 actual PostgreSQL/executor/HTTP and 34 existing executor tests PASS, focused
+web proof/types/lint PASS, separate exact UI/backend reviews APPROVE. Real gateway
+retry on copied story reached AWAITING_APPROVAL with unchanged five-step prefix,
+one retry audit and zero author decisions. Actual ID1440/EN390 browser selection
+and retry PASS, no page errors; main API GET verified eligibility after idle
+activation. Main failed run unchanged; owned clone/Redis12 proof cleaned. No
+approval/application/publication/commit/push. Historical diagnosis follows.
+
+Review caught lost-response replay checking changed source before looking up an
+existing child, plus terminal child requeue after job retention expiry. Resolve
+authorized/scoped existing receipt first and enqueue only PENDING children;
+regressions cover changed outline/archived workflow and terminal child replay.
+Private live helper initially used plain Node (unsupported parameter properties),
+then unavailable tsx; use existing --experimental-transform-types runtime.
+Executor regression first used stale .env credentials and failed before34tests;
+private Docker-derived connection plus explicitly owned test DB passed all34.
+Browser harness initially used networkidle and attempted hidden mobile controls
+before data/menu readiness; corrected explicit chapter readiness, house menu
+interaction and separate locale contexts. Routing remained fail-closed to clone;
+no main generation requests. Cleanup refused incomplete Redis namespace allowlist;
+verified actual queue metadata created by buildApp and character-discoveries,
+then removed only the exact owned keys from initially empty DB12. No shared flush.
+
+Author screenshot shows failed review_vs with no actionable retry. Observed run
+eb3ed1b1-8570-4ab7-8ce2-1343faa20497: draft generation passed; reviewer transport
+fell back successfully, then invalid findings/needsCorrection failed its output
+contract. Existing reuse-settings action restarts a workflow, not failed-step
+recovery. Add server-validated explicit retry preserving safe prior work/history,
+source pins and approvals. No automatic retry of deterministic errors. Selection
+uses a dim orange background, making highlighted editable text hard to see;
+brighten selection without changing input text or native behavior. Close with
+focused negative/real DB, real gateway copied-story and browser evidence.
+
+## Reference detail history contract and platform identity — 2026-10-23
+
+Status: RESOLVED. Owner tasks/platform-identity-and-reference-indexing.md.
+Missing versions[] restored with actual metadata; reference content safely shown.
+Final29retrieval API,16branding/catalog API,27research UI,24identity/locale,
+8restore-scope and actual EN1440/ID390 browser proof PASS. Separate final review
+APPROVE; migration backup/restore/rehearsal plus real PostgreSQL CAS/auth/audit
+proof PASS before main application. All6reference details open without page errors.
+No story mutation, commit or push. The diagnostic history below is retained.
+
+Tooling findings: private migration helper initially imported pg from repo root,
+where it is not installed; resolve the existing apps/api dependency instead.
+Branding worker's pnpm task refused a node_modules junction with
+ERR_PNPM_UNSAFE_TASK_RUN_STATE_PATH after worktree client generation. Run direct
+Node entries/root integration checks; do not install packages or mutate manifests.
+Root pnpm test invocation automatically relinked1002 already-locked packages
+after worktree junction metadata changes (no downloads/manifest/lock diff), then
+60web tests PASS. Nuxt listener disappeared during this operation; restore only
+its known dev command and verify health. Direct API catalog test initially used
+stale .env credentials and failed authentication before running4tests; rerun with
+existing Docker connection passed privately via environment, never print secrets.
+First live catalog request returned400 before dispatch because the private
+harness sent JSON Content-Type without a POST body. Match useApi: only add that
+header when a JSON body exists. No configuration/data mutation occurred on it.
+Live sync succeeded and registered the embedding catalog. First mapping change
+then returned409: new capability validation also blocked disabling legacy text
+mappings. Allow explicit disable of an existing incompatible mapping while
+continuing to refuse enabling it; add a real-DB regression before retry. Newly
+discovered unverified models are disabled, including Gemini; only verified small
+embedding is to be enabled/mapped. No chapter/reference content mutations yet.
+Separate final review found specialized catalog sync could clear a shared text
+model's known context window when modality payload omits it. Preserve that field
+when absent and add a real-DB regression. All six live references subsequently
+indexed/activated successfully; first search harness assertion expected a generic
+'vector' retriever name. Inspect actual contract/audit before claiming search
+proof; do not re-ingest or repeat model calls merely for a harness naming error.
+Reference UI inspection also found saved content was never displayed (only
+metadata/version controls). Add a bounded, safely interpolated read-only content
+region and wrapping source text, with a markup-as-text regression. The detail
+flow must let the author actually read the stored research after opening it.
+
+Branding source review found audit entityId='platform' violates the existing UUID
+column; corrected to null with singletonKey in payload, keeping audit atomic.
+Separate reviewer found new table absent from restore-scope classification;
+root must classify platform_branding as CONFIGURATION and adjust completeness
+assertions before migration/completion. Story restore must never reset branding.
+
+Live embedding preflight: router /v1/embeddings with verified advertised model
+openrouter/openai/text-embedding-3-small and two synthetic EN/ID texts returned200,
+two finite/nonzero1536-dimensional vectors, reported model text-embedding-3-small.
+No manuscript sent. Discovered alias mismatch in ingestion skip guard: stored
+reported ID differs from mapped requested ID, causing unnecessary re-ingestion.
+Preserve historical reported-ID storage/search; match only observed successful
+attempt identity for same gateway/requested model/workspace. Never strip prefixes.
+
+Original finding. Owner tasks/platform-identity-and-reference-indexing.md (root).
+Observed author error at ReferenceIngest.vue298: detail.versions.length accesses
+undefined. Service getReference returns no versions, while UI/tests expect the
+array (tests fabricated that field). Restore actual service metadata contract;
+prove create/version/ingest and real browser detail rendering. Suspense/DevTools
+messages are incidental development notices, not this TypeError's cause.
+Author also requests persistent admin branding; current headers hardcode N/name.
+Add bounded validated/versioned SUPER_ADMIN settings and shared rendering, with
+reviewed additive migration and actual UI evidence. Embedding readiness follow-up
+below is now authorized for real probe/configuration/index/search verification.
+
+## Chapter 6 research provenance and source access — 2026-10-23
+
+Status: RESOLVED for requested data. Six source-scoped entries saved via live API,
+version1 DRAFT, exact content/source/scope read-back PASS. Independent source
+review APPROVE data SHA25602edd34b0cb14631744b5651a426580992b0384a28025074190023c557cd2946.
+Story snapshot hashes unchanged; task-owned session removed/absence verified.
+Evidence: .nf-artifacts/chapter6-research-receipt.json; source access limits are
+recorded in the entries. No manuscript/canon changes, commit or push.
+
+Original finding: current chapter6 uses botanical/chemical terms while its
+workspace had zero references. Several publisher/catalog pages rejected full
+access; accessible primary abstracts and official records establish bounded
+claims without asserting that fictional Rumput Tuba effects are real.
+
+## Reference indexing model readiness — 2026-10-23
+
+Status: RESOLVED by tasks/platform-identity-and-reference-indexing.md.
+Actual router/NF embedding proof1536 PASS; dedicated catalog synced, only verified
+OpenRouter small mapped. All6existing version1refs ACTIVE/30chunks, exact-span
+LEXICAL+VECTOR search10hits PASS, READER withheld, repeat6ingests skipped without
+model calls. Other profiles/story snapshot hashes unchanged. Preimage/receipt:
+.nf-artifacts/chapter6-index-receipt.json. Original preflight below is historical.
+
+Indexing preflight: current enabled EMBEDDING mappings point to MiniMax-M3,
+deepseek-v4.1-flash and claude-haiku-5-5. Their catalog capabilities do not
+advertise embeddings. No embedding request has been attempted, so runtime
+support is unknown rather than proven absent. Preserve configuration and save
+the requested references as DRAFT; automatic AI retrieval remains unclaimed
+until a suitable embedding route is verified and normal ingestion succeeds.
+
+Impact: saved DRAFT references are available in the library but not activated for
+AI retrieval. Owner: configuration follow-up (not dispatched). Next action:
+inspect the router's real embedding catalog/transport, establish an explicitly
+embedding-capable profile mapping, then ingest the six existing version IDs and
+activate via normal API with read-back. Preserve references and avoid duplicate
+creation. Do not infer runtime failure merely from missing catalog capabilities.
+
+## Shared public header layout and account state — 2026-10-23
+
+Independent P2 and actual browser failure: the mobile language panel retained
+the global240px width despite a180px minimum, so left anchoring overflowed the
+viewport. Corrected actual width180px; opened language/account panels now pass
+at320/390px, including member controls. Both temporary proof sessions were
+removed and zero remaining verified after the successful run.
+
+First10 focused tests passed; vue-tsc flagged two test-only get().exists() calls
+(get guarantees presence and omits that API). Use find().exists() for those
+assertions. Pin account dropdown alignment explicitly because the existing
+global small-screen rule defaults generic menus to left alignment.
+
+Status: RESOLVED. Owner tasks/public-site-header-polish.md (root).
+Original SiteHeader wrapped navigation opportunistically, lacked a mobile navigation
+toggle/selected-route treatment and always showed Login even for a valid session.
+Reuse the existing profile/logout/menu components and session response; align
+desktop groups and explicitly collapse mobile navigation. Close only after
+guest/member/error tests, real EN/ID/mobile bounds/focus proof and separate review.
+Closure:10 focused tests, web types, scoped TS/locale lint and diff check PASS;
+actual eight guest/admin/author EN/ID desktop/mobile browser cases PASS with no
+page errors. Independent public_presentation_review APPROVE final SiteHeader
+SHA25648e1500fe2a5405c0bd9a67f35d3e29c6b773146bcd801bd227b4b972ee474df.
+Private receipt .nf-artifacts/site-header-browser-receipt.json. Human acceptance
+remains separate; no backend/auth changes, migration, restart, commit or push.
+
+## Discovery card genre layout follow-up — 2026-10-23
+
+Status: RESOLVED.11 discovery tests PASS; actual browser geometry/screenshots
+ID1920/EN1440/ID390/ID320 PASS. First genres share a row, the genre region sits
+below the cover, all tags remain inside the card and rating is separate. No page
+errors/overflow. Independent public_presentation_review APPROVE for SHA256
+7cc3b1300923ba1feff7f71c3709d0fa592b805f00c5dc23e4eb326635be7cb0.
+Private evidence: .nf-artifacts/genre-card-layout-receipt.json and genre-card-*.png.
+
+Owner: tasks/public-novel-presentation.md (root). Author screenshot exposes a
+desktop two-column-grid case not assessed closely enough in the prior visual
+pass: genres were confined beside the cover to a narrow text column and formed
+a vertical stack. Move genre chips to their own full-width card row, retaining
+the requested skewed shape/upright text; separate the content rating into the
+metadata footer. Verify actual1920 desktop and390/320 mobile EN/ID rendering.
+
+## Public novel presentation gap — 2026-10-22
+
+Closure2026-10-23: RESOLVED for implementation/local activation. API24+reader14
+and web30 focused cases PASS, API/web types and scoped lint PASS. Independent
+public_presentation_review APPROVE after visibility repair. Actual anonymous
+EN1440/ID390/ID320 browser proof confirms decoded current cover on browse/detail,
+conditional304, readable skewed tags and no page errors/overflow. API41788 ready200.
+Main synopsis remains unset and can be authored in Novel details; private planning
+content was not copied or exposed. No schema/main story/publication mutation.
+Historical OPEN/repair notes below are superseded by this closure.
+
+API24 and reader14 focused cases pass after the visibility repair. Declaration
+type checking then found an inferred return type referring to the package-private
+NovelCover interface; export that existing type and annotate the public service
+return rather than depending on an internal module path. First review exhausted
+runtime allowance before final verdict; a separate read-only reviewer is active.
+
+The public-reader spoiler test matched the substring "synopsis" in the newly
+approved publicSynopsis key. Retain protection for the private planning field
+and seeded private synopsis content, while permitting the explicit public field.
+Type checking also requires a plain cover JSON object in the fixture rather than
+the NovelCover interface value; spread its validated fields without changing data.
+
+Independent review found a P1 pre-existing visibility weakness in the novel-page
+resolver: ACTIVE novels with no published publication could return metadata.
+Gate the earliest ACTIVE slug winner on a published publication before returning
+any presentation fields. Preserve deterministic slug ownership (do not fall
+through to another tenant's later novel); test never-published and last-unpublish.
+
+New API fixtures initially called the existing publication helper with text
+instead of chapter/version IDs. Correct the fixture to create/save a chapter
+before publishing through the real release path; do not bypass publication gates.
+
+Initial API typecheck found the existing cover validator was not exported from
+ai-services. Export the existing implementation through the package boundary;
+do not duplicate its image validation in the public route.
+
+Status: OPEN. Owner: tasks/public-novel-presentation.md (root).
+Observed: discovery cards and the public novel resolver omit cover metadata;
+the existing cover route requires workspace membership. Novel landing pages
+also omit genre/rating/synopsis and publication summaries. Planning synopses
+are private high-level story direction and are not a public blurb field.
+Implement an anonymous published-only image boundary and explicit public
+synopsis editing; do not expose workspace settings or planning records wholesale.
+Closure: focused privacy/cache/CAS tests, rendered EN/ID desktop/mobile proof,
+independent submitted-diff review and current local runtime read-back.
+
+## Requested reader interaction and proposal-linkage amendment — 2026-10-22
+
+Status: RESOLVED for implementation/local activation. The historical diagnostics
+below are retained; pending statements there are superseded by this closure.
+Owner: tasks/shared-ai-and-reader-design-amendment.md, integration owner root.
+Independent exact-source final review /root/amendment_final_review: APPROVE.
+Closure checks: reader55; AI51/orchestrator19/policy1; story DB/HTTP10,
+character15, worker12, restore8, proposal UI7; cover DB28/UI12 all PASS.
+Package types and scoped lint passed. Browser proof passed reader EN1440/ID390/
+ID320 and proposal edit/reject EN1440/ID390 with actual API read-back.
+
+Real output was rejected for a case-only term mismatch; retaining literal source
+spelling repaired validation while quotes remain exact. Revalidation reused the
+captured gateway response; it was not another live generation. No main story
+approval or reference creation was performed by the harness.
+
+Verified backup restored in an isolated clone; both additive migrations then
+applied locally. Main story fingerprint unchanged, API/worker/cover refreshed,
+queues resumed with one consumer each and no pending jobs, /ready and /browse200.
+Authenticated reads confirm updated contracts. See CURRENT and private receipts
+under .nf-artifacts. Author inspection remains pending; human screen-reader
+acceptance remains separate/deferred. This closure does not infer either.
+
+Rollout preflight initially referenced an absent novels.cover_url column; current
+cover data resides in novel_settings.settings. Correct the read-only fingerprint
+query to compare the actual settings plus chapter/version/canon/character state.
+No queue pause, schema migration or main-data change occurred in the failed check.
+
+Diagnostic capture identified a case-only name mismatch (`insang ikan` versus
+source `Insang ikan`); every supporting quote was exact. Resolve extracted names
+to the source's case-insensitive literal match while retaining source spelling.
+Quotation validation remains byte-exact; invented or paraphrased evidence still
+fails. Revalidate the captured real response without another provider request.
+The independent cover review also found a stale-thumbnail race; invalidate the
+batch read sequence and stop polling before confirmation mutations.
+
+Real phase C generation 5cdb519a-0ebd-4b2b-800b-e61bd3a3baea succeeded at the
+gateway but its output failed the strict story suggestion contract. The batch
+correctly stayed FAILED with no candidates or story mutation. Output is not stored
+by the generic generation ledger, so the first response cannot be reconstructed.
+Perform one explicit diagnostic retry on the clone with private output capture;
+do not weaken evidence validation or claim extraction success from gateway success.
+
+The real gateway extraction completed in the restored clone, but receipt creation
+queried a nonexistent Generation.modelId field. Repair only the receipt query;
+reuse the reserved batch and generation instead of issuing another model call.
+
+Phase C follow-up: structured role correction and nonchapter no-op regressions
+passed; the expanded HTTP/reference suite reached 10/10 PASS. Worker tests passed
+12/12 using the existing Docker credentials and isolated Redis prefix. Selected
+reference previews now retain the pinned historical version and tenant-bound join.
+Initial live-proof launch stopped before dispatch because Node strip-only mode
+does not support existing parameter properties; use its TypeScript transform mode.
+
+Phase C independent review found two P2 defects: role encoded only in affiliation
+display text cannot use the existing canon correction flow (same object rejected),
+and the new sidecar attempts unsupported nonchapter workflows. Store membership
+and role as separate canonical predicates, and restrict dispatch to supported
+chapter workflows. Verify role correction and nonchapter no-op before closure.
+Worker focused run additionally hit its default PostgreSQL credential mismatch;
+11 cases passed, integration setup failed. Rerun with the existing Docker
+credentials passed privately into the dedicated test database configuration.
+
+Phase C first focused database run: 7/8 passed. The remaining test incorrectly
+assumed VIEWER has `canon:read`; the existing authorization matrix denies it.
+Correct the test to expect denial, preserving the existing permission boundary.
+Group approval/checkpoint/restore, reference provenance and source CAS passed.
+Root owns this amendment; final UI/live/review evidence remains pending.
+
+Phase B integration: 51 AI infrastructure cases PASS; the first orchestrator run
+had 16 PASS / 3 FAIL because old tests assumed exactly two prompt turns. Preserve
+their provenance/data-fencing assertions while accounting for the added shared
+system turn. Phase A real-API browser checks passed EN1440/ID390/ID320 after two
+observed bug repairs. Comment mutation and touch/selection proof remain pending.
+Both delegated workers then hit service usage limits. Root took over their
+remaining work; no complete separate review claimed. Cover partial patch has
+been integrated for completion/testing; group/reference implementation not started.
+
+Phase A follow-up: the initial assertions/dialog guard were repaired (41 focused
+cases passed across separate runs; web typecheck passed). Independent read-only
+review found a P2 nested report-overlay focus/Escape issue inside the new native
+comments dialog. Replace it with an inline report view and verify return focus,
+Escape and close/reopen state. Browser proof stopped before UI interaction because
+the current public catalogue has no novel with two published chapters. Use an
+isolated fixture database; do not publish or change the author's manuscript to
+satisfy a test. No rendered acceptance or final independent approval claimed.
+
+The isolated real-API browser run reached settings and chapter search, then found
+that Escape in a populated search input did not close the native dialog. Handle
+Escape at the dialog keydown boundary (respecting child preventDefault) so browser
+search-field behavior cannot consume it. The inline report view also hides its
+background with the native hidden attribute, which the shared focus trap honors.
+
+Further browser evidence: Next changed the URL but left the prior chapter body.
+The app-level page-key used Nuxt's delayed current useRoute value; switch to the
+incoming route supplied by NuxtPage so each reader chapter mounts with its own
+source/progress/comments. Keep non-reader page identity behavior unchanged.
+
+Implementation phaseA started after explicit author approval. First regression
+run:34 cases PASS,2 legacy reader assertions fail after moving inline navigation
+to initially hidden controls and adding chapter-list search. Six jsdom errors
+also expose an unnecessary close() call on initially closed dialogs (jsdom lacks
+the native method); guard the closed state and exercise real dialogs in browser.
+Update superseded assertions to requested behavior rather than hide failures.
+Types and new interaction/rendered proof remain pending. No completion claimed.
+
+OPEN / design only; owner shared-ai-and-reader-design-amendment. Author supplied
+four screenshots for tap/touch reader controls and specified top/bottom navigation,
+reader settings, searchable chapter modal and in-place comments modal. Existing
+chapter page has inline comments/static chapter navigation, global SiteHeader and
+an onMounted load; same-route chapter changes need explicit regression coverage.
+Root currently hosts the author library and redirects anonymous users to sign-in,
+conflicting with requested default /browse. Proposed /author move plus /login alias
+must update existing return links without changing auth or published-only access.
+MCP designer preflight/context tools are not exposed in this session; local skill,
+source and template are available, no rendered tool evidence claimed.
+
+Author also specifies character-like Approve/Edit/Reject for group and research/
+fiction proposals, existing-reference selection and group links in Character data.
+tasks/shared-ai-and-reader-design-amendment.md consolidates all eight prior proposed
+changes and these amendments; no product code/schema/routing/data changed. Next:
+author review of concrete consolidated behavior and routing recommendation, then
+bounded implementation slices with separate exact review and relevant proof.
+
+## Shared AI request safeguards and unsupported chapter6 research claims — 2026-10-22
+
+Author clarification, same date: Rumput Tuba is an intentionally fictional plant
+in this novel, with effects weaker than the mentioned compounds and temporary
+incapacitation as an explicit world rule. The prior scientific-verification
+concern below must not classify that intentional fictional effect as an error or
+require real-world validation of it. Preserve this clarification as author intent;
+it is not a claim about real-world plant naming, chemistry or safety. No database
+canon approval or story mutation has been performed by recording this note.
+Safeguards must allow deliberate speculative science while checking its internal
+consistency against author-approved world rules. Keep fictional world rules in
+World/Lore/Canon and real scientific inspiration in Research references, with
+clear provenance; do not fabricate a scientific citation for a fictional effect.
+Shared-policy implementation and the absence of references remain separate open
+items. Do not rewrite chapter6 or infer an exact real species/fictional plant
+equivalence from this clarification without an explicit author instruction.
+
+Further author clarification: for this novel, scientific/technical terminology
+should have valid real-world references, but its fictional application need not
+reproduce reality. The author permits real-world grounding for examples such as
+soap, cooking oil and white sugar production. Dangerous fictional applications,
+such as incapacitating compounds, will mostly use invented materials/names and
+story-specific effects. Record the actual source support separately from the
+author's adaptation and approved world rules; never cite real research as proof
+of an invented material or effect. This is the author's scoped creative policy,
+not a blanket classification of every everyday process as harmless, a universal
+restriction on other authors' fiction, or authorization to rewrite existing prose.
+
+OPEN; owner shared-ai-safeguards-research (design discussion, not implemented).
+The author proposes server-side injected safeguards for all built-in/custom
+agents/skills/workflows, preserving their definitions, outline adherence,
+continuity and beginner-readable language. Current ai.ts generate/generateStream
+pass input.messages to the manager without one common application-owned safeguard
+policy. Existing chapter-only injection and versioned role instructions remain
+active; this is a coverage gap, not a claim that no safeguards exist anywhere.
+
+Read-only DB evidence: Kaisar chapter6 id1fb3bacc-5dab-49f5-89ce-efdc5e3fff41,
+saved version1 id114eb80d-c2d6-48f0-b601-285691965176, contains all four author-named
+terms (Persicaria hydropiper, sesquiterpene dialdehydes, polygodial, warburganal).
+Reference count scoped to this novel plus workspace-wide references is0. Other
+novels' references must not be borrowed silently. The paragraph asserts temporary
+fish incapacitation via gill/oxygen effects; those specific effects, reversibility
+and safety are not verified by the sources inspected. Absence of references does
+not establish that a term is fictitious or that every scientific claim is false.
+
+External verification: Henquet et al., The Plant Journal (2017),
+https://doi.org/10.1111/tpj.13527, is an accessible original study concerning
+Persicaria hydropiper and drimane biosynthesis/insect deterrence; it establishes
+relevant scientific terminology, not the chapter's asserted fish outcome. Another
+publisher page (1980, pii0031942280850631) returned403; search snippets are not
+full-paper verification. No source was inserted into the project database and no
+chapter was rewritten, reviewed as accepted, or promoted to canon.
+
+Recommended bounded first change: one versioned policy injected at both shared
+text-generation entry points, recorded with the effective request, reused by
+custom definitions without editing published versions. Preserve output schemas,
+locale, verbatim quotations and identifiers. Default clear prose must not corrupt
+structured outputs or silently change story meaning. Treat references as data;
+never fabricate retrieval, citations, approval or missing canon. Use existing
+review stages for outline/continuity and flag unsupported real-world claims for
+research. Injection cannot manufacture missing context or guarantee correctness.
+Reference remediation must distinguish manuscript occurrence from verified source
+support, keep author approval for prose/canon changes, and never use generated
+text as independent proof. Automatic web ingestion is not part of this proposal.
+Next: present the bounded design; implementation, targeted regression tests and
+one real-gateway proof require the author's implementation direction. No new
+model calls, retention changes, deletion or application-code edits in this audit.
+
+## Generation capability audit: context coverage, clan discovery and cover retention — 2026-10-22
+
+OPEN follow-ups; owner generation-capability-audit (read-only product audit,
+implementation not authorized by the questions). Compiler/worker source connects
+approved outline/horizon, active canon, character/relationship state, debt,
+timeline, DNA and reference retrieval through bounded context. World/lore facts
+enter through active canon, not an exhaustive scan of every UI record. Observed
+run2974c625 has states tier4 EMPTY, references tier10 EMPTY and recent/historical
+memory tiers7/8 UNAVAILABLE. This proves no supplied rows in those blocks, not
+that the database has no such records. Chapter-source separately supplies saved
+chapter9 and existing profiles. Do not claim every domain contributed to this run.
+
+Clan-specific discovery/reuse with approval is absent: StoryEntityKind supports
+FACTION/ORGANIZATION/CONCEPT but no CLAN kind. Character discovery deliberately
+extracts people only. Proposed next slice: resolve an existing group identity or
+offer an evidence-backed new group plus separate membership/leadership proposals,
+with author Approve/Edit/Reject. A shared surname alone proves neither kinship nor
+membership. No automatic entity creation or canon approval is authorized here.
+
+Cover studio has no candidate deletion or automatic history retention. take20
+batches/take30 versions only limit responses. Image JSON is retained in candidate,
+version and active settings rows. Observed local logical JSON text sizes:
+11 candidate images3137706 bytes;2 version images787708;1 active cover395262.
+These are not physical disk usage. Proposed: manual unused-candidate cleanup and
+current cover plus2 previous distinct recoverable covers; remove unneeded binary
+payloads while preserving audit metadata/provenance and explicitly mark expired
+restoration targets. Do not delete active/running or still-referenced images.
+This changes retention/recovery policy and is not implemented or approved.
+
+Actual pinned chapter agents and both current workspace starter skills contain
+source/evidence, no-invention and canon/approval boundaries. Schema/provenance
+checks and human approval supplement prompts. They reduce error; no comprehensive
+anti-hallucination guarantee exists. Starter skills are installed but were not
+executed as SKILL nodes in run2974c625. Custom/future definitions are not certified
+by this audit. Next verification: any implemented follow-up needs focused tests,
+exact review and real gateway evidence; no new generation or deletion was run.
+
+## Chapter author outline dropped by legacy workflow; existing character aliases proposed as new — 2026-10-22
+
+RESOLVED for instruction propagation and existing-character reuse; owner
+chapter-author-outline-and-character-reuse. Author supplied a chapter10
+outline in Style notes, requiring continuation from chapter9 and introduction of
+Anton Pratama and Darma Pratama. Observed run49f6a150-29c8-48c5-9835-e8c468359e2d
+uses chapter-generation-review; its1594-character styleNotes input is stored but
+absent from planner/writer instructions. Published graph inputs omit the notes;
+only the newer creation template maps them. Planner cast and prose consequently
+omit both sons. This is source evidence, not a claim that any prompt guarantees
+literary quality. Published graphs/history must remain immutable.
+
+Observed current profiles: Don Juan (Juan Cleverton), Sofian Magani and Husein
+Pratama. Discovery checks only exact names/generated keys; it proposed Sofian,
+Pak Husein and Juan Cleverton as new. The author has rejected those suggestions;
+preserve those decisions. Read-only alias resolution may reuse a unique existing
+profile for context/filtering, but must never merge/link ambiguous identities or
+approve facts. Resolution must propagate explicit instructions to every chapter
+AI stage, pin bounded predecessor/profile context, fix alias duplicate detection,
+test both workflow kinds and ambiguity/source negatives, and prove one real draft
+using the original author outline without applying/publishing it automatically.
+Implementation verification:15 real disposable-database tests PASS,4 executor
+author-context/attribution cases PASS for both workflow keys,46 UI/locale tests
+PASS. Review identified uppercase-only and accent/key alias prefilter defects;
+normalized parameterized queries and lowercase/diacritic/key regressions fix them.
+Independent actor review_approved_delta APPROVE exact resolver
+c046bfc98818260f2e5f8ab285ecd97d4361fa3071bd57829a102277336838c9;
+test fbe8897bb63ff31c972936322bc984ac76b08db1912c1a5ded11fdfcc091e9f7.
+Runtime API27368/workflow28584 activated with idle queues, no Docker restart.
+One idempotent real draft run2974c625-4061-4f0f-ad15-4f7cf35bb41d is running
+against the original1594-character outline. Source context contains saved chapter9
+v2 (36ff8be1-192f-42b9-8e12-2c4bb642cb93) and the three existing profiles.
+Its validated plan now includes Anton Pratama and Darma Pratama alongside
+Don Juan/Sofian/Husein. Prose/review/discovery proof remains pending; no apply,
+author approval or story mutation is claimed.
+Remaining P3: proper-name-shaped parenthetical descriptions can still be treated
+as read-only aliases (e.g. title-cased locations). Lowercase descriptive locations
+are excluded; the observed false match '(dusun lain)' is repaired. This is a
+conservative name heuristic, not proof of identity or a merge/link authorization.
+
+Live proof update: run2974c625 reached AWAITING_APPROVAL; all successful AI stages
+contain the exact author notes and the draft contains Anton/Darma. Separate
+discovery batch111a09c3-d35f-498c-91cb-bdc8d937fd5f failed INVALID_OUTPUT after a
+successful model request. The original response was not retained and router
+request logs are empty, so the exact validation cause is unknown. Diagnose one
+bounded discovery-only retry with private response capture; never repeat the
+chapter workflow or relax quote/identity validation. Independent prose inspection
+also found headcount and kinship wording errors; generated prose remains an
+unaccepted draft and has not replaced the author's manuscript.
+
+Closure evidence: explicit discovery-only retry passed the unchanged strict
+schema and exact-quotation checks. Batch111a09c3 now SUCCEEDED with exactly two
+PENDING suggestions (Anton, Darma); existing Don Juan/Husein/Sofian are excluded.
+Real proof assertions verify all successful AI steps contain original notes,
+saved predecessor version, both requested sons in plan/prose, these two pending
+suggestions, and unchanged story-table hashes. No author decisions were made.
+Independent prose review found a wrong visitor/host count, an impossible glance
+toward an absent wife, and sons described as resembling an uncle although the
+nearby referent is their father. Those are retained draft quality findings, not
+silently repaired historical output. First extraction rejection remains historical
+with unknown exact cause; no relaxed validation or retry policy change. P3 alias
+heuristic remains a known limitation. This closure does not certify literary
+perfection, canon correctness of every generated detail, or author acceptance.
+
+## Engram hook checkpoint timeout during outline repair — 2026-10-22
+
+CLOSED — transient failure recovered through the unchanged hook; owner
+chapter-author-outline-and-character-reuse. A checkpoint write under
+the host-confirmed session01a131ba-e664-7490-bcd2-c2b2141c94c9 was rejected by
+PreToolUse: spawnSync C:/Users/ch0c0/bin/engram.exe ETIMEDOUT; memory writes remain
+blocked at that time. No successful save was claimed then. Preserve fallback in the current task and
+progress records, do not create a new session or bypass/modify the hook. Retry
+only after the transient tool activity settles; close with attributed successful
+save and read-back, otherwise disclose the failed durable save at handoff.
+Later retry after checks settled saved checkpoint562 using the same host binding;
+read-back confirmed its exact attributed outline-repair contents. No registration,
+hook change, new identity or bypass was used.
+
+
+## Generated new characters lack an integrated character-profile creation flow — 2026-10-21
+
+CLOSED — technical implementation and bounded live detection verified 2026-10-22;
+owner generated-character-proposals. Author asks how chapter generation
+handles automatically adding a new character. Observed default chapter workflow
+extracts cited fact/state/event/relationship proposals, with separate authorized
+canon application. Canon application can create an inline CHARACTER StoryEntity,
+but does not create a Character profile or link that profile. Character creation
+and the approved identity-link flow are separate use cases; mentioning a new
+person in generated prose does not prove a registered character or canon approval.
+Proposed extension: automatically detect/propose new characters from final reviewed
+text, show evidence and identity ambiguity, then explicitly approve creation of
+profile plus linked identity transactionally. Do not infer name-based merges,
+complete biography or automatic canon approval. The author subsequently approved
+implementation with explicit Approve / Edit / Reject buttons; frozen contract:
+tasks/generated-character-proposals.md. Detection is operational evidence, not
+canon; linked profile creation requires explicit approval after the exact draft
+is applied. Historical implementation checkpoint: schema/migration and service
+were in progress, not yet activated or verified (superseded by resolution below).
+Both isolated implementation workers hit the runtime usage limit before handoff;
+root continued as sole writer. No live schema or character data had changed at
+that checkpoint; the later additive activation is recorded below.
+Closure requires disposable-database recovery/authorization/source tests, usable
+localized buttons, real gateway detection, and separate exact-diff review.
+Independent review found that awaiting detection inside the original workflow job
+can retain its ACTIVE BullMQ identity after parking; approval can then deduplicate
+its continuation delivery and leave the run pending. This initially blocked activation.
+Resolution: a separate character-discoveries queue/consumer dispatches extraction;
+the chapter job only enqueues. Pending-run recovery replaces retained terminal jobs
+before delivery. Both assembly and real BullMQ deferred-discovery continuation
+tests PASS, alongside the recovery regression. The additive migration was applied
+only after encrypted backup decrypt/read-back and isolated clone restore proof;
+existing novel/chapter/version/canon/character/entity/account/workspace/model hashes
+were unchanged. API and workflow worker reloaded, existing queues preserved/resumed.
+One real STRUCTURED_EXTRACTOR request via bansosmontera/deepseek-v4.1-flash succeeded:
+batch 97e20231-8d50-407a-a2a1-eef74aa64617, generation
+f4c64bdd-895e-4cf9-ab20-8f6d17534e39, one pending candidate, no main author approval
+or story mutation. Backend12, UI9, locale18, restore-scope8, sidecar2, worker10,
+recovery5 and studio11 tests PASS; relevant types/lint PASS. Automated accessibility
+is not human acceptance. Historical runs without adequate source/branch provenance
+may conservatively refuse discovery. Private evidence: .nf-artifacts/character-
+discovery-{backup,migration,live-proof}.json. No commit/push.
+Reviewed implementation manifest cdf2a127053c74ba058765541bc89530a1b7b060506bc4ecad55171bf1fc7d97
+was reproduced by root; all production and test bytes remain unchanged. The later
+task completion supplement changes the full22-file hash to
+db565b4c4e9f14614cb1570da887531fd9e2b93fdeb0e6815674c7741778b2c1.
+Separate review of that documentation supplement could not run after the reviewer
+hit the runtime usage limit; no source approval or runtime proof is inferred from it.
+Web vue-tsc returned0 with an existing vue-router/volar plugin warning; this task
+does not claim to repair that tooling warning.
+
+## Default cover brief forbids title lettering — 2026-10-21
+
+OPEN; owner cover-title discussion. Author reports repeated failures adding the
+novel title despite satisfactory image generation. Observed brief prompt in
+packages/ai-services/src/cover-generation.ts explicitly says "No lettering,
+logos or watermarks" and treats story data (including title) as visual reference.
+An added title request may conflict with that default. Exact prompts/results of
+the failed attempts were not inspected; do not attribute every failure to it.
+Immediate author-controlled workaround: edit the visible cover prompt to remove
+the no-lettering constraint and request exact title text. Proposed reliable
+follow-up: optional title typography applied after generation with preview and
+explicit Apply/history, preserving the original artwork and avoiding another
+LLM image request. Proposal only; no behavior change or implementation approval.
+
+## Custom provider image models are absent from the cover catalog — 2026-10-21
+
+CLOSED for catalog discovery/profile mapping. Independent live read-back now
+returns36 image models including bansosmontera/gpt-image-2. Its NovelForge row
+has image-generation and enabled IMAGE_GENERATOR mapping at priority1. Author
+also reports using the image feature/model successfully and satisfactorily;
+retain this as author functional observation, separate from catalog read-back.
+No new image request or configuration write was performed by this verification.
+Historical investigation follows.
+
+Author reports successful
+image generation with bansosmontera/gpt-image-2 through their custom provider.
+Read-only main inspection confirms the model exists/enabled, has tools and
+thinkingCanDisable capabilities, no image-generation marker or profile mapping.
+The live gateway image catalog contains32 models and omits this exact ID.
+NovelForge correctly refuses non-image catalog models for IMAGE_GENERATOR.
+
+Source inspection: router models route filters providers by serviceKinds before
+per-model custom metadata; missing kinds default to LLM. Image adapter registry
+also supports a fixed provider set, not arbitrary compatible custom nodes.
+The author's successful test is retained evidence, but its exact endpoint/output
+contract is not yet verified; do not contradict it or infer chat/image transport.
+Next: verify the existing successful request's transport, expose explicit custom
+image capability/catalog metadata and route through the configured gateway's
+supported image adapter before syncing/mapping in NovelForge. Do not fix this
+with a naked database capability edit or promise mapping alone proves transport.
+No configuration mutation or new image request was performed.
+
+Follow-up after author gateway update: router HEAD a59173e9 now includes the
+dynamic openai-compatible image adapter (baseUrl/images/generations, connection
+Bearer auth, unprefixed upstream model). Author harness reports11 unit tests
+and a router-to-mock-upstream HTTP200 proof; that does not prove real provider
+output or catalog publication. Independent live image-catalog GET now returns35
+models and still omits bansosmontera/gpt-image-2; NF local capabilities/mapping
+are unchanged. Provider-level providerMatchesKinds/default-LLM exclusion remains
+in models route before per-model classification. Adapter gap is addressed in
+source; custom image catalog discovery remains open. No image POST/config write.
+
+## Character identity findings have no author resolution action — 2026-10-21
+
+CLOSED for explicit character linking; owner tasks/character-identity-resolution.md.
+Implemented author-selected null-to-ID linking with checkpoint/revision/audit/
+invalidation and checked-out head CAS; searchable EN/ID UI and health recheck.
+13 real database cases PASS,54 UI/locale/automated accessibility PASS, relevant
+types/lint PASS, independent exact review APPROVE. Linked-identity deletion and
+concurrent delete/link are guarded. No live character was linked; broader
+GAP-011 remains open. Historical investigation below is retained.
+
+Read-only live inspection
+confirms Sofian Magani is unlinked with five knowledge rows and one same-name
+CHARACTER StoryEntity in the same novel; names/keys differ and this is not author
+approval. Story health emits UNRESOLVED_IDENTITY with null remediation; character
+sheet and GAP-058 intentionally had no link writer. Author now approved explicit
+selection/confirmation, required checkpoint and health recheck. Implement a
+tenant/kind/uniqueness/current-branch/head-fenced null-to-ID operation; preserve
+knowledge and all story data. No automatic name matching or live linking.
+GAP-058's previous read-only pin is superseded only for this approved operation;
+GAP-011's broader timeline/event joins stay open. Backend child has no separate
+host Engram binding, so root records its evidence; no borrowed identity writes.
+Related UI finding: CharacterSheet's old note advised deleting/recreating a
+character to correct it, which would lose dependent history and does not solve
+identity safely. Replace that advice with the explicit Health & Memory link
+flow. Unknown outcomes must say Close (not imply request cancellation); move
+keyboard focus into the confirmation after selection.
+Integration inspection found finding keys used only rule/revision, colliding
+when multiple characters have this warning at one revision. Include evidence
+identity in the UI key so expansion/link controls cannot be reused across
+different findings. Isolated backend typecheck invocation also triggered pnpm
+auto-install in the partially linked worktree; writer stopped it and verified
+no manifest/lock changes, then used the installed TypeScript binary directly.
+Separate review found a connected blocker: canon.deleteEntity takes entity locks
+before branch locks and ON DELETE SET NULL can silently undo a confirmed link
+without character invalidation. Narrowly serialize identity deletion using the
+same novel/current-branch order and refuse deletion of character-linked entities;
+add delete-versus-link proof. This extends the task's allowed backend paths only
+for preserving the new explicit author decision. Initial DB tests8 PASS/1 test
+fixture failure (unsupported NovelBranch.createdById) corrected before rerun.
+The raw legacy-deadlock test initially waited on an unstarted Fastify inject
+chain; explicitly start its promise and refresh PostgreSQL activity snapshots.
+Root API typecheck also exposed its helper's unknown payload selecting the wrong
+Fastify overload; use a typed object payload and an async helper. These are test
+harness corrections, not skipped production gates.
+
+## Author warnings still expose implementation jargon — 2026-10-21
+
+CLOSED for the bounded author-message pass; owner author-message simplification.
+AI Studio RunGraph and generation
+ledger display raw provider/contract diagnostics as their primary error text.
+Some localized warnings still mention HTTP codes, keys, payloads and queue
+delivery rather than an author's next action. Reuse the existing RunStatusPanel
+pattern: plain localized summary with original diagnostics in closed support
+details. EN/ID warnings simplified without changing machine codes, retry semantics,
+unknown outcomes or source/approval protections. Component28 and locale/fallback/
+SCALE parity22 tests PASS; separate exact review APPROVE. Full diagnostics remain
+in closed support details; successful step output remains visible. No platform-
+wide audit or new live provider test claimed. See CURRENT for bounded scope.
+Initial web typecheck found the pre-existing ledger fixture's optional array
+spread could omit errorMessage in its inferred type. Read the asserted non-null
+source fixture row in the new assertion; no production contract change needed.
+Final web typecheck and root lint PASS; corrected ledger5 tests PASS and final
+six-file exact review APPROVE. No browser visual acceptance is claimed.
+
 ## Durable Horde job recovery must not duplicate accepted work — 2026-10-21
 
 CLOSED for the approved bounded Horde slice; owner approved Horde cover jobs

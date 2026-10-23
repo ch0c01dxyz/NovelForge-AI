@@ -21,6 +21,13 @@ function deferred<T>() {
 beforeEach(() => { api.mockReset(); });
 
 describe("run selection response isolation", () => {
+  it("forwards failed-settings recovery without starting or retrying a run", async () => {
+    api.mockResolvedValue(row("run-a", "FAILED"));
+    const wrapper = mount(RunStatusPanel, { props: { ...props, canConfigure: true } });await flushPromises();
+    await wrapper.get('[data-testid="configure-failed-run"]').trigger('click');
+    expect(wrapper.emitted("configure")).toEqual([["run-a"]]);
+    expect(api.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);wrapper.unmount();
+  });
   it.each([true, false])("keeps raw diagnostics in collapsed support details (run error: %s)", async (hasRunError) => {
     const diagnostic = 'step "plan" output violated its contract: $.cast missing';
     api.mockResolvedValue({ ...row("run-a", "FAILED"), errorMessage: hasRunError ? diagnostic : null,

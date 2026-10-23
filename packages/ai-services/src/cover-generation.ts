@@ -18,7 +18,7 @@ export class CoverGenerationError extends Error {
   constructor(readonly code: string, readonly statusCode = 409) { super(code); }
 }
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const itemSelect = { id: true, slot: true, state: true, activeGenerationId: true, errorCategory: true, appliedAt: true, originalBytes: true } as const;
+const itemSelect = { id: true, slot: true, state: true, activeGenerationId: true, errorCategory: true, appliedAt: true, originalBytes: true, payloadExpiredAt: true } as const;
 function storedJob(snapshot: unknown): ImageJobContext | null {
   const job = (snapshot as { imageJob?: ImageJobContext } | null)?.imageJob;
   return job && typeof job.gatewayId === "string" && typeof job.modelRef === "string" && typeof job.modelId === "string" && typeof job.requestId === "string" &&
@@ -76,11 +76,16 @@ export function createCoverGenerationServices(deps: {
     const items = await db.coverGenerationItem.findMany({ where: { batchId }, orderBy: { slot: "asc" }, select: itemSelect });
     const generations = await db.generation.findMany({ where: { id: { in: items.flatMap(item => item.activeGenerationId ? [item.activeGenerationId] : []) } }, select: { id: true, contextSnapshot: true } });
     const states = items.map(item => item.state);
+    const removable = await db.$queryRaw<{ id: string }[]>`SELECT i.id FROM cover_generation_items i
+      WHERE i.batch_id = ${batchId}::uuid AND i.state = 'SUCCEEDED' AND i.applied_at IS NULL AND i.payload_expired_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM cover_generation_items live WHERE live.batch_id = i.batch_id AND live.state IN ('PENDING', 'RUNNING', 'UNCERTAIN'))
+        AND NOT EXISTS (SELECT 1 FROM novel_cover_versions v WHERE v.novel_id = ${scope.novelId}::uuid AND (v.source_item_id = i.id OR v.sha256 = i.image->>'sha256'))
+        AND NOT EXISTS (SELECT 1 FROM novel_settings s WHERE s.novel_id = ${scope.novelId}::uuid AND s.settings->'cover'->>'sha256' = i.image->>'sha256')`;
     const status = states.includes("RUNNING") ? "RUNNING" : states.includes("PENDING") ? "PENDING" : states.every(s => s === "SUCCEEDED") ? "SUCCEEDED" : batch.cancelRequested ? "CANCELLED" : states.includes("UNCERTAIN") ? "UNCERTAIN" : states.includes("SUCCEEDED") ? "PARTIAL" : "FAILED";
     return { id: batch.id, count: batch.count, style: batch.style, notes: batch.notes, prompt: batch.prompt,
       preferredModelRef: batch.preferredModelRef, expectedCoverHash: batch.expectedCoverHash, createdAt: batch.createdAt,
       cancelRequested: batch.cancelRequested, enqueueError: batch.enqueueError, status,
-      items: items.map(item => { const job = storedJob(generations.find(g => g.id === item.activeGenerationId)?.contextSnapshot); return { ...item, progress: job?.progress ?? null, resumeExisting: item.state === "UNCERTAIN" && !!job && job.state !== "FAILED", imageUrl: item.state === "SUCCEEDED" ? `/api/workspaces/${scope.workspaceId}/novels/${scope.novelId}/cover-generations/${batchId}/items/${item.id}/image` : null }; }) };
+      items: items.map(item => { const job = storedJob(generations.find(g => g.id === item.activeGenerationId)?.contextSnapshot); return { ...item, canDelete: removable.some(row => row.id === item.id), progress: job?.progress ?? null, resumeExisting: item.state === "UNCERTAIN" && !!job && job.state !== "FAILED", imageUrl: item.state === "SUCCEEDED" && !item.payloadExpiredAt ? `/api/workspaces/${scope.workspaceId}/novels/${scope.novelId}/cover-generations/${batchId}/items/${item.id}/image` : null }; }) };
   }
   async function enqueue(batchId: string, revision: number) {
     try { await deps.enqueue(batchId, revision); }
@@ -263,6 +268,7 @@ export function createCoverGenerationServices(deps: {
       const batch = await batchIn(tx, input, input.batchId);
       const item = await tx.coverGenerationItem.findFirst({ where: { id: input.itemId, batchId: batch.id, state: "SUCCEEDED" } });
       if (!item) throw new NotFoundError("cover candidate");
+      if (item.payloadExpiredAt) throw new CoverGenerationError("COVER_IMAGE_EXPIRED", 410);
       const cover = readStoredCover(item.image);
       if (!cover) throw new NotFoundError("cover image");
       const current = await currentCover(tx, input.novelId);
@@ -283,11 +289,27 @@ export function createCoverGenerationServices(deps: {
     });
   }
   return { brief, create, get, process, change, apply,
+    async remove(scope: CoverScope, batchId: string, itemId: string) {
+      await db.$transaction(async tx => {
+        await lock(tx, scope); await batchIn(tx, scope, batchId);
+        const item = await tx.coverGenerationItem.findFirst({ where: { id: itemId, batchId } });
+        if (!item) throw new NotFoundError("cover candidate");
+        if (item.payloadExpiredAt) return;
+        if (item.state !== "SUCCEEDED" || item.appliedAt || await tx.coverGenerationItem.count({ where: { batchId, state: { in: ["PENDING", "RUNNING", "UNCERTAIN"] } } })) throw new CoverGenerationError("COVER_IMAGE_PROTECTED");
+        const image = readStoredCover(item.image);
+        if (!image) throw new NotFoundError("cover image");
+        if ((await currentCover(tx, scope.novelId))?.sha256 === image.sha256 || await tx.novelCoverVersion.count({ where: { novelId: scope.novelId, OR: [{ sourceItemId: item.id }, { sha256: image.sha256 }] } })) throw new CoverGenerationError("COVER_IMAGE_PROTECTED");
+        await tx.$executeRaw`UPDATE cover_generation_items SET image = NULL, payload_expired_at = now(), updated_at = now() WHERE id = ${item.id}::uuid`;
+        await tx.auditLog.create({ data: { actorUserId: scope.actorUserId, workspaceId: scope.workspaceId, action: "cover.candidate-removed", entityType: "CoverGenerationItem", entityId: item.id, payload: { batchId, sha256: image.sha256, originalSha256: item.originalSha256, originalBytes: item.originalBytes } } });
+      });
+      return get(scope, batchId);
+    },
     async list(scope: CoverScope) { await gate(db, scope); return db.coverGenerationBatch.findMany({ where: { novelId: scope.novelId, workspaceId: scope.workspaceId }, orderBy: { createdAt: "desc" }, take: 20, select: { id: true, count: true, style: true, createdAt: true } }); },
-    async image(scope: CoverScope, batchId: string, itemId: string) { await gate(db, scope); await batchIn(db, scope, batchId); const item = await db.coverGenerationItem.findFirst({ where: { id: itemId, batchId, state: "SUCCEEDED" } }); const image = readStoredCover(item?.image); if (!image) throw new NotFoundError("cover image"); return image; },
-    async history(scope: CoverScope) { await gate(db, scope); return db.novelCoverVersion.findMany({ where: { novelId: scope.novelId }, orderBy: { number: "desc" }, take: 30, select: { id: true, number: true, sha256: true, sourceItemId: true, createdAt: true } }); },
+    async image(scope: CoverScope, batchId: string, itemId: string) { await gate(db, scope); await batchIn(db, scope, batchId); const item = await db.coverGenerationItem.findFirst({ where: { id: itemId, batchId, state: "SUCCEEDED" } }); if (item?.payloadExpiredAt) throw new CoverGenerationError("COVER_IMAGE_EXPIRED", 410); const image = readStoredCover(item?.image); if (!image) throw new NotFoundError("cover image"); return image; },
+    async history(scope: CoverScope) { await gate(db, scope); return db.novelCoverVersion.findMany({ where: { novelId: scope.novelId }, orderBy: { number: "desc" }, take: 30, select: { id: true, number: true, sha256: true, sourceItemId: true, createdAt: true, payloadExpiredAt: true } }); },
     async restore(input: CoverScope & { versionId: string; expectedCoverHash: string | null }) {
       return db.$transaction(async tx => { await lock(tx, input); const version = await tx.novelCoverVersion.findFirst({ where: { id: input.versionId, novelId: input.novelId } }); if (!version) throw new NotFoundError("cover version");
+        if (version.payloadExpiredAt) throw new CoverGenerationError("COVER_VERSION_EXPIRED", 410);
         if (((await currentCover(tx, input.novelId))?.sha256 ?? null) !== input.expectedCoverHash) throw new CoverGenerationError("COVER_CHANGED");
         const cover = readStoredCover(version.cover); const next = await writeCoverWithHistory(tx, { ...input, cover, ...(version.sourceItemId ? { sourceItemId: version.sourceItemId } : {}) });
         await tx.auditLog.create({ data: { actorUserId: input.actorUserId, workspaceId: input.workspaceId, action: "novel.cover-restored", entityType: "NovelCoverVersion", entityId: next.id, payload: { restoredFromVersionId: version.id } } });

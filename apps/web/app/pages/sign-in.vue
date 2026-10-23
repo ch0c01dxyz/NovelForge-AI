@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BrandLogo from "../components/ui/BrandLogo.vue";
 /**
  * Sign-in / register. The API sets the HttpOnly session cookie on
  * success; we then go to the novel list. Registering also signs in
@@ -17,7 +18,7 @@ const error = ref<string | null>(null);
 const redirect = computed(() => {
   const r = String(route.query.redirect ?? "");
   // Only allow internal absolute paths — never an off-site redirect.
-  return r.startsWith("/") && !r.startsWith("//") ? r : "/";
+  return r.startsWith("/") && !r.startsWith("//") && !r.includes("\\") ? r : "/author";
 });
 
 async function submit() {
@@ -59,11 +60,7 @@ async function submit() {
   <div class="grid min-h-dvh place-items-center bg-nf-bg-0 px-4 text-nf-text">
     <div class="w-full max-w-sm">
       <div class="mb-6 flex items-center gap-2.5 text-[15px] font-semibold tracking-tight">
-        <span
-          class="grid size-7 place-items-center rounded-md bg-nf-accent font-nf-literary text-base font-bold text-nf-accent-ink"
-          >N</span
-        >
-        NovelForge
+        <BrandLogo large />
       </div>
 
       <h1 class="mb-1 font-nf-literary text-2xl font-semibold">

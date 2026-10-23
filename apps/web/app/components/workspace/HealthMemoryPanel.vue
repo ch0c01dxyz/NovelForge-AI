@@ -9,7 +9,7 @@
  * remediation). The optional `revisionId` is a free-form text input —
  * GAP-040 pins that there is NO cross-branch revision picker. The
  * UNRESOLVED_IDENTITY register (GET .../story-health/unresolved) is
- * read-only. Findings and evidence render as text, never raw HTML.
+ * includes explicit character identity linking. Evidence is never raw HTML.
  *
  * Memory: GET .../memory/status (reads statuses only — it never
  * invents intent consumption; the DerivedRebuildIntent lifecycle gap
@@ -24,6 +24,7 @@
 import { ref, onMounted, computed } from "vue";
 import { useLocale } from "../../composables/useLocale";
 import { useApi, ApiError } from "../../composables/useApi";
+import CharacterIdentityLink from "./CharacterIdentityLink.vue";
 
 const props = defineProps<{
   workspaceId: string;
@@ -103,6 +104,8 @@ const severityFilter = ref<(typeof SEVERITIES)[number]>("ALL");
 const health = ref<HealthResult | null>(null);
 const healthLoading = ref(true);
 const healthError = ref<string | null>(null);
+const healthHistorical = ref(false);
+const identityNotice = ref(false);
 const expanded = ref<Record<string, boolean>>({});
 
 const unresolvedRegister = ref<unknown[]>([]);
@@ -146,6 +149,18 @@ function goToUnresolved(item: UnresolvedCard): void {
   if (item.goto) emit("goto", item.goto);
 }
 
+function identityCharacter(finding: EvidenceFinding): string | null {
+  if (finding.rule !== "UNRESOLVED_IDENTITY") return null;
+  return finding.evidence.find(evidence => evidence.kind === "character" && evidence.id)?.id ?? null;
+}
+
+async function identityLinked() {
+  identityNotice.value = false;
+  healthRevisionId.value = "";
+  await Promise.all([loadHealth(), loadUnresolved()]);
+  identityNotice.value = !healthError.value && !unresolvedError.value;
+}
+
 const filteredFindings = computed(() =>
   (health.value?.findings ?? []).filter(
     (f) => severityFilter.value === "ALL" || f.severity === severityFilter.value,
@@ -159,7 +174,7 @@ function severityClass(s: string): string {
 }
 
 function findingKey(f: EvidenceFinding): string {
-  return `${f.rule}:${f.sourceRevisionId}`;
+  return `${f.rule}:${f.sourceRevisionId}:${f.evidence.map(e => `${e.kind}:${e.id ?? ""}:${e.chapter ?? ""}:${e.order ?? ""}`).join("|")}`;
 }
 
 async function loadHealth() {
@@ -180,6 +195,7 @@ async function loadHealth() {
     if (revisionRaw) params.set("revisionId", revisionRaw);
     const qs = params.toString();
     health.value = await api<HealthResult>(`${base()}/story-health${qs ? `?${qs}` : ""}`);
+    healthHistorical.value = !!revisionRaw;
   } catch (e) {
     healthError.value = errorKey(e);
   } finally {
@@ -395,7 +411,7 @@ onMounted(() => {
             class="rounded-lg border border-nf-border bg-nf-bg-2 px-3 py-2"
           >
             <div class="flex items-center gap-2">
-              <p class="min-w-0 flex-1 text-[13px] font-medium text-nf-text">{{ f.rule }}</p>
+              <p class="min-w-0 flex-1 text-[13px] font-medium text-nf-text">{{ identityCharacter(f) ? t('characterIdentity.finding') : f.rule }}</p>
               <span class="font-mono text-[11px] font-semibold" :class="severityClass(f.severity)">
                 {{ t(`workspace.health.findings.severity.${f.severity}`) }}
               </span>
@@ -407,7 +423,12 @@ onMounted(() => {
                 {{ t("workspace.health.findings.evidenceToggle") }}
               </button>
             </div>
+            <template v-if="identityCharacter(f)">
+              <p class="my-2 text-[12.5px] leading-relaxed text-nf-text-dim">{{ t('characterIdentity.explanation') }}</p>
+              <CharacterIdentityLink v-if="!healthHistorical" :workspace-id="workspaceId" :novel-id="novelId" :character-id="identityCharacter(f)!" @linked="identityLinked" />
+            </template>
             <div v-if="expanded[findingKey(f)]" class="mt-2 flex flex-col gap-2">
+              <code v-if="identityCharacter(f)" class="text-[11px] text-nf-text-faint">{{ f.rule }}</code>
               <div>
                 <p class="text-[11px] font-medium uppercase tracking-wide text-nf-text-faint">
                   {{ t("workspace.health.findings.evidenceTitle") }}
@@ -439,6 +460,7 @@ onMounted(() => {
 
       <!-- Unresolved identities register -->
       <div class="flex flex-col gap-2">
+        <p v-if="identityNotice" role="status" class="text-sm text-nf-ok">{{ t('characterIdentity.linked') }}</p>
         <div class="flex items-center justify-between">
           <h3 class="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-nf-text-faint">
             {{ t("workspace.health.unresolved.title") }}
@@ -489,7 +511,12 @@ onMounted(() => {
                 {{ t("workspace.health.unresolved.goto") }}
               </button>
             </div>
-            <p class="mt-1 break-words font-mono text-[11.5px] text-nf-text-dim">{{ item.detail }}</p>
+            <template v-if="item.goto?.kind === 'character'">
+              <p class="my-2 text-[12.5px] leading-relaxed text-nf-text-dim">{{ t('characterIdentity.explanation') }}</p>
+              <CharacterIdentityLink :workspace-id="workspaceId" :novel-id="novelId" :character-id="item.goto.id" @linked="identityLinked" />
+              <details class="mt-2 text-xs text-nf-text-dim"><summary class="cursor-pointer focus-visible:nf-focus">{{ t('run.technicalDetails') }}</summary><p class="mt-1 whitespace-pre-wrap break-words font-mono">{{ item.detail }}</p></details>
+            </template>
+            <p v-else class="mt-1 break-words font-mono text-[11.5px] text-nf-text-dim">{{ item.detail }}</p>
           </li>
         </ul>
       </div>

@@ -186,7 +186,7 @@ const TWO_TRANSFORMS = {
 
 describe("generation usage attribution", () => {
   it.each([undefined, "LORE"])("forwards chapter identity and explicit component override %s", async usageComponent => {
-    const graph = { steps: [{ key: "write", kind: "AGENT", ref: "writer", ...(usageComponent ? { usageComponent } : {}) }], edges: [] };
+    const graph = { steps: [{ key: "context", kind: "RETRIEVAL", instruction: "Compile chapter context" }, { key: "write", kind: "AGENT", ref: "writer", ...(usageComponent ? { usageComponent } : {}) }], edges: [{ from: "context", to: "write" }] };
     const seed = await seedWorkflow(graph);
     await db.workflow.update({ where: { id: seed.workflowId }, data: { key: "chapter-generation-review" } });
     await db.workflowVersion.update({ where: { id: seed.versionId }, data: { agentKeys: ["writer"] } });
@@ -198,6 +198,9 @@ describe("generation usage attribution", () => {
     const agent = await db.agent.create({ data: { workspaceId: seed.workspaceId, key: "writer", name: "Writer", createdById: seed.userId } });
     const agentVersion = await db.agentVersion.create({ data: { agentId: agent.id, number: 1, instructions: "Write", modelProfile: "CREATIVE_WRITER", skillKeys: [], createdById: seed.userId } });
     const driver = createWorkflowExecutor({ db, audit: { record: async () => {} },
+      chapterSource: { load: async () => ({ chapterId: chapter.id, chapterNumber: 1, sourceBranchId: crypto.randomUUID(), headRevisionId: null, previousChapter: null, characters: [], ambiguousNames: [], text: "Source fixture" }) },
+      retrieval: {} as never,
+      compiler: { compile: async () => ({ canDispatch: true, text: "Compiler fixture", blocks: [], storyPosition: 0, headRevisionId: null }) },
       resolvers: {
         resolveAgent: async () => ({ id: agent.id, key: "writer", versionId: agentVersion.id, versionNumber: 1,
           instructions: "Write", modelProfile: "CREATIVE_WRITER", skillKeys: [], outputSchema: null, temperature: null, maxTokens: null }),
@@ -282,6 +285,39 @@ describe("structured model responses", () => {
     expect((await driver.executeRun(runId)).status).toBe("SUCCEEDED");
     const row = await db.workflowStepRun.findFirstOrThrow({ where: { runId, stepKey: "next" } });
     expect(row.output).toMatchObject({ json: { context: { storyContext: "Hard canon: the sealed letter remains unopened.", blocks: [{ selectedIds: ["fact"] }] } } });
+  });
+});
+
+describe("chapter author instructions", () => {
+  it.each(["chapter-generation-review", "chapter-creation-review"])("preserves exact notes and pinned predecessor/profile context through every AI stage of %s", async key => {
+    const graph = { steps: [{ key: "compile_context", kind: "RETRIEVAL", instruction: "Compile story" }, ...["plan", "write", "rewrite_1", "review_final"].map(key => ({ key, kind: "AGENT", ref: "writer", instruction: "Perform this stage" }))], edges: ["compile_context", "plan", "write", "rewrite_1"].map((from, i) => ({ from, to: ["plan", "write", "rewrite_1", "review_final"][i]! })) };
+    const seed = await seedWorkflow(graph);
+    await db.workflow.update({ where: { id: seed.workflowId }, data: { key } });
+    await db.workflowVersion.update({ where: { id: seed.versionId }, data: { agentKeys: ["writer"] } });
+    const novel = await db.novel.create({ data: { workspaceId: seed.workspaceId, createdById: seed.userId, title: "Outline continuity fixture", slug: "outline" } });
+    const branch = await db.novelBranch.create({ data: { workspaceId: seed.workspaceId, novelId: novel.id, name: "main" } });
+    const revision = await db.revision.create({ data: { workspaceId: seed.workspaceId, novelId: novel.id, branchId: branch.id, number: 1, origin: "MANUAL" } });
+    await db.novelBranch.update({ where: { id: branch.id }, data: { headRevisionId: revision.id } });
+    await db.novel.update({ where: { id: novel.id }, data: { currentBranchId: branch.id } });
+    const chapter = await db.chapter.create({ data: { novelId: novel.id, number: 10, title: "Reserved chapter", createdById: seed.userId } });
+    const outline = await db.outlineVersion.create({ data: { novelId: novel.id, number: 1, content: {}, status: "APPROVED", createdById: seed.userId } });
+    const notes = "Don Juan wakes to a knock. Pak Husein brings Anton Pratama and Darma Pratama. They eat breakfast, prepare the fish mixture, then leave for the river.";
+    const runId = await seedRun(seed, graph);
+    await db.workflowRun.update({ where: { id: runId }, data: { novelId: novel.id, input: { chapterId: chapter.id, chapterNumber: 10, outlineRef: outline.id, styleNotes: notes, ...(key === "chapter-creation-review" ? { chapterCreationPins: { chapterId: chapter.id, chapterNumber: 10, chapterVersionId: null, outlineRef: outline.id, headRevisionId: revision.id } } : {}) } } });
+    const agent = await db.agent.create({ data: { workspaceId: seed.workspaceId, key: "writer", name: "Writer", createdById: seed.userId } });
+    const av = await db.agentVersion.create({ data: { agentId: agent.id, number: 1, instructions: "Use the supplied chapter instructions.", modelProfile: "CREATIVE_WRITER", skillKeys: [], createdById: seed.userId } });
+    const frame = { chapterId: chapter.id, chapterNumber: 10, sourceBranchId: branch.id, headRevisionId: revision.id, previousChapter: { chapterId: crypto.randomUUID(), chapterNumber: 9, title: "Previous evening", status: "PUBLISHED", versionId: crypto.randomUUID(), version: 2, excerpt: "Don Juan and Sofian ended the evening together.", truncated: false }, characters: [{ id: crypto.randomUUID(), key: "husein", name: "Husein Pratama", storyEntityId: null, summary: "Existing uncle profile", summaryTruncated: false }], ambiguousNames: [], text: "Saved chapter9 v2: previous evening. Existing Husein Pratama profile." };
+    const prompts: string[] = [], compilerInstructions: string[] = [];
+    const driver = createWorkflowExecutor({ db, audit: { record: async () => {} }, resolvers: { resolveAgent: async () => ({ id: agent.id, key: "writer", versionId: av.id, versionNumber: 1, instructions: av.instructions, modelProfile: "CREATIVE_WRITER", skillKeys: [], outputSchema: null, temperature: null, maxTokens: null }), resolveSkill: async () => { throw Error("No skills"); } },
+      chapterSource: { load: async input => { expect(input.authorInstructions).toBe(notes); return frame; } },
+      retrieval: {} as never, compiler: { compile: async input => { compilerInstructions.push(input.instruction); return { canDispatch: true, text: "Existing approved outline", blocks: [{ tier: 2, status: "PRESENT", provenance: {}, rows: [] }], storyPosition: 9, headRevisionId: revision.id }; } },
+      generate: { generate: async input => { prompts.push(input.messages[1]!.content); expect(input.promptVersion).toBe("chapter-author-context-v1"); const generation = await db.generation.create({ data: { workspaceId: seed.workspaceId, novelId: novel.id, task: input.task, modelProfile: input.profile, status: "SUCCEEDED" } }); return { content: "Proposed stage output", generationId: generation.id, model: "fixture" }; } },
+    });
+    expect((await driver.executeRun(runId)).status).toBe("SUCCEEDED");
+    expect(prompts).toHaveLength(4);
+    for (const prompt of [...prompts, ...compilerInstructions]) { expect(prompt).toContain(notes); expect(prompt).toContain(frame.text); }
+    const persisted = await db.workflowStepRun.findUniqueOrThrow({ where: { runId_stepKey: { runId, stepKey: "compile_context" } } });
+    expect(persisted.output).toMatchObject({ json: { authorInstructions: notes, contextProtocol: "chapter-author-context-v1", chapterSource: { previousChapter: { versionId: frame.previousChapter.versionId }, characters: frame.characters } } });
   });
 });
 
@@ -585,6 +621,17 @@ describe("recoverStaleRuns", () => {
     expect(report.orphanEnqueues).toEqual([]);
     expect(added).toEqual([]);
     expect(runId).toBeTruthy();
+  });
+  it("recovers approval delivery that raced a retained completed park job", async () => {
+    const seed = await seedWorkflow(TWO_TRANSFORMS);
+    const runId = await seedRun(seed, TWO_TRANSFORMS, "PENDING");
+    await db.workflowRun.update({ where: { id: runId }, data: { startedAt: new Date(Date.now() - 6 * 60_000) } });
+    const { added, removed, queue } = fakeQueue(new Map([[runId, "completed" as const]]));
+    const report = await executor.recoverStaleRuns(queue);
+    expect(report.orphanEnqueues).toEqual([runId]);
+    expect(removed).toEqual([runId]);
+    expect(added).toEqual([{ jobId: runId }]);
+    expect((await executor.executeRun(runId)).status).toBe("SUCCEEDED");
   });
 });
 

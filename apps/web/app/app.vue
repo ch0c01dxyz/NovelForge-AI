@@ -4,7 +4,8 @@ const route = useRoute();
 // The author home, writer and AI Studio already own their application header.
 const hasOwnHeader = computed(
   () =>
-    ["/", "/sign-in"].includes(route.path) ||
+    ["/", "/author", "/login", "/sign-in"].includes(route.path) ||
+    /^\/read\/[^/]+\/\d+\/?$/.test(route.path) ||
     /^\/workspaces\/[^/]+\/(ai-studio|novels\/[^/]+)\/?$/.test(route.path),
 );
 </script>
@@ -12,6 +13,6 @@ const hasOwnHeader = computed(
 <template>
   <div>
     <SiteHeader v-if="!hasOwnHeader" />
-    <NuxtPage />
+    <NuxtPage :page-key="/^\/read\/[^/]+\/\d+\/?$/.test(route.path) ? page => page.path : undefined" />
   </div>
 </template>

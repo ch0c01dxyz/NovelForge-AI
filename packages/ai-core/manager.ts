@@ -661,16 +661,20 @@ export class GatewayManager {
 
   /** Discover a single gateway's model catalog (admin sync path). */
   async listModelsFor(gatewayId: string): Promise<GatewayModel[]> {
-    return this.listCatalogFor(gatewayId, false);
+    return this.listCatalogFor(gatewayId, "text");
   }
 
   async listImageModelsFor(gatewayId: string): Promise<GatewayModel[]> {
-    return this.listCatalogFor(gatewayId, true);
+    return this.listCatalogFor(gatewayId, "image");
   }
 
-  private async listCatalogFor(gatewayId: string, images: boolean): Promise<GatewayModel[]> {
+  async listEmbeddingModelsFor(gatewayId: string): Promise<GatewayModel[]> {
+    return this.listCatalogFor(gatewayId, "embedding");
+  }
+
+  private async listCatalogFor(gatewayId: string, kind: "text" | "image" | "embedding"): Promise<GatewayModel[]> {
     const rec = (await this.registry.listGateways()).find((g) => g.id === gatewayId);
-    if (!rec) {
+    if (!rec || !rec.enabled) {
       // The registry omits gateways whose credential cannot be decrypted,
       // so this is a configuration fault (bad key / disabled), not a
       // transport failure — callers map it to a diagnosable error.
@@ -680,7 +684,11 @@ export class GatewayManager {
       );
     }
     const adapter = this.build(rec);
-    if (!images) return adapter.listModels();
+    if (kind === "text") return adapter.listModels();
+    if (kind === "embedding") {
+      if (!adapter.listEmbeddingModels) throw new GatewayError("UNSUPPORTED", "gateway does not support embedding catalog discovery");
+      return adapter.listEmbeddingModels();
+    }
     if (!adapter.listImageModels) throw new GatewayError("UNSUPPORTED", "gateway does not support image catalog discovery");
     return adapter.listImageModels();
   }

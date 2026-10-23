@@ -85,6 +85,7 @@ export interface StepView {
 }
 
 export interface RunDetail extends RunSummary {
+  retry?: import("./useWorkflowRuns").WorkflowRetry;
   input: unknown;
   output: unknown;
   errorMessage: string | null;

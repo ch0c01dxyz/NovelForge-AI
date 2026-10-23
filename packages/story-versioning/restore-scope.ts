@@ -89,7 +89,9 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   chapter_versions: "PINNED", // Append-only; restoring a pointer would rewrite authorship history.
   publications: "PINNED", // Release lifecycle — restore must not unpublish (Invariant 8).
 
-  // OPERATIONAL (34) — execution history and audit trail.
+  // OPERATIONAL (37) — execution history and audit trail, including cover jobs below.
+  character_discovery_batches: "OPERATIONAL",
+  story_discovery_batches: "OPERATIONAL",
   workflow_runs: "OPERATIONAL",
   workflow_run_definition_pins: "OPERATIONAL", // Immutable execution provenance follows its run.
   workflow_step_runs: "OPERATIONAL",
@@ -132,7 +134,8 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   cover_generation_batches: "OPERATIONAL",
   cover_generation_items: "OPERATIONAL",
 
-  // CONFIGURATION (17) — outside story-state restore.
+  // CONFIGURATION (18) — outside story-state restore.
+  platform_branding: "CONFIGURATION",
   novel_cover_versions: "CONFIGURATION",
   novel_model_defaults_versions: "CONFIGURATION", // Versioned routing settings, never story truth.
   novels: "CONFIGURATION", // Novel identity and slug — restore rewinds story state, not identity.

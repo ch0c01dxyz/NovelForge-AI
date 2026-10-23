@@ -69,6 +69,11 @@
           </dd>
         </div>
       </dl>
+      <section v-if="character.affiliations?.length" :aria-label="t('storySuggestions.affiliations')" class="rounded-lg border border-nf-border p-3">
+        <h4 class="text-sm font-semibold">{{ t('storySuggestions.affiliations') }}</h4>
+        <ul class="mt-2 space-y-2"><li v-for="group in character.affiliations" :key="group.groupId" class="text-sm text-nf-text-dim"><strong>{{ group.name }}</strong><p>{{ ['MEMBER', 'LEADER'].includes(group.role ?? '') ? t(`storySuggestions.${group.role}`) : group.role || group.statement }}</p></li></ul>
+        <p v-if="character.affiliationsTruncated" class="mt-2 text-xs text-nf-text-dim">{{ t('storySuggestions.moreAffiliations') }}</p>
+      </section>
 
       <div
         role="note"
@@ -90,10 +95,9 @@
 /**
  * Character sheet (NF-WF-016, Invariant 1.1): read-only detail view.
  *
- * `storyEntityId` is migration-owned and read-only (review F2): it is
- * displayed as a label and never an input. There is no edit affordance
- * anywhere here — no character UPDATE route exists (GAP-058) — and the
- * note at the bottom says so honestly. All values render as text.
+ * `storyEntityId` is displayed as a read-only label here. Explicit author
+ * linking is available in Health & Memory; this sheet directs authors there
+ * without deleting the character or its knowledge. All values render as text.
  */
 import { useLocale } from "../../composables/useLocale";
 import type { WorkspaceCharacter } from "./CharacterPanel.vue";

@@ -71,6 +71,18 @@ describe("NovelCard", () => {
     lastPublishedAt: "2026-10-01T00:00:00.000Z",
   };
 
+  it("renders a public cover and falls back cleanly when the image fails", async () => {
+    const url = '/api/public/novels/n1/cover?v=hash';
+    const w = mount(NovelCard, { props: { novel: { ...novel, coverUrl: url } }, global: { stubs } });
+    expect(w.get('img').attributes('src')).toBe(url);
+    expect(w.get('img').attributes('loading')).toBe('lazy');
+    await w.get('img').trigger('error');
+    expect(w.find('img').exists()).toBe(false);
+    expect(w.get('[role="img"]').attributes('aria-label')).toBe('publicNovel.noCover');
+    await w.setProps({ novel: { ...novel, coverUrl: url + 'new' } });
+    expect(w.get('img').attributes('src')).toBe(url + 'new');
+  });
+
   it("renders title, author, genre labels, chapter count", () => {
     const w = mount(NovelCard, { props: { novel }, global: { stubs } });
     const text = w.text();

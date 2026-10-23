@@ -29,6 +29,7 @@ export interface StepGenerator {
     temperature?: number;
     maxTokens?: number;
     outputMode?: "json_object";
+    promptVersion?: string;
   }): Promise<{ generationId: string; content: string; model: string }>;
 }
 
@@ -139,6 +140,18 @@ export interface ContextCompilerPort {
     searchReferencesWithoutNovel: boolean;
     chapterCreation?: { chapterId: string; chapterNumber: number; chapterVersionId: string | null; outlineRef: string; headRevisionId: string };
   }): Promise<CompiledStepContext>;
+}
+
+export interface ChapterSourceContext {
+  chapterVersionId?: string | null;
+  chapterId: string; chapterNumber: number; sourceBranchId: string; headRevisionId: string | null;
+  previousChapter: { chapterId: string; chapterNumber: number; title: string; status: string; versionId: string; version: number; excerpt: string; truncated: boolean } | null;
+  characters: Array<{ id: string; key: string; name: string; storyEntityId: string | null; summary: string | null; summaryTruncated: boolean }>;
+  ambiguousNames: string[];
+  text: string;
+}
+export interface ChapterSourceReader {
+  load(input: { actorUserId: string; workspaceId: string; novelId: string; chapterId: string; chapterNumber: number; authorInstructions: string }): Promise<ChapterSourceContext>;
 }
 
 /** Append-only audit sink. `createAuditService(db)` satisfies it. */

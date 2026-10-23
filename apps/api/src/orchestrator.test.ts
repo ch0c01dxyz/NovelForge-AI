@@ -577,7 +577,8 @@ describe("the orchestrator assembles the prompt from resolved definitions", () =
     // a reference containing "## Established canon" must not be able to
     // impersonate the orchestrator's own instructions.
     expect(seenPrompts).toHaveLength(1);
-    const [system, user] = seenPrompts[0]!.messages;
+    const [guard, system, user] = seenPrompts[0]!.messages;
+    expect(guard!.content).toContain("novelforge-text-safeguards-v1");
     expect(system!.role).toBe("system");
     expect(system!.content).toContain("You are the chapter writer.");
     expect(system!.content).toContain("Write in close third person.");
@@ -602,6 +603,9 @@ describe("the orchestrator assembles the prompt from resolved definitions", () =
     expect(gen.status).toBe("SUCCEEDED");
     expect(gen.task).toBe("agent:chapter-writer");
     expect(gen.promptVersion).toBe("agent:chapter-writer@v1");
+    expect(gen.contextSnapshot).toMatchObject({ textSafeguards: {
+      version: "novelforge-text-safeguards-v1", sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    } });
     const snapshot = gen.contextSnapshot as Record<string, unknown>;
     expect(snapshot["facts"]).toEqual([factId]);
     expect(snapshot["blocks"]).toBeDefined();
@@ -657,7 +661,8 @@ describe("the orchestrator assembles the prompt from resolved definitions", () =
     });
     expect(res.statusCode, res.body).toBe(201);
 
-    const [system, user] = seenPrompts[0]!.messages;
+    const [guard, system, user] = seenPrompts[0]!.messages;
+    expect(guard!.content).toContain("novelforge-text-safeguards-v1");
     // The excerpt reaches the model in the USER turn, quoted as source
     // material, never as system authority.
     expect(user!.content).toContain("## Reference excerpts");
@@ -700,7 +705,7 @@ describe("the orchestrator assembles the prompt from resolved definitions", () =
       novelId,
     });
     expect(res.statusCode, res.body).toBe(201);
-    const [, user] = seenPrompts[0]!.messages;
+    const user = seenPrompts[0]!.messages.find(message => message.role === "user");
     expect(user!.content).toContain("House style guide");
   });
 });
@@ -944,6 +949,7 @@ describe("streamed orchestration", () => {
     // NF-WF-003: the snapshot now carries the shared compiler's provenance
     // blocks (the old {facts} shape is the floor, not the ceiling).
     const snapshot = gen.contextSnapshot as Record<string, unknown>;
+    expect(snapshot.textSafeguards).toMatchObject({ version: "novelforge-text-safeguards-v1" });
     expect(snapshot["facts"]).toEqual([factId]);
     expect(snapshot["blocks"]).toBeDefined();
     expect(Array.isArray(snapshot["blocks"])).toBe(true);
@@ -970,7 +976,8 @@ describe("streamed orchestration", () => {
     expect(gen.status).toBe("INCOMPLETE");
     // A partial generation must not carry the provenance of a complete one.
     expect(gen.promptVersion).toBeNull();
-    expect(gen.contextSnapshot).toEqual({});
+    expect(gen.contextSnapshot).toMatchObject({ textSafeguards: { version: "novelforge-text-safeguards-v1" } });
+    expect(gen.contextSnapshot).not.toHaveProperty("blocks");
   });
 
   it("refuses to stream an agent with a structured output contract", async () => {

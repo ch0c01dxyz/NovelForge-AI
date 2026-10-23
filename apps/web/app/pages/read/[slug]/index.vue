@@ -19,11 +19,16 @@ import FollowButton from "../../../components/social/FollowButton.vue";
 // ReaderNotificationBell (pathPrefix), so the bare template name needs an
 // explicit runtime import.
 import NotificationBell from "../../../components/reader/NotificationBell.vue";
+import NovelCoverImage from "../../../components/discovery/NovelCoverImage.vue";
 
 interface PublicNovel {
   id: string;
   title: string;
   slug: string;
+  coverUrl?: string | null;
+  publicSynopsis?: string | null;
+  genres?: string[];
+  audience?: string | null;
   // NF-WF-019A (Q8, GAP-068): additive aggregate count on the frozen
   // 013 shape — optional for backward compatibility with cached data.
   followerCount?: number;
@@ -56,6 +61,10 @@ const chapters = ref<PublishedChapter[]>([]);
 const loading = ref(true);
 const notFound = ref(false);
 const error = ref<string | null>(null);
+const publicationRange = computed(() => {
+  const dates = chapters.value.map(chapter => Date.parse(chapter.publishedAt)).filter(Number.isFinite);
+  return dates.length ? { first: new Date(Math.min(...dates)).toISOString(), last: new Date(Math.max(...dates)).toISOString() } : null;
+});
 
 /** "You stopped at chapter N" marker (NF-WF-014, Invariant 5) — the
  * stored chapter number, resolved lazily against the published list.
@@ -112,7 +121,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="mx-auto max-w-[700px] px-5 py-12 sm:px-10">
+  <main class="mx-auto max-w-[1000px] px-5 py-8 sm:px-10 sm:py-12">
     <div class="mb-6 flex justify-end">
       <NotificationBell />
     </div>
@@ -123,6 +132,9 @@ onMounted(async () => {
     </div>
     <div v-else-if="error" role="alert" class="text-sm text-nf-text-dim">{{ error }}</div>
     <article v-else-if="novel">
+      <div class="grid items-start gap-6 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-8">
+      <NovelCoverImage :cover-url="novel.coverUrl" :title="novel.title" eager class="mx-auto w-40 sm:w-full" />
+      <div class="min-w-0 break-words">
       <div class="nf-overline !text-nf-text-dim">{{ t("reader.novelOverline") }}</div>
       <h1 class="mt-3 font-nf-literary text-[30px] font-semibold leading-[1.2]">
         {{ novel.title }}
@@ -136,6 +148,19 @@ onMounted(async () => {
           {{ novel.author.displayName }}
         </NuxtLink>
       </p>
+      <div class="mt-4 flex flex-wrap gap-2" :aria-label="t('publicNovel.genres')">
+        <span v-for="genre in novel.genres ?? []" :key="genre" class="rounded-full border border-nf-border px-3 py-1 text-xs text-nf-text-dim">{{ t(`genre.${genre}`) }}</span>
+        <span v-if="!novel.genres?.length" class="text-xs text-nf-text-faint">{{ t('publicNovel.genresUnset') }}</span>
+        <span v-if="novel.audience" class="rounded-full border border-nf-warn/40 px-3 py-1 text-xs text-nf-warn">{{ t(`audience.${novel.audience}`) }}</span>
+      </div>
+      <dl class="mt-5 grid grid-cols-2 gap-x-5 gap-y-4 text-[13px]">
+        <div><dt class="text-nf-text-faint">{{ t('reader.chapters') }}</dt><dd class="mt-1 font-semibold tabular-nums">{{ chapters.length }}</dd></div>
+        <div v-if="publicationRange"><dt class="text-nf-text-faint">{{ t('publicNovel.updated') }}</dt><dd class="mt-1 tabular-nums"><time :datetime="publicationRange.last">{{ formatDate(publicationRange.last) }}</time></dd></div>
+        <div v-if="publicationRange"><dt class="text-nf-text-faint">{{ t('publicNovel.firstPublished') }}</dt><dd class="mt-1 tabular-nums"><time :datetime="publicationRange.first">{{ formatDate(publicationRange.first) }}</time></dd></div>
+      </dl>
+      <NuxtLink v-if="chapters.length" :to="`/read/${encodeURIComponent(novel.slug)}/${stoppedAt ?? chapters[0]!.number}`" class="mt-5 inline-flex items-center gap-2 rounded-lg bg-nf-accent px-5 py-2.5 text-sm font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="size-4" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>{{ t(stoppedAt === null ? 'publicNovel.startReading' : 'publicNovel.continueReading') }}
+      </NuxtLink>
       <!-- NF-WF-019A: engagement affordances for signed-in readers only.
            Anonymous readers see the follower count as static text
            (Invariant 1). -->
@@ -164,6 +189,12 @@ onMounted(async () => {
       >
         {{ t("social.actionFailed") }}
       </p>
+      </div>
+      </div>
+      <section class="mt-8 rounded-xl border border-nf-border bg-nf-bg-1 p-5 sm:p-6" :aria-label="t('publicNovel.synopsis')">
+        <h2 class="nf-section-label !text-nf-text-dim">{{ t('publicNovel.synopsis') }}</h2>
+        <p class="mt-4 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-nf-text-dim" data-testid="public-synopsis">{{ novel.publicSynopsis || t('publicNovel.synopsisUnset') }}</p>
+      </section>
       <section aria-label="chapters" class="mt-10">
         <h2 class="nf-section-label !text-nf-text-dim">{{ t("reader.chapters") }}</h2>
         <p v-if="stoppedAt !== null" class="mt-3 text-[13px] text-nf-text-dim">

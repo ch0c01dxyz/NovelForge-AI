@@ -11,6 +11,7 @@
  * the ciphertext (CLAUDE.md §14).
  */
 import type { NovelForgeDb } from "@novelforge/database";
+import { TEXT_SAFEGUARDS, withTextSafeguards } from "./text-safeguards.ts";
 import { createNovelModelDefaultsServices, type NovelModelDefaultsView, type NovelModelDefaultsScope, type NovelModelDefaultsWrite } from "./novel-model-defaults.ts";
 import {
   encryptCredential,
@@ -49,6 +50,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "gateway.deleted",
   "gateways.health-checked",
   "model-profile.mapped",
+  "platform-branding.updated",
   "model-profile.removed",
   "model.updated",
   "models.synced",
@@ -175,7 +177,7 @@ export interface AiServices {
     actorPlatformRole: PlatformRole;
     actorUserId: string;
     gatewayId: string;
-    kind?: "image";
+    kind?: "image" | "embedding";
   }): Promise<{ discovered: number }>;
   listModels(actorPlatformRole: PlatformRole): Promise<ModelView[]>;
   listModelCatalog(input: { actorUserId: string; workspaceId?: string; actorPlatformRole?: PlatformRole; profile?: ModelProfile }): Promise<Array<{ modelRef: string | null; providerModelId: string; displayName: string | null; gatewayId: string; gatewayName: string; selectable: boolean; unavailableReason: "NOT_SYNCED" | "MODEL_DISABLED" | "NOT_MAPPED" | null }>>;
@@ -596,7 +598,8 @@ export function createAiServices(deps: {
       let models;
       const started = Date.now();
       try {
-        models = input.kind === "image" ? await manager.listImageModelsFor(input.gatewayId) : await manager.listModelsFor(input.gatewayId);
+        models = input.kind === "image" ? await manager.listImageModelsFor(input.gatewayId)
+          : input.kind === "embedding" ? await manager.listEmbeddingModelsFor(input.gatewayId) : await manager.listModelsFor(input.gatewayId);
       } catch (err) {
         const isGatewayError = err instanceof GatewayError;
         const category = isGatewayError ? err.category : "INTERNAL";
@@ -617,7 +620,7 @@ export function createAiServices(deps: {
           action: "models.sync-failed",
           entityType: "AIGateway",
           entityId: input.gatewayId,
-          payload: { category },
+          payload: { category, ...(input.kind ? { kind: input.kind } : {}) },
         });
         // An unreachable gateway is an upstream problem (502). An
         // unreadable credential or disabled row is a configuration fault
@@ -666,7 +669,7 @@ export function createAiServices(deps: {
         const observed = new Map(
           existing.map((r) => [
             r.modelId,
-            r.capabilities.filter((c) => c.startsWith(OBSERVED_CAPABILITY_PREFIX) || c === "image-generation"),
+            r.capabilities.filter((c) => c.startsWith(OBSERVED_CAPABILITY_PREFIX) || c === "image-generation" || c === "embeddings"),
           ]),
         );
         for (const m of models) {
@@ -684,8 +687,8 @@ export function createAiServices(deps: {
             },
             update: {
               displayName: m.displayName ?? null,
-              capabilities: [...new Set([...m.capabilities, ...keep, ...(input.kind === "image" ? existing.find(row => row.modelId === m.modelId)?.capabilities ?? [] : [])])],
-              contextWindow: m.contextWindow ?? null,
+              capabilities: [...new Set([...m.capabilities, ...keep, ...(input.kind ? existing.find(row => row.modelId === m.modelId)?.capabilities ?? [] : [])])],
+              ...(input.kind && m.contextWindow === undefined ? {} : { contextWindow: m.contextWindow ?? null }),
               discoveredAt: new Date(),
             },
           });
@@ -697,7 +700,7 @@ export function createAiServices(deps: {
             action: "models.synced",
             entityType: "AIGateway",
             entityId: input.gatewayId,
-            payload: { discovered },
+            payload: { discovered, ...(input.kind ? { kind: input.kind } : {}) },
           },
         });
       }, { timeout: 120_000 });
@@ -781,7 +784,8 @@ export function createAiServices(deps: {
         db.aIModel.findMany({ where: { gatewayId: { in: gateways.map(g => g.id) } }, select: { id: true, gatewayId: true, modelId: true, enabled: true, displayName: true, capabilities: true } }),
         db.modelProfileMapping.findMany({ where: { profile: input.profile ?? { not: "IMAGE_GENERATOR" }, enabled: true }, select: { modelRef: true } }),
         Promise.all(gateways.map(async gateway => {
-          try { return { gateway, models: input.profile === "IMAGE_GENERATOR" ? await manager.listImageModelsFor(gateway.id) : await manager.listModelsFor(gateway.id) }; }
+          try { return { gateway, models: input.profile === "IMAGE_GENERATOR" ? await manager.listImageModelsFor(gateway.id)
+            : input.profile === "EMBEDDING" ? await manager.listEmbeddingModelsFor(gateway.id) : await manager.listModelsFor(gateway.id) }; }
           catch (error) {
             if (error instanceof GatewayError) throw new BadGatewayError("live model catalog could not be loaded");
             throw error;
@@ -798,7 +802,8 @@ export function createAiServices(deps: {
           seen.add(model.modelId);
           const local = known.get(JSON.stringify([gateway.id, model.modelId]));
           const imageUnavailable = input.profile === "IMAGE_GENERATOR" && (!local?.capabilities.includes("image-generation") || local.capabilities.includes("nf:image-output=incompatible"));
-          const reason = !local ? "NOT_SYNCED" : !local.enabled || imageUnavailable ? "MODEL_DISABLED" : !eligible.has(local.id) ? "NOT_MAPPED" : null;
+          const embeddingUnavailable = input.profile === "EMBEDDING" && !local?.capabilities.includes("embeddings");
+          const reason = !local ? "NOT_SYNCED" : !local.enabled || imageUnavailable || embeddingUnavailable ? "MODEL_DISABLED" : !eligible.has(local.id) ? "NOT_MAPPED" : null;
           rows.push({ modelRef: local?.id ?? null, providerModelId: model.modelId, displayName: model.displayName ?? local?.displayName ?? null, gatewayId: gateway.id, gatewayName: gateway.name, selectable: reason === null, unavailableReason: reason });
         }
       }
@@ -821,6 +826,7 @@ export function createAiServices(deps: {
       const model = await db.aIModel.findUnique({ where: { id: input.modelId } });
       if (!model) throw new NotFoundError("model");
       if (input.profile === "IMAGE_GENERATOR" && !model.capabilities.includes("image-generation")) throw new ConflictError("model has no image-output catalog capability");
+      if (input.profile === "EMBEDDING" && input.enabled !== false && !model.capabilities.includes("embeddings")) throw new ConflictError("model has no embedding catalog capability");
       await db.$transaction(async tx => {
       const mapping = await tx.modelProfileMapping.upsert({
         where: {
@@ -1019,7 +1025,7 @@ export function createAiServices(deps: {
           artifactId: input.artifactId ?? null,
           modelProfile: input.profile,
           promptVersion: input.promptVersion ?? null,
-          ...(routing ? { contextSnapshot: { routing } } : {}),
+          contextSnapshot: { textSafeguards: TEXT_SAFEGUARDS, ...(routing ? { routing } : {}) },
           status: "IN_PROGRESS",
         },
         select: { id: true },
@@ -1030,7 +1036,7 @@ export function createAiServices(deps: {
         const result = await manager.generate({
           profile: input.profile,
           preferredModelRef,
-          messages: input.messages,
+          messages: withTextSafeguards(input.messages),
           temperature: input.temperature,
           maxTokens: input.maxTokens,
           outputMode: input.outputMode,
@@ -1100,7 +1106,7 @@ export function createAiServices(deps: {
         // else is our own bug and is rethrown as-is so it is not
         // misreported as a provider fault.
         if (err instanceof GatewayError) {
-          throw new BadGatewayError(message);
+          throw Object.assign(new BadGatewayError(message), { generationId: generation.id });
         }
         throw err;
       }
@@ -1215,7 +1221,7 @@ export function createAiServices(deps: {
           component: input.component ?? "OTHER",
           artifactId: input.artifactId ?? null,
           modelProfile: input.profile,
-          ...(routing ? { contextSnapshot: { routing } } : {}),
+          contextSnapshot: { textSafeguards: TEXT_SAFEGUARDS, ...(routing ? { routing } : {}) },
           status: "IN_PROGRESS",
         },
         select: { id: true },
@@ -1233,7 +1239,7 @@ export function createAiServices(deps: {
           for await (const chunk of manager.generateStream({
             profile: input.profile,
             preferredModelRef,
-            messages: input.messages,
+            messages: withTextSafeguards(input.messages),
             temperature: input.temperature,
             maxTokens: input.maxTokens,
             generationId: generation.id,

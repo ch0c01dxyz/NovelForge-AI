@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BackLink from "../../components/ui/BackLink.vue";
+import PlatformIdentity from "../../components/platform-admin/PlatformIdentity.vue";
 /**
  * Platform administration page (NF-WF-018B): gateway/model/profile
  * management and the routing overview, SUPER_ADMIN only.
@@ -35,7 +36,7 @@ import AdminPager from "../../components/platform-admin/AdminPager.vue";
 const { t } = useLocale();
 const admin = usePlatformAdmin();
 
-type TabKey = "gateways" | "models" | "profiles" | "routing" | "audit";
+type TabKey = "gateways" | "models" | "profiles" | "routing" | "audit" | "identity";
 const tab = ref<TabKey>("gateways");
 const role = ref<PlatformRole>(null);
 const roleLoaded = ref(false);
@@ -115,6 +116,7 @@ const actionError = ref<string | null>(null);
 const isSuperAdmin = computed(() => admin.isSuperAdmin(role.value));
 
 const tabs = computed<{ key: TabKey; labelKey: string }[]>(() => [
+  { key: "identity", labelKey: "platformIdentity.title" },
   { key: "gateways", labelKey: "platformAdmin.tabs.gateways" },
   { key: "models", labelKey: "platformAdmin.tabs.models" },
   { key: "profiles", labelKey: "platformAdmin.tabs.profiles" },
@@ -353,7 +355,7 @@ onMounted(async () => {
 
 <template>
   <div class="mx-auto max-w-6xl px-5 py-10 sm:px-8">
-    <BackLink to="/" :label="t('authorHome.backHome')" class="mb-4" />
+    <BackLink to="/author" :label="t('authorHome.backHome')" class="mb-4" />
     <h1 class="mb-6 font-nf-literary text-[30px] font-semibold text-nf-text">
       {{ t("platformAdmin.title") }}
     </h1>
@@ -398,8 +400,9 @@ onMounted(async () => {
         {{ actionError }}
       </p>
 
+      <PlatformIdentity v-if="tab === 'identity'" />
       <GatewayList
-        v-if="tab === 'gateways'"
+        v-else-if="tab === 'gateways'"
         :gateways="gateways"
         :loading="gatewaysLoading"
         :error="gatewaysError"
@@ -471,6 +474,7 @@ onMounted(async () => {
               <option value="model.updated">model.updated</option>
               <option value="models.synced">models.synced</option>
               <option value="models.sync-failed">models.sync-failed</option>
+              <option value="platform-branding.updated">platform-branding.updated</option>
             </select>
           </label>
           <label class="text-[12px] font-semibold text-nf-text">

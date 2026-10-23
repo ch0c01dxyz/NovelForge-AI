@@ -237,7 +237,8 @@ export function createOrchestratorServices(deps: {
       where: { id: generationId },
       data: {
         promptVersion: `agent:${agentKey}@v${agentVersionNumber}`,
-        contextSnapshot: { ...contextSnapshot, ...(prior?.routing ? { routing: prior.routing } : {}) } as never,
+        contextSnapshot: { ...contextSnapshot, ...(prior?.routing ? { routing: prior.routing } : {}),
+          ...(prior?.textSafeguards ? { textSafeguards: prior.textSafeguards } : {}) } as never,
       },
     });
   }

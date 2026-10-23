@@ -25,7 +25,7 @@ import type { NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError, isExclusionViolation } from "./platform.ts";
 import type { AuditService } from "./audit.ts";
 // Head CAS for every covered mutation (STORY-VERSIONING.md C3/C4).
-import { advanceForMutation, createWithRevision } from "./revisions.ts";
+import { advanceForMutation, advanceHead, createWithRevision, type RevisionTx } from "./revisions.ts";
 
 // --- Views ---
 
@@ -35,6 +35,9 @@ export interface CharacterView {
   key: string;
   name: string;
   summary: string | null;
+  storyEntityId: string | null;
+  affiliations?: { groupId: string; name: string; statement: string; role: string | null }[];
+  affiliationsTruncated?: boolean;
   createdAt: Date;
 }
 
@@ -80,6 +83,14 @@ export interface CharacterScope {
   novelId: string;
 }
 
+export interface CharacterIdentityOptions {
+  character: { id: string; name: string; storyEntityId: string | null };
+  branchId: string;
+  headRevisionId: string | null;
+  candidates: { id: string; name: string; key: string }[];
+  hasMore: boolean;
+}
+
 export interface CharacterServices {
   createCharacter(input: CharacterScope & {
     key: string;
@@ -88,6 +99,15 @@ export interface CharacterServices {
   }): Promise<CharacterView>;
 
   listCharacters(input: CharacterScope & { take: number; skip: number }): Promise<CharacterView[]>;
+
+  getIdentityOptions(input: CharacterScope & {
+    characterId: string; q?: string; take: number; skip: number;
+  }): Promise<CharacterIdentityOptions>;
+
+  linkStoryEntity(input: CharacterScope & {
+    characterId: string; storyEntityId: string;
+    expectedBranchId: string; expectedHeadRevisionId: string | null;
+  }): Promise<{ characterId: string; storyEntityId: string; revisionId: string; checkpointId: string | null }>;
 
   deleteCharacter(input: CharacterScope & { characterId: string }): Promise<void>;
 
@@ -187,17 +207,38 @@ export function createCharacterServices(deps: {
     workspaceId: string,
     novelId: string,
     capability: Capability,
+    reader: Pick<NovelForgeDb, "membership" | "novel"> = db,
   ): Promise<void> {
-    const membership = await db.membership.findUnique({
+    const membership = await reader.membership.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: actorUserId } },
       select: { role: true },
     });
-    const novel = await db.novel.findFirst({
+    const novel = await reader.novel.findFirst({
       where: { id: novelId, workspaceId },
       select: { id: true },
     });
     if (!membership || !novel) throw new NotFoundError("novel");
     requireCapability(membership.role, capability);
+  }
+
+  async function lockIdentityScope(tx: RevisionTx, scope: CharacterScope, write: boolean) {
+    await tx.$queryRaw`SELECT id FROM workspaces WHERE id = ${scope.workspaceId}::uuid FOR SHARE`;
+    await tx.$queryRaw`SELECT id FROM memberships WHERE workspace_id = ${scope.workspaceId}::uuid AND user_id = ${scope.actorUserId}::uuid FOR SHARE`;
+    if (write) {
+      await tx.$queryRaw`SELECT id FROM novels WHERE id = ${scope.novelId}::uuid AND workspace_id = ${scope.workspaceId}::uuid FOR NO KEY UPDATE`;
+    } else {
+      await tx.$queryRaw`SELECT id FROM novels WHERE id = ${scope.novelId}::uuid AND workspace_id = ${scope.workspaceId}::uuid FOR SHARE`;
+    }
+    await gate(scope.actorUserId, scope.workspaceId, scope.novelId, write ? "canon:manage" : "canon:read", tx);
+    const novel = await tx.novel.findUniqueOrThrow({ where: { id: scope.novelId }, select: { currentBranchId: true } });
+    const branch = await tx.novelBranch.findFirst({
+      where: { novelId: scope.novelId, ...(novel.currentBranchId ? { id: novel.currentBranchId } : { name: "main" }) },
+      select: { id: true },
+    });
+    if (!branch) throw new ConflictError("the current story branch is unavailable");
+    if (write) await tx.$queryRaw`SELECT id FROM novel_branches WHERE id = ${branch.id}::uuid FOR UPDATE`;
+    else await tx.$queryRaw`SELECT id FROM novel_branches WHERE id = ${branch.id}::uuid FOR SHARE`;
+    return tx.novelBranch.findUniqueOrThrow({ where: { id: branch.id }, select: { id: true, name: true, headRevisionId: true } });
   }
 
   /**
@@ -269,6 +310,7 @@ export function createCharacterServices(deps: {
         key: created.key,
         name: created.name,
         summary: created.summary,
+        storyEntityId: created.storyEntityId,
         createdAt: created.createdAt,
       };
     },
@@ -280,19 +322,95 @@ export function createCharacterServices(deps: {
         orderBy: { createdAt: "asc" },
         take,
         skip,
+        include: { storyEntity: { select: { facts: { where: { workspaceId, novelId, status: "ACTIVE", predicate: { startsWith: "affiliation:" }, objectEntity: { kind: { in: ["FACTION","ORGANIZATION"] } } }, select: { statement: true, objectEntity: { select: { id: true, name: true } } }, take: 51, orderBy: { createdAt: "desc" } } } } },
       });
+      const groupIds = [...new Set(rows.flatMap(row => row.storyEntity?.facts.slice(0, 50).flatMap(fact => fact.objectEntity ? [fact.objectEntity.id] : []) ?? []))];
+      const roles = groupIds.length ? await db.canonFact.findMany({ where: {
+        workspaceId, novelId, status: "ACTIVE", entityId: { in: rows.flatMap(row => row.storyEntityId ? [row.storyEntityId] : []) },
+        predicate: { in: groupIds.map(id => `affiliation-role:${id}`) },
+      }, select: { entityId: true, predicate: true, objectText: true } }) : [];
+      const roleByGroup = new Map(roles.map(role => [`${role.entityId}:${role.predicate}`, role.objectText]));
       return rows.map((row) => ({
         id: row.id,
         novelId: row.novelId,
         key: row.key,
         name: row.name,
         summary: row.summary,
-        // NF-WF-016 (GAP-060): read-only display of the migration-owned
-        // character<->story-entity link. Read shape only — no writer
-        // exists (GAP-058); the UI renders it as a label, never an input.
+        // Identity changes use the explicit, versioned link action.
         storyEntityId: row.storyEntityId,
+        affiliations: (row.storyEntity?.facts ?? []).slice(0, 50).flatMap(fact => fact.objectEntity ? [{ groupId: fact.objectEntity.id, name: fact.objectEntity.name, statement: fact.statement, role: roleByGroup.get(`${row.storyEntityId}:affiliation-role:${fact.objectEntity.id}`) ?? null }] : []),
+        affiliationsTruncated: (row.storyEntity?.facts.length ?? 0) > 50,
         createdAt: row.createdAt,
       }));
+    },
+
+    async getIdentityOptions({ characterId, q, take, skip, ...scope }) {
+      await gate(scope.actorUserId, scope.workspaceId, scope.novelId, "canon:read");
+      return db.$transaction(async (tx) => {
+        const branch = await lockIdentityScope(tx, scope, false);
+        const character = await tx.character.findFirst({
+          where: { id: characterId, novelId: scope.novelId, workspaceId: scope.workspaceId },
+          select: { id: true, name: true, storyEntityId: true },
+        });
+        if (!character) throw new NotFoundError("character");
+        const search = q?.trim();
+        const rows = await tx.storyEntity.findMany({
+          where: {
+            novelId: scope.novelId, kind: "CHARACTER", characters: { none: {} },
+            ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { key: { contains: search, mode: "insensitive" as const } }] } : {}),
+          },
+          orderBy: [{ name: "asc" }, { key: "asc" }, { id: "asc" }],
+          select: { id: true, name: true, key: true }, take: take + 1, skip,
+        });
+        return { character, branchId: branch.id, headRevisionId: branch.headRevisionId, candidates: rows.slice(0, take), hasMore: rows.length > take };
+      });
+    },
+
+    async linkStoryEntity({ characterId, storyEntityId, expectedBranchId, expectedHeadRevisionId, ...scope }) {
+      await gate(scope.actorUserId, scope.workspaceId, scope.novelId, "canon:manage");
+      try {
+        return await db.$transaction(async (tx) => {
+          const branch = await lockIdentityScope(tx, scope, true);
+          if (branch.id !== expectedBranchId) throw new ConflictError("the current story branch changed; refresh the identity choices");
+          const character = await tx.character.findFirst({
+            where: { id: characterId, novelId: scope.novelId, workspaceId: scope.workspaceId },
+            select: { id: true, storyEntityId: true },
+          });
+          if (!character) throw new NotFoundError("character");
+          const entity = await tx.storyEntity.findFirst({ where: { id: storyEntityId, novelId: scope.novelId }, select: { id: true, kind: true } });
+          if (!entity) throw new NotFoundError("story entity");
+          if (entity.kind !== "CHARACTER") throw new ConflictError("the selected story entity is not a character");
+          if (!branch.headRevisionId) throw new ConflictError("no baseline exists for this novel");
+          // A lost-response replay carries the pre-link head; it must not create history twice.
+          if (character.storyEntityId === storyEntityId) return { characterId, storyEntityId, revisionId: branch.headRevisionId, checkpointId: null };
+          if (character.storyEntityId !== null) throw new ConflictError("this character already has a different story identity");
+          const claimed = await tx.character.findFirst({ where: { storyEntityId }, select: { id: true } });
+          if (claimed) throw new ConflictError("the selected story identity is already linked to another character");
+          // The required snapshot must describe the null link, before any character write.
+          const mutation = await advanceHead(tx, {
+            ...scope, branchName: branch.name, expectedHeadRevisionId, operation: "character.identity.link", origin: "MANUAL",
+            tables: ["characters"], items: [{ entityType: "Character", entityId: characterId, operation: "UPDATE" }],
+            checkpoint: { kind: "PRE_MUTATION", pin: "PREVIOUS", label: "Before character identity link" },
+          });
+          const linked = await tx.character.updateMany({
+            where: { id: characterId, novelId: scope.novelId, workspaceId: scope.workspaceId, storyEntityId: null },
+            data: { storyEntityId },
+          });
+          if (linked.count !== 1) throw new ConflictError("the character identity changed; refresh the identity choices");
+          await tx.auditLog.create({ data: {
+            actorUserId: scope.actorUserId, workspaceId: scope.workspaceId, action: "character.identity-linked", entityType: "Character", entityId: characterId,
+            payload: { novelId: scope.novelId, storyEntityId, previousStoryEntityId: null, branchId: branch.id, revisionId: mutation.revisionId, checkpointId: mutation.checkpointId },
+          } });
+          return { characterId, storyEntityId, revisionId: mutation.revisionId, checkpointId: mutation.checkpointId };
+        }, { timeout: 30_000 });
+      } catch (error) {
+        const failure = error as { code?: string; meta?: { code?: string } };
+        if (failure?.code === "P2002") throw new ConflictError("the selected story identity is already linked to another character");
+        if (["P2003", "P2039", "P2034", "40P01", "40001"].includes(failure?.code ?? "") || ["40P01", "40001"].includes(failure?.meta?.code ?? "")) {
+          throw new ConflictError("the story identity changed during linking; refresh the identity choices");
+        }
+        throw error;
+      }
     },
 
     async deleteCharacter({ actorUserId, workspaceId, novelId, characterId }) {

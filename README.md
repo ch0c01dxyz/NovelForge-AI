@@ -8,6 +8,42 @@ chapter workflows, continuity review, recoverable revisions, and a public reader
 NovelForge targets stories of **2,000–2,500+ chapters**. This is a design goal,
 not a production-scale acceptance claim. The UI supports **English and Bahasa Indonesia**.
 
+## Screenshots
+
+Examples from development captures, including demonstration stories and test data.
+These illustrate the interface rather than release acceptance; labels and available
+models depend on locale and configuration. Click an image to view it at full size.
+
+### Writer workspace and chapter workflow
+
+Write and navigate chapters alongside AI generation, review results and candidate
+canon. Saving a chapter, accepting a draft and approving canon are separate actions.
+
+[![Writer workspace with a chapter draft, review findings and workflow steps](docs/screenshots/chapter-workflow.png)](docs/screenshots/chapter-workflow.png)
+
+### Author tools
+
+| Language suggestions | AI Studio |
+| --- | --- |
+| Review the original and proposed wording before using or ignoring a suggestion. | Manage workspace agents, reusable skills and workflows; the starter pack includes context and continuity skills. |
+| [![Language polish comparison with Use suggestion and Ignore controls](docs/screenshots/language-suggestions.png)](docs/screenshots/language-suggestions.png) | [![AI Studio showing published context distillation and continuity skills](docs/screenshots/ai-studio.png)](docs/screenshots/ai-studio.png) |
+
+### Public novel page
+
+Readers can see the cover, author, genres, publication information and chapter list.
+The synopsis area shows an empty state when no public synopsis has been provided.
+
+[![Public novel details with cover, genre badges and a Start reading button](docs/screenshots/novel-details.png)](docs/screenshots/novel-details.png)
+
+### Mobile cover and reader controls
+
+| Cover Studio · Bahasa Indonesia | Reading preferences · English |
+| --- | --- |
+| Choose a generated cover candidate and apply it explicitly. | Adjust font family, font size, line height, letter spacing and reading theme. |
+| [<img src="docs/screenshots/cover-studio-mobile.png" alt="Mobile cover gallery with a selected candidate and an apply button" width="300">](docs/screenshots/cover-studio-mobile.png) | [<img src="docs/screenshots/reader-settings-mobile.png" alt="Mobile reading settings with typography controls and dark or light themes" width="300">](docs/screenshots/reader-settings-mobile.png) |
+
+Screenshot provenance is recorded in [docs/screenshots](docs/screenshots/README.md).
+
 ## Project status
 
 **Active development — not a general production release.** Updated 2026-10-23.

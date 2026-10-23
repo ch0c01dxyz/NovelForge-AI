@@ -1,5 +1,14 @@
 # Current Project State
 
+## README screenshot gallery — 2026-10-23
+
+Author requested interface/feature screenshots and authorized commit/push.
+README now links six visually inspected existing development captures, copied
+unchanged into docs/screenshots with provenance: chapter workflow, language
+suggestions, AI Studio, public novel details, mobile covers and reading settings.
+Examples are explicitly illustrative; no fresh runtime or acceptance claim.
+Documentation/assets only; no live data mutation or generation required.
+
 ## CI fixture compatibility repair verified locally — 2026-10-23
 
 GitHub39971942675 at3a4d9dd passed lint/typecheck but failed83tests/10suites.

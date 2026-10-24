@@ -20,6 +20,7 @@ import { GatewayManager, type AIGateway, type GatewayRecord } from "@novelforge/
 import { createAuthService } from "@novelforge/auth";
 import { prismaSessionStore, prismaUserStore } from "./auth-stores.ts";
 import { registerAuthRoutes } from "./auth-routes.ts";
+import { registerHttpBoundary } from "./http-boundary.ts";
 import { registerPlatformRoutes } from "./platform-routes.ts";
 import { registerBrandingRoutes } from "./branding-routes.ts";
 import { registerManuscriptRoutes } from "./manuscript-routes.ts";
@@ -188,6 +189,7 @@ export async function buildApp(
   options: BuildAppOptions = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
+    trustProxy: env.TRUST_PROXY ?? false,
     // Structured JSON logs (pino) with a request ID on every line; honor an
     // inbound x-request-id so traces correlate across services.
     logger: env.NODE_ENV === "test" ? false : { level: "info" },
@@ -202,6 +204,7 @@ export async function buildApp(
   });
 
   await app.register(cookie);
+  registerHttpBoundary(app, env);
   // NF-WF-017A: the chapter-import file route needs multipart bodies.
   // The plugin-level fileSize cap is the route's IMPORT_BODY_LIMIT
   // (manuscript-routes); per-format caps and type sniffing stay in the

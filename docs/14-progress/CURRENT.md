@@ -1,5 +1,335 @@
 # Current Project State
 
+## Real local novel and cover acceptance — 2026-10-24–25
+
+One private staging copy of *Kaisar dari Masa Depan* is available in the owner's
+original workspace. Reviewed INSERT ONLY transfer:43 tables/1,035 rows,
+10 chapters/18 versions,10 characters,14 canon facts and6 references. Native
+clone rehearsal, exact row read-back, collision refusal and fresh checkpoint
+48ff3ced-ff30-453c-a7bd-9004d18561b2 passed. Local source comparison confirmed
+all selected rows unchanged. Old publications/reviews/snapshots/credentials
+were excluded; staging novel/chapters remain DRAFT.
+
+Correct modern chapter workflow66d0f5c1-7f7a-4c52-86de-b6928714f5ee produced
+a1,261-word Indonesian alternative using actual Qwen3.8Max after generation,
+two corrections, review and extraction. Browser preview matched the saved
+artifact. Status is AWAITING_APPROVAL: one minor final finding remains, not a
+clean/human-approved review. Independent automated review confirmed prior
+grounded fixes;16/19 citations contiguous, all23/23 newline/omission-separated
+fragments matched. One citation silently joins excerpts across omitted text.
+Original Bab10 remains1,484 words/version1; canon14, publications0. Historical
+failed requests and the prior1,309-word candidate remain retained. Planner,
+writer/continuity defaults now use working Qwen; historical mappings retained.
+
+Real gpt-image-2 cover succeeded after repairing a missing staging POST route
+and isolated router build. Image327,440 bytes, hash18a0cb82…61d2a5d0; normal
+apply and saved-image read-backs matched. Temporary provider, upstream key,
+NovelForge gateway/models/mappings removed and verified; original provider/key
+IDs preserved, SQLite/WAL/journal/preimage scans clean, image still readable.
+Desktop/mobile editor/references, cover studio and tenant boundary checks passed.
+All five services active, no active jobs or temporary gateway/catalog entries.
+
+This proves the recorded real-data staging flow, not every production release
+gate. Embedding-backed retrieval, full scale/load and remaining off-host/PITR/
+router+image backup/external alert acceptance are not newly proved. Author
+approval and deferred human screen-reader acceptance remain separate. No
+commit/push; existing WIP/stash preserved. See
+[real-novel acceptance](STAGING-REAL-NOVEL-ACCEPTANCE-2026-10-24.md),
+[task](../../tasks/staging-real-novel-and-temporary-cover-acceptance.md) and
+[issue register](../implementation/ISSUES-AND-GAPS.md).
+
+## MiniMax retest after author-reported peak-time — 2026-10-24
+
+The author requested a working alternative to DeepSeek/GLM for current testing.
+Peak-time is author-reported context, not independently proved failure causality.
+Live MiniMax nested-JSON probe passed, normal stop, reported
+`MiniMaxAI/MiniMax-M2.7` (151 input/491 output tokens). Separate exact review
+approved the atomic operator change before activation: six DeepSeek/GLM mappings
+disabled, six `bansosinfoapi/gw/gonka-minimax-m2.7` mappings enabled at the same
+priorities. IFM planner/writer/classifier primary routing remains intact. That
+activation retained twenty-five mappings/nine enabled. Root-private preimage 921,864 bytes,
+TOC validated; no new restore drill. Timeouts/validators/source are unchanged.
+
+Native extraction-only retry `780701bd-67d2-4114-8e6b-9b5e1157cf42` failed its JSON
+contract despite a fast 5,278ms response: 256 reported output tokens cut the
+response inside `<think>` before final JSON; pinned maxTokens was null.
+The reviewed capacity helper then created immutable version 2 for only the
+isolated workspace's voice-style-reviewer, final-reviewer and chapter-extractor,
+setting maxTokens4096 and preserving all other content/configuration. Native
+API field/history read-backs passed; preimage 930,980 bytes, TOC validated.
+This sets request output capacity, not quotas. Fresh full run
+`8d49c5fd-fd30-4c79-aa15-861d6b5fdc9b` passed compile/plan/write/voice-style review
+and their validators with all three version2/maxTokens4096 pins confirmed from
+the live database. Final review FAILED because MiniMax echoed the schema and
+placed the data under `$_instance`, despite explicit instance-only instructions.
+No unwrapping or fabricated acceptance. Qwen3.8Max's real nested JSON probe passed
+(reported qwen3.8-max, normal stop, 784 input/105 output tokens). A reviewed,
+backed-up role-specific change then activated Qwen3.8Max for final review and
+extraction, retaining MiniMax continuity review and IFM primary routing. Current
+total twenty-seven mappings/nine enabled; DeepSeek/GLM and old Qwen3.7Plus remain
+disabled. Pre-change archive 947,434 bytes, TOC validated.
+
+Native retry `73681068-c85e-4352-8e94-e2a1b7517856` reached SUCCEEDED after final
+review, extraction, validators and an explicitly labeled automated test-actor
+approval. Fifteen reused prefix steps matched the failed parent exactly (outputs,
+statuses, generation and definition-version IDs). The successful test lineage
+used IFM plan/write (2,812ms/5,184ms), MiniMax continuity review (93,456ms),
+Qwen3.8Max final review (23,618ms) and extraction (17,851ms). Final review:
+needsCorrection=false, five findings. Six extraction proposals have citations;
+all fifteen ellipsis-separated citation fragments match the draft artifact
+after whitespace normalization, including one citation to its title metadata.
+This is not a semantic canon approval or a claim of perfect literary quality.
+The alternative test draft is 595 words and remains unapplied. Saved original
+682-word title/content/version1/DRAFT read-back passed. No publication or human
+acceptance; this proves normal source-checked retry completion, not an uninterrupted
+fresh run with no failures. Other custom agents were not updated or accepted.
+Preserve the saved original 682-word chapter/version1/DRAFT. Earlier
+DeepSeek/GLM routing below is historical; no failures were removed.
+
+Engram fallback history: one capacity/run update was blocked by the host
+PreToolUse hook, `spawnSync engram.exe ETIMEDOUT`. The local handoff retained
+the state; a later attributed update of checkpoint627 succeeded. Confirm the
+final checkpoint/summary read-back before handoff. No hook failure was suppressed.
+
+## Qwen replacement and fresh AI verification — 2026-10-24
+
+Author explicitly authorized replacing Qwen and repeating the latest workflow.
+Real nested-JSON probe for `bansosinfoapi/gw/gonka-deepseek-v4-flash` passed,
+reported `deepseek-ai/DeepSeek-V4-Flash-0731`, normal stop, 202 input/113 output
+tokens. Independently reviewed operator transaction activated six DeepSeek
+mappings at Qwen's former priorities and disabled, rather than deleted, all six
+Qwen mappings. IFM routing is unchanged. Eighteen mappings retained/nine enabled;
+six-profile author options read-back verified nine choices, six DeepSeek/zero
+Qwen. Root-private pre-change archive: 885,515 bytes, TOC validated (not a new
+restore drill). JSON capability marker reflects the real probe, not full role
+acceptance. No account, manuscript or validator changes by the routing helper.
+
+Fresh run `bd571841-9d38-46dd-87c1-cb4f553375ca` FAILED at write after a successful
+IFM plan: IFM then DeepSeek fallback both returned TRANSIENT at about 60 seconds.
+Router source confirmed its response-header wait defaults to 60,000ms, while
+NovelForge allows 180,000ms. An independently reviewed, reversible systemd
+drop-in now sets FETCH_CONNECT_TIMEOUT_MS=150000. Only the gateway restarted;
+readiness and active process environment passed read-back. This changes a timing
+boundary, not validators, retry counts or provider credentials. The initial
+installer cleanup race was fixed before activation and independently re-reviewed.
+Run `f76bade4-2209-406f-985e-6ad015d47ec2` passed planning/writing and both
+DeepSeek reviews/validators; the reviews succeeded at 118,059ms / 97,878ms.
+Extraction then failed TRANSIENT at the NovelForge client deadline, 180,002ms.
+The gateway's supported request timeout is now 300,000ms via a separately
+reviewed, guarded/audited transaction with a root-private preimage (904,391 bytes,
+TOC validated). Router header wait remains 150,000ms. Native retry child
+`b77920df-65f1-4b04-bd9f-bb397c166b66` reused all 17 prefix steps, then FAILED
+extraction validation: returned JSON was truncated mid-string, 256 reported output
+tokens at 276,833ms; no missing fields were invented. The deeper upstream output
+default/stop cause remains unconfirmed (agent maxTokens=null).
+GLM Flash passed a normal-stop nested JSON probe (510 output tokens), then a
+reviewed transaction changed only STRUCTURED_EXTRACTOR to
+`bansosinfoapi/gw/gonka-glm-5.3-flash`. Nineteen mappings retained/nine enabled;
+author options now contain five DeepSeek/one GLM/three IFM entries, zero Qwen.
+Pre-change archive 913,320 bytes, TOC validated. Retry child
+`69a4f5f4-efa4-4b96-a3cf-c55e5a42a57a` FAILED extraction TRANSIENT at 300,001ms,
+reported serving model unknown. No more unchanged requests were submitted.
+Qwen replacement is implemented; full current workflow acceptance remains OPEN
+for extraction. DeepSeek reviewer success does not establish extractor success.
+Next: isolate the extractor's actual upstream stop/default-output behavior and
+verify explicit output capacity against its exact schema before another full run.
+Do not invent a provider token cap or silently repair truncated JSON.
+Final read-back: nineteen mappings/nine enabled/zero enabled Qwen, gateway
+timeout300000, one SUPER_ADMIN, fixture publications zero, all five services
+active. Saved 682-word chapter content/title/version1 are unchanged, DRAFT.
+The new 602-word test draft remains unapplied; no canon approval/publication or
+human acceptance. No commit/push; existing stash preserved.
+A fresh unit configuration backup is root-private; no router source-code change
+was needed. The exact timeout drop-in is
+`/etc/systemd/system/akanesia-router.service.d/20-novelforge-text-timeout.conf`;
+rollback removes only this newly created file, daemon-reloads and restarts the
+gateway. Database routing/timeouts have separately retained audited preimages.
+The initial start correctly refused the synthetic IN_REVIEW chapter with 409.
+Source confirms the chapter-creation workflow requires DRAFT. A guarded normal
+status API transition returned only that fixture to DRAFT, retaining exact
+saved prose/title/version 1; source-pinned start then succeeded. New run uses a
+separate private receipt; earlier failed runs and evidence remain retained.
+Do not infer completion or apply alternative prose over the saved 682-word text.
+No commit/push; images/covers remain excluded.
+
+## Owner registration and public reader staging proof — 2026-10-24
+
+The author explicitly authorized automatic registration using local account data.
+The exact `ch0c01d.xyz@gmail.com` identity and Argon2id password hash were imported
+from the active Windows acceptance database; server read-back matched the hash.
+This is the only SUPER_ADMIN (one total). Local data was read-only; manuscript,
+workspace data, provider credentials and existing sessions were not transferred.
+Plaintext is unavailable: actual owner-password login was not observed. Fresh
+operator-issued sessions tested authenticated administration, not human acceptance.
+
+Observed: five admin API reads 200; wrong password 401; branding save 200/stale CAS
+409; six admin tabs, searchable profile-model selector and 390px mobile layout
+passed in Chromium without page errors. Branding remains Novamind / N / #1c1207;
+same-value CAS checks advanced its version to 3. The first browser helper stopped
+on an asynchronous form-read race; an explicit enabled/value wait completed the
+remaining checks. Both newly issued owner-test sessions were revoked and HTTP
+read-back returned 401. Pre-import root-private archives remain retained.
+
+The isolated synthetic chapter passed final-text review and temporary publication.
+Anonymous published text/title matched the saved version exactly; unpublished
+chapter 1 stayed 404. Bookmark/follow create/list/remove and older-progress-write
+nonregression passed. Actual reader settings, searchable chapter list and comment
+modals passed at desktop, with mobile settings layout checked at 390px. Test
+comment deleted (204), chapter unpublished (200), public chapter now 404. Saved
+682-word text and version 1 are unchanged; lifecycle status is now IN_REVIEW.
+Private helper schema/status/wrapper assumptions were corrected against source;
+these are not product defect claims. Ordinary test session logged out (200).
+
+Fresh combined-policy run `64ee85a0-8e46-494b-971c-d15e597162e7` passed compile,
+plan, write and their validators, then FAILED review_vs with gateway temporarily
+unavailable. Persisted attempts attribute planner/writer success to IFM; Qwen
+review failed TRANSIENT after 73,410ms with no reported serving model. No approval
+or replacement text was applied. Recent router logs contain HTTP 502 failures;
+all five app/router/nginx services are active. The latest failure's deeper
+provider cause is unconfirmed; earlier connect-timeout evidence is historical.
+Current combined-policy full-workflow acceptance remains OPEN for provider
+availability. Earlier complete Qwen workflow proof retains its original scope.
+
+Images/covers excluded by author; embedding remains untestable with catalog zero.
+Human acceptance, offsite recovery and production release remain separate gates.
+No commit/push. HEAD `9d82964` and existing stash preserved. Private receipts:
+`.nf-artifacts/staging-owner-test-receipt.json`,
+`.nf-artifacts/staging-reader-journey-receipt.json`, and the final-policy workflow
+receipt. Earlier absent-owner/unpublished-test descriptions below are historical.
+
+## Automatic staging configuration and real chapter proof — 2026-10-24
+
+Final routing: IFM is primary for CREATIVE_WRITER, DEEP_PLANNER and FAST_CLASSIFIER,
+with Qwen fallback. Qwen is primary for CONTINUITY_REVIEWER, LONG_CONTEXT_REVIEWER
+and STRUCTURED_EXTRACTOR. Twelve mappings are retained, nine enabled; IFM's three
+unproven reviewer/extractor mappings are disabled. This replaces the interim
+all-IFM-primary policy after its actual review_vs output omitted required evidence
+versions and correctly failed validation. Its planner/writer contracts and actual
+classification API passed. Do not claim the new combined policy passed a complete
+fresh workflow: Qwen's two observed upstream connect timeouts remain unresolved.
+The earlier complete Qwen workflow proof below remains valid for that snapshot.
+All operator configuration changes were separately reviewed, privately backed up,
+atomic and explicitly audited without account/role changes. Initial bootstrap used
+an advisory lock; subsequent routing transactions added bounded table locks. The saved
+682-word draft is unchanged. Validators and application source were not modified.
+
+Initial activation: separately reviewed operator bootstrap COMMITTED on the
+staging database (not a Git commit): one encrypted gateway, 251 catalog models,
+six primary Qwen text-profile mappings and one IFM creative fallback. Branding
+read-back is Novamind / N / #1c1207 / version 1. No account or role changed.
+Root-private pre-configuration PostgreSQL archive retained. Initial advisory-lock
+void-result P2010 aborted with zero gateway/mapping rows; a text cast retained
+the lock and passed a focused live probe, separate re-review, then activation.
+Actual AI chapter-creation run reached SUCCEEDED for isolated fixture chapter 2.
+Seven model attempts succeeded across planning, writing, review and extraction,
+with requested/reported model attribution retained. A stale approval was rejected
+with 409 before an explicitly labeled automated test-actor decision. The final
+682-word draft, "The Rain Beneath the Bridge", was applied as version 1/DRAFT;
+exact content/title read-back and actual Chromium desktop/mobile editor visibility
+passed. No publication or canon approval, and no human author sign-off inferred.
+
+Author authorized automatic gateway/catalog/text-profile setup, name Novamind
+through platform settings, and testing except images/covers. Main-account
+registration is absent. The account-based helper stopped before mutation;
+operator first-install configuration proceeded independently without account
+creation/elevation, with a truthful null-actor maintenance audit and atomic DB
+transaction. Prepared ignored helpers: `.nf-artifacts/staging-bootstrap-config.mjs`
+and `staging-bootstrap-config-run.py` (root-private database snapshot; execute
+application imports as the verified `novelforge` account). Separate review approved
+the exact helper and its focused advisory-query correction. Embedding catalog is
+empty; no fake embedding mapping. No image/cover discovery or generation performed.
+
+Isolated audit workspace now has the starter agents/skills, AI chapter-creation
+workflow, reserved chapter 2 and a synthetic approved outline via actual HTTPS
+APIs and internal checkpoint flow. This is test-fixture approval, not human
+acceptance or the author's manuscript. `.nf-artifacts/staging-text-journey.py`
+prepare passed. Final browser checks verified nine selectable options across six
+explicit text profiles, public branding, ordinary-user admin refusal, and no mobile
+overflow or page errors. Earlier missing-horizon/outline-node fixture failure was
+corrected through planning APIs before starting a fresh source-pinned run. No
+application code change or commit/push in this configuration follow-up.
+
+Engram initially failed with host-hook `engram.exe ETIMEDOUT`; a later update to
+621 succeeded and was read back. Retain that failure as history. Final checkpoint
+must contain the completed workflow result before handoff. Remaining: actual owner
+registration/admin setup, a real embedding-capable route, and separate publication/
+release/offsite recovery acceptance. Following provider-refresh/audit paragraphs
+describe earlier snapshots; their empty-configuration prerequisite is superseded.
+
+## Staging provider refresh verified — 2026-10-24
+
+The author removed RadoxAI and requested a fresh check. Observed replacements:
+active `bansosinfoapi` and `bansosifm` connections; actual catalog 251 models,
+zero RadoxAI entries. Through NovelForge's existing adapter, real JSON generation
+and streaming passed with `bansosinfoapi/gw/qwen3.7-plus`. A separate real nonce
+probe passed with `bansosifm/IFM/K2-Horizon-375B-A23B`, finishing normally.
+The prior RadoxAI balance blocker below is historical, not a current blocker for
+these successfully tested routes. No provider configuration was changed.
+
+NovelForge's gateway/model/profile-mapping tables remain empty. Next: establish
+the author's account/admin and application gateway/profiles, then verify the full
+chapter/publication journey. Adapter connectivity is not integrated acceptance.
+The first IFM probe hit its small output limit; it was classified incomplete,
+then one bounded probe with a larger response allowance finished with `stop`.
+No commit/push or release approval is implied.
+
+## Direct staging audit — 2026-10-24
+
+Author supplied `https://novamind.my.id` and authorized SSH audit/fixes on the
+dedicated staging host. Baseline HEAD `9d82964`; copied deployment initially
+matched 797 tracked application/package files and has no Git metadata.
+HTTP origin protection, bounded proxy trust and loopback listeners are now
+repaired and active. Separate exact-diff security and backup reviews approved;
+focused tests/types/lint passed. Actual HTTPS login, editor desktop/mobile,
+tenant isolation, stale-save rejection and private draft boundaries passed.
+
+Daily PostgreSQL archive is scheduled; a real restore into a disposable database
+matched all 106 table counts and 56 migration records before the scratch database
+was dropped. A mismatched Garage secret was corrected with a private configuration
+backup; authenticated PUT/read-back/DELETE passed without changing existing data.
+
+Author confirmed RadoxAI setup. The actual adapter reads 273 models, but a real
+generation request was rejected upstream with 402 insufficient balance. NovelForge
+persisted gateway/model/profile setup remains empty; router setup alone does not
+configure application profiles. Real chapter/publication acceptance remains open,
+along with owner setup and independent offsite recovery. No production release
+approval or commit/push. Repairs are active on staging but remain uncommitted;
+redeploying baseline source would remove them. See
+[the audit record](STAGING-AUDIT-2026-10-24.md) for proof and remaining limits.
+
+## Showcase revision: 60fps and feature exploration — 2026-10-24
+
+Supersedes the initial 30fps artifact below. Author requested smoother video and
+more interaction, then explicitly asked to continue. Same two local deliverable
+paths now contain a 15-second 1080p60 H.264/AAC film and a standalone interactive
+HTML. Original music retained. Video was rendered at 900 distinct timestamps;
+all decoded frame intervals are 1/60 second, with actual consecutive-frame motion
+verified in five scene regions excluding the frame counter. Full decode and six
+source/decoded-frame comparisons passed; decoded audio peak remains -0.82 dBFS.
+
+HTML adds Watch/Explore modes, five scene jumps, nine feature descriptions,
+hotspots, embedded-image detail dialogs with next/close, pointer parallax and
+keyboard navigation. Offline desktop/mobile checks passed, including dialog focus,
+reduced-motion behavior and async Play/Pause/Play race regression. Independent exact
+artifact review approved. Images/music remain embedded; no network dependencies.
+The previous version is preserved in ignored local artifacts. No application/data
+changes or commit/push. Verification remains Chromium-scoped, without acceptance
+of subjective music quality, human screen-reader behavior or the author's player.
+
+## Offline motion showcase — 2026-10-24
+
+Author requested a 15-second motion showcase in video and standalone HTML,
+with music composed and synthesized from scratch. Deliverables are local at
+showcase/novelforge/index.html and novelforge-showreel.mp4; no commit/push requested.
+The stone/orange/literary design uses reviewed product captures and vector motion.
+Original 128 BPM stereo score uses generated tones/noise, without music samples.
+Verified: H.264 1920x1080, 30fps/450 frames, AAC 48kHz stereo, exactly 15 seconds;
+complete decode; six decoded frames compared with source; audio peak -0.82 dBFS.
+Chromium offline player checks passed: playback/end/replay, seek, pause/mute,
+keyboard sound toggle, fullscreen, no autoplay and 390px layout without overflow.
+Independent visual/player review approved; other browser engines and subjective
+audio listening were not verified. No application data or services changed.
+
 ## README screenshot gallery — 2026-10-23
 
 Author requested interface/feature screenshots and authorized commit/push.

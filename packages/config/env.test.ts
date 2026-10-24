@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  EnvValidationError,
-  loadEnv,
-  redactEnv,
-  type Env,
-} from "./index";
+import { EnvValidationError, loadEnv, redactEnv, type Env } from "./index";
 
 const VALID = {
   NODE_ENV: "development",
@@ -22,6 +17,29 @@ const VALID = {
 };
 
 describe("loadEnv", () => {
+  it("requires a canonical public origin in production and bounds proxy configuration", () => {
+    expect(() => loadEnv({ ...VALID, NODE_ENV: "production" })).toThrow(/PUBLIC_ORIGIN/);
+    expect(
+      loadEnv({
+        ...VALID,
+        NODE_ENV: "production",
+        PUBLIC_ORIGIN: "https://novelforge.example",
+        API_HOST: "127.0.0.1",
+        TRUST_PROXY: "loopback",
+      }).TRUST_PROXY,
+    ).toBe("loopback");
+    for (const value of [
+      "not-an-origin",
+      "https://user:pass@example.com",
+      "https://example.com/path",
+      "https://example.com?x=1",
+      "ftp://example.com",
+    ]) {
+      expect(() => loadEnv({ ...VALID, PUBLIC_ORIGIN: value })).toThrow(/PUBLIC_ORIGIN/);
+    }
+    expect(() => loadEnv({ ...VALID, TRUST_PROXY: "true" })).toThrow(/TRUST_PROXY/);
+    expect(() => loadEnv({ ...VALID, API_HOST: "localhost" })).toThrow(/API_HOST/);
+  });
   it("accepts a fully valid env", () => {
     const env = loadEnv(VALID);
     expect(env.NODE_ENV).toBe("development");

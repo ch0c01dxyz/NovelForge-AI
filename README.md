@@ -44,9 +44,15 @@ The synopsis area shows an empty state when no public synopsis has been provided
 
 Screenshot provenance is recorded in [docs/screenshots](docs/screenshots/README.md).
 
+## Showcase
+
+Explore the [interactive HTML showcase](showcase/novelforge/index.html) or download
+the [15-second, 1080p60 showreel with original music](showcase/novelforge/novelforge-showreel.mp4).
+The showcase illustrates the product; it is separate from release acceptance.
+
 ## Project status
 
-**Active development — not a general production release.** Updated 2026-10-23.
+**Active development — not a general production release.** Updated 2026-10-25.
 
 Implementation, automated verification, live integration, author acceptance and
 release approval are tracked separately. Read the [current progress](docs/14-progress/CURRENT.md),
@@ -173,6 +179,9 @@ Linux tools directory in your shell's PATH if needed. Configure `.env` privately
 | `OMNIROUTE_BASE_URL`, `OMNIROUTE_API_KEY` | Actual gateway endpoint/secret. Persisted gateway and profile settings also require administration setup. |
 | `S3_*` | Actual endpoint, bucket, region and credentials. Startup requires nonempty credential settings; placeholders do not provide working storage. |
 | `NODE_ENV`, `PORT` | `development` and API port `3000` for this guide. |
+| `PUBLIC_ORIGIN` | Required in production: exact canonical browser origin, such as `https://novamind.my.id`. Cookie-authenticated writes must send that Origin or a matching Referer. |
+| `API_HOST`, `TRUST_PROXY` | Native loopback proxy: `127.0.0.1` and `loopback`. Proxy trust is disabled by default; use only with verified proxy headers/listeners. |
+| `HOST`, `NITRO_HOST` | Native web service behind a local reverse proxy: `127.0.0.1`. Container listeners require their own network configuration. |
 | `NUXT_API_BASE` | `http://localhost:3000` for the web server's API proxy. |
 
 The example file uses container-network PostgreSQL/Redis addresses: adjust them

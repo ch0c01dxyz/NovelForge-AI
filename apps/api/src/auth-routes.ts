@@ -4,7 +4,7 @@
  * Controllers parse/authenticate/validate and delegate — business logic
  * lives in @novelforge/auth services (API-BOUNDARIES.md service rules).
  * Session cookie: HttpOnly, SameSite=Lax, Path=/, Secure in production.
- * CSRF posture: SameSite=Lax same-origin only for now (ADR-0002 §6).
+ * Cookie mutations also pass the shared PUBLIC_ORIGIN boundary.
  * Rate limiting: login/register are sensitive endpoints (SECURITY.md).
  */
 import type { FastifyInstance } from "fastify";

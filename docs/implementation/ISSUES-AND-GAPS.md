@@ -1,5 +1,505 @@
 # Technical Issues and Implementation Gaps
 
+## Real-novel staging import rehearsal — 2026-10-24
+
+Owner: author-authorized real-novel staging acceptance task.
+The first disposable-clone import aborted at canon_facts (Prisma P2010).
+The helper temporarily nulled every nullable internal foreign key, which
+violated CanonFact_object_exactly_one; related citation/outline CHECK
+constraints also require populated nullable references. No live import occurred.
+Correction: defer only the four demonstrated pointer cycles; insert other
+dependencies in row order without dropping validation or constraints.
+Closure: corrected helper passed disposable-clone import, exact every-row
+read-back, duplicate COLLISION refusal with unchanged audit count, pinned
+helper/source hashes and separate APPROVE. Live imported the identical 43-table,
+1,035-row scope; no publications and no source mutations.
+
+The first native prepare attempt returned INVALID_INPUT400 before a checkpoint
+receipt was captured; the next attempt succeeded with fresh checkpoint
+48ff3ced-ff30-453c-a7bd-9004d18561b2 read back. The rejected endpoint was not
+captured, so its cause remains unknown; endpoint diagnostics were added.
+Real novel workflow bad0ef21-d492-467a-a14e-db65b65c85af then failed at plan:
+the provider returned an array where the strict contract requires an object.
+Original chapter10 text/version remained unchanged. Keep the failed run as
+evidence; select a different already-mapped planner for a distinct request,
+without schema coercion, automatic retry or changing original manuscript.
+
+Further diagnosis corrected the initial provider-only interpretation: both
+responses contained reasoning and were truncated; neither delivered a complete
+top-level plan. The maintenance harness had selected legacy
+chapter-generation-review instead of the author UI's chapter-creation-review.
+The legacy graph does not forward styleNotes as authorInstructions or pin the
+target chapter position; with this private all-DRAFT copy its generic story
+position is 1. MiniMax alternate 46eb96ec-b802-4c3b-b2e5-b985b1a5d06b therefore
+did not test the intended modern author flow either. Both failures remain
+evidence, not completion. Correction is the existing native chapter-creation
+installer/workflow, preserved source head and chapter10 pins, plus explicit
+8192-token planner output capacity. No parser coercion or application change.
+
+Correct modern workflow d62dfe43-2275-4201-bf7e-091446683936 also failed strict
+plan validation: IFM reported8192 output tokens but its visible JSON was cut
+after3799 characters, with no complete top-level plan. This is not evidence
+that the corrected workflow passed. Next use the already verified Qwen3.8Max
+for this plan via a per-run override and one low-priority DEEP_PLANNER mapping;
+retain IFM defaults and all failed attempts.
+
+The single real cover test discovered its temporary model in the live image
+catalog, but batch6bfc2eb1-0072-44cd-b0a8-549e065640b9 failed UNSUPPORTED.
+No cover was applied. Cleanup PASSED: temporary NovelForge gateway/models,
+router node/connection/custom-model removed; source key absent from live
+SQLite/WAL, router journal and preimage; original provider/key identities and
+backup set unchanged; router active and no outstanding cover work. Investigate
+the actual staging adapter/build before any additional paid image attempt.
+
+Root cause confirmed without credentials or image generation: both
+`/v1/images/generations` forms returned HTML404; the staging source route and
+built manifest entry were absent, while local router has the17-line route and
+the actual adapter sources match deployed hashes. This is a deployment omission,
+not proof that the upstream private model failed. Repair only the existing
+route, isolated build and reversible activation before repeating the image test.
+Qwen modern planning passed, but IFM writing did not return complete JSON.
+Native profile updates therefore select verified Qwen for planner/writer/
+continuity review, retaining historical mappings disabled. Native retry reuses
+the validated plan prefix; strict contracts and original text remain unchanged.
+
+The first isolated gateway build stopped before Next ran: pnpm12 automatically
+installed dependencies and refused an unapproved unrs-resolver lifecycle build.
+The gateway is an npm/package-lock deployment; the incidental pnpm tree selected
+Next16.4.3 while the existing npm lock pins16.3.6. Do not bypass that refusal or
+approve unrelated scripts. Preserve the incidental tree, restore npm-lock
+dependencies through an isolated native npm ci, then invoke the installed Next
+build command directly. Existing .next and database data remain preserved.
+Native real-novel retry5ded1c03 passed generation, correction, final review and
+extraction through strict validators and reached AWAITING_APPROVAL; no human
+acceptance, canon approval, application or publication is implied.
+
+Closure for deployment/temporary-cover scope: pinned npm-lock dependencies
+restored (Next16.3.6), incidental tree preserved, isolated Next build passed,
+reversible activation passed negative POST401 JSON. Real gpt-image-2 batch
+57546b6f-ba4b-43f9-b47d-75f633823427 then succeeded;327,440-byte image applied,
+SHA25618a0cb8242b2d9c77fbb73686488a323eb247590b071a376e3de886561d2a5d0
+read back before and after temporary gateway/provider/key deletion. All cleanup
+proofs and final zero-temporary-record read-back passed; original provider/key
+identities preserved. Authenticated cover studio image decode passed.
+
+Semantic review is not closed as human acceptance. First full candidate had
+needsCorrection=true, including an unsupported major sleep/intimacy claim and
+grounded missing cooking-request transition. Corrected modern run
+66d0f5c1-7f7a-4c52-86de-b6928714f5ee fixed the grounded issues and produced
+1,261 words with one stored minor finding. Automated independent review found
+that grooming claim unproved, plus small residual editorial precision issues.
+Do not fabricate a clean review: keep candidate awaiting author review.
+Evidence correction: initial automated review overcounted contiguous citations
+by splitting newline excerpts without treating an omitted intervening passage
+as a gap. Independent recomputation and executor confirmation establish16/19
+whole contiguous normalized spans and23/23 newline/omission-separated fragments;
+two citations have explicit omissions and one silently joins separated excerpts.
+This is not universal exact spans. No canon application/publication, original text
+unchanged. Latest browser preview matches the latest stored artifact.
+See [scoped acceptance](../14-progress/STAGING-REAL-NOVEL-ACCEPTANCE-2026-10-24.md)
+for release gates still open/unknown; no broad production completion claim.
+
+## Staging deployment audit: HTTP boundaries and backups — 2026-10-24
+
+**Pre-commit documentation correction (2026-10-25, resolved):** Independent
+review found ADR-0020 incorrectly claimed pgvector 0.8.1 was at least 0.8.6
+and described the staging deployment as an executed production release.
+Owner: staging acceptance/commit coordinator. Impact: overstated compatibility
+and release evidence. The ADR now states the actual version ordering, limits
+compatibility evidence to recorded migration/restore checks, and distinguishes
+production-mode staging from production release approval. The historical backup
+follow-up is annotated with the later PostgreSQL timer evidence and remaining
+backup gaps. Closure check: exact staged ADR review and whitespace validation;
+no new database or production-readiness claim.
+
+Author follow-up requests another working model, reporting DeepSeek/GLM peak-time.
+Treat peak-time as author context, not independently verified provider causality.
+Live `bansosinfoapi/gw/gonka-minimax-m2.7` passed nested JSON/normal stop, reported
+`MiniMaxAI/MiniMax-M2.7`, 151 input/491 output tokens. Prepare reviewed replacement
+of the six enabled DeepSeek/GLM mappings with MiniMax at their current priorities,
+retaining disabled history/IFM roles/timeouts. First retry only failed extraction
+using existing source-validated successful prefix; full MiniMax-role acceptance
+still requires a new complete workflow. Preserve the saved original manuscript.
+
+Activation separately reviewed and executed: twenty-five mappings retained/nine
+enabled; root-private 921,864-byte preimage TOC validated. Native MiniMax retry
+`780701bd-67d2-4114-8e6b-9b5e1157cf42` now tests extraction only. The prior reviewer
+hit a runtime usage limit; a different independent read-only actor approved the
+exact artifacts. That actor lacked its own host-confirmed Engram identity and
+did not invent/reuse one; the root checkpoint retains its exact review evidence.
+No gap in root Engram binding/save availability is claimed.
+
+MiniMax extraction retry responded in 5,278ms, reported 256 output tokens, but
+stopped inside a `<think>` section before final JSON. The pinned agent maxTokens
+is null. This fast response disproves timeout for this particular failure;
+changing provider alone does not establish adequate output capacity. Configure
+explicit maxTokens4096 in new versions of only the isolated test workspace's
+three MiniMax review/extractor agents, preserving instructions, profiles, skills,
+schemas, temperature and preferred model. Use normal authenticated version/publish
+APIs with preimage/read-back and fresh workflow pins, not old-run retry after a
+definition change. This is request output capacity, not quota/spend enforcement.
+
+The capacity helper passed separate exact review and native API execution;
+version2/maxTokens4096 pins are observed in fresh run
+`8d49c5fd-fd30-4c79-aa15-861d6b5fdc9b`, now RUNNING review_vs after successful
+compile/plan/write validations. No contracts or story data were changed.
+Engram update of this phase was rejected by the host PreToolUse hook with
+`spawnSync engram.exe ETIMEDOUT`; root identity is still the host-confirmed one,
+but no new memory write is claimed. CURRENT top section is the concise fallback.
+Continue the authorized live test; retry durable save at the next meaningful
+boundary and disclose any remaining persistence failure at handoff.
+
+Fresh MiniMax run passed plan/write/voice-style review and validators, then
+final review failed the exact contract. Response was complete JSON but echoed
+the schema and placed findings/needsCorrection inside `$_instance`; required
+root keys were absent. Current executor instructions already explicitly forbid
+schema echo/wrappers. Do not unwrap the result or repeat unchanged instructions
+to force acceptance. Preserve MiniMax's successful review prefix; probe another
+model for LONG_CONTEXT_REVIEWER and STRUCTURED_EXTRACTOR, retaining the same
+4096-capacity definition pins and using native retry after the model change.
+
+Resolution for this bounded test: Qwen3.8Max normal-stop nested probe passed,
+then a separately reviewed/backed-up two-role replacement executed. Native retry
+`73681068-c85e-4352-8e94-e2a1b7517856` SUCCEEDED through final review/extraction/
+validators and explicitly labeled automated test approval. Fifteen prefix steps
+matched the parent exactly. Qwen3.8Max calls reported that serving model and
+succeeded at 23,618ms / 17,851ms. Final needsCorrection=false, five findings;
+six proposals carry draft citations (fifteen ellipsis-separated fragments match
+normalized draft text/metadata). These remain unapproved candidate content.
+No schema unwrapping, missing-field invention, validator weakening, prose
+application or publication. Original 682-word chapter version1/DRAFT is intact.
+Current test-role routing: IFM primary planner/writer/classifier, MiniMax
+continuity reviewer and IFM-role fallback, Qwen3.8Max final review/extractor;
+twenty-seven retained/nine enabled, zero DeepSeek/GLM/old Qwen3.7Plus selectable.
+Output-capacity4096 changes are only the three test-workspace agent versions;
+other custom agents and model failover quality remain outside this proof.
+Root Engram writes later recovered; the initial hook timeout remains historical.
+
+Author follow-up authorized replacing Qwen and rerunning the latest AI workflow.
+Live catalog contains `bansosinfoapi/gw/gonka-deepseek-v4-flash`; a real adapter
+probe returned the exact nonce and nested evidence version/quote with normal
+finish, reported `deepseek-ai/DeepSeek-V4-Flash-0731` (202 input/113 output tokens).
+This establishes candidate transport/structured-output viability, not full review
+acceptance. Next: reviewed, backed-up atomic replacement of Qwen's six enabled
+role mappings, then a fresh source-pinned synthetic workflow. Preserve Qwen's
+historical mappings/failed runs, strict validators and the saved chapter text.
+
+Replacement activation succeeded (eighteen retained/nine enabled, no enabled
+Qwen). The first fresh workflow start safely returned 409: the synthetic chapter
+is IN_REVIEW after the previous publication cleanup, while chapter-creation-review
+requires DRAFT (workflow-runs.ts). No model run started. Return only this isolated
+fixture to DRAFT through the guarded status API with its actual version, preserving
+text/version, then reuse the pending request's idempotency key. This is fixture
+preparation, not a bypass or a defect in the generation status gate.
+
+Fresh run `bd571841-9d38-46dd-87c1-cb4f553375ca` passed compile/plan validation,
+then failed write: IFM attempt TRANSIENT at 60,018ms, DeepSeek fallback TRANSIENT
+at 60,015ms, neither reported a serving model. Earlier IFM plan succeeded at
+5,881ms. DeepSeek's short nested JSON probe does not prove long-payload transport.
+Inspect the shared sixty-second gateway boundary before another request; do not
+label the replacement full-workflow accepted or repeat unchanged calls blindly.
+
+Read-only router source traces this boundary to executors/base.js: the timer
+aborts fetch before response headers, using FETCH_CONNECT_TIMEOUT_MS (default
+60,000). Active process/dotenv have no override. For non-streaming completions,
+that includes model response preparation, not only TCP connection. NovelForge's
+configured gateway timeout is 180,000ms. Prepare a reversible systemd runtime
+override to 150,000ms (below the client limit), not a code/validator change;
+restart only the gateway and verify readiness/runtime read-back before one fresh
+workflow. This tests a supported timing explanation, not a claimed provider fix.
+
+Pre-activation review found a cleanup race in the private timeout installer:
+exclusive-create failure could unlink another process's newly created path.
+Track successful creation explicitly and remove/reload/restart on failure only
+when this helper created the override. Correct before activation; no server
+mutation occurred with the unsafe cleanup variant.
+
+Adjusted-boundary run `f76bade4-2209-406f-985e-6ad015d47ec2` passed both DeepSeek
+reviews and validators (118,059ms / 97,878ms), then extraction failed TRANSIENT
+at 180,002ms: the NovelForge request deadline, rather than the old 60-second
+header boundary. Final review needsCorrection=false; generated test prose is
+602 words, unapplied. Raise only the existing gateway's supported request timeout
+180,000→300,000ms with a preimage/guard/audit, retaining router header wait150,000,
+then use the native source-validated retry API for extraction only. Retain failed
+parent and reuse successful steps; no validator change or full regeneration.
+
+DeepSeek extraction retry reached a response after 276,833ms, reported 256 output
+tokens, but its JSON was cut mid-string (1,105 characters). The proposals key was
+present in text; parsed JSON was null. Thus the missing-proposals validator error
+does not mean the prompt omitted that key. Agent maxTokens is null; the effective
+upstream output default/stop cause is unconfirmed. Keep the strict refusal and
+the failed output; do not invent missing JSON or approve it. GLM candidate
+`bansosinfoapi/gw/gonka-glm-5.3-flash` passed the same nested-JSON probe with normal
+stop, reported `zai-org/GLM-5.3-Flash`, 133 input/510 output tokens. Replace only
+STRUCTURED_EXTRACTOR with this candidate and retry only that failed step through
+the native source-validation path; retain the successful DeepSeek reviewer roles.
+
+GLM extractor-only activation was independently reviewed and backed up before
+mutation (913,320-byte root-private archive, TOC validated). Nineteen mappings
+retained/nine enabled. Native child `69a4f5f4-efa4-4b96-a3cf-c55e5a42a57a`
+FAILED extraction TRANSIENT at 300,001ms; reported serving model unknown. Retain
+the failed child and unchanged successful prefix; no further identical requests.
+Resolution status: Qwen replacement implemented, strict reviews passed, full
+workflow/extractor acceptance OPEN. Next isolate the actual upstream stop/default
+output behavior using an explicit-capacity schema probe; do not infer a universal
+256-token cap from one response. Final source/options read-back confirms saved
+682-word chapter version1/title/content intact, DRAFT, no public fixture release.
+
+Owner import executed successfully: exact local user/hash read-back, only one
+SUPER_ADMIN, admin APIs and branding CAS guards passed. The first browser helper
+asserted identity input values immediately after a tab click and stopped before
+the asynchronous identity form was ready. This is a helper synchronization
+failure pending an explicit ready/value wait, not evidence of a product defect.
+Its finally cleanup revoked the exact newly issued session; HTTP read-back was
+401. Resolution: explicit enabled/value waits completed all six tabs, model
+search and mobile checks. The fresh follow-up session was also revoked with HTTP
+401. No product code changed. Actual plaintext-password login remains unobserved.
+
+Temporary synthetic publication/reader tests passed final-text review, published
+pin parity, draft exclusion, bookmark/follow operations, progress nonregression,
+reader settings/chapter-search/comment modals and mobile layout. The private test
+helper initially assumed an optional review version, different HTTP status codes
+and an unwrapped comment response. Source-confirmed request/response shapes fixed
+the helper only. The existing test comment was reused and deleted (204), chapter
+unpublished (200/public 404), saved text/version unchanged. No author publication
+or human sign-off inferred. The fixture's lifecycle status is now IN_REVIEW.
+
+The fresh combined-policy workflow also reached review_vs after successful
+compile/plan/write validations, then FAILED with gateway temporarily unavailable.
+Its persisted Qwen attempt is TRANSIENT after 73,410ms, reported model unknown;
+successful planner/writer attempts report IFM. Recent router HTTP 502 records
+support transport failure, but do not establish the latest deeper provider cause.
+Retain this external availability failure; do not weaken contracts or blindly
+retry the same run. The earlier saved 682-word draft remains independent.
+
+Owner-account follow-up authorization: the author explicitly allowed copying
+the exact local account/password data for `ch0c01d.xyz@gmail.com` into staging
+and automating tests. Read-only inspection found it in the active Windows
+acceptance database, not the empty main database. Transfer only that user record
+and its Argon2id hash, not plaintext, sessions, manuscript or provider secrets.
+Hash equality does not establish an observed plaintext-password login.
+
+Before activation, independent review found the owner-test driver could leave a
+new privileged test session active if its initial receipt write failed, and did
+not require HTTP 401 after revocation. Move all post-import work inside cleanup
+scope; revoke only the new session through the native database path even if HTTP
+logout fails; require both server revocation and subsequent HTTP 401. No import
+or test session had executed before this correction.
+
+The IFM-primary full workflow passed compile/plan/plan validation/write/draft
+validation, then failed review_vs contract validation: every emitted finding
+omitted evidence.version. The supplied step and agent instructions explicitly
+require that field; generic JSON-mode success did not prove this nested review
+contract. No chapter text was overwritten and no approval was fabricated.
+Restrict IFM to the tested planner/writer/classifier roles. Keep Qwen for review
+and extraction (proven by the earlier full workflow); its upstream connect-timeout
+availability remains an external limitation. Disable unproven IFM review/extractor
+mappings rather than weaken validators or label the failed run successful.
+Final configuration/read-back verified: IFM primary for writer/planner/classifier
+with Qwen fallback; Qwen primary for both reviewers and extraction; three IFM
+unproven role mappings disabled (twelve retained/nine enabled). Exact maintenance
+helpers were separately approved and privately backed up before activation.
+Final browser options/branding/admin denial/mobile checks passed. Full current
+combined-policy acceptance remains OPEN pending stable Qwen transport; the earlier
+full Qwen workflow success is retained with its original configuration provenance.
+
+Routing-follow-up review found that helper-only advisory locking did not fence
+normal administration writes between its guard and updates. Before activation,
+lock the three configuration tables against writes/inserts with a bounded lock
+wait, then read/check/update in one transaction. Also replace existing JSON-mode
+markers when recording the newly observed IFM result; retaining incompatible and
+ok simultaneously would misrepresent capabilities. No routing activation occurred
+before these review findings were addressed.
+
+Additional FAST_CLASSIFIER HTTPS probe exceeded the private helper's 45-second
+HTTP read timeout (the configured gateway timeout is 180 seconds). Inspect its
+persisted generation and upstream outcome before repeating a non-idempotent POST;
+do not claim a received classification response or duplicate a still-running call.
+The completed seven-attempt chapter workflow and its UI proof remain separate.
+Read-back found a terminal FAILED generation after 60,043ms; gateway logs showed
+upstream 502 fetch-connect-timeout after 60 seconds. One explicit bounded recheck
+uses a distinct task label and a longer client wait, only after that failure was
+confirmed. Preserve the original failure; do not infer provider stability from a
+later success.
+The bounded classifier recheck also reached terminal FAILED/TRANSIENT at
+60,043ms with HTTP 502. Do not keep retrying that route. The configured fallback
+currently covers creative writing only because IFM JSON was unverified. Probe
+IFM's actual JSON contract before considering fallback mappings for structured
+text roles; do not infer compatibility from its plain-text nonce check.
+Resolution of routing setup: IFM JSON nonce/label probe passed with normal finish.
+After separate concurrency/marker review corrections, the atomic maintenance
+transaction made IFM primary and Qwen fallback across six text profiles (twelve
+mappings). Actual FAST_CLASSIFIER API now passed: 201, QUIET, reported IFM model.
+Browser options and branding checks passed on that interim twelve-enabled
+configuration, superseded by the final nine-enabled role policy. Preserve
+the two original Qwen network failures as operational evidence; their underlying
+upstream availability was not repaired or proved stable by this routing change.
+
+Live synthetic workflow reached AWAITING_APPROVAL, rejected stale approval with
+409, then completed under an explicitly labeled automated test-actor decision
+(not human acceptance). Draft application succeeded, but the private read-back
+helper incorrectly treated `currentVersion` as an object; the API exposes a
+numeric version. Correct the helper and verify the already-saved text without
+reapplying or overwriting it. No application defect is established by that helper
+TypeError.
+
+Configuration-browser helper initially expected seven model options from the
+default endpoint. The actual endpoint defaults to CREATIVE_WRITER and correctly
+returns its two mapped models. Verify each profile explicitly instead of treating
+that count as a product defect. Engram persistence subsequently recovered: update
+621 succeeded; verify read-back before closing the earlier hook-timeout record.
+
+Text-journey fixture initially failed at compile_context with
+AI_CHAPTER_OUTLINE_UNAVAILABLE: the approved synthetic outline version existed,
+but the isolated novel lacked a Planning Horizon and chapter-linked outline node.
+The source gate correctly refused dispatch. Complete that test setup through
+planning APIs and start a new run pinned to its new source revision; do not retry
+the stale snapshot or weaken the outline gate. This is fixture setup, not evidence
+that the provider failed or a completed generation.
+
+First-install bootstrap attempt failed atomically with Prisma P2010. A focused
+read-only reproduction identified `UnsupportedNativeDataType: void` from the
+advisory-lock SELECT result. Read-back confirmed gateway/profile counts stayed
+zero. Cast that helper query result to text; preserve the transaction lock and
+all authorization/scope guards. This affects only the ignored operator helper,
+not application code. The replacement bootstrap uses one transaction, superseding
+the abandoned account-based helper's partial-commit limitation below.
+
+Memory persistence follow-up: the host hook blocked `mem_update` with
+`spawnSync C:/Users/ch0c0/bin/engram.exe ETIMEDOUT; Memory writes remain blocked`.
+Do not claim the attempted checkpoint update succeeded. Retain a compact file
+handoff in CURRENT until actual Engram writes and read-back recover.
+
+Automatic-configuration follow-up: author authorized gateway/catalog/profile
+setup, Novamind branding and text testing, excluding image/cover generation.
+The initial owner-account check found no registered `ch0c01d.xyz@gmail.com`.
+An account-based configuration attempt stopped before mutation. That approach
+is superseded by a first-install SSH-operator bootstrap under the author's
+existing configuration authorization: no account or platform role is created,
+and the atomic maintenance audit uses a null actor rather than inventing an
+authenticated author. Later UI administration still requires the real owner
+account. Never elevate an audit account.
+The gateway embedding catalog currently returns zero models. Keep EMBEDDING
+unmapped until a real embedding-capable route exists; do not substitute a chat
+model or claim semantic retrieval acceptance from text-generation success.
+
+Independent provisioning-helper review rejected importing application-owned
+modules in a root Node process. The preflight had already stopped on the absent
+owner, before invoking Node, so this path was not executed. Keep the private
+database snapshot under root but execute configuration services as the verified
+`novelforge` application user. Each service commits separately; a later failure
+must report partial state and inspect before resuming, not claim full rollback.
+
+Status: REPAIRS VERIFIED; AI/setup and release acceptance OPEN.
+Owner: direct author-authorized staging audit/fixes.
+Host novamind.my.id was inspected through SSH. All 797 tracked application/package
+files matched the local 9d82964 source; the copied deployment has no Git metadata.
+56 migrations finished, none failed; initial application data was empty.
+Live HTTPS registration/login/session work with Secure/HttpOnly/SameSite=Lax.
+A dedicated audit account reproduced sibling-origin logout using a simple
+text/plain POST: foreign Origin returned 200 and invalidated the session. Initial
+form-encoded probe returned 415, which was a parser boundary, not a CSRF defense.
+Source Fastify has no trusted-proxy configuration, so proxy clients share socket
+identity for rate limits. API/web/router listen on wildcard interfaces despite
+the deployment record's loopback-only claim; direct external probes timed out,
+so public reachability is not established. No application backup timer exists.
+Plan: shared explicit origin protection and bounded loopback proxy trust with
+regressions; configurable API bind; preserve/configure loopback service binds;
+scheduled private PostgreSQL backup plus fresh-database restore proof. Reuse
+current services/data and preserve other harness changes. Real AI acceptance is
+pending actual provider/profile setup, not implied by /ready or catalog HTTP 200.
+
+Backup review rejected root execution of application-writable code/environment;
+the reviewed unit uses a root-owned installed script and a DATABASE_URL-only
+root-private environment. Initial Windows tests exposed fsync on a read-only
+descriptor (fixed to writable), and root ESLint found missing Node globals in
+the new MJS files (fixed with explicit core imports). Installation then stopped
+before credential/unit activation because its Node ownership check failed;
+inspect the resolved binary/ancestors before correcting ownership and continuing.
+
+Further live storage probe: both a bounded Python SigV4 request and independent
+curl SigV4 PUT returned 403 AccessDenied / Invalid signature. Application and
+Garage regions agree (`us-east-1`). This is not established as an application
+adapter defect; compare the configured credential with Garage privately before
+changing anything. Keep all existing objects and credentials confidential.
+
+Resolution: the selected Garage key's secret differed from the application
+environment. With a root-private configuration backup, aligned the existing
+secret without rotating keys; PUT 200, read-back 200 with exact parity and DELETE
+204 passed for an isolated fixture. Existing objects were unchanged.
+
+HTTP/proxy/bind repairs are active; actual sibling-origin rejection and intact
+session, client-IP separation, tenant isolation and browser desktop/mobile checks
+passed. API 13/config 9 focused tests, types and scoped lint passed. Separate exact
+security/backup artifact reviews approved. Node binary/ancestor ownership was
+verified and corrected only on the two offending paths. Root-private daily backup
+is enabled; actual fresh restore matched 106 table counts and 56 migrations and
+the scratch database was dropped. No offsite/object/router backup claim.
+
+Author confirmed RadoxAI configuration. Actual adapter catalog: 273 models;
+real generation failed because upstream returned 402 insufficient balance.
+Application gateway/model/profile tables are still empty. Next: fund/configure
+the provider, establish the author's account/admin and application profiles, then
+verify real chapter/public reader workflows. No quota retries, invented AI proof,
+or implicit production release. Full evidence and limits:
+[staging audit](../14-progress/STAGING-AUDIT-2026-10-24.md).
+
+Subsequent author-requested refresh: RadoxAI was removed. Two replacement
+connections are active; catalog 251 and RadoxAI entries zero. Actual adapter
+JSON and streaming passed for `bansosinfoapi/gw/qwen3.7-plus`; a separate nonce
+probe completed normally for `bansosifm/IFM/K2-Horizon-375B-A23B`. The first IFM
+probe ended at its 256-token limit: nonce detection alone was insufficient, so
+the private helper's PASS criterion was corrected to require `stop`. One bounded
+follow-up with a larger response allowance passed. This was a verification-helper
+correction, not an application fix. The previous provider-balance blocker is now
+historical for these routes; application gateway/profile/main-account setup and
+integrated chapter/publication acceptance remain OPEN. No provider edits or
+commit/push were made in this follow-up.
+
+## Motion showcase smoothness and interaction revision — 2026-10-24
+
+Status: CLOSED (bounded artifact verification). Owner: author-requested offline showcase.
+Author reported choppy video and insufficient interaction in the initial showcase.
+Observed baseline: 30fps/450 frames. The HTML was reported smooth by the author;
+the source offered playback controls but no feature exploration. This does not
+establish the cause of every playback stutter on the author's player/hardware.
+Revision renders 900 separate timestamps at 60fps with longer dissolves and more
+continuous motion. HTML gains scene navigation, feature hotspots/cards, native
+detail dialogs, pointer response and keyboard navigation, preserving offline
+single-file packaging and reduced-motion behavior. Verify final cadence, decoded
+motion, full playback and interactions before closure. Application code/data remain
+outside this artifact task; previous deliverables are retained privately.
+
+Independent v2 review reproduced an async media race with delayed play promises:
+an obsolete start invocation could pause a newer play, and an intentionally
+cancelled invocation could set the permanent audio-fallback flag. Version checks
+must precede catch-state writes and stale resolutions must not pause shared audio.
+Verify both controlled resolution/rejection orderings and normal playback.
+
+Resolution verified: obsolete async starts return before fallback/status writes
+and never pause a newer playback. Root and independent reviewer reproduced both
+controlled orderings after the fix; normal full-duration playback/end/replay passed.
+The initial regression helper mistakenly awaited its deliberately pending mock
+promise through browser evaluation; the helper was corrected to return immediately
+and its task-owned process stopped before rerunning. No application process touched.
+Final media proof: 900 frames, 60/1 CFR, 15.000 seconds, full decode, actual motion
+between adjacent scene frames, six source comparisons and no decoded audio clipping.
+HTML Explore/navigation/hotspots/dialog/focus/mobile/reduced-motion/offline checks
+passed, with separate final source/artifact review APPROVE. This does not establish
+playback performance on every device. Private evidence: showreel verification,
+cadence and interaction helpers/reports under ignored .nf-artifacts/.
+
+## Offline showcase playback labels — 2026-10-24
+
+Status: CLOSED. Owner: author-requested motion showcase.
+During local artifact validation, the initial duration label read 00.15 in a
+display otherwise using decimal seconds; seeking backward from the finished
+state could also retain the Replay label. Corrected to 15.00 seconds and refresh
+the paused button label after seeking. Scope is the standalone showcase player,
+not the NovelForge application. Chromium full-duration/end/replay and end-to-earlier
+seek checks passed on the final HTML. Browser errors/network requests: none.
+Evidence: ignored .nf-artifacts/showreel-verification.json and verification helper.
+
 ## CI fixture drift after safeguards and embedding capabilities — 2026-10-23
 
 Status: REPAIRED (local verification; fresh remote CI tracked separately).

@@ -1,10 +1,10 @@
 /**
  * Same-origin proxy for the Fastify API.
  *
- * The session cookie is HttpOnly + SameSite=Lax (ADR-0002 §6), so the
- * browser only sends it on same-origin requests. Proxying /api/** through
- * Nitro keeps that invariant in dev and in production instead of opening
- * the API to cross-origin CORS. The proxy is transparent: it forwards
+ * The session cookie is HttpOnly + SameSite=Lax (ADR-0002 §6). SameSite is
+ * site-scoped, not origin-scoped; the API validates PUBLIC_ORIGIN for writes.
+ * Proxying /api/** through Nitro avoids opening cross-origin CORS.
+ * The proxy is transparent: it forwards
  * method, headers (incl. Cookie), raw body, status, and Set-Cookie.
  *
  * Target comes from NUXT_API_BASE (server-only runtime config), so the

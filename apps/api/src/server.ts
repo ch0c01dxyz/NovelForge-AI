@@ -45,7 +45,7 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
 try {
-  await app.listen({ port: env.PORT, host: "0.0.0.0" });
+  await app.listen({ port: env.PORT, host: env.API_HOST ?? "0.0.0.0" });
 } catch (err) {
   app.log.error(err);
   await db.$disconnect();

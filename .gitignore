@@ -46,3 +46,6 @@ review-receipts/
 backup/.passwd
 # Local encrypted database snapshots remain private, including new backups.
 /backup/*.dump.enc
+
+# Private one-off VPS provisioning; maintained operations live in scripts/ops.
+/nf-vps-*.sh

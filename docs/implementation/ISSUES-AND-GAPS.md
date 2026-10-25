@@ -1,5 +1,23 @@
 # Technical Issues and Implementation Gaps
 
+## Initial public release retains existing search-engine posture — 2026-10-25
+
+Owner: `tasks/public-production-release.md`. Status: documented release limitation.
+The author explicitly authorized initial public production release. Current server
+already runs NODE_ENV=production with public HTTPS and enabled native services.
+Public browse and reader source still emit robots noindex under NF-WF-013 Q2 and
+NF-WF-014 Q4. Public access and search-engine indexing are different outcomes;
+do not claim crawler discovery or silently remove that recorded product policy.
+Registration is a mode of /sign-in, not a separate /sign-up route (404 expected).
+Next action: record actual public smoke and release approval against deployed
+cc89901; retain prior tested scale/recovery evidence and manual/local-cover limits.
+Completion: initial public release recorded2026-10-25T11:00:37Z; actual process
+environment, six services active/enabled, source hashes, readiness, real Chromium
+browse/detail/chapter and sign-in/register form passed, anonymous session401.
+Exclusive root-private receipt saved/read back. No runtime changes were necessary.
+Search-engine indexing remains outside this release; noindex was not removed.
+
+
 ## Production-readiness operational dependencies — 2026-10-25
 
 Full-memory fixture preparation initially exited nonzero before timed load:

@@ -1,5 +1,23 @@
 # Current Project State
 
+## Initial public production release — 2026-10-25
+
+The author explicitly authorized public release at https://novamind.my.id after
+accepting the initial release limits. Existing native API/web/worker configuration
+already sets NODE_ENV=production and canonical PUBLIC_ORIGIN; HTTPS and autostart
+are active. No artificial mode switch, restart or data reset is required.
+Task: [public-production-release](../../tasks/public-production-release.md).
+Release recorded at2026-10-25T11:00:37Z. Actual API/web/worker process environment,
+all six native services active/enabled, readiness and six deployed-source hashes
+passed. Real browser verified public browse/novel/chapter, root redirect, sign-in
+and registration form, with zero page errors; anonymous session returned401.
+Root-private operator receipt was saved and read back equal. No configuration,
+story/account/provider changes or service restart was required.
+The author will publish further models personally; private cover credentials stay
+local. Existing browse/reader noindex policy is retained, so public availability
+does not claim search-engine indexing. Earlier staging evidence below remains the
+tested deployment baseline, not a separate untested replacement environment.
+
 ## Production-readiness completion authorized — 2026-10-25
 
 The reviewed embedding patch is published as `ffd2746`; CI40160422273 SUCCESS,

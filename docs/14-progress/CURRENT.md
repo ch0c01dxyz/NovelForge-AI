@@ -1,5 +1,70 @@
 # Current Project State
 
+## Production-readiness completion authorized — 2026-10-25
+
+The author authorized publication/CI/reversible staging deployment of the reviewed
+patch and permanent embedding setup. Follow
+[the new task contract](../../tasks/production-readiness-completion.md).
+Offsite destination/alert receiver, additional numeric recovery/canon-memory budgets,
+and permanent private-cover policy remain pending author inputs. Existing passed
+evidence is retained; no new full release or human acceptance is claimed.
+
+## Remaining staging gates: bounded scale and recovery verified — 2026-10-25
+
+Latest embedding result supersedes the blocked8Bparagraph below: author-selected
+lighter `openrouter/nvidia/nemotron-3.5-embed-1b:free` passed actual isolated
+staging API ingestion and hybrid retrieval through the real local router over a
+loopback-only SSH tunnel. Provider honored1536dimensions; optional dimensions now
+flow through existing application ports, with ingestion and query both requesting
+the storage width. Seven new unit cases and one focused PostgreSQL API regression,
+affected typechecks/lint and separate exact review passed.
+
+Two harmless test references/vectors, reported model `nvidia/nemotron-3.5-embed-1b`,
+cross-language VECTOR rank1and first fused result, exact source spans, query audit
+generation linkage and repeat-ingest skip without another model call PASS.
+Three generations SUCCEEDED with33/35/12reported input tokens. No private
+manuscript or existing live embedding was changed. Patched source used a reviewed
+read-only overlay; live application sources were not replaced or deployed.
+Scratch DB/owned Redis15/overlay/tunnel removed and separately read back absent;
+no selected model or temporary gateway in the live DB; original chapter rows
+unchanged. This is bounded real embedding evidence, not a permanent staging
+provider installation. Other unproved release gates below remain separate.
+
+Embedding follow-up: the author explicitly authorized temporary local
+`openrouter/nvidia/nemotron-3.5-embed-8b:free`. Exact model exists in OpenRouter's
+embedding catalog, but local retry and a staging-origin1536-dimension request
+both returned upstream504afterapproximately60seconds, with no vectors. No model
+substitution, vector truncation/padding, application contract change or live
+embedding replacement. No temporary provider/model/key file was installed;
+credential was used in process memory only. Final read-back PASS: key absent
+from16checked files/recent router journal, original2connections preserved,
+temporaryOpenRouter connections and selected-model database rows both0.
+Earlier pending-authorization wording below is historical for this selected model.
+
+At source baseline `6d9e25c`, the author approved an isolated structural
+2,500-chapter read workload:20virtual users/five minutes,p95<=2seconds,
+servererrors<1%,noOOM, abort on85%memory or main-service failure.
+Actual API result:6,000requests,allHTTP200,worstp95104.64ms,maxhostmemory29.76%,
+OOMcounterdelta0. Actual loopback API/DB/Redis were used; no fake gateway claim.
+Canon/memory remain the small source dataset; this is not full M8 or LLM load.
+
+New evidence also passed: consistent router SQLite backup/integrity/restore,
+PostgreSQL cover-payload restore with original327,440-byte hash, encrypted Windows
+off-host recovery using saved/read-back DPAPI key, and tamper refusal. On-demand
+monitor checked live readiness/services/authenticated catalog/archive freshness;
+an actual bad-port control failed as expected. Five focused new Linux tests and
+independent exact reviews passed. Seven live queues had no pending/active/delayed
+or failed work. Scratch API stopped, owned database dropped, Redis15 emptied;
+live original chapter-row hash unchanged. Private archives remain ignored.
+
+Earlier embedding blockage is retained historically: the resident catalog is
+empty, Qwen returned500and the selected8Bmodel returned504. The later lighter
+1Bmodel proved the bounded flow in isolation, then its temporary setup was removed.
+Unattended offsite schedule, external alerts, PITR and full-size memory/canon
+load remain separate. No new commit/push or general production approval.
+See [report](STAGING-EMBEDDING-SCALE-OPERATIONS-2026-10-25.md) and
+[task](../../tasks/staging-embedding-scale-operations-acceptance.md).
+
 ## Real local novel and cover acceptance — 2026-10-24–25
 
 One private staging copy of *Kaisar dari Masa Depan* is available in the owner's

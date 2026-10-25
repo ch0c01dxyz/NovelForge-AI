@@ -167,6 +167,7 @@ export interface RouteAttemptOptions {
 
 export interface EmbedOptions extends RouteAttemptOptions {
   input: string[];
+  dimensions?: number;
 }
 
 export interface GenerateImageOptions extends Omit<RouteAttemptOptions, "profile" | "outputMode" | "maxAttempts"> {
@@ -390,7 +391,7 @@ export class GatewayManager {
       return { vectors: [], model: "", inputTokens: 0 };
     }
     return this.routeAttempts(opts, "embed", (adapter, target) =>
-      adapter.embed({ model: target.modelId, input: opts.input, signal: opts.signal }),
+      adapter.embed({ model: target.modelId, input: opts.input, ...(opts.dimensions !== undefined ? { dimensions: opts.dimensions } : {}), signal: opts.signal }),
     );
   }
 

@@ -1,5 +1,37 @@
 # Daily PostgreSQL archive
 
+## Additional staging diagnostics
+
+The following Python standard-library helpers are on-demand diagnostics, not
+scheduled offsite backup or external alert delivery. Run only on an authorized
+Linux host with separately reviewed copies in a root-private operator directory:
+
+```sh
+python3 -m unittest scripts/ops/test_gateway_operations.py -v
+python3 scripts/ops/router-sqlite-backup.py /var/lib/9router/db/data.sqlite /var/backups/novelforge-router
+python3 scripts/ops/staging-monitor.py --env-file /opt/novelforge/.env --pg-backups /var/backups/novelforge --router-backups /var/backups/novelforge-router
+```
+
+Confirm the actual router DATA_DIR first. The snapshot destination must have a
+private operator-owned parent and directory. SQLite online backup preserves WAL
+commits, tables, indexes and triggers; integrity, foreign keys and snapshot
+inventory are checked before exclusive archive publication. Each run keeps its
+own timestamped archive; this diagnostic does not prune old snapshots. Inspect
+stale locks after process interruption; never remove another active job's lock.
+
+The monitor reads only gateway URL/key assignments as data, rejects HTTP
+redirects, and checks API readiness, router liveness/authenticated catalog,
+service states, disk/memory and archive freshness. It exits nonzero on failure
+and prints no key or response body. It does not run paid provider generations,
+prove embedding capability from chat catalog presence, revalidate archive
+contents, monitor queue progress or deliver external notifications. Its local
+JSON receipt cannot be described as an external alert. Recovery and continuous
+offsite scheduling require separate evidence.
+
+Cover-generation images and cover-version payloads currently reside in
+PostgreSQL JSON. A cover recovery drill must decode and hash those restored
+payloads; do not assume a separate S3 image backup is required or covered.
+
 `postgres-daily-backup.mjs` uses Node 24 core modules and installed PostgreSQL
 client binaries. It reads `DATABASE_URL` from the systemd service environment,
 not command arguments. The root service runs a separately installed root-owned

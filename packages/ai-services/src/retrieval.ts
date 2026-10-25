@@ -136,6 +136,7 @@ export interface Embedder {
     workspaceId: string;
     novelId?: string;
     texts: string[];
+    dimensions?: number;
   }): Promise<{ vectors: number[][]; model: string; generationId: string | null }>;
 }
 
@@ -369,7 +370,7 @@ export function createRetrievalServices(deps: {
     for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
       const batchTexts = texts.slice(i, i + EMBED_BATCH_SIZE);
       const batchIds = chunkIds.slice(i, i + EMBED_BATCH_SIZE);
-      const result = await ai.embed({ actorUserId, workspaceId, texts: batchTexts, ...(novelId ? { novelId } : {}) });
+      const result = await ai.embed({ actorUserId, workspaceId, texts: batchTexts, dimensions: EMBEDDING_DIMENSION, ...(novelId ? { novelId } : {}) });
 
       if (result.vectors.length !== batchTexts.length) {
         // Provider faults surface as 502 (the upstream failed), not 409 —
@@ -960,6 +961,7 @@ export function createRetrievalServices(deps: {
           actorUserId: input.actorUserId,
           workspaceId: input.workspaceId,
           texts: [query],
+          dimensions: EMBEDDING_DIMENSION,
           ...(input.novelId ? { novelId: input.novelId } : {}),
         });
       } catch (err) {

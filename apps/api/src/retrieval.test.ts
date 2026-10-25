@@ -101,6 +101,7 @@ function fakeVector(text: string): number[] {
 }
 
 let embedCalls = 0;
+let requestedEmbeddingDimensions: Array<number | undefined> = [];
 let reportedEmbeddingModel: string | null = null;
 /** When set, the fake embed returns this verbatim instead of a real vector. */
 let poisonVector: number[] | null = null;
@@ -136,6 +137,7 @@ function fakeCreateGateway(rec: GatewayRecord): AIGateway {
     },
     async embed(req) {
       embedCalls += 1;
+      requestedEmbeddingDimensions.push(req.dimensions);
       if (embedHook) {
         await embedHook(req.input);
         embedHook = null;
@@ -188,6 +190,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   embedCalls = 0;
+  requestedEmbeddingDimensions = [];
   reportedEmbeddingModel = null;
   poisonVector = null;
   embedHook = null;
@@ -1360,6 +1363,9 @@ describe("evidence and audit", () => {
     expect(generations.every((g) => g.task === "embed")).toBe(true);
     expect(generations.every((g) => g.status === "SUCCEEDED")).toBe(true);
     expect(generations.every((g) => g.userId === owner.userId)).toBe(true);
+    expect(requestedEmbeddingDimensions.length).toBeGreaterThan(0);
+    expect(requestedEmbeddingDimensions.every(width => width === DIMENSION)).toBe(true);
+    const ingestionCalls = requestedEmbeddingDimensions.length;
 
     // The audit row must name the generation that produced its query
     // vector. `generation_id` was declared on the row and on the search
@@ -1373,6 +1379,8 @@ describe("evidence and audit", () => {
       payload: searchBody("oath"),
     });
     expect(res.statusCode).toBe(200);
+    expect(requestedEmbeddingDimensions).toHaveLength(ingestionCalls + 1);
+    expect(requestedEmbeddingDimensions.at(-1)).toBe(DIMENSION);
     const audit = await db.retrievalAudit.findFirstOrThrow({
       where: { workspaceId },
       orderBy: { createdAt: "desc" },

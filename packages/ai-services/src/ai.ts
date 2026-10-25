@@ -288,6 +288,7 @@ export interface AiServices {
     workspaceId: string;
     novelId?: string;
     texts: string[];
+    dimensions?: number;
   }): Promise<{ vectors: number[][]; model: string; generationId: string | null }>;
   /**
    * Streamed generation. Yields text deltas; the returned promise resolves
@@ -1138,6 +1139,7 @@ export function createAiServices(deps: {
         const result = await manager.embed({
           profile: "EMBEDDING",
           input: input.texts,
+          ...(input.dimensions !== undefined ? { dimensions: input.dimensions } : {}),
           generationId: generation.id,
         });
         const latencyMs = Date.now() - started;

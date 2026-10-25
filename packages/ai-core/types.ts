@@ -55,6 +55,7 @@ export interface GenerateResult {
 export interface EmbedRequest {
   model: string;
   input: string[];
+  dimensions?: number;
   signal?: AbortSignal;
 }
 

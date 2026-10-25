@@ -521,13 +521,16 @@ export class OmniRouteGateway implements AIGateway {
   }
 
   async embed(req: EmbedRequest): Promise<EmbedResult> {
+    if (req.dimensions !== undefined && (!Number.isSafeInteger(req.dimensions) || req.dimensions <= 0)) {
+      throw new GatewayError("INVALID_REQUEST", "embedding dimensions must be a positive integer");
+    }
     const t = this.withTimeout(req.signal);
     try {
       const res = await this.fetchImpl(`${this.base}/v1/embeddings`, {
         method: "POST",
         headers: this.headers(),
         signal: t.signal,
-        body: JSON.stringify({ model: req.model, input: req.input }),
+        body: JSON.stringify({ model: req.model, input: req.input, ...(req.dimensions !== undefined ? { dimensions: req.dimensions } : {}) }),
       });
       if (!res.ok) await this.fail(res, "embed");
       const body = parseJsonBody(await res.text()) as OpenAIEmbedResponse;

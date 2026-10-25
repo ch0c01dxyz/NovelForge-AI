@@ -1,5 +1,152 @@
 # Technical Issues and Implementation Gaps
 
+## Production-readiness operational dependencies — 2026-10-25
+
+Owner: `tasks/production-readiness-completion.md`; OPEN, release evidence.
+Author authorized publication/deployment and permanent embedding follow-up.
+Offsite destination and external alert receiver are not yet supplied; additional
+numeric recovery/full canon-memory budgets and permanent private-cover policy
+are awaiting author answers. Do not claim unattended offsite/PITR or external
+alert delivery from the previous one-time local receipts.
+
+Read-only research found PostgreSQL18 native WAL streaming available without an
+archive-mode restart, but slot retention is currently unbounded. Do not install
+an unlimited physical slot. Preserve complete verified base/WAL recovery chains.
+Reference chunks are not hierarchical memory projections; previous2,500-chapter
+load retained only14canon facts and cannot close full canon/memory scale gates.
+Closure: approved limits/destinations, independently reviewed operational changes,
+actual offsite recovery/alert delivery and isolated full-size memory evidence.
+
+## Temporary author-selected Nemotron embedding probe — 2026-10-25
+
+Owner: `tasks/staging-embedding-scale-operations-acceptance.md`.
+The author explicitly authorized local OpenRouter model
+`openrouter/nvidia/nemotron-3.5-embed-8b:free` for the isolated staging test,
+requiring temporary configuration/key removal afterward. The first local
+synthetic EN/ID request timed out at55seconds before any vectors were observed;
+no credentials have been transferred to staging. Align one bounded diagnostic
+retry with the normal180-second embedding deadline, inspect actual model
+availability/output dimensions, and do not invent compatibility or substitute
+another model. No local database/model configuration was changed.
+
+The180-second bounded retry returned upstreamHTTP504after60,315ms with
+`Worker upstream fetch timed out after60000ms`; no vectors/model/usage were
+reported. Official OpenRouter model documentation advertises4096dimensions and
+truncation support, while this deployment's contract is1536. Before changing
+application contracts, run one distinct staging-origin single-input capability
+probe requesting1536dimensions. Credential travels only through SSH stdin and
+remote process memory; no temporary provider/database/key file is created.
+Do not claim this direct provider diagnostic is application ingestion acceptance.
+
+Observed staging-origin result: explicit1536-dimension/single-input request
+returnedHTTP504at60,332ms, errorCode504/upstreamWorkerTimeout=true, zero vectors,
+no reported model or usage. Further automatic retries stopped. No provider/model
+configuration or credential file was created on staging; key was stdin/memory
+only. Remaining closure: read-back absence verification, truthful blocked status
+and owner action on upstream availability before real ingestion/hybrid acceptance.
+
+Cleanup VERIFIED: read-only absence helper found no selected key in16checked
+files or the recent30-minute router journal, preserved the2original connection
+IDs, and confirmed0temporaryOpenRouter connections/0selected-model NovelForge
+rows. Both helpers separately reviewed APPROVE; receipts ignored. No local
+configuration/key changed and no staging credential file created. Temporary
+credential handling is closed; embedding availability/compatibility remains OPEN.
+
+Author supplied four further free OpenRouter embedding candidates (listed in
+the task). Their real provider catalog entries exist. Liquid is documented as
+1024dimensions, incompatible with current1536storage without a separately
+designed migration; never fabricate extra coordinates. New NVIDIA candidate
+probes are sequential and bounded, preserving all earlier failed results.
+
+The first lighter candidate succeeded: Nemotron3.5Embed1B returned HTTP200in1178ms,
+reported exact base model identity and a finite/nonzero1536-vector for the explicit
+dimension request. Candidate probes stopped. New focused regression demonstrated
+the application currently drops dimensions between manager/HTTP transport, and
+does not reject invalid dimensions. Add optional validated dimension passthrough
+at existing ports and send storage width for BOTH ingestion/query paths. No
+manual vector conversion or live schema/config change. Record real isolated
+ingestion/hybrid proof before closing this integration gap.
+
+The focused local API regression initially failed before execution because the
+repository `.env` PostgreSQL credential is stale. No test/data reset occurred.
+Use the existing acceptance container's privately read credential only in the
+test subprocess environment; keep the dedicated `novelforge_test_phase5` target
+and do not modify live credentials or recreate Docker services.
+
+Pre-execution isolation review requires checking the reverse SSH listener's
+actual127.0.0.1binding (server GatewayPorts can override the requested bind),
+truthful UNKNOWN cleanup status on failure, and vector rank1 rather than merely
+finding the target among two returned documents. Implement these guards before
+any scratch application/provider execution; no exposed listener or failed
+cleanup has been observed.
+
+RESOLVED for the bounded integration: Nemotron3.5Embed1B honored1536dimensions.
+Dimension passthrough regression RED6/GREEN7; one filtered PostgreSQL API case
+proves ingestion AND query propagation. Affected typechecks/scoped lint PASS;
+separate exact code/helper reviews APPROVE. Actual isolated staging `buildApp`
+API flow through the real local router passed two stored vectors, cross-language
+VECTOR rank1, source-span provenance, audit/generation linkage and no-call
+repeat-ingest. Three successful generations report33/35/12input tokens.
+No fake model result or live source replacement. Cleanup/read-back verified
+scratchDB0,Redis15empty,overlay/tunnel absent,no temporary live gateway/model,
+unchanged original chapter-row hash. The earlier8Bupstream failure remains
+historical, not a failure of the working1Broute. Permanent embedding configuration
+and wider release gates remain separate; no commit/push/deployment.
+
+## Staging embedding, scale and gateway operations evidence — 2026-10-25
+
+Owner: `tasks/staging-embedding-scale-operations-acceptance.md`.
+Observed preflight at HEAD `6d9e25c`: embedding catalog HTTP200 with zero models;
+real staging embedding acceptance is BLOCKED on a configured route. Earlier
+local embedding proof retains its original scope. Existing300-chapter mock
+harness does not prove2500-chapter concurrent load; M8 requires approved numeric
+budgets first, currently awaiting author reply. Router health is liveness only.
+Existing PostgreSQL daily backups are healthy; router SQLite/off-host recovery
+and actual monitor failure detection remain unproved. Cover payloads are in
+PostgreSQL JSON, not necessarily S3 objects. Next: isolated new evidence, online
+SQLite snapshots and reviewed diagnostics; close only with actual receipts and
+explicit limits, never production approval by inference.
+
+Pre-install review found the new monitor's default urllib redirect handling
+could forward its Authorization header to another origin. No helper has been
+installed or run with credentials. Fix at the shared HTTP probe: reject redirects
+and prove it with a real local two-server regression before privileged execution.
+Snapshot foreign-key violations must fail acceptance, and connections should
+close explicitly. Review these exact corrections before activation.
+
+Scale-helper review caught root-private archive traversal by the postgres user
+(corrected to stdin streaming before execution), potential non-superuser extension
+restore failure, and missing OOM-counter evidence. Restore the isolated database
+as postgres, grant the application SELECT only in that scratch schema, and
+capture pre/post host OOM counters. Never elevate the live application role.
+
+Prepare passed: isolated2500chapters and cover327440-byte hash recovery. The
+first load launch failed before requests: sanitized PATH omitted `/usr/sbin`,
+where `runuser` is installed. Use its absolute path and preserve the empty
+failed-attempt log rather than overwrite it. No load result claimed. Off-host
+review also requires reading/unprotecting the saved DPAPI key, not merely
+reusing the in-memory encryption key, before recovery acceptance.
+
+The selected canon-list workload smoke returned400 because the diagnostic URL
+omitted `mode=AUTHOR`; the API correctly requires reader position for its default
+READER mode. Correct only the diagnostic URL. Other selected endpoint smoke
+requests succeeded; preserve their scope, then run the approved timed workload.
+The existing Qwen chat model embedding probe returned500 rather than vectors;
+no mapped embedding capability or new semantic acceptance is claimed.
+
+Resolution evidence: reviewed helpers passed five new Linux tests; the redirect
+test alone was rerun after closing error handles. Consistent SQLite snapshot and
+isolated recovery, encrypted off-host DPAPI-key recovery/tamper refusal, accepted
+cover hash restoration and actual monitor negative-control detection passed.
+Approved2500-chapter/20client/five-minute load passed6000HTTP200,p95<=104.64ms,
+memory29.76%,OOMdelta0. The completed SSH transport was closed only after the
+remote receipt and process exit were verified; no successful SSH exit is claimed.
+Final cleanup verified unchanged live chapter-row hash, dropped owned scratchDB
+and empty owned Redis15. Separate source/evidence reviews APPROVE.
+Embedding remains OPEN/BLOCKED; schedule/externalalerts/PITR/fullcanon-memory
+coverage remain unproved. See the bounded2026-10-25staging report; no full release
+or human acceptance claim. Private archives are retained, not committed.
+
 ## Real-novel staging import rehearsal — 2026-10-24
 
 Owner: author-authorized real-novel staging acceptance task.

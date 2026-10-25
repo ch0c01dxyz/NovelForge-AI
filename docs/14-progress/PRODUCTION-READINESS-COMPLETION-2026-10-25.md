@@ -136,4 +136,49 @@ The new load explicitly exercises this paginated UI contract against the same
 and requires25,000unique IDs; timed reads sample20page positions including first/last.
 The memory workload,20clients/five minutes and2s budget remain unchanged. Three
 reviewed source files are loaded through a verified read-only overlay, with the live
-application's memory/canon source still unchanged. Results/cleanup are pending.
+application's memory/canon source was unchanged during the load.
+
+The paginated run PASSED:6,000HTTP200requests/302.23s,20clients,
+p95canon54.58ms/chapter77.68ms/global98.24ms, max memory28.37%, noOOM/abort.
+Canon response maximum42,344bytes. All250pages/25,000unique fact IDs were verified
+before timing; timed reads checked20page positions, including first/last, alongside
+the existing chapter/global memory assertions. Earlier all-facts failures remain
+historical FAIL results; this PASS applies to the changed paginated UI contract.
+
+## Final browser, publication and deployment evidence
+
+Commit`cc899018a6d0ffe562c750ea7c14bb1befaf6d0e` was pushed to main;
+[CI40183753393](https://github.com/ch0c01dxyz/NovelForge-AI/actions/runs/40183753393)
+completed SUCCESS. This is the full CI result in addition to the183focused checks.
+The isolated frontend pnpm invocation initially failed its workspace safety check;
+that guard was preserved. Direct invocation of the installed Nuxt CLI as the
+application user built the same committed source in a fresh isolated checkout.
+The388-file artifact manifest SHA256 is
+`3f0cb671e5bdab942bb864533c7e519a9dc370c06195a52b9aefdf66f6d28d58`.
+
+Actual compiled UI against the isolated API/database passed desktopEnglish and
+mobileIndonesian:100facts/page, Next/Previous navigation, identical first page on
+return, no horizontal overflow or browser page errors. No route mocks or story
+mutations were used. A harness-only innerText/textContent mismatch was corrected
+before this unfinished proof was rerun; no application change was needed.
+
+After authenticated live queue inspection found no pending/active/delayed work,
+the separately reviewed deployment helper installed six runtime sources and the
+built web output. Raw preimages and previous output are retained under root-owned
+`/root/nf-memory-deploy-f28psmuz`; no schema/environment changes were made.
+API, worker and web restarted successfully. Independent post-deployment read-back
+matched all six source hashes; API readiness and public HTTPS browse returned200,
+and API/web/worker/router/storage services were active. Rollback remains available;
+it was not exercised against healthy live services.
+
+Owned browser processes and SSH tunnel stopped. The scale clone was dropped,
+owned Redis15 flushed/read back empty, and exact hashed read-only overlay removed.
+Separate read-back confirmed database absence and refused scratch ports8326/8327;
+original ten chapter rows remained unchanged. Private archives, build output,
+receipts and all Git worktrees/stashes are retained.
+
+The author's revised manual-file recovery and bounded paginated-scale scope is
+complete. Continuous15-minute host-loss RPO, automated offsite/alerts, automatic
+7daily/4weekly retention and staging cover generation are not claimed. Human
+screen-reader acceptance remains separately author-deferred. The manual archive's
+recovery key still depends on the original Windows DPAPI user profile.

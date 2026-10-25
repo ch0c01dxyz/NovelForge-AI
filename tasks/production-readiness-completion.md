@@ -1,6 +1,7 @@
 # Production readiness completion
 
-Status: IN PROGRESS, 2026-10-25. Owner: host-bound integration executor.
+Status: COMPLETE within the author's revised manual-backup and bounded-scale scope,
+2026-10-25. Owner: host-bound integration executor.
 Baseline: `6d9e25cb8e372e94ff4163b590ab28ea381dde90`.
 
 ## Authorization and goal
@@ -84,3 +85,16 @@ Never restore a test cluster over production. Retain complete base/WAL dependenc
 chains rather than pruning WAL by age. Save and read back host-bound Engram checkpoints.
 Release readiness remains separate from author story sign-off and deferred human
 screen-reader acceptance; unknown gates must remain explicitly unknown.
+
+## Completion evidence
+
+Embedding patch`ffd2746` and performance patch`cc89901` are published with successful
+CI and reversible staging deployments. Permanent embedding indexed the six existing
+references into30verified1536-dimensional vectors. Encrypted manual PostgreSQL/router
+recovery passed4.23s; continuous RPO and automated retention are not claimed.
+After two retained failed load runs, the explicit paginated workload passed6,000
+HTTP200requests/302.23s with20clients and p95below100ms on all three read paths.
+Actual compiled desktopEN/mobileID paging passed;183focused checks and full CI passed.
+Owned clone/Redis15/overlay/browser processes were cleaned and live chapters preserved.
+See the final evidence report for exact scope, preimages, hashes and deferred gates:
+`docs/14-progress/PRODUCTION-READINESS-COMPLETION-2026-10-25.md`.

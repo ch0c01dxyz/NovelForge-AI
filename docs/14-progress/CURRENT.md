@@ -20,9 +20,16 @@ The approved larger2,500chapter/25,000canon/10,000memory test FAILED its initial
 2s p95 target despite all4,034HTTP200/noOOM. Memory batching alone also FAILED
 the mixed workload(4,180HTTP200), with9.67MBcanon responses remaining. The repair
 now combines bounded memory reads with actual service/API/UI canon pagination;
-183focused tests, affected typechecks/lint and separate review passed. A new
-explicitly paginated workload is running against the same full-size dataset.
-Do not claim full-scale production PASS yet. See
+183focused tests, affected typechecks/lint and separate review passed. The new
+explicitly paginated workload PASSED against the same full-size dataset:
+6,000HTTP200/302.23s,20clients, p95canon54.58ms/chapter77.68ms/global98.24ms,
+max memory28.37%, noOOM/abort. All25,000facts were traversed before timing.
+Commit`cc89901` CI40183753393 SUCCESS; desktopEN/mobileID built-browser paging
+passed. Six runtime sources and the388-file web artifact were deployed reversibly;
+API/web/worker/router/storage are active and public browse returns200. Owned clone,
+Redis15, overlay and browser services were cleaned; original chapters unchanged.
+This closes the revised manual-backup/bounded-scale release scope, not continuous
+PITR, automated offsite/alerts or staging cover generation. See
 [completion evidence](PRODUCTION-READINESS-COMPLETION-2026-10-25.md)
 and [task contract](../../tasks/production-readiness-completion.md). Earlier
 temporary-only/blocked statements below are historical, not the current embedding

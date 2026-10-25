@@ -53,6 +53,19 @@ tests passed; the isolated-worktree dependency error is resolved by that valid g
 Permanent embedding/provider/profile read-back and public indexing passed; its
 temporary operator session was rejected with HTTP401 after revocation.
 
+The isolated frontend build initially failed with pnpm12
+`ERR_PNPM_UNSAFE_TASK_RUN_STATE_PATH` when reusing linked workspace dependencies.
+Its security check was not disabled; live source/output were not replaced.
+Inspect the installed Nuxt CLI and invoke its normal build entry directly as the
+application user in a fresh isolated checkout, retaining the failed build log.
+Do not claim a completed build or install new dependencies to hide this issue.
+
+The installed Nuxt CLI subsequently built the committed release successfully as
+the application user in a fresh isolated checkout;388artifact files were hashed.
+Browser acceptance initially failed a harness assertion comparing `inner_text()`
+with default `textContent` semantics. The returned first fact was unchanged;
+align the assertion to rendered inner text and rerun this unfinished browser proof.
+
 Read-only research found PostgreSQL18 native WAL streaming available without an
 archive-mode restart, but slot retention is currently unbounded. Do not install
 an unlimited physical slot. Preserve complete verified base/WAL recovery chains.
@@ -61,6 +74,15 @@ load retained only14canon facts and cannot close full canon/memory scale gates.
 Closure under the author's revised scope: reviewed deployed embedding, verified
 manual recovery, and isolated full-size paginated memory/canon performance evidence.
 Offsite/alerts/continuous PITR remain deferred, not pending credentials or claimed PASS.
+
+Closure observed: paginated run6,000HTTP200/302.23s,20clients,
+p95canon54.58ms/chapter77.68ms/global98.24ms, max memory28.37%, noOOM/abort.
+All25,000facts traversed; desktopEN/mobileID compiled-browser navigation passed
+after the harness text assertion correction. Commit`cc89901` full CI40183753393
+SUCCESS and independently reviewed reversible staging deployment passed readiness
+and source-hash read-back. Owned database/Redis15/overlay/browser services cleaned;
+original chapters unchanged. This issue is CLOSED within the revised scope;
+earlier pending/failure statements above remain historical evidence.
 
 ## Temporary author-selected Nemotron embedding probe — 2026-10-25
 

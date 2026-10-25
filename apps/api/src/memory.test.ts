@@ -19,6 +19,8 @@ import type { Env } from "@novelforge/config";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
+import { createMemoryServices } from "@novelforge/ai-services";
+import { bindMeasureDb, measureQueries } from "./e2e/measure.ts";
 import { createAuditService } from "@novelforge/ai-services";
 import { createPlatformServices } from "@novelforge/ai-services";
 import {
@@ -256,6 +258,34 @@ async function makeEntity(workspaceId: string, novelId: string, name: string) {
 
 const memUrl = (workspaceId: string, novelId: string) =>
   `/api/workspaces/${workspaceId}/novels/${novelId}/memory`;
+
+it("recalls eleven populated chapter scopes without per-scope query fanout", async () => {
+  const { userId } = await seedUser("bounded-recall@example.com");
+  const { workspaceId, novelId } = await seedNovel(userId);
+  const branch = await makeBranch(workspaceId, novelId);
+  const chapters = [];
+  for (let number = 1; number <= 11; number++) {
+    const { chapter } = await makeChapter(novelId, number, userId);
+    chapters.push(chapter);
+  }
+  await db.memoryProjection.createMany({
+    data: chapters.map((chapter) => ({
+      workspaceId, novelId, scope: chapterScope(chapter.id),
+      sourceRevisionId: branch.headRevisionId!,
+      structural: { facts: [], threads: [], promises: [] },
+      chapterCoverage: [chapter.number], summaryCoveredFactIds: [],
+    })),
+  });
+  const memory = createMemoryServices({ db: bindMeasureDb(db), queue: fakeQueue });
+  const { result, queryCount } = await measureQueries("bounded-recall", () =>
+    memory.readAsOf(userId, workspaceId, novelId, { chapter: 11, revisionId: branch.headRevisionId! }),
+  );
+  expect(result.chapterMemory?.scope).toBe(chapterScope(chapters[10]!.id));
+  expect(result.chapterMemory?.freshness).toBe("FRESH");
+  expect(result.recentMemory.map((block) => block.scope)).toEqual(chapters.slice(0, 10).map((chapter) => chapterScope(chapter.id)));
+  expect(result.recentMemory.every((block) => block.sourceRevisionId === branch.headRevisionId)).toBe(true);
+  expect(queryCount).toBeLessThanOrEqual(12);
+});
 
 // ---------------------------------------------------------------------------
 // Rebuild determinism + freshness

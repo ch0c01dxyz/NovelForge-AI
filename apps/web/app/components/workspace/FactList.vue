@@ -9,7 +9,7 @@
           v-model="includeSuperseded"
           type="checkbox"
           class="h-3.5 w-3.5 accent-nf-accent focus-visible:nf-focus"
-          @change="load"
+          @change="resetPagination"
         />
         {{ t("workspace.world.facts.includeSuperseded") }}
       </label>
@@ -139,6 +139,27 @@
         </div>
       </li>
     </ul>
+    <nav
+      v-if="pageCursors.length > 1 || nextCursor"
+      :aria-label="t('workspace.world.facts.pagination')"
+      class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-nf-border pt-3"
+    >
+      <button
+        type="button"
+        :disabled="loading || pageCursors.length === 1"
+        class="rounded-md border border-nf-border-strong px-3 py-1.5 text-[13px] text-nf-text hover:bg-nf-bg-3 disabled:opacity-50 focus-visible:nf-focus"
+        @click="previousPage"
+      >{{ t("workspace.world.facts.previousPage") }}</button>
+      <span class="text-[12px] text-nf-text-dim" role="status" aria-live="polite">
+        {{ t("workspace.world.facts.pageNumber", { page: pageCursors.length }) }}
+      </span>
+      <button
+        type="button"
+        :disabled="loading || !nextCursor || !!error"
+        class="rounded-md border border-nf-border-strong px-3 py-1.5 text-[13px] text-nf-text hover:bg-nf-bg-3 disabled:opacity-50 focus-visible:nf-focus"
+        @click="nextPage"
+      >{{ t("workspace.world.facts.nextPage") }}</button>
+    </nav>
     <p v-if="withheldCount > 0" class="mt-2 text-[12px] text-nf-text-faint">
       {{ t("workspace.world.facts.withheld", { n: withheldCount }) }}
     </p>
@@ -185,6 +206,9 @@ const { t } = useLocale();
 const { api } = useApi();
 
 const facts = ref<CanonFact[]>([]);
+const pageCursors = ref<Array<string | null>>([null]);
+const nextCursor = ref<string | null>(null);
+let loadSequence = 0;
 const withheldCount = ref(0);
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -225,22 +249,45 @@ function statusClass(status: string): string {
 }
 
 async function load() {
+  const sequence = ++loadSequence;
   loading.value = true;
   error.value = null;
   try {
-    const qs = new URLSearchParams({ mode: "AUTHOR" });
+    const qs = new URLSearchParams({ mode: "AUTHOR", limit: "100" });
+    const cursor = pageCursors.value.at(-1);
+    if (cursor) qs.set("cursor", cursor);
     if (props.entityId) qs.set("entityId", props.entityId);
     if (includeSuperseded.value) qs.set("includeSuperseded", "true");
-    const res = await api<{ facts: CanonFact[]; withheldCount: number }>(
+    const res = await api<{ facts: CanonFact[]; withheldCount: number; nextCursor?: string | null }>(
       `/workspaces/${props.workspaceId}/novels/${props.novelId}/canon/facts?${qs}`,
     );
+    if (sequence !== loadSequence) return;
     facts.value = res.facts;
     withheldCount.value = res.withheldCount;
+    nextCursor.value = res.nextCursor ?? null;
   } catch (e) {
-    error.value = errText(e);
+    if (sequence === loadSequence) error.value = errText(e);
   } finally {
-    loading.value = false;
+    if (sequence === loadSequence) loading.value = false;
   }
+}
+
+function resetPagination() {
+  pageCursors.value = [null];
+  nextCursor.value = null;
+  return load();
+}
+
+function nextPage() {
+  if (loading.value || !nextCursor.value || error.value) return;
+  pageCursors.value.push(nextCursor.value);
+  return load();
+}
+
+function previousPage() {
+  if (loading.value || pageCursors.value.length === 1) return;
+  pageCursors.value.pop();
+  return load();
 }
 
 async function retractFact(f: CanonFact) {
@@ -299,10 +346,10 @@ async function onSourcesSaved() {
 }
 
 watch(
-  () => props.entityId,
-  () => load(),
+  () => [props.workspaceId, props.novelId, props.entityId],
+  () => resetPagination(),
 );
 
-defineExpose({ refresh: load });
+defineExpose({ refresh: resetPagination });
 onMounted(() => load());
 </script>

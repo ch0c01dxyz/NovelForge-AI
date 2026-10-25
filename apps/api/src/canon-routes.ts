@@ -331,6 +331,8 @@ export function registerCanonRoutes(
         // TRUE and every request that asks to hide superseded rows shows them.
         // A typo is a 400 rather than a silently ignored flag.
         includeSuperseded: z.stringbool().optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+        cursor: uuid.optional(),
         mode: z.enum(["AUTHOR", "EDITOR", "READER"]).optional(),
         readerChapter: z.coerce.number().int().min(0).max(100_000).optional(),
       })

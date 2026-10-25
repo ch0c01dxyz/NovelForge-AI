@@ -417,6 +417,122 @@ async function seedReferenceChunk(
   expect(published.statusCode, published.body).toBe(200);
 }
 
+describe("bounded canon fact pages", () => {
+  async function fixture(count: number) {
+    const owner = await seedUser("pages@example.com");
+    const scope = await seedWorkspace(owner.userId, "pages");
+    const entityId = await createEntity(owner.cookie, scope.workspaceId, scope.novelId, "Page subject");
+    await db.canonFact.createMany({
+      data: Array.from({ length: count }, (_, index) => ({
+        ...scope, entityId, predicate: `page-${index}`, objectText: `Value ${index}`,
+        statement: `Fact ${index}`, createdById: owner.userId,
+        availableFromChapter: 1, createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      })),
+    });
+    const ordered = await db.canonFact.findMany({ where: scope, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const url = `/api/workspaces/${scope.workspaceId}/novels/${scope.novelId}/canon/facts`;
+    async function page(query: Record<string, string> = {}) {
+      return app.inject({ method: "GET", url: `${url}?${new URLSearchParams({ mode: "AUTHOR", ...query })}`, headers: { cookie: owner.cookie } });
+    }
+    return { owner, ...scope, entityId, ordered, page };
+  }
+
+  it("defaults to 100 and traverses every equal-timestamp fact without duplicates", async () => {
+    const { page, ordered } = await fixture(235);
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    const sizes: number[] = [];
+    do {
+      const response = await page(cursor ? { cursor } : {});
+      expect(response.statusCode, response.body).toBe(200);
+      const body = response.json<{ facts: Array<{ id: string }>; nextCursor: string | null; withheldCount: number }>();
+      sizes.push(body.facts.length);
+      expect(body.withheldCount).toBe(0);
+      expect(body).not.toHaveProperty("total");
+      ids.push(...body.facts.map((fact) => fact.id));
+      cursor = body.nextCursor;
+    } while (cursor && sizes.length < 5);
+    expect(cursor).toBeNull();
+    expect(sizes).toEqual([100, 100, 35]);
+    expect(ids).toEqual(ordered.map((fact) => fact.id));
+    expect(new Set(ids).size).toBe(235);
+    const largest = await page({ limit: "200" });
+    expect(largest.json().facts).toHaveLength(200);
+    expect(largest.json().nextCursor).toBe(ordered[199]!.id);
+  });
+
+  it("continues from a later-retracted anchor and keeps entity/predicate/status filters", async () => {
+    const { page, ordered, entityId } = await fixture(5);
+    const first = await page({ limit: "2", entityId });
+    const cursor = first.json().nextCursor as string;
+    await db.canonFact.update({ where: { id: cursor }, data: { status: "RETRACTED" } });
+    await db.canonFact.update({ where: { id: ordered[2]!.id }, data: { status: "SUPERSEDED" } });
+    const rest = await page({ cursor, entityId, limit: "2" });
+    expect(rest.statusCode, rest.body).toBe(200);
+    expect(rest.json().facts.map((fact: { id: string }) => fact.id)).toEqual(ordered.slice(3).map((fact) => fact.id));
+    expect(rest.json().nextCursor).toBeNull();
+    const withHistory = await page({ cursor, entityId, includeSuperseded: "true", limit: "2" });
+    expect(withHistory.json().facts.map((fact: { id: string }) => fact.id)).toEqual(ordered.slice(2, 4).map((fact) => fact.id));
+    const filtered = await page({ cursor, predicate: ordered[4]!.predicate, entityId });
+    expect(filtered.json().facts.map((fact: { id: string }) => fact.id)).toEqual([ordered[4]!.id]);
+    expect(filtered.json().nextCursor).toBeNull();
+    expect((await page({ cursor, predicate: "absent" })).json().facts).toEqual([]);
+  });
+
+  it("rejects malformed paging and treats foreign/other-novel/missing cursors identically", async () => {
+    const { owner, workspaceId, novelId, page, ordered } = await fixture(2);
+    const invalidQueries: Array<Record<string, string>> = [{ cursor: "bad" }, { limit: "0" }, { limit: "201" }, { limit: "1.5" }];
+    for (const query of invalidQueries) {
+      expect((await page(query)).statusCode).toBe(400);
+    }
+    const other = await createPlatformServices({ db, audit: createAuditService(db) }).createNovel({ actorUserId: owner.userId, workspaceId, title: "Other", slug: "other" });
+    const entityId = await createEntity(owner.cookie, workspaceId, other.id, "Other subject");
+    const elsewhere = await db.canonFact.create({ data: { workspaceId, novelId: other.id, entityId, predicate: "other", objectText: "Other", statement: "Other", createdById: owner.userId } });
+    const outsider = await seedUser("foreign-pages@example.com");
+    const foreign = await seedWorkspace(outsider.userId, "foreign-pages");
+    const foreignEntity = await createEntity(outsider.cookie, foreign.workspaceId, foreign.novelId, "Foreign");
+    const foreignFact = await db.canonFact.create({ data: { ...foreign, entityId: foreignEntity, predicate: "foreign", objectText: "Foreign", statement: "Foreign", createdById: outsider.userId } });
+    const missing = await page({ cursor: "00000000-0000-4000-8000-000000000000" });
+    for (const cursor of [elsewhere.id, foreignFact.id]) {
+      const response = await page({ cursor });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual(missing.json());
+    }
+    expect(missing.statusCode).toBe(404);
+    const denied = await app.inject({ method: "GET", url: `/api/workspaces/${workspaceId}/novels/${novelId}/canon/facts?mode=AUTHOR&cursor=${ordered[0]!.id}`, headers: { cookie: outsider.cookie } });
+    expect(denied.statusCode).toBe(404);
+  });
+
+  it("paginates only reader-visible facts and refuses hidden anchors without revealing counts", async () => {
+    const { page, ordered } = await fixture(6);
+    await db.canonFact.update({ where: { id: ordered[1]!.id }, data: { availableFromChapter: 99 } });
+    await db.canonFact.update({ where: { id: ordered[3]!.id }, data: { availableFromChapter: null } });
+    await db.canonFact.update({ where: { id: ordered[0]!.id }, data: { status: "SUPERSEDED", supersededById: ordered[1]!.id } });
+    const reader = { mode: "READER", readerChapter: "3", includeSuperseded: "true", limit: "2" };
+    const first = await page(reader);
+    expect(first.statusCode, first.body).toBe(200);
+    expect(first.json().facts.map((fact: { id: string }) => fact.id)).toEqual([ordered[0]!.id, ordered[2]!.id]);
+    expect(first.json().nextCursor).toBe(ordered[2]!.id);
+    const last = await page({ ...reader, cursor: first.json().nextCursor });
+    expect(last.json().facts.map((fact: { id: string }) => fact.id)).toEqual([ordered[4]!.id, ordered[5]!.id]);
+    expect(last.json().nextCursor).toBeNull();
+    for (const response of [first, last]) {
+      expect(response.json().withheldCount).toBe(0);
+      expect(response.json()).not.toHaveProperty("total");
+      for (const fact of response.json().facts) {
+        expect(fact).not.toHaveProperty("sources");
+        expect(fact).not.toHaveProperty("supersededById");
+      }
+    }
+    const missing = await page({ ...reader, cursor: "00000000-0000-4000-8000-000000000000" });
+    for (const hidden of [ordered[1]!, ordered[3]!]) {
+      const response = await page({ ...reader, cursor: hidden.id });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual(missing.json());
+    }
+  });
+});
+
 describe("canon facts and the one-live-value invariant", () => {
   it("creates a fact, reads it back with its subject key, and refuses a second live value", async () => {
     const owner = await seedUser("owner@example.com");

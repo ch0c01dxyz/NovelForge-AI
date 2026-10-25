@@ -2,12 +2,31 @@
 
 ## Production-readiness completion authorized — 2026-10-25
 
-The author authorized publication/CI/reversible staging deployment of the reviewed
-patch and permanent embedding setup. Follow
-[the new task contract](../../tasks/production-readiness-completion.md).
-Offsite destination/alert receiver, additional numeric recovery/canon-memory budgets,
-and permanent private-cover policy remain pending author inputs. Existing passed
-evidence is retained; no new full release or human acceptance is claimed.
+The reviewed embedding patch is published as `ffd2746`; CI40160422273 SUCCESS,
+five runtime files deployed, API/worker ready. Permanent Nemotron1B embedding is
+active; actual public HTTPS ingestion indexed the six existing Bab6references
+into30finite/nonzero1536-dimensional vectors, with LEXICAL+VECTOR retrieval.
+Independent read-back confirmed unchanged original chapter/reference/canon rows.
+Operator revocation returned HTTP401 and its temporary app helper was removed.
+
+Author chose manual backup files, no new automated offsite/external alerts, and
+release without staging cover generation. A new encrypted manual backup was
+decrypted and actually restored into an isolated PostgreSQL database in4.23s
+outer elapsed time; source versions/cover hash matched, scratch DB removed.
+Recovery key requires the same Windows DPAPI user profile. Manual snapshots do
+not establish continuous15-minute host-loss RPO.
+
+The approved larger2,500chapter/25,000canon/10,000memory test FAILED its initial
+2s p95 target despite all4,034HTTP200/noOOM. Memory batching alone also FAILED
+the mixed workload(4,180HTTP200), with9.67MBcanon responses remaining. The repair
+now combines bounded memory reads with actual service/API/UI canon pagination;
+183focused tests, affected typechecks/lint and separate review passed. A new
+explicitly paginated workload is running against the same full-size dataset.
+Do not claim full-scale production PASS yet. See
+[completion evidence](PRODUCTION-READINESS-COMPLETION-2026-10-25.md)
+and [task contract](../../tasks/production-readiness-completion.md). Earlier
+temporary-only/blocked statements below are historical, not the current embedding
+configuration. Human screen-reader acceptance remains separately author-deferred.
 
 ## Remaining staging gates: bounded scale and recovery verified — 2026-10-25
 

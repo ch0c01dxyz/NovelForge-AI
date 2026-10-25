@@ -2,6 +2,40 @@
 
 ## Production-readiness operational dependencies — 2026-10-25
 
+Full-memory fixture preparation initially exited nonzero before timed load:
+the isolated clone contains its chapter fixture, but still14facts/0memory rows;
+state remains prepared=false/ownedRedis=false. No timed result or live-story
+mutation is inferred. Diagnose the failed helper stage, repair and independently
+review the factory before continuing; preserve the live source and private archive.
+Observed PostgreSQL error identified `canon_facts_live`: ACTIVE facts must have
+unique(novel_id,entity_id,predicate). The factory reused one predicate for thousands
+of facts. Repair the synthetic predicate values, preserving the index and all live
+invariants; the failed transaction rolled back its fact/memory writes.
+Corrected preparation passed. Timed full-size read load then FAILED the approved
+latency target:4,034HTTP200responses/301.55s,20clients, no abort/OOM, max host
+memory42.98%; p95canon2467.07ms/as-of2393.55ms/global2586.52ms versus2000ms.
+Investigate unpaginated canon response, shared API load and client-side decoding
+cost before choosing a fix or attributing the latency. Do not convert the result
+to PASS or infer full-scale production readiness from HTTP success alone.
+The memory-batch overlay rerun retained4,180HTTP200/noOOM but still FAILED:
+canon2230.73ms/global2176.42ms; chapter recall1981.07ms. HTTP timing excludes
+separately reported JSON validation. Actual canon body9,670,282bytes per request
+confirms the unbounded response cost. Extend the measured repair to bounded
+service/API pagination and the actual author FactList navigation, preserving all
+facts, provenance and tenant/reader filters. Record the new paginated workload
+explicitly; do not relabel the earlier all-facts runs as passing.
+The isolated pagination worktree lacks package dependency links, so its attempted
+typecheck produced unresolved-module errors and is not patch-verification evidence.
+Run the scoped checks in the installed integration checkout; do not install or
+replace the author's Docker stack or dependency manifests to mask this tooling gap.
+Permanent embedding setup reached the intended active provider/mapping, but its
+verification helper falsely failed because equal unrelated profile rows arrived
+in a different order. Read-only comparison confirmed30before/30after, identical
+sets; operator session revocation was audited. Its attempted rollback DELETE also
+used an empty JSON Content-Type. Fix order-independent comparison and omit JSON
+Content-Type for bodyless requests; independently read back the already installed
+configuration rather than creating another provider or rerunning setup blindly.
+
 Owner: `tasks/production-readiness-completion.md`; OPEN, release evidence.
 Author authorized publication/deployment and permanent embedding follow-up.
 Offsite destination and external alert receiver are not yet supplied; additional
@@ -9,13 +43,24 @@ numeric recovery/full canon-memory budgets and permanent private-cover policy
 are awaiting author answers. Do not claim unattended offsite/PITR or external
 alert delivery from the previous one-time local receipts.
 
+Author decisions now supersede those pending-input statements: manual backup files
+only for this follow-up, no new automated offsite/external alerts; numerical targets
+approved; private cover providers remain local and staging cover generation is
+excluded. Fresh encrypted manual recovery passed4.23s outer elapsed; this does not
+prove continuous15-minute RPO. Existing daily backup remains. Do not request those
+already recorded decisions again. Parent integration typechecks/lint and183focused
+tests passed; the isolated-worktree dependency error is resolved by that valid gate.
+Permanent embedding/provider/profile read-back and public indexing passed; its
+temporary operator session was rejected with HTTP401 after revocation.
+
 Read-only research found PostgreSQL18 native WAL streaming available without an
 archive-mode restart, but slot retention is currently unbounded. Do not install
 an unlimited physical slot. Preserve complete verified base/WAL recovery chains.
 Reference chunks are not hierarchical memory projections; previous2,500-chapter
 load retained only14canon facts and cannot close full canon/memory scale gates.
-Closure: approved limits/destinations, independently reviewed operational changes,
-actual offsite recovery/alert delivery and isolated full-size memory evidence.
+Closure under the author's revised scope: reviewed deployed embedding, verified
+manual recovery, and isolated full-size paginated memory/canon performance evidence.
+Offsite/alerts/continuous PITR remain deferred, not pending credentials or claimed PASS.
 
 ## Temporary author-selected Nemotron embedding probe — 2026-10-25
 

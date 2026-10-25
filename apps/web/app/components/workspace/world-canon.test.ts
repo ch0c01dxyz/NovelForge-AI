@@ -175,6 +175,48 @@ describe("EntityBrowser", () => {
 });
 
 describe("FactList", () => {
+  it("navigates every fact page and resets the cursor when filters change", async () => {
+    const second = { ...fact1, id: CV, statement: "Kael lives at the Ember Court." };
+    const calls = installFetch((url) => {
+      if (!url.includes("/canon/facts?")) return json(null, 404);
+      const query = new URL(url, "https://example.test").searchParams;
+      expect(query.get("limit")).toBe("100");
+      return json(query.has("cursor")
+        ? { facts: [second], withheldCount: 0, nextCursor: null }
+        : { facts: [fact1], withheldCount: 0, nextCursor: F1 });
+    });
+    const w = mount(FactList, { props: { workspaceId: WS, novelId: NOVEL } });
+    const pageButton = (name: string) => w.findAll("button").find((button) => button.text().includes(`workspace.world.facts.${name}`))!;
+    await settle();
+    expect(w.text()).toContain(fact1.statement);
+    expect(pageButton("previousPage").attributes("disabled")).toBeDefined();
+    await pageButton("nextPage").trigger("click");
+    await settle();
+    expect(w.text()).toContain(second.statement);
+    expect(w.text()).not.toContain(fact1.statement);
+    expect(pageButton("nextPage").attributes("disabled")).toBeDefined();
+    expect(calls.at(-1)!.url).toContain(`cursor=${F1}`);
+    await pageButton("previousPage").trigger("click");
+    await settle();
+    expect(w.text()).toContain(fact1.statement);
+    expect(new URL(calls.at(-1)!.url, "https://example.test").searchParams.has("cursor")).toBe(false);
+    await pageButton("nextPage").trigger("click");
+    await settle();
+    await w.find("input[type=checkbox]").setValue(true);
+    await settle();
+    let query = new URL(calls.at(-1)!.url, "https://example.test").searchParams;
+    expect(query.has("cursor")).toBe(false);
+    expect(query.get("includeSuperseded")).toBe("true");
+    await pageButton("nextPage").trigger("click");
+    await settle();
+    await w.setProps({ entityId: E2 });
+    await settle();
+    query = new URL(calls.at(-1)!.url, "https://example.test").searchParams;
+    expect(query.has("cursor")).toBe(false);
+    expect(query.get("entityId")).toBe(E2);
+    w.unmount();
+  });
+
   function mountList(facts: CanonFact[] = [fact1]) {
     const calls = installFetch((url, init) => {
       if (url.includes("/canon/facts/") && url.endsWith("/retract") && init?.method === "POST")

@@ -84,6 +84,19 @@ describe("useLocale (SSR-safe, GAP-123)", () => {
     expect(t("generation.title")).toBe("Generasi");
   });
 
+  it("localizes canon page navigation in both supported locales", () => {
+    const { setLocale, t } = useLocale();
+    expect(t("workspace.world.facts.pagination")).toBe("Canon fact pages");
+    expect(t("workspace.world.facts.previousPage")).toBe("Previous");
+    expect(t("workspace.world.facts.nextPage")).toBe("Next");
+    expect(t("workspace.world.facts.pageNumber", { page: 2 })).toBe("Page 2");
+    setLocale("id");
+    expect(t("workspace.world.facts.pagination")).toBe("Halaman fakta kanon");
+    expect(t("workspace.world.facts.previousPage")).toBe("Sebelumnya");
+    expect(t("workspace.world.facts.nextPage")).toBe("Berikutnya");
+    expect(t("workspace.world.facts.pageNumber", { page: 2 })).toBe("Halaman 2");
+  });
+
   it("falls back to English for missing id keys", () => {
     const { setLocale, t } = useLocale();
     setLocale("id");

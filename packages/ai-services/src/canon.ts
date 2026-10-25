@@ -160,6 +160,8 @@ export interface FactListResult {
    * and the number is a genuine drift signal.
    */
   withheldCount: number;
+  /** Last returned visible fact when another page exists; no total-count oracle. */
+  nextCursor: string | null;
 }
 
 export interface EvidenceView {
@@ -446,6 +448,8 @@ export interface CanonServices {
     entityId?: string;
     predicate?: string;
     includeSuperseded?: boolean;
+    limit?: number;
+    cursor?: string;
     /** READER mode applies the spoiler boundary; AUTHOR/EDITOR see everything. */
     mode?: unknown;
     readerChapter?: number;
@@ -1606,18 +1610,36 @@ export function createCanonServices(deps: {
       entityId,
       predicate,
       includeSuperseded,
+      limit = 100,
+      cursor,
       mode,
       readerChapter,
     }) {
       await gate(workspaceId, novelId, actorUserId, "canon:read");
       const viewMode: ViewMode = parseViewMode(mode);
       const at = viewMode === "READER" ? (readerChapter ?? 0) : null;
+      const pageSize = Math.min(200, Math.max(1, Math.floor(limit)));
+      const visibility = at === null ? {} : { availableFromChapter: { not: null, lte: at } };
+      // A retracted/superseded anchor still marks the same immutable position.
+      // Its tenant and reader boundary must nevertheless be checked before use.
+      const anchor = cursor
+        ? await db.canonFact.findFirst({
+            where: { id: cursor, novelId, workspaceId, ...visibility },
+            select: { id: true, createdAt: true },
+          })
+        : null;
+      if (cursor && !anchor) throw new NotFoundError("fact");
 
       // Typed explicitly: the ternary below makes TypeScript widen `status` to
       // a plain string, which Prisma's generated where-input rejects.
       const baseWhere = {
         novelId,
         workspaceId,
+        ...visibility,
+        ...(anchor ? { OR: [
+          { createdAt: { gt: anchor.createdAt } },
+          { createdAt: anchor.createdAt, id: { gt: anchor.id } },
+        ] } : {}),
         ...(entityId ? { entityId } : {}),
         ...(predicate ? { predicate } : {}),
         // Superseded rows are ADMITTED, not "everything except nothing":
@@ -1631,10 +1653,14 @@ export function createCanonServices(deps: {
       if (at === null) {
         const facts = await db.canonFact.findMany({
           where: baseWhere,
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: pageSize + 1,
           select: FACT_LIST_SELECT,
         });
-        return { facts, withheldCount: 0 };
+        return {
+          facts: facts.slice(0, pageSize), withheldCount: 0,
+          nextCursor: facts.length > pageSize ? facts[pageSize - 1]!.id : null,
+        };
       }
 
       // READER: the boundary is applied in the QUERY, not after it
@@ -1658,8 +1684,9 @@ export function createCanonServices(deps: {
       // `not: null` is load-bearing: a null boundary means "not classified",
       // and an unclassified row must be withheld, not treated as chapter 0.
       const facts = await db.canonFact.findMany({
-        where: { ...baseWhere, availableFromChapter: { not: null, lte: at } },
-        orderBy: { createdAt: "asc" },
+        where: baseWhere,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: pageSize + 1,
         // `supersededById` is omitted for the same reason `withheldCount` is
         // zeroed: it names the replacement, and the replacement may sit behind
         // a boundary this reader has not reached — an id is enough to confirm
@@ -1667,7 +1694,10 @@ export function createCanonServices(deps: {
         // refuses. `status` already tells the reader the claim was superseded.
         select: { ...FACT_LIST_SELECT, supersededById: false, sources: false },
       });
-      return { facts, withheldCount: 0 };
+      return {
+        facts: facts.slice(0, pageSize), withheldCount: 0,
+        nextCursor: facts.length > pageSize ? facts[pageSize - 1]!.id : null,
+      };
     },
 
     async ask({ actorUserId, workspaceId, novelId, question, mode, readerChapter }) {

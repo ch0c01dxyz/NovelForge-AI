@@ -24,6 +24,8 @@ import { buildApp } from "./app.ts";
 import { SESSION_COOKIE } from "./auth-routes.ts";
 import { createAuditService, createPlatformServices } from "@novelforge/ai-services";
 import { processRebuild } from "@novelforge/memory";
+import { createMemoryServices } from "@novelforge/ai-services";
+import { bindMeasureDb, measureQueries } from "./e2e/measure.ts";
 
 const TEST_DB = "novelforge_test_memory_global";
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -218,6 +220,31 @@ async function seedOkProjection(
 
 const memUrl = (workspaceId: string, novelId: string) =>
   `/api/workspaces/${workspaceId}/novels/${novelId}/memory`;
+
+it("reads twenty populated arc scopes with a bounded number of database operations", async () => {
+  const { userId } = await seedUser("bounded-global@example.com");
+  const { workspaceId, novelId } = await seedNovel(userId);
+  const branch = await makeBranch(workspaceId, novelId);
+  const scopes = [];
+  for (let index = 0; index < 20; index++) {
+    const saga = await makeSaga(workspaceId, novelId, `Bounded arc ${index}`);
+    scopes.push(`arc:${saga.id}`);
+  }
+  await db.memoryProjection.createMany({
+    data: scopes.map((scope) => ({
+      workspaceId, novelId, scope, sourceRevisionId: branch.headRevisionId!,
+      structural: { facts: [], threads: [], promises: [] },
+      chapterCoverage: [], summaryCoveredFactIds: [],
+    })),
+  });
+  const memory = createMemoryServices({ db: bindMeasureDb(db), queue: fakeQueue });
+  const { result, queryCount } = await measureQueries("bounded-global", () =>
+    memory.readGlobalMemory(userId, workspaceId, novelId, {}),
+  );
+  expect(result.scopes.map((block) => block.arcScope).sort()).toEqual(scopes.sort());
+  expect(result.scopes.every((block) => block.freshness === "FRESH" && block.sourceRevisionId === branch.headRevisionId)).toBe(true);
+  expect(queryCount).toBeLessThanOrEqual(8);
+});
 
 // ---------------------------------------------------------------------------
 // Global union read (NF-WF-052)

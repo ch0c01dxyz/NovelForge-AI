@@ -24,14 +24,32 @@ and authorized staging configuration/deployment. No dependency or schema changes
 live manuscript mutation, automatic canon approval, local Docker reset or secret
 publication. Preserve the existing stash and all unrelated work.
 
+Measured-load amendment: the first full canon/memory run failed the approved2s
+p95 target despite allHTTP200. Allow the shared memory service and focused tests
+to batch bounded read scopes and reuse request-local revision lookups, preserving
+branch/as-of/source pins and freshness semantics. Correct harness timing to
+separate HTTP completion from client-side decoding; preserve the failed receipt
+and server-side latency evidence. The second measured run improved memory recall
+but still failed canon/global p95; each canon response contained9.67MB. Extend this
+repair to bounded canon-list pagination in its service, HTTP route, actual FactList
+caller and focused tests. Preserve all facts through navigation, filters, reader
+boundaries, provenance and existing design/localization. No broader UI redesign.
+The same full-size dataset,20users/five minutes and2s target remain unchanged;
+measure the actual paginated UI read path and disclose this workload change.
+
 Reuse the already passed structural 2,500-chapter load, real embedding application
 acceptance, cover restore, SQLite recovery and focused tests. They establish their
 recorded scope only. The source overlay acceptance is not a live deployment.
 The tested 1B embedding model is a configuration value, not a code constant.
 
-Pending author inputs: offsite destination and alert receiver; numerical approval
-for the proposed larger canon/memory and recovery budgets; permanent cover-provider
-policy. Time without a reply is not approval. Continue independent work meanwhile.
+Author update: use manual backup files for now; no new automatic offsite or external
+alert service is requested. Existing daily backup remains intact. The author approved
+the proposed numerical targets: recovery RPO15min/RTO60min,7daily/4weekly retention;
+isolated2,500chapters/25,000canon facts/10,000memory records,20virtual users/five
+minutes, read p95<=2seconds,error<1%, abort memory>85% or live health failure.
+Manual snapshots alone do not satisfy continuous15-minute host-loss RPO.
+Author selected release without staging cover generation; private image providers
+remain local. Do not reinstall a private cover key. Time without a reply is not approval.
 Never publish credentials or persist the previously temporary cover key by inference.
 
 ## Execution and acceptance

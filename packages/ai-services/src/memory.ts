@@ -19,11 +19,9 @@ import {
   chapterScope,
   parseScope,
   deriveFreshness,
-  deriveAsOfFreshness,
   mainBranchHead,
   settleRev,
   type MemoryBlock,
-  type MemoryFreshness,
   type MemoryScopeStatus,
   type MemorySummaryProvenance,
   type RecallNovelResult,
@@ -128,70 +126,72 @@ export function createMemoryServices(deps: {
     requireCapability(membership.role, cap);
   }
 
-  /** Read one scope's block (null when MISSING). As-of mode (Invariant 7):
-      the newest row with source-revision number ≤ the requested
-      revision's, within the same branch — never a row newer than R. */
-  async function readBlock(
+  /** Fetch at most one source-version row per bounded scope; never load its history. */
+  async function readBlocks(
     novelId: string,
-    scope: string,
+    scopes: string[],
     asOf?: { branchId: string; number: number },
-  ): Promise<MemoryBlock | null> {
-    const freshness = asOf
-      ? await deriveAsOfFreshness(db, novelId, scope, asOf.branchId, asOf.number)
-      : await deriveFreshness(db, novelId, scope);
-    if (!freshness || freshness.freshness === "MISSING" || !freshness.sourceRevisionId) {
-      return null;
+  ): Promise<Map<string, MemoryBlock>> {
+    const blocks = new Map<string, MemoryBlock>();
+    if (scopes.length === 0) return blocks;
+    if (scopes.length > MEMORY_ARC_SCOPES_MAX) {
+      throw new MemoryError(400, "INVALID_INPUT", "too many memory scopes");
     }
-    const row = await db.memoryProjection.findUnique({
-      where: {
-        novelId_scope_sourceRevisionId: {
-          novelId,
-          scope,
-          sourceRevisionId: freshness.sourceRevisionId,
-        },
-      },
+    const head = await mainBranchHead(db, novelId);
+    if (!head) return blocks;
+    const selected = await db.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT DISTINCT ON (mp.scope) mp.id
+         FROM memory_projections mp
+         JOIN revisions r ON r.id = mp.source_revision_id
+        WHERE mp.novel_id = $1::uuid AND mp.scope = ANY($2::text[])
+          AND ($3::uuid IS NULL OR (r.branch_id = $3::uuid AND r.number <= $4::int))
+        ORDER BY mp.scope, r.number DESC, mp.created_at DESC`,
+      novelId, scopes, asOf?.branchId ?? null, asOf?.number ?? null,
+    );
+    if (selected.length === 0) return blocks;
+    const rows = await db.memoryProjection.findMany({
+      where: { novelId, id: { in: selected.map((row) => row.id) } },
+      include: { sourceRevision: { select: { number: true } } },
     });
-    if (!row) return null;
-    // NF-WF-053 §13.2: summary fields come from the stored row; the acting
-    // user comes from the CURRENT selected Generation (§12.3 pointer).
-    let summaryProvenance: MemorySummaryProvenance | null = null;
-    if (row.summaryStatus === "OK") {
-      const generation = row.summaryGenerationId
-        ? await db.generation.findUnique({
-            where: { id: row.summaryGenerationId },
-            select: { userId: true },
-          })
+    const generationIds = rows.flatMap((row) =>
+      row.summaryStatus === "OK" && row.summaryGenerationId ? [row.summaryGenerationId] : [],
+    );
+    const actors = new Map(
+      generationIds.length
+        ? (await db.generation.findMany({
+            where: { id: { in: generationIds } },
+            select: { id: true, userId: true },
+          })).map((generation) => [generation.id, generation.userId])
+        : [],
+    );
+    for (const row of rows) {
+      const targetNumber = asOf?.number ?? head.headRevisionNumber;
+      const freshness = row.buildStatus === "FAILED"
+        ? "FAILED"
+        : row.sourceRevision.number === targetNumber ? "FRESH" : "STALE";
+      const summaryProvenance: MemorySummaryProvenance | null = row.summaryStatus === "OK"
+        ? {
+            summarizerVersion: row.summarizerVersion ?? "",
+            modelProfile: row.summarizerModelProfile ?? "",
+            promptVersion: row.summarizerPromptVersion ?? "",
+            actorUserId: row.summaryGenerationId ? (actors.get(row.summaryGenerationId) ?? null) : null,
+          }
         : null;
-      summaryProvenance = {
-        summarizerVersion: row.summarizerVersion ?? "",
-        modelProfile: row.summarizerModelProfile ?? "",
-        promptVersion: row.summarizerPromptVersion ?? "",
-        actorUserId: generation?.userId ?? null,
-      };
+      blocks.set(row.scope, {
+        scope: row.scope,
+        freshness,
+        sourceRevisionId: row.sourceRevisionId,
+        sourceRevisionNumber: row.sourceRevision.number,
+        chapterCoverage: row.chapterCoverage,
+        structural: row.structural as unknown as MemoryBlock["structural"],
+        summary: row.summaryStatus === "SUMMARIZING" ? null : row.summary,
+        summaryStatus: row.summaryStatus,
+        summaryCoveredFactIds: row.summaryCoveredFactIds,
+        summaryProvenance,
+        provenance: { revisionId: row.sourceRevisionId, builtAt: row.builtAt.toISOString() },
+      });
     }
-    return {
-      scope,
-      freshness: freshness.freshness as Exclude<MemoryFreshness, "MISSING">,
-      sourceRevisionId: row.sourceRevisionId,
-      sourceRevisionNumber: freshness.sourceRevisionNumber ?? 0,
-      chapterCoverage: row.chapterCoverage,
-      structural: row.structural as unknown as MemoryBlock["structural"],
-      // §9.1: an in-flight claim renders summary null + SUMMARIZING — never
-      // a prior version's stranded bytes.
-      summary: row.summaryStatus === "SUMMARIZING" ? null : row.summary,
-      summaryStatus: row.summaryStatus,
-      summaryCoveredFactIds: row.summaryCoveredFactIds,
-      summaryProvenance,
-      provenance: { revisionId: row.sourceRevisionId, builtAt: row.builtAt.toISOString() },
-    };
-  }
-
-  async function chapterIdFor(novelId: string, chapterNumber: number): Promise<string | null> {
-    const chapter = await db.chapter.findFirst({
-      where: { novelId, number: chapterNumber },
-      select: { id: true },
-    });
-    return chapter?.id ?? null;
+    return blocks;
   }
 
   async function recallNovel(
@@ -241,33 +241,32 @@ export function createMemoryServices(deps: {
       asOfRevisionId = head.headRevisionId;
     }
 
-    const chapterId = await chapterIdFor(novelId, opts.chapter);
-    const chapterMemory = chapterId ? await readBlock(novelId, chapterScope(chapterId), asOf) : null;
-
-    // L2: preceding chapters' scopes, ascending, bounded (F7).
-    const recentMemory: MemoryBlock[] = [];
-    for (let n = Math.max(1, opts.chapter - recentLimit); n < opts.chapter; n++) {
-      const id = await chapterIdFor(novelId, n);
-      if (!id) continue;
-      const block = await readBlock(novelId, chapterScope(id), asOf);
-      if (block) recentMemory.push(block);
-    }
-
-    // L3/L4: the chapter's arc scope via outline nodes.
-    let arcMemory: MemoryBlock | null = null;
-    const chapterRow = await db.chapter.findFirst({
-      where: { novelId, number: opts.chapter },
-      select: { id: true },
+    const chapters = await db.chapter.findMany({
+      where: {
+        novelId,
+        number: { gte: Math.max(1, opts.chapter - Math.max(0, recentLimit)), lte: opts.chapter },
+      },
+      select: { id: true, number: true },
+      orderBy: { number: "asc" },
     });
-    const node = chapterRow
+    const chapter = chapters.find((row) => row.number === opts.chapter);
+    const node = chapter
       ? await db.outlineNode.findFirst({
-          where: { novelId, chapterId: chapterRow.id },
+          where: { novelId, chapterId: chapter.id },
           select: { sagaId: true },
         })
       : null;
-    if (node?.sagaId) {
-      arcMemory = await readBlock(novelId, `arc:${node.sagaId}`, asOf);
-    }
+    const arcScope = node?.sagaId ? `arc:${node.sagaId}` : null;
+    const scopes = chapters.map((row) => chapterScope(row.id));
+    if (arcScope) scopes.push(arcScope);
+    const blocks = await readBlocks(novelId, scopes, asOf);
+    const chapterMemory = chapter ? blocks.get(chapterScope(chapter.id)) ?? null : null;
+    const recentMemory = chapters.flatMap((row) => {
+      if (row.number >= opts.chapter) return [];
+      const block = blocks.get(chapterScope(row.id));
+      return block ? [block] : [];
+    });
+    const arcMemory = arcScope ? blocks.get(arcScope) ?? null : null;
 
     return {
       chapterMemory,
@@ -726,12 +725,17 @@ export function createMemoryServices(deps: {
             GROUP BY mp.scope`
           ).map((r) => r.scope),
     );
+    const blocks = await readBlocks(
+      novelId,
+      selectedScopes.filter((scope) => !unresolvable.has(scope)),
+      asOf,
+    );
     for (const cand of selected) {
       if (unresolvable.has(cand.arcScope)) {
         excluded.push({ arcScope: cand.arcScope, sagaId: cand.sagaId, reason: "UNRESOLVABLE_SOURCE" });
         continue;
       }
-      const block = await readBlock(novelId, cand.arcScope, asOf);
+      const block = blocks.get(cand.arcScope);
       if (!block) {
         // MISSING is a valid state (Invariant 9): saga with no rows, or (as-of)
         // no rows at or below R within the branch.

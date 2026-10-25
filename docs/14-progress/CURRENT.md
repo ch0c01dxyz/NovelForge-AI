@@ -1,5 +1,56 @@
 # Current Project State
 
+## Derived intent post-review repairs verified — 2026-10-25
+
+The author authorized repairing the review findings, committing all safe project
+changes and pushing main. Production deployment is not authorized by this repair.
+Canon summaries now read one RepeatableRead view: live canon only for the exact
+checked-out head, otherwise the exact revision's scoped snapshot or an explicit
+failure preserving the old artifact. Timestamp attribution is removed; review
+also found callers that write canon before creating their revision.
+
+Worker artifact publication and FRESH commit atomically under the exact attempt
+lock; expired owners cannot finalize reclaimed work. Failed transitions compare
+attempts too. Local ticks share one sweep, and shutdown drains it before closing
+the database. Separate read-only review approved the repaired source layers.
+Local verification:32database/API cases and the retained13pure cases passed,
+with ai-services/API/worker typechecks. Earlier test failures were fixture/import
+errors and are recorded in ISSUES. Historical acceptance below is retained, but
+its timestamp source approximation and earlier no-commit status are superseded.
+The two additive migrations were exercised only in disposable test databases in
+this repair; production code/data/configuration remain unchanged.
+
+## Derived rebuild intents: audit end-state, consumer, canon pipeline — 2026-10-25
+
+The author selected ADR-0017 Option B and ordered three phases: (1) contract/
+schema amendment plus a read-only status surface, (2) a generic per-projection
+consumer, (3) the first real pipeline (`canon`, ADR-0022 / NF-WF-060).
+Implemented and verified; **NOT committed** (author has not asked for a commit).
+
+- Contract: dated C6/C7 amendment in STORY-VERSIONING.md; schema comments now
+  mark PENDING as terminal for projections without a registered pipeline and
+  reserve the lifecycle columns. `GET .../derived-intents` is read-only,
+  branch-scoped (`novel:read`).
+- Consumer: PostgreSQL as the queue; newest eligible intent per
+  `(projection, branch)` claimed by CAS; older eligible intents superseded to
+  STALE; 5 attempts with 30s→300s backoff; RUNNING lease reaper; unregistered
+  projections untouched.
+- Canon: additive `canon_summaries` and two intent lookup indexes; bounded
+  deterministic digest; as-of bound fixed to `< next revision.createdAt` after
+  acceptance showed the old bound dropped the revision's own three facts;
+  `GET/POST .../canon/summary[/rebuild]`.
+
+Acceptance (2026-10-25, `novelforge_acceptance_050b`, 58 migrations): 317
+PENDING before; sweep claimed 1 / fresh 1 / superseded 36 / failed 0; canon is
+now 1 FRESH (rev 300) + 36 STALE while the other six projections remain
+PENDING; one summary row (entity 20, active 17). Read service reports FRESH,
+head 312, pendingAfterSummary 0. Worker 14, API 10, story-intelligence 5 and
+story-versioning 8 tests pass; affected typechecks exit 0. Independent reviewer:
+APPROVE_WITH_FINDINGS, all resolved. The six unregistered projections still have
+no derived artifact or rebuild route (ADR-0017 Option B), and no UI consumes the
+summary. Closure/limits: [ISSUES-AND-GAPS](../implementation/ISSUES-AND-GAPS.md)
+"2026-10-25 closure — Option B accepted".
+
 ## Initial public production release — 2026-10-25
 
 The author explicitly authorized public release at https://novamind.my.id after

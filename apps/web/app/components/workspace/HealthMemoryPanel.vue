@@ -11,11 +11,11 @@
  * UNRESOLVED_IDENTITY register (GET .../story-health/unresolved) is
  * includes explicit character identity linking. Evidence is never raw HTML.
  *
- * Memory: GET .../memory/status (reads statuses only — it never
- * invents intent consumption; the DerivedRebuildIntent lifecycle gap
- * is owned by a follow-up), POST .../memory/rebuild (202; explicit
- * confirmation; NO simulation flag exposed), GET .../memory/as-of
- * (read-only display).
+ * Memory: GET .../memory/status (reads statuses only). DerivedRebuildIntent
+ * is audit-only for projections without a registered pipeline (ADR-0017);
+ * GET .../derived-intents exposes its status read-only. POST
+ * .../memory/rebuild (202; explicit confirmation; NO simulation flag
+ * exposed), GET .../memory/as-of (read-only display).
  *
  * No final-text review receipt route exists (GET .../final-text-review
  * is absent — only POST to record); receipts are therefore omitted,

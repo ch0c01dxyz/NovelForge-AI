@@ -1036,3 +1036,53 @@ own task rather than a drive-by edit. The payload-content assertion is still the
 test that would have caught it: assert the `PRE_MUTATION` snapshot's payload
 holds the *pre*-approval rows for **every** table the operation touches, not
 merely that a snapshot exists.
+
+## 2026-10-25 amendment — C6/C7 audit end-state and per-projection opt-in
+
+Status: ACCEPTED by the author (2026-10-25), following ADR-0017.
+
+**C6 amendment.** For a projection with no registered rebuild pipeline,
+`PENDING` is the assigned-and-final intent status. `attempts`, `lastError`
+and `completedAt` are audit-inert; `RUNNING`, `FRESH`, `FAILED` and
+`STALE` are reserved vocabulary for registered pipelines. Deduplication
+`UNIQUE (projection, source_revision_id)` plus `skipDuplicates` remains the
+whole of replay idempotency. The atomic mutation+intent commit is unchanged.
+
+**Per-projection opt-in.** A projection may register a pipeline through a
+superseding ADR. For a registered projection, the consumer claims the newest
+eligible intent per `(projection, branch)` and supersedes older eligible
+intents as `STALE`. Supersession is relative to newer intents for the same
+projection and branch, not to unrelated head advancement: a projection is
+invalidated only by its own covered tables. A registered pipeline's read
+surface derives freshness from intent status (no newer `PENDING`/`RUNNING`/
+`FAILED` intent than the artifact) and reports `MISSING` when no artifact
+exists. This refinement applies only to projections that opt in; ADR-0022
+opts in `canon`.
+
+**C7 amendment.** Restore preview continues to report affected projections
+from the impact mapping (`projectionsForTables`). It never reads intent rows;
+`derived_rebuild_intents` remains classified `OPERATIONAL` and is never
+rewound.
+
+**Review record.** Implementation session (writer) and an independent
+reviewer actor (`pr-review-toolkit:code-reviewer`, separate subagent) reviewed
+the exact submitted diff on 2026-10-25. Verdict: **APPROVE_WITH_FINDINGS**.
+Resolved before handoff: (1) Important — Indonesian predicate fixtures in the
+digest unit test were replaced with English per the project language rule;
+(2) Minor — additive intent lookup indexes were added in
+`20261025_derived_intent_lookup_indexes` for the status/freshness reads and the
+sweeper; (3) Minor — the task contract no longer claims a byte-identical
+rebuild after source changes, and a sweep test now executes the registered
+canon handler end to end. Info — this record finalizes the review, and
+ADR-0022 records the Prisma per-statement `now()` assumption behind the as-of
+bound. This amendment changes contract text only; the consumer and the canon
+pipeline are implemented by NF-WF-057..060 under ADR-0022.
+
+### Post-review source/ownership correction — 2026-10-25
+
+The review record above is historical. The author subsequently authorized repair
+of branch/source fidelity, expired-claim ownership and shutdown draining. ADR-0022's
+dated repair amendment supersedes its timestamp approximation: exact historical
+snapshots or a consistent current-head read are required. Consumer publication and
+FRESH status commit atomically under an attempt-fenced claim lock; shutdown drains
+active database work. Missing source must never become a false FRESH result.

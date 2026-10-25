@@ -5,7 +5,7 @@
  * orchestrator stop drains and closes queues/connections rather than killing
  * mid-job. Exit non-zero only on hard startup failure.
  *
- * Runs five workers side by side:
+ * Runs seven workers side by side:
  * - the heartbeat worker (Redis connectivity proof, degrades gracefully);
  * - the `workflow-runs` worker (NF-WF-004: durable workflow execution).
  * - the `memory-rebuild` worker (NF-WF-009: structural memory rebuilds).
@@ -13,6 +13,8 @@
  *   startup reconciliation of scheduled publications).
  * - the `notifications` worker (NF-WF-019C: novel.chapter_published
  *   fan-out → in-app notification rows).
+ * - the cover worker (private cover lifecycle jobs).
+ * - the derived intent sweeper (ADR-0017/ADR-0022: PostgreSQL-backed, no Redis).
  */
 import { loadEnv } from "@novelforge/config";
 import { startWorkerApp, type WorkerLogger } from "./worker.ts";
@@ -21,6 +23,7 @@ import { startMemoryWorkerApp } from "./memory-jobs.ts";
 import { startPublicationWorkerApp } from "./publication-jobs.ts";
 import { startNotificationFanoutWorkerApp } from "./notification-fanout-jobs.ts";
 import { startCoverWorkerApp } from "./cover-jobs.ts";
+import { startDerivedIntentWorkerApp } from "./derived-intents.ts";
 
 const logger: WorkerLogger = {
   info: (msg, meta) => console.log(JSON.stringify({ level: "info", msg, ...meta })),
@@ -36,6 +39,8 @@ const publication = await startPublicationWorkerApp(env, logger);
 // NF-WF-019C: the `notifications` fan-out consumer (novel.chapter_published).
 const notifications = await startNotificationFanoutWorkerApp(env, logger);
 const covers = await startCoverWorkerApp(env, logger);
+// ADR-0017/ADR-0022: PostgreSQL-backed intent consumer. No Redis dependency.
+const intents = startDerivedIntentWorkerApp(env, logger);
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
@@ -43,6 +48,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   logger.info("shutdown signal received", { signal });
   try {
+    await intents.stop();
     await covers.stop();
     await notifications.stop();
     await publication.stop();
@@ -67,4 +73,5 @@ logger.info("worker started", {
   publicationStarted: publication.started,
   notificationsStarted: notifications.started,
   coversStarted: covers.started,
+  intentsStarted: intents.started,
 });

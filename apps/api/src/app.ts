@@ -86,6 +86,10 @@ import { createPublicDiscoveryServices } from "./services/public-discovery.ts";
 import { createMemoryQueue, type MemoryQueue } from "./services/memory-queue.ts";
 import { createMemoryServices } from "@novelforge/ai-services";
 import { registerMemoryRoutes } from "./memory-routes.ts";
+import { createDerivedIntentServices } from "./services/derived-intents.ts";
+import { registerDerivedIntentRoutes } from "./derived-intents-routes.ts";
+import { createCanonSummaryServices } from "./services/canon-summary.ts";
+import { registerCanonSummaryRoutes } from "./canon-summary-routes.ts";
 import { createStateAssemblyServices } from "@novelforge/ai-services";
 import { createFinalTextReviewServices } from "./services/final-text-review.ts";
 import { createStoryHealthServices } from "./services/story-health.ts";
@@ -591,6 +595,20 @@ export async function buildApp(
     registerMemoryRoutes(app, {
       auth,
       memory: memoryServices,
+    });
+
+    // ADR-0017: read-only intent status. PENDING is terminal audit for
+    // projections without a registered pipeline; this route never mutates.
+    registerDerivedIntentRoutes(app, {
+      auth,
+      intents: createDerivedIntentServices({ db: options.db }),
+    });
+
+    // ADR-0022: canon summary read + operator rebuild. Derived state only;
+    // the rebuild route never writes canon and never marks an intent FRESH.
+    registerCanonSummaryRoutes(app, {
+      auth,
+      canonSummary: createCanonSummaryServices({ db: options.db }),
     });
 
     // NF-WF-010: story health and final-text review routes (canon:read).

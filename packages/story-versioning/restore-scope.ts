@@ -127,9 +127,10 @@ export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = 
   endgame_legacies: "OPERATIONAL",
   endgame_callbacks: "OPERATIONAL",
 
-  // DERIVED (2) — rebuildable, never truth.
+  // DERIVED (3) — rebuildable, never truth.
   embeddings: "DERIVED", // RAG derivations recomputed from truth (ADR-0007).
   chunks: "DERIVED",
+  canon_summaries: "DERIVED", // ADR-0022 digest rebuilt from canon at a revision.
 
   cover_generation_batches: "OPERATIONAL",
   cover_generation_items: "OPERATIONAL",

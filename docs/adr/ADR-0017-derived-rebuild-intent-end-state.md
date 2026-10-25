@@ -2,7 +2,7 @@
 
 ## Status
 
-**PROPOSED — not accepted.** Drafted 2026-10-13 from the NF-WF-009 intent-lifecycle gap re-verification (ISSUES-AND-GAPS "NF-WF-009 intent-lifecycle gap", 2026-10-05 entry + 2026-10-13 re-verification); evidence sections re-verified and corrected 2026-10-14. The author decides; this document recommends but does not select. No intent code, schema, or contract text is changed by this ADR. Realises the disposition choice left open by ADR-0014 decision 6 ("durable rebuild intent is a table, not a Redis write") and the C6/C7 records of STORY-VERSIONING.md.
+**ACCEPTED — Option B (write-side audit end-state), 2026-10-25.** The author accepted the recommendation in §"Decision" and directed the follow-on order: (1) audit end-state, (2) generic consumer, (3) first real projection pipeline (`canon`). Option A remains available per projection through a superseding ADR; ADR-0022 exercises that path for `canon`. Drafted 2026-10-13 from the NF-WF-009 intent-lifecycle gap re-verification; evidence sections re-verified 2026-10-14.
 
 ## Context
 
@@ -69,9 +69,11 @@ Consequences:
 - **Negative.** C6/C7 contract text changes (frozen-contract amendment procedure owed, including a review record). The words "intent" and the unreachable RebuildStatus values (RUNNING/FRESH/STALE) remain as historical vocabulary unless a later additive migration prunes them (cosmetic; not required). Future projections lose the *option* of edge-triggered dispatch from these rows only until a superseding ADR — the rows themselves remain usable evidence of what invalidated what. For the seven named projections, Option B leaves exactly what exists today (an audit row and nothing else); it does not create stale-read or rebuild guarantees where none exist, and this ADR must not be cited as if it did.
 - **Paired follow-up (worktree-implemented, pending main integration).** NF-WF-051 (memory reconciliation interval sweeper) closes the startup-only gap so the shipped memory model covers crash-without-restart, matching the workflow/publication recovery posture. Implementation lives in `.nf-batch-worktrees/scopeB-memsweeper` (reviewed APPROVE / AWF 2 Minor); integrating it to main is ordinary merge work, not a new design. Under Option B this is the remaining real work; it touches `packages/memory/src/constants.ts` + `apps/worker/src/memory-jobs.ts` only, never DerivedRebuildIntent.
 
-## Decision (recommendation — the author decides)
+## Decision (accepted 2026-10-25)
 
 **Recommend Option B.** For memory, the shipped head-derived staleness + reconciliation model has absorbed the table's intended function; a consumer that re-derives what reconciliation derives adds machinery without adding information, and memory cannot even be named as a projection to claim (Q2). For the seven named projections, no pipeline exists to consume anything, so the audit role costs nothing they currently use. This recommendation is grounded per-projection in the evidence table above; it is a recommendation only — both options remain open pending author decision. Atomic rebuild-intent commit stays exactly as implemented. Option A remains open per-projection via a future superseding ADR if a real pipeline wants edge-triggered dispatch. Note the corr…
+
+**Author decision (2026-10-25): Option B is accepted as the platform end-state.** Concretely: `PENDING` is terminal for any projection without a registered rebuild pipeline; the lifecycle columns (`status` beyond `PENDING`, `attempts`, `lastError`, `completedAt`) are reserved for projections that register a pipeline; the write-side atomic commit is unchanged. The author also directed a generic consumer (phase 2) and a first real pipeline for `canon` (phase 3), which supersedes this ADR for `canon` only. No other projection is superseded.
 
 ## Alternatives
 

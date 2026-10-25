@@ -1,5 +1,61 @@
 # Technical Issues and Implementation Gaps
 
+## NF-WF-060 post-implementation review: branch fidelity and worker ownership — 2026-10-25
+
+Status: OPEN, blocks publishing this uncommitted change. Owner:
+`tasks/NF-WF-060-canon-summary-projection.md` and the derived-intent consumer.
+Earlier DONE/acceptance paragraphs describe the implementer's submitted evidence;
+this review identifies additional cases outside those checks. No production
+deployment or implementation repair was performed during this review.
+
+- P1, branch fidelity: the sweep consumes intents from every branch, but
+  `packages/ai-services/src/canon-summary.ts` queries live entities/facts by novel
+  and timestamp only. Checkout rewrites those live tables
+  (`apps/api/src/services/revisions.ts`, state rewrite and currentBranchId update).
+  After checkout B, pending work for branch A can publish B's digest under A's
+  source revision and mark it FRESH. Next action: derive from revision-pinned
+  snapshot state, or explicitly refuse/defer unavailable source state; prevent
+  checkout/head races and never substitute current live data for another pin.
+- P1, claim fencing: `apps/worker/src/derived-intents.ts` terminal updates match
+  only id + RUNNING. If attempt A exceeds its lease and is reaped/reclaimed as B,
+  A can finalize B's claim. Next action: fence completion/failure and artifact
+  publication using the claimed attempt/version, with an expired-owner regression.
+- P2, shutdown: the same worker's timer launches untracked asynchronous sweeps;
+  stop clears the interval then disconnects without awaiting active work. Next
+  action: track and drain active sweeps before disconnecting, with a deferred-sweep
+  shutdown regression.
+
+Observed review checks:13pure unit tests passed; API and worker typechecks exited0;
+diff whitespace check passed. A private reproduction invoked the actual exported
+functions with controlled in-memory adapters and demonstrated all three failure
+paths. This is deterministic code-path evidence, not a live database/load test.
+Existing integration acceptance does not cover these cases. No provider call,
+story/account mutation, migration application, commit, push or deployment occurred.
+Closure requires regression tests at the shared layers, preserved branch/source
+pins, truthful ownership/status writes and independent review of the exact repair.
+
+Repair authorized by the author: fix the three findings, commit safe project files
+and push. Additional source tracing found canonical callers writing before their
+revision is created, invalidating the old timestamp boundary even without a race.
+The repair uses exact snapshots for non-current source revisions and a consistent
+RepeatableRead view for the checked-out head. Worker publication/outcome is atomic
+under the exact attempt lock; shutdown drains the shared active sweep.
+First repair check exposed an undeclared zod import; it was removed in favor of
+small explicit validation, with no dependency installation. A new snapshot test
+fixture initially omitted required byteSize; corrected before rerunning. These
+failed checks are not passing evidence. Final regression/review gates are pending.
+
+Closure evidence:32database/API cases passed across the two new API suites and
+the worker summary/intent suites, including inactive branch source, backdated
+future fact, concurrent head advance, missing/malformed source, expired-owner
+reclaim, atomic rollback, fenced failure and shutdown drain. The retained13pure
+cases passed; ai-services/API/worker typechecks exited0. Follow-up fixture fixes
+supplied formatVersion and aligned the registry test's branch head with its
+requested revision. Only the two failing cases were rerun;20already-passing worker
+cases were not repeated. Separate exact source review approved both repair layers.
+The three review findings are CLOSED with this repair; production rollout remains
+separate and must apply the additive migrations before starting the new code.
+
 ## Initial public release retains existing search-engine posture — 2026-10-25
 
 Owner: `tasks/public-production-release.md`. Status: documented release limitation.
@@ -6428,6 +6484,53 @@ the evidence claims of the 2026-10-13 sections above where they conflict:
   This entry's ADR-required disposition is thereby addressed on the
   proposal side; the OPEN status of the intent-lifecycle gap remains
   until the author selects an option.
+
+### 2026-10-25 closure — Option B accepted; generic consumer + canon pipeline (NF-WF-057..060)
+
+Status: CLOSED for the decision point above, with the limits stated at the end.
+Author selected Option B (ADR-0017 ACCEPTED) and ordered the three phases.
+
+Shipped:
+- Contract/schema: C6/C7 dated amendment in STORY-VERSIONING.md; schema
+  comments mark PENDING terminal for unregistered projections and reserve the
+  lifecycle columns; `GET .../derived-intents` read-only surface (branch-scoped
+  counts and latest revision; `novel:read`).
+- Consumer (`apps/worker/src/derived-intents.ts`): PostgreSQL is the queue;
+  the newest eligible intent per `(projection, branch)` is claimed by CAS; all
+  older eligible intents are superseded to STALE; 5-attempt cap with
+  30s→300s backoff; RUNNING lease reaper. Projections without a registered
+  handler are never touched.
+- Canon pipeline (ADR-0022, NF-WF-060): additive `canon_summaries` plus two
+  intent lookup indexes; bounded deterministic digest; GET/POST
+  `.../canon/summary[/rebuild]`. The as-of bound was corrected during
+  acceptance: `createdAt <= revision.createdAt` dropped the revision's own
+  three facts, because `advanceHead` creates the revision row before its
+  caller's writes. The bound is now `createdAt < next revision.createdAt`
+  (head: no bound).
+
+Acceptance evidence (2026-10-25, `novelforge_acceptance_050b`, 58 migrations):
+before 317 PENDING (manuscript 122, character 84, planning 41, canon 37,
+relationship 19, story_intelligence 12, narrative 2). Sweep report: claimed 1,
+fresh 1, superseded 36, failed 0. After: canon 1 FRESH (rev 300) + 36 STALE;
+the other six projections unchanged PENDING; one `canon_summaries` row
+(entity 20, active 17, superseded 0, retracted 0). Read service: FRESH,
+summary rev 300, head 312, pendingAfterSummary 0. The status surface (service
+logic, not live HTTP) reports branch `main` with the same counts.
+
+Verification: worker 14 tests, API 10, story-intelligence 5, story-versioning
+8 pass; worker/API/ai-services/database typechecks exit 0. Independent
+reviewer (`pr-review-toolkit:code-reviewer`): APPROVE_WITH_FINDINGS (1
+Important fixture-language, 2 Minor indexes/contract wording, 1 Info review
+record); all resolved before handoff. Engram MCP was unavailable; the fallback
+handoff is the plan file plus NF-WF-060.
+
+Still open / not claimed: the six unregistered projections remain terminal
+audit (PENDING) with no artifact, stale-read handling or rebuild route
+(ADR-0017 Option B). No UI consumes the canon summary, and ADR-0022's digest
+is intentionally shallow. `packages/memory/src/rebuild.ts:105,142` uses the
+same revision-timestamp bound; whether NF-WF-009's own writes are affected was
+NOT reproduced and remains an unverified inference — owner: next NF-WF-009
+follow-up. No commit was created for this work.
 
 ## Note — NF-WF-050C implementation record and deleteNovel amendment (2026-10-11)
 

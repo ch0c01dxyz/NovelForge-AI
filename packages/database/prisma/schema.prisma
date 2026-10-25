@@ -210,6 +210,7 @@ model Workspace {
   rebuildIntents DerivedRebuildIntent[]
   memoryProjections MemoryProjection[]
   finalTextReviews FinalTextReview[]
+  canonSummaries CanonSummary[]
   /// NF-WF-021A: simulation runs in this workspace.
   simulationRuns SimulationRun[]
   /// NF-WF-024A: what-if comparisons in this workspace.
@@ -303,6 +304,7 @@ model Novel {
   policies     NarrativePolicy[]
   antagonists  Antagonist[]
   branches     NovelBranch[]
+  canonSummaries CanonSummary[]
   /// NF-WF-020B: the checked-out branch whose head the live covered tables
   /// reflect (Invariant 5, temporal model). Nullable FK, ON DELETE SET NULL;
   /// NULL reads as `main` (the pre-020 default). Updated by the branch
@@ -2818,6 +2820,10 @@ enum RestoreScope {
   SELECTIVE
 }
 
+/// Intent lifecycle. `PENDING` is assigned-and-final for projections with no
+/// registered pipeline (ADR-0017 Option B). The remaining values are reserved
+/// for projections that opt in via a superseding ADR (ADR-0022 opts in
+/// `canon`).
 enum RebuildStatus {
   PENDING
   RUNNING
@@ -2866,6 +2872,7 @@ model NovelBranch {
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
   revisions         Revision[]         @relation("RevisionBranch")
+  canonSummaries    CanonSummary[]
   snapshots         Snapshot[]
   checkpoints       Checkpoint[]
   restoreOperations RestoreOperation[]
@@ -2913,6 +2920,7 @@ model Revision {
   rebuildIntents    DerivedRebuildIntent[]
   finalTextReviews  FinalTextReview[]
   memoryProjections MemoryProjection[]
+  canonSummaries    CanonSummary[]
   /// NF-WF-012: the head-revision provenance pins of publication rows.
   publications      Publication[]
 
@@ -3041,10 +3049,14 @@ model RestoreOperation {
   @@map("restore_operations")
 }
 
-/// Durable invalidation. Commits with the mutation; Redis is a delivery
-/// optimization the worker polls toward, never a write inside the transaction
-/// (C6). The UNIQUE pair is the deduplication identity: a replayed dispatch
-/// for the same source revision is a no-op, not a second rebuild.
+/// Write-side, transactional record of which projections a committed revision
+/// invalidated (STORY-VERSIONING C6). Rows are written inside the mutation
+/// transaction with `skipDuplicates`. For projections without a registered
+/// pipeline, `PENDING` is terminal audit and `attempts`/`lastError`/
+/// `completedAt` are audit-inert. Registered projections use the full
+/// lifecycle: newest intent per `(projection, branch)` is claimed
+/// `PENDING|FAILED → RUNNING → FRESH|FAILED`; older eligible intents are
+/// superseded as `STALE` (ADR-0017, ADR-0022).
 model DerivedRebuildIntent {
   id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspaceId      String        @map("workspace_id") @db.Uuid
@@ -3062,7 +3074,35 @@ model DerivedRebuildIntent {
   completedAt      DateTime?     @map("completed_at")
 
   @@unique([projection, sourceRevisionId])
+  @@index([novelId, projection, status])
+  @@index([projection, status, updatedAt])
   @@map("derived_rebuild_intents")
+}
+
+/// ADR-0022: bounded, deterministic digest of canon at a source revision.
+/// Derived, never truth. One row per (novel, branch, source revision).
+model CanonSummary {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId          String      @map("workspace_id") @db.Uuid
+  workspace            Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId              String      @map("novel_id") @db.Uuid
+  novel                Novel       @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  branchId             String      @map("branch_id") @db.Uuid
+  branch               NovelBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  sourceRevisionId     String      @map("source_revision_id") @db.Uuid
+  sourceRevision       Revision    @relation(fields: [sourceRevisionId], references: [id], onDelete: Cascade)
+  sourceRevisionNumber Int         @map("source_revision_number")
+  entityCount          Int         @map("entity_count")
+  activeFactCount      Int         @map("active_fact_count")
+  supersededFactCount  Int         @map("superseded_fact_count")
+  retractedFactCount   Int         @map("retracted_fact_count")
+  /// { entitiesByKind: Record<string, number>, topPredicates: Array<{predicate,count}>, truncatedPredicates: boolean }
+  digest               Json
+  createdAt            DateTime    @default(now()) @map("created_at")
+
+  @@unique([novelId, branchId, sourceRevisionId])
+  @@index([novelId, branchId, sourceRevisionNumber])
+  @@map("canon_summaries")
 }
 
 /// Revision-derived memory (NF-WF-009): a durable projection of a novel's

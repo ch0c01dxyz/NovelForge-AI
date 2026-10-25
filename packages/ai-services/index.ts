@@ -180,3 +180,4 @@ export {
   type ProofCompletenessResult,
 } from "./src/final-text-review-gate.ts";
 export { InvalidNovelCoverError, MAX_COVER_BASE64_LENGTH, validateNovelCover, type NovelCover } from "./src/novel-cover.ts";
+export { rebuildCanonSummary } from "./src/canon-summary.ts";

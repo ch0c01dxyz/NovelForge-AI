@@ -7,3 +7,4 @@
  */
 export * from "./canon.ts";
 export * from "./events.ts";
+export * from "./canon-summary.ts";

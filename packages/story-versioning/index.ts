@@ -11,3 +11,4 @@ export * from "./impact.ts";
 export * from "./dependency-edges.ts";
 export * from "./restore-scope.ts";
 export * from "./coherence.ts";
+export * from "./intents.ts";

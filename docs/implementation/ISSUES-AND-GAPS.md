@@ -11278,3 +11278,142 @@ Second Engram-unbound fallback handoff (same session-family as the
 - Closure check: re-save to Engram when the runtime binding is restored.
   Authority of record: docs/14-progress/CURRENT.md section 'Kaisar dari
   Masa Depan: character development connected'.
+
+## GAP-127 — character_state corrections have no API surface (2026-10-26, MINOR, architecture gap)
+
+Repairing over-broad `character_states` windows for Kaisar dari Masa Depan
+required direct SQL plus manually written `character.state-window-repaired`
+audit rows: the character routes expose `POST /states` but no update or delete,
+and `character_states_no_overlap` rejects a split that is not applied in one
+transaction.
+
+- Evidence: `.nf-artifacts/kaisar-review/repair-states.sql`; 8 audit rows with
+  that action in workspace `b1ff1cbc-a8af-44ce-8bd7-4e4e260beda9`.
+- Impact: author-facing correction of presence windows is not possible through
+  the product, and SQL edits depend on an operator remembering to write audit
+  rows by hand.
+- Next action: an audited state supersede/close endpoint (revisioned, like
+  canon supersede) so corrections stay inside the API boundary.
+- Closure check: window correction performed through the API produces the same
+  audit action and leaves story-health findings at zero.
+
+## GAP-128 — chapter-sourced facts create a cast-wide knowledge obligation (2026-10-26, MINOR, rule heuristics)
+
+The knowledge-boundary rule treats every character whose `character_states`
+window covers the chapter as present, then reports any cited chapter fact
+without a `character_knowledge` row. Adding one chapter-sourced affiliation fact
+therefore produced findings for the entire cast, including characters who are
+not in the scene and have no plausible path to the fact.
+
+- Evidence: intermediate runs after the first knowledge batch showed ch2 = 1,
+  ch3 = 2, ch6 = 2, ch7 = 2, ch10 = 10; 17 further rows cleared them.
+- Impact: each new canon fact costs one stance decision per cast member, and a
+  missed row surfaces as a WARNING rather than as missing evidence.
+- Next action: decide whether presence for this rule should come from an
+  explicit per-chapter cast rather than state windows, or add a bulk bootstrap
+  that records `UNKNOWN` explicitly so silence is not a violation.
+- Closure check: a new chapter-sourced fact produces findings only for the
+  authored cast, or the cast list is authored rather than inferred.
+- 2026-10-26 terminology repair, observed consequence: the replacement fact
+  `8e8a1477` ("adalah transmigrator dari") kept its evidence on chapter 3
+  version 1 (`3b934bbe`, offsets 1629–1704). The cited sentence is narrator-only
+  and the current version 5 carries the same sentence. Sourcing it on v5 would
+  have produced a WARNING for every cast member whose state window covers
+  chapter 3 — including Sofian, who does not know the fact in-story — so the
+  evidence stays on the immutable historical version that literally contains the
+  quote. This is a workaround for the heuristic, not a fix; the next action
+  above remains the closure requirement.
+
+## GAP-129 — published chapter 8 → 10 continuity conflicts (resolved by author decision, 2026-10-26)
+
+Chapter 10 conflicted with the two preceding published chapters:
+
+1. Chapter 10 ends with "Tujuh hari masih tujuh hari. Tetapi hari pertama
+   selalu yang paling menentukan, dan hari pertama ini dimulai…" while chapter
+   4 already started the seven-day deadline; the second harvest is not the
+   first day.
+2. Chapter 8 closes with the plan "besok pagi, ikan; siang, pasar; dua perak
+   dan bunganya"; chapter 10 instead stages a second harvest, with no market
+   sale and no debt payment.
+
+- Evidence: `.nf-artifacts/kaisar-review/bab4.txt`, `bab8.txt` and `bab10.txt`
+  (verbatim chapter-version exports).
+- Impact: reader-visible continuity, not story-state corruption. Canon,
+  knowledge rows and antagonists remain consistent with what the chapters
+  actually depict, so no data repair was made to fit the faulty narration.
+- Constraint: the chapters are PUBLISHED. Repairing the prose invalidates
+  reviews tied to those versions, so it needed explicit author approval and a
+  new chapter version.
+- **Author decision (2026-10-26):** keep Bab 10; fix the plan line in Bab 8;
+  the sale happens in Bab 12; Bab 11 is the abundant harvest.
+- **Resolution:** chapter 8 version 3
+  `6dce946c-fd3f-492e-a2f0-45f20e46cc54` (906 words) replaces the closing plan
+  with "besok pagi, panen besar di liku sungai; lusa, kota" and was republished
+  after final-text review PASS `9958a9a3-4beb-4d0d-903a-6a9fff147aa4`. Bab 10
+  is unchanged by explicit scope; its "hari pertama" now reads as the first day
+  of the harvest plan, and no text claims a same-day market sale. Bab 11
+  (`5f789d14`, DRAFT) depicts the harvest; the market sale is planned for Bab
+  12.
+- Closure check: satisfied for item 2 — a new chapter version exists with
+  author approval and story-health reports zero findings for chapters 8–10
+  (`health-ch11-ch8.json` … `-ch10.json`). Item 1 is author-accepted, not
+  reworded.
+
+## GAP-130 — story promise/thread text has no API edit surface (2026-10-26, MINOR, architecture gap)
+
+`story-routes.ts` exposes create/list/transition for promises and
+create/list/status for threads, but nothing that edits `title`, `description`
+or `payoff_intent`. Four fields in the "Cerita" data carried stale claims that
+the author's Bab 11/12 plan invalidated, and they could only be corrected by SQL
+with hand-written audit rows.
+
+- Evidence: route list in `apps/api/src/story-routes.ts`; corrections applied by
+  `.nf-artifacts/kaisar-review/story-text-corrections.sql` with audit actions
+  `story.promise-edited` ×2 and `story.thread-edited` ×2.
+- Corrected claims: promise `285e22f1` payoff asserted repayment in Bab 8
+  "verified in Bab 9"; promise `b8790b64` quoted a meal rule absent from Bab 9;
+  thread `c5ec7fa6` advertised a Bab 8-9 payoff; thread `408d8dde` cited an
+  unsupported "35 ikan" Bab 8 harvest.
+- Impact: story metadata can drift from the manuscript and from the approved
+  plan without any product path to repair it; SQL edits depend on an operator
+  writing audit rows by hand.
+- Next action: add audited PATCH routes for promise and thread text (updating
+  `updated_at` and writing the same audit actions), or make payoff intent a
+  revisioned projection of the approved outline.
+- Closure check: the same corrections can be made through the API, audit rows
+  match the SQL equivalents, and the lists read back the new text.
+
+## GAP-131 — character, state and outline-node text has no API edit surface (2026-10-26, MINOR, architecture gap)
+
+The terminology repair needed new text in four "Cerita" records. Only the scene
+summary had a route (`PATCH /chapters/:chapterId/scenes/:sceneId`); character
+summary, `character_states.summary` and `outline_nodes.title` could only be
+corrected by SQL with hand-written audit rows.
+
+- Evidence: `apps/api/src/character-routes.ts` exposes create/list/state/
+  knowledge but no character PATCH; `character_states` has POST only (no update
+  or delete); `apps/api/src/planning-routes.ts` exposes outline-node
+  create/list/delete but no PATCH. Corrections: `.nf-artifacts/kaisar-review/transmigrator-corrections.sql`
+  with actions `character.summary-edited`, `character.state-edited` and
+  `planning.outline-node-edited`.
+- Impact: correcting a published character description, a historical state
+  summary or an approved beat title depends on an operator writing audit rows by
+  hand, outside revision/CAS protection. The approved outline content also had
+  to be reissued as version 4 to carry the beat-title change.
+- Next action: add audited PATCH routes (character summary and state summary;
+  outline node title/summary) or make these fields projections of a revisioned
+  record.
+- Closure check: the same corrections can be made through the API with the same
+  audit actions and read back identically.
+
+## Engram runtime unbound — Kaisar canon/knowledge-boundary repair (2026-10-26)
+
+Third Engram-unbound fallback handoff (no Engram MCP server is exposed in this
+runtime). The repair record lives in docs/14-progress/CURRENT.md sections
+'Kaisar dari Masa Depan: canon, antagonist and knowledge-boundary repair',
+'Kaisar dari Masa Depan: Bab 8 plan repair and Bab 11 harvest draft' and
+'Kaisar dari Masa Depan: terminology repair and antagonist closure', plus
+GAP-127…GAP-131 above; local evidence is under `.nf-artifacts/kaisar-review/`.
+The temporary author session row used for the audited API calls is deleted
+after the repair. Closure check: re-save to Engram once the runtime binding is
+restored.

@@ -1,5 +1,236 @@
 # Current Project State
 
+## Kaisar dari Masa Depan: terminology repair and antagonist closure — 2026-10-26
+
+Author decisions that scope this work: (1) the mastermind behind Juan Cleverton's
+murder is considered resolved because he lives in a different world and era and
+will not meet Don Juan or be discussed again; (2) the story uses
+"transmigrator", not "reinkarnasi", because the soul moved into another body in
+another time instead of being born again. Novel
+`e36d568b-aecf-476a-8e3f-f47ca709672b`, workspace
+`b1ff1cbc-a8af-44ce-8bd7-4e4e260beda9`, staging database
+`novelforge_acceptance_050b`.
+
+**Antagonist (`62338cd1`, Atasan Juan Cleverton):** advanced through the audited
+`narrative.antagonist-stage-advanced` API to stage `RESOLUTION` with outcome
+`NEUTRALITY` (the enum has no "out of reach" value; NEUTRALITY is the honest
+mapping of "no longer an active threat, never meets again"). The purpose text
+was corrected to "perkaranya selesai — ia hidup di dunia dan zaman yang berbeda,
+tidak akan bertemu Don Juan lagi dan tidak akan dibahas lagi" with audit action
+`narrative.antagonist-purpose-corrected`.
+
+**Chapter 3 (PUBLISHED, new version 5):**
+`5c34abaa-f3b1-439d-809b-ed8b76ed5a01`, 714 words. "Ia telah direinkarnasikan"
+became "Ia telah menjadi transmigrator. Jiwanya yang dahulu hidup sebagai Juan
+Cleverton kini terbangun di dalam tubuh Don Juan—". Applied through the
+supported flow — unpublish, save with `expectedVersion`, final-text review PASS
+`cdd89c35-a2ba-4c10-8967-83f567b3b228`, republish. Versions 1–4 are preserved
+verbatim as history.
+
+**Synopsis (internal and public):** new internal synopsis
+`c8728926-20b1-4e66-be3b-3490a5f94153` (ACTIVE, 814 chars) describes
+transmigration ("jiwanya berpindah ke masa lampau dan masuk ke dalam tubuh
+seorang pria bernama Don Juan"); old synopsis `7fc85bbb` is ARCHIVED. The public
+reader synopsis was updated with the `expectedPublicSynopsis` CAS.
+
+**Canon evidence:** fact `6f9ee985` ("adalah reinkarnasi dari") was retracted
+with an authored reason; replacement fact `8e8a1477` ("adalah transmigrator
+dari", same object "Juan Cleverton, penemu Aetherion dari dunia lain",
+available from chapter 3) carries a verified source span on chapter 3 version 1
+(quote "Ia yang dahulu hidup sebagai Juan Cleverton kini terbangun sebagai Don
+Juan", offsets 1629–1704) and Don Juan knowledge row `8db9a2a0` (KNOWN,
+REMEMBERED, chapter 3). The span stays on the historical version deliberately:
+the sentence is narrator-only, so sourcing it on the current version would flag
+every cast member whose state window covers chapter 3, including Sofian, who
+does not know about the transmigration in-story (GAP-128). The source claim is
+literally true for the version it cites and the meaning is unchanged.
+
+**"Cerita" text corrections (audited SQL, no edit API exists):** character
+summary `7e726bd2` ("jiwanya berpindah ke tubuh Don Juan", "di masa asalnya"),
+state summary `fc5839a2` ("Transmigrasi: jiwa Juan Cleverton berpindah …"),
+outline beat node `e3430d78` ("Transmigrasi di dapur gubuk"), and the antagonist
+purpose above. Actions: `character.summary-edited`, `character.state-edited`,
+`planning.outline-node-edited`, `narrative.antagonist-purpose-corrected`. Scene
+`6f188a23` was corrected through the scene PATCH route.
+
+**Approved outline:** outline version 4 `2e65c4ec-96e4-4362-bc55-58bd6a83d5c5`
+is APPROVED (v3 `03e4ced0` SUPERSEDED); content is v3 byte-for-byte except beat 2
+"Transmigrasi di dapur gubuk", so the approved plan no longer carries the old
+term.
+
+**Derived projection:** canon summary `f7141e93` rebuilt at revision
+`82ece3ba` (number 413) by an operator script calling `rebuildCanonSummary`
+(RepeatableRead, revision-pinned) because the running API process predates the
+summary routes. Counts: 24 entities, 27 active facts, 1 retracted; the digest
+lists "adalah transmigrator dari" and no "adalah reinkarnasi dari". The previous
+row `61383967` remains as revision-pinned history.
+
+**Verification (OBSERVED):** story-health returns 0 findings and 0 unresolved
+for chapters 1–11 (`health-final-1.json` … `-11.json`). A database scan for
+"reinkarnasi" now matches only historical or explanatory artifacts: chapter
+versions 1–4, the retracted fact, the archived synopsis, cover-generation
+prompts, workflow step instructions, and the version notes that record the
+replacement. Active character/state/scene/outline text, the active synopsis,
+the public synopsis and the published chapter 3 are clean. API read-back
+confirms the fact, source, knowledge row, outline statuses and scene summary.
+
+**State:** Bab 11 remains an unpublished DRAFT. The temporary author session
+used for audited API calls is deleted after this record.
+
+## Kaisar dari Masa Depan: Bab 8 plan repair and Bab 11 harvest draft — 2026-10-26
+
+Author decision that scopes this work: keep Bab 10, fix the plan line in Bab 8,
+stage the fish sale in Bab 12, and make Bab 11 the abundant harvest. Novel
+`e36d568b-aecf-476a-8e3f-f47ca709672b`, workspace
+`b1ff1cbc-a8af-44ce-8bd7-4e4e260beda9`, staging database
+`novelforge_acceptance_050b`.
+
+**Bab 8 (PUBLISHED, new version 3):** `6dce946c-fd3f-492e-a2f0-45f20e46cc54`
+replaces the closing plan "besok pagi, ikan; siang, pasar" with "besok pagi,
+panen besar di liku sungai; lusa, kota"; 906 words. Applied through the
+supported flow — unpublish, save with `expectedVersion`, deterministic
+final-text review PASS `9958a9a3-4beb-4d0d-903a-6a9fff147aa4`, republish. The
+v2 review no longer covers the current text. Bab 10 text is unchanged per the
+author's scope; its "hari pertama" reads as the first day of the harvest plan
+instead of implying a same-day market sale.
+
+**Bab 11 (DRAFT, not published):** `5f789d14-957c-40fc-97a9-567e9f955c64`
+"Bab 11 — Panen Seratus Lima". The initial version
+`f20506eb-b4af-4011-afdd-cd09a6010e25` (1,836 words, review PASS
+`26e6152a-cca6-4718-81aa-64642b905fdd`) was followed by four un-noted saves
+(versions 2–5, observed timestamps 2026-10-25 18:04–18:12) that changed three
+lines of wording, so that receipt covers only v1. The author's clarity pass is
+version 6 `f418874b-7879-465d-8258-6f88722e2b82`, 1,860 words, final-text
+review PASS `0d3cf318-f486-4094-b14a-103e6ded88f5`.
+
+- 4 scenes: `f4fc8606`, `4baf5c82`, `914bef3b`, `93488e8c`.
+- Outline node `fba68029` (order 10); outline version 3 `03e4ced0` APPROVED
+  against head `87fb9b29` (v1/v2 SUPERSEDED), 11 beats, last beat links the
+  chapter.
+- 4 canon facts with chapter-version sources at verified offsets: `db6c7071`
+  (105 fish, 40/30/35, quote 3711–3904), `f11217a4` (pond doubled), `687b8994`
+  (city plan), `da83573f` (wages 8/5/5). Fact count is now 27.
+- 20 `character_knowledge` rows, 4 per present character: Don Juan
+  EXPERIMENTED; Husein, Anton and Darma REMEMBERED; Sofian LEARNED_IN_WORLD;
+  all KNOWN from chapter 11.
+- 5 `character_states` windows closed at 11 and reopened `[11, NULL)` in one
+  transaction, with `character.state-window-advanced` and
+  `character.state-window-closed` audit rows.
+- Story event `92609866` and timeline entry `1f5149be` (order 6) carry the
+  harvest consequences into "Cerita".
+
+**Clarity pass on Bab 11 (version 6, author request):**
+
+- Sofian's serving line now states equal portions for five people and that
+  everyone eats until full, replacing the ambiguous "tidak menghitung apa pun".
+- The old-world memory now reads "sibuk membicarakan angka dan keuntungan,
+  tetapi tidak pernah bertanya siapa yang menyiapkan makanan mereka".
+- Anton asks "Apa yang akan kita lakukan di kota?" and Don Juan answers
+  "Menjual ikan" before the 80/4/21 split; the split is now arithmetically
+  explicit against the 105-fish harvest and the pre-existing pond stock.
+- "pedagang" became "pembeli", matching a direct sale to townspeople rather
+  than to traders.
+- The debt line now reads "Dua perak, sudah termasuk bunganya", consistent with
+  Bab 4's "Total 2 perak dengan bunganya!".
+- The four canon fact sources were re-pinned to v6 at recomputed offsets
+  (`72f73e17`, `7b6dfa8b`, `9cfc170c`, `be8b4c71`; exact slice check true for
+  all four). The v1 citations remain as history.
+
+**Author rules check for Bab 11:** no new characters, marga, locations or
+enemies — the existing cast, Keluarga Pratama/Magani and Liku Tenang entity
+cover it; no research reference matches harvest or pond material, so no
+reference link was added; neither antagonist is defeated, so no antagonist
+outcome changed.
+
+**Story-metadata corrections (Cerita):** the promise/thread routes expose no
+text edit, so four fields were corrected by SQL with audit rows
+(`story.promise-edited` ×2, `story.thread-edited` ×2):
+
+- Promise `285e22f1` payoff no longer claims repayment in Bab 8 "verified in
+  Bab 9"; it now records the Bab 11 harvest sold in Bab 12.
+- Promise `b8790b64` now quotes the actual Bab 9 line "Jika aku makan, kamu
+  juga harus makan" instead of the absent "yang makan banyak, bayar banyak".
+- Thread `c5ec7fa6` payoff window moved from Bab 8-9 to Bab 11-12.
+- Thread `408d8dde` lost the unsupported "35 ikan" Bab 8 count and the
+  misquoted meal rule.
+
+See GAP-130 for the missing API.
+
+**Verification (OBSERVED):** story-health returns 0 findings and 0 unresolved
+for chapters 9, 10 and 11 (`health-ch11-ch9.json` … `-ch11.json`), and chapters
+1–10 remain at 0 findings (`health-after2-*.json`). The same three chapters
+return 0 findings after the v6 save and source re-pin
+(`health-ch11-v6-9.json` … `-11.json`). API read-back confirms 11 chapters,
+outline v4 APPROVED with the corrected Bab 3 beat, 4 scenes, 4 facts with
+current-version sources, 20 knowledge rows, the story event, the timeline entry
+and the corrected promise/thread text.
+
+**State:** Bab 11 is an unpublished DRAFT, now version 6, awaiting the author's
+review and publication decision. Chapter 12 is the planned market sale. The
+temporary author session used for audited API calls is deleted after this
+record.
+
+## Kaisar dari Masa Depan: canon, antagonist and knowledge-boundary repair — 2026-10-26
+
+Data-only repair of novel `e36d568b-aecf-476a-8e3f-f47ca709672b` in workspace
+`b1ff1cbc-a8af-44ce-8bd7-4e4e260beda9` (staging database
+`novelforge_acceptance_050b`). No application source file changed; no chapter
+text was edited. A verified `pg_dump` was taken before any mutation
+(`.nf-artifacts/kaisar-review/backup-before-repair.dump`, 913 TOC entries).
+
+**Baseline (OBSERVED):** 30 OPEN `KNOWLEDGE_BOUNDARY_VIOLATION` findings across
+chapters 2 (4), 6 (11), 8 (4) and 10 (11). Four independent causes:
+
+1. Character-state windows were broader than actual chapter presence, which
+   put absent characters into the knowledge-boundary cast.
+2. Chapter-sourced facts had no `character_knowledge` row for cast members,
+   which the rule reports as a violation.
+3. One fact (`f521983f`, fish-stunning method) was sourced to chapter 6, where
+   the line states only intent ("Saya ingin membuat…"), not the creation in
+   chapter 7.
+4. Each newly added chapter-sourced fact created a cast-wide obligation, so the
+   affiliation facts added in this repair needed their own stance rows.
+
+**Repairs (all audited):**
+
+- 8 `character.state-window-repaired` rows. Windows narrowed/split to actual
+  presence (Sofian, Husein, Ketua Penagih, Don Juan). Applied with SQL because
+  no API exposes state update/delete; every row carries an `audit_logs` entry.
+- 32 `character.knowledge-recorded` rows via the audited API, covering the
+  facts cited by chapters 1–10 for each present character.
+- `f521983f` source moved chapter 6 → 7 and `availableFromChapter` 6 → 7;
+  `fb5742d2` and `e9403711` visibility `NULL` → 10. Audit:
+  `canon.source-unlinked` (1), `canon.fact-source-added` (6, five of them
+  research links), `canon.fact-visibility-repaired` (3).
+- 4 canon entities: Laboratorium Aetherion `90fb3838` and Liku Tenang di Bawah
+  Pohon Beringin `c7613107` (LOCATION), Keluarga Pratama `3d4b9c1e` and
+  Keluarga Magani `eb0325e6` (FACTION).
+- 6 canon facts: `8460bbab` (laboratory location, ch2), `f858b54e` (river
+  feature, ch7), `667b4bec` / `a411ecc8` / `d71bdb4a` (Pratama affiliation,
+  ch6/ch10) and `cba9530a` (Magani affiliation, ch3).
+- 5 research reference links over 4 facts (`f521983f`, `d15ec60d`, `2271cd16`,
+  `e9403711`) against the six chapter-6 research references. Two references
+  were deliberately not linked: the asam oksalat note has no matching canon
+  fact, and the gill/oxygen note explicitly disclaims the story mechanism.
+- 2 antagonists via the audited API: `62338cd1` Atasan Juan Cleverton
+  (MAIN, CONFRONTATION, ch1–2) and `be4c4e8d` Ketua Penagih Hutang (PERSONAL,
+  CONFRONTATION, ch4–null). Neither has been defeated or killed in chapters
+  1–10, so `outcome` stays null rather than being invented.
+
+**After (OBSERVED):** story-health returns 0 findings and 0 unresolved for each
+of chapters 1–10 (`health-after2-ch1.json` … `-ch10.json`). The author-facing
+lists confirm 24 entities, 23 facts, 10 characters and 2 antagonists; Husein,
+Anton and Darma list Keluarga Pratama and Sofian lists Keluarga Magani in
+"Marga dan organisasi".
+
+**Open author decisions (resolved 2026-10-26):** chapter 8's plan line was
+corrected in version 3, Bab 11 became the harvest and Bab 12 the sale, and Bab
+10 was left unchanged per the author's decision. See the Bab 8/Bab 11 section
+above and GAP-129.
+
+**Working-context fallback:** the Engram MCP is not bound in this runtime; this
+section plus GAP-127…GAP-129 is the handoff record.
+
 ## Derived intent post-review repairs verified — 2026-10-25
 
 The author authorized repairing the review findings, committing all safe project

@@ -6,7 +6,7 @@
  * so the UI edits it as JSON text with explicit parse-error handling
  * (documented here, not hidden): invalid JSON cannot be saved, and the
  * error names the parse failure. GET .../narrative/dna returns the DNA
- * object or null.
+ * envelope containing `dna`, or null.
  */
 import { ref, onMounted } from "vue";
 import { useLocale } from "../../composables/useLocale";
@@ -41,8 +41,8 @@ async function load() {
   loading.value = true;
   loadError.value = null;
   try {
-    const dna = await api<Record<string, unknown> | null>(base());
-    draft.value = dna ? JSON.stringify(dna, null, 2) : "";
+    const profile = await api<{ dna: Record<string, unknown> } | null>(base());
+    draft.value = profile ? JSON.stringify(profile.dna, null, 2) : "";
   } catch (e) {
     loadError.value = errorKey(e);
   } finally {

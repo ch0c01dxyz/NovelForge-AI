@@ -69,6 +69,27 @@ const REQ: GenerateRequest = {
 };
 
 describe("reported usage analytics", () => {
+  it("buffers one complete streamed attempt with metadata for structured generation", async () => {
+    const { fetch, calls } = fakeFetch(() => sseResponse([
+      `data: ${JSON.stringify({ model: "served", choices: [{ delta: { content: '{"prose":"Hello"}' }, finish_reason: "stop" }] })}\n\n`,
+      'data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":3}}\n\n',
+      'data: [DONE]',
+    ]));
+    const result = await new OmniRouteGateway(CONFIG, fetch).generate({ ...REQ, bufferStream: true, outputMode: "json_object" });
+    expect(result).toMatchObject({ content: '{"prose":"Hello"}', model: "served", reportedModel: "served", inputTokens: 12, outputTokens: 3, finishReason: "stop" });
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse(String(calls[0]?.init?.body))).toMatchObject({ stream: true, response_format: { type: "json_object" } });
+  });
+  it("rejects buffered EOF without a terminal marker even if the partial text is valid JSON", async () => {
+    const { fetch } = fakeFetch(() => sseResponse([sseChunk('{"prose":"Partial"}')]));
+    await expect(new OmniRouteGateway(CONFIG, fetch).generate({ ...REQ, bufferStream: true })).rejects.toMatchObject({ category: "TRANSIENT", partial: true });
+  });
+  it.each(['data: broken\n\n', 'data: {"error":{"message":"private upstream detail"}}\n\n'])("rejects a corrupt buffered frame before DONE: %s", async frame => {
+    const { fetch } = fakeFetch(() => sseResponse([sseChunk('{"prose":"Partial"}'), frame, 'data: [DONE]\n\n']));
+    const call = new OmniRouteGateway(CONFIG, fetch).generate({ ...REQ, bufferStream: true });
+    await expect(call).rejects.toMatchObject({ partial: true });
+    await expect(call).rejects.not.toHaveProperty("message", expect.stringContaining("private upstream detail"));
+  });
   it("preserves streamed usage-only frames and the response model without text", async () => {
     const { fetch, calls } = fakeFetch(() => sseResponse([
       'data: {"model":"served","choices":[{"delta":{"content":"hello"}}]}\n\n',

@@ -185,6 +185,68 @@ const TWO_TRANSFORMS = {
 };
 
 describe("generation usage attribution", () => {
+  it.each([
+    { stepKey: "review_final", json: { findings: [{ severity: "major" }], needsCorrection: false }, code: "AI_CHAPTER_REVIEW_INCONSISTENT" },
+    { stepKey: "review_final", json: { findings: [], needsCorrection: true }, code: "AI_CHAPTER_REVIEW_UNRESOLVED" },
+    { stepKey: "write", json: { prose: "Dua kata." }, code: "AI_CHAPTER_TOO_SHORT" },
+  ])("blocks invalid recovered $stepKey without a new model call", async ({ stepKey, json, code }) => {
+    const graph = { steps: [{ key: stepKey, kind: "TRANSFORM", inputs: {} }, { key: "approval", kind: "HUMAN_APPROVAL" }], edges: [{ from: stepKey, to: "approval" }] };
+    const seed = await seedWorkflow(graph);
+    await db.workflow.update({ where: { id: seed.workflowId }, data: { key: "chapter-generation-review" } });
+    const runId = await seedRun(seed, graph, "RUNNING");
+    await db.workflowRun.update({ where: { id: runId }, data: { input: { minimumWordCount: 3 } } });
+    const output = { text: JSON.stringify(json), json };
+    await db.workflowStepRun.updateMany({ where: { runId, stepKey }, data: { status: "SUCCEEDED", output } });
+    expect(await resetRunForRecovery(db, runId)).toBe(true);
+    expect((await executor.executeRun(runId)).status).toBe("FAILED");
+    expect((await db.workflowRun.findUniqueOrThrow({ where: { id: runId } })).errorMessage).toContain(code);
+    expect((await db.workflowStepRun.findUniqueOrThrow({ where: { runId_stepKey: { runId, stepKey } } })).output).toEqual(output);
+    expect((await db.workflowStepRun.findUniqueOrThrow({ where: { runId_stepKey: { runId, stepKey: "approval" } } })).status).toBe("PENDING");
+    expect(generateCalls).toBe(0);
+  });
+  it.each([
+    ...["write", "rewrite_1", "rewrite_2"].map(stepKey => ({ stepKey, response: { prose: "Dua kata." }, code: "AI_CHAPTER_TOO_SHORT" })),
+    { stepKey: "review_vs", response: { findings: [{ severity: "major" }], needsCorrection: false }, code: "AI_CHAPTER_REVIEW_INCONSISTENT" },
+    { stepKey: "review_final", response: { findings: [{ severity: "blocking" }], needsCorrection: true }, code: "AI_CHAPTER_REVIEW_UNRESOLVED" },
+    { stepKey: "review_final", response: { findings: [], needsCorrection: true }, code: "AI_CHAPTER_REVIEW_UNRESOLVED" },
+  ])("blocks invalid $stepKey ($code) before any successor", async ({ stepKey, response, code }) => {
+    const outputSchema = "prose" in response
+      ? { type: "object", required: ["prose"], properties: { prose: { type: "string" } } }
+      : { type: "object", required: ["findings", "needsCorrection"], properties: { findings: { type: "array", items: { type: "object" } }, needsCorrection: { type: "boolean" } } };
+    const graph = { steps: [{ key: "context", kind: "RETRIEVAL", instruction: "Compile chapter context" }, { key: stepKey, kind: "AGENT", ref: "writer", outputSchema }, { key: "approval", kind: "HUMAN_APPROVAL" }], edges: [{ from: "context", to: stepKey }, { from: stepKey, to: "approval" }] };
+    const seed = await seedWorkflow(graph);
+    await db.workflow.update({ where: { id: seed.workflowId }, data: { key: "chapter-generation-review" } });
+    await db.workflowVersion.update({ where: { id: seed.versionId }, data: { agentKeys: ["writer"] } });
+    const novel = await db.novel.create({ data: { workspaceId: seed.workspaceId, createdById: seed.userId, title: "Length boundary", slug: "length" } });
+    const chapter = await db.chapter.create({ data: { novelId: novel.id, createdById: seed.userId, number: 1, title: "Chapter" } });
+    const runId = await seedRun(seed, graph);
+    await db.workflowRun.update({ where: { id: runId }, data: { novelId: novel.id, input: { chapterNumber: 1, minimumWordCount: 3, chapterAuthoring: { storyProfile: "Keep the debt reserve separate." } } } });
+    const agent = await db.agent.create({ data: { workspaceId: seed.workspaceId, key: "writer", name: "Writer", createdById: seed.userId } });
+    const av = await db.agentVersion.create({ data: { agentId: agent.id, number: 1, instructions: "Write", modelProfile: "CREATIVE_WRITER", skillKeys: [], createdById: seed.userId } });
+    let instruction = "";
+    const driver = createWorkflowExecutor({ db, audit: { record: async () => {} },
+      chapterSource: { load: async () => ({ chapterId: chapter.id, chapterNumber: 1, sourceBranchId: crypto.randomUUID(), headRevisionId: null, previousChapter: null, characters: [], ambiguousNames: [], text: "Source fixture" }) },
+      retrieval: {} as never,
+      compiler: { compile: async () => ({ canDispatch: true, text: "Context", blocks: [], storyPosition: 0, headRevisionId: null }) },
+      resolvers: {
+        resolveAgent: async () => ({ id: agent.id, key: "writer", versionId: av.id, versionNumber: 1, instructions: "Write", modelProfile: "CREATIVE_WRITER", skillKeys: [], outputSchema: null, temperature: null, maxTokens: null }),
+        resolveSkill: async () => { throw Error("No skill"); },
+      },
+      generate: { generate: async input => {
+        instruction = input.messages.map(message => typeof message.content === "string" ? message.content : "").join("\n");
+        const generation = await db.generation.create({ data: { workspaceId: seed.workspaceId, task: input.task, modelProfile: input.profile, status: "SUCCEEDED" } });
+        return { generationId: generation.id, content: JSON.stringify(response), model: "fixture" };
+      } },
+    });
+    expect((await driver.executeRun(runId)).status).toBe("FAILED");
+    expect(instruction).toContain("Keep the debt reserve separate.");
+    expect(instruction).toContain("at least 3 words");
+    const failed = await db.workflowStepRun.findUniqueOrThrow({ where: { runId_stepKey: { runId, stepKey } } });
+    expect(failed.status).toBe("FAILED");
+    expect(failed.errorMessage).toContain(code);
+    expect((await db.workflowStepRun.findUniqueOrThrow({ where: { runId_stepKey: { runId, stepKey: "approval" } } })).status).toBe("PENDING");
+    expect((await db.chapter.findUniqueOrThrow({ where: { id: chapter.id } })).currentVersionId).toBeNull();
+  });
   it.each([undefined, "LORE"])("forwards chapter identity and explicit component override %s", async usageComponent => {
     const graph = { steps: [{ key: "context", kind: "RETRIEVAL", instruction: "Compile chapter context" }, { key: "write", kind: "AGENT", ref: "writer", ...(usageComponent ? { usageComponent } : {}) }], edges: [{ from: "context", to: "write" }] };
     const seed = await seedWorkflow(graph);

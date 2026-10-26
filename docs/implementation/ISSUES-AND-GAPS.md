@@ -1,5 +1,158 @@
 # Technical Issues and Implementation Gaps
 
+## Kaisar studio alignment implementation gaps — 2026-10-26
+
+- Run `e2cf10d3` passed technical acceptance:3985words,8successful real attempts,
+  both rewrite paths, actual policy/skill wire presence, no manuscript mutation.
+  Independent quality HOLD remains: generated overnight camp violates required
+  same-evening chronology, but AI final review labels it minor. Preserve this
+  rejection evidence. Clarify chapter-positioned source chronology in scoped
+  novel policy, prohibit invented bridge events/source edits as remediation, and
+  require major/blocking severity for explicit author-policy violations. No
+  semantic severity downgrade or human approval inferred from model output.
+
+- Buffered real run `a90d5df9-3790-4bda-9f56-2ddfc6788c59` proved writing
+  past the old timeout (143,373ms), then final review correctly stopped unresolved
+  deadline/cart contradictions. Earlier review checked voice/style only, returned
+  minor findings and skipped both rewrite paths. Continuity was first evaluated
+  after the correction opportunities. Expand the existing early reviewer with
+  the already-installed continuity skill in the same calls, remove contradictory
+  style-only role wording in the new version, and classify evidenced hard-story
+  contradictions as major/blocking. Preserve advisory style feedback and the
+  final gate. This addresses workflow placement, not a claim that fluent prose
+  or the model's self-review proves author acceptance.
+
+- Long-response cause now observed directly through the configured adapter:
+  the saved chapter14 edit request (19,873 bytes) received HTTP503 at60,079ms,
+  response indicating upstream connect timeout. Explicit streaming of the same
+  chapter received HTTP200/SSE headers at27,144ms and completed at64,441ms with
+  2,817 words. Add buffered streaming only for the two chapter workflow task
+  prefixes, using the existing adapter/manager and one logical request. Require
+  terminal completion before returning an artifact; stop fallback after partial
+  content and record generation INCOMPLETE. Preserve other transport defaults,
+  provider configuration and capability exclusions. New tests first reproduced
+  the missing buffering/partial fallback, then101 ai-core tests passed. API
+  persistence/scope regressions and exact latest-candidate acceptance follow.
+
+- Bounded retry `72dda8d6-438a-452b-88f0-a588670fe20d` also failed write on
+  six TRANSIENT routes (five near 60s; final fallback 133,724ms), while reusing
+  successful planning/context/pins. No draft, extraction or approval occurred.
+  Full executor suite 43/43 passes. Latest corrected instructions/helper are
+  separately approved, not yet runtime-accepted; active defaults remain intact.
+  Blocker: long-response gateway behavior must be diagnosed/repaired before the
+  latest candidate can satisfy actual acceptance. No extra blind retry, capability
+  override, provider-setting change or synthetic replacement for that proof.
+
+- Instruction review requested two corrections: narrow the temporal rule so it
+  permits plausible new fictional choreography, and replace the old final-review
+  paragraph claiming unresolved findings still proceed to approval. Apply the
+  replacement only in new immutable versions; retain originals. Candidate helper
+  now asserts the exact old anchor, and replacement/policy self-checks pass.
+  Current running retry pins the earlier candidate; its outcome cannot prove
+  acceptance of these subsequently revised instructions. Rehearse the latest
+  candidate after the gateway path recovers, without treating a short readiness
+  response as proof that full chapter generation succeeds.
+
+- Revised acceptance `0a7647b1-e9f1-4064-bf28-012c40700eb7` failed at write:
+  six real model routes returned TRANSIENT (five about 60s, one about 120s).
+  Plan/validation succeeded; no draft or approval was produced. Local gateway
+  timeout is already 600s. Router source has a separate 60s response-header
+  timeout in `open-sse/executors/base.js`; matching latency is a hypothesis,
+  not proof of provider failure cause. Preserve model settings and failed run;
+  probe mapped routes not attempted by that request before choosing a bounded
+  retry. Do not repeat successful planning or claim this as acceptance PASS.
+
+- Acceptance correction: isolated real run `d5e93d07-7af0-4517-89d8-906098d4db5e`
+  reached AWAITING_APPROVAL with 2,559 words and eight successful gateway attempts,
+  but independent review found `needsCorrection=false` alongside major/blocking
+  findings, plus unsupported remaining days, erased beginner training and actor
+  count defects. This is HELD, not PASS. Archive its evidence and clone; keep
+  active defaults unchanged. Add deterministic review-consistency/final-unresolved
+  rejection, strengthen temporal/physical/ending instructions, and require a new
+  real run plus separate quality review before activation. Twelve pure policy and
+  six database negative tests pass; validation/executor typechecks pass.
+- Separate source review found recovery/retry could adopt old SUCCEEDED outputs
+  without the new gates. Apply the same checks before either adoption path;
+  preserve historical outcomes and fail the run without new model calls.
+  Three recovery regressions plus six fresh-output regressions pass.
+- Rehearsal prerequisite stopped before enqueue because Redis DB14 retained four
+  BullMQ metadata keys after the first owned job was removed. Inspect exact keys;
+  allow only that known metadata set when no job keys remain. Never flush Redis
+  or select another occupied DB. This is test-harness cleanup state, not a model
+  failure or acceptance result.
+
+- Owner: `tasks/kaisar-studio-alignment.md`, approved after the advisory assessment.
+- Observed: executor VALIDATOR checks JSON Schema but no prose minimum; targetWordCount is only a requested target. DNA context can be dropped for budget, so it cannot enforce a hard author minimum by itself. Active skills have no agent grants; directly granting their current instructions would conflict with host output schemas.
+- Observed relevant UI defect: DnaEditor load treats `{novelId,dna,updatedAt}` as bare DNA, risking nested envelope persistence on save. Correct the envelope reader while adding policy consumption.
+- Next action: server-pinned scoped authoring policy, deterministic draft minimum checks, host-compatible grants in versioned definitions, corrected forms/editor, isolated real-gateway acceptance before active default changes. Existing definition version append moves current pointers immediately, so rehearse on clone rather than staging untested versions on the active novel.
+- Closure: focused negative/boundary tests, independent diff review, actual pinned acceptance run, then checkpointed active application and exact read-back. No publication/author acceptance inferred from model output.
+- Verification during implementation: new pure policy tests first failed on the missing implementation, then all 11 passed. API typecheck found the new narrative-service validation import lacked a declared workspace dependency; add the existing validation workspace package explicitly and refresh local links/lockfile. Web typecheck passed. No external dependency is introduced.
+- Clone rehearsal stopped after the first workflow append because its read-back hash used insertion-order JSON while PostgreSQL jsonb reorders keys. Compare canonical JSON (with dates normalized) rather than raw serialization. Archive the failed clone/receipt and restore the owned test clone from the retained pre-operation dump before another rehearsal; do not blindly rerun the partial journal. Active definitions were untouched. Enqueue forgery/minimum/policy-pin regression now PASS; executor minimum regressions and affected package typechecks PASS.
+- Real run `d5e93d07-7af0-4517-89d8-906098d4db5e` on clone reached AWAITING_APPROVAL with 2,559 words and correct new pins/eight successful gateway attempts, but independent acceptance was HELD: final review returned needsCorrection=false while retaining major/blocking findings, some verbally withdrawn; draft invented remaining deadline, ignored morning beginner training, miscounted protectors, included unintelligible anatomy and advanced beyond the requested ending. Runtime/length/financial checks passed; overall quality acceptance did not. Preserve this run as rejected evidence, add deterministic review-consistency/final-unresolved gates, clarify temporal/physical/ending instructions, then test the changed candidate. No active default has been applied.
+
+## Kaisar AI Studio alignment assessment — 2026-10-26 (advisory, not implemented)
+
+- Scope: author asked whether agents/skills/workflows need adjustment after the chapter 12–15 outline. This is assessment authorization only.
+- Observed: local workspace has five PUBLISHED agents (planner/extractor v1, writer/final reviewer/voice reviewer v2), two PUBLISHED skills (context distillation and continuity check v1), and two PUBLISHED chapter workflows v1. Both workflow skillKeys arrays and SKILL step lists are empty; agent skill allowlists are also empty. Installed skills are not currently invoked by those graphs. This is not evidence that existing agent-based continuity review is absent.
+- Source evidence: `.nf-artifacts/kaisar-studio-assessment.json`, `packages/ai-services/src/text-safeguards.ts`, its calls in `ai.ts`, and workflow definition graph validation in `apps/api/src/services/definitions.ts`. Shared internal safeguards already cover outline authority, identities, provenance, speculative-science boundaries and accessible prose. Active writer and reviewer definitions already contain language-quality instructions.
+- Recommendation: strengthen existing planner/reviewer with scoped balances (cash, inventory, days and commitments), character knowledge/development and causal pacing; keep novel-specific scientific/social rules in supplied story context. Reuse the continuity skill only where it adds evidence beyond current review; avoid redundant model passes. Enforce minimum words with deterministic validation where the author requests it. These are proposals, not verified runtime capabilities or approvals to publish new definitions.
+- Next action if authorized: freeze measurable acceptance examples from existing chapters, issue immutable definition/workflow versions with rollback, and perform one real-gateway acceptance run. Chapters 14–15 in the prior task were authored and saved through manuscript services; they do not prove this AI workflow autonomously produced equal-quality prose.
+- Closure check for any future implementation: actual pinned run shows the changed instructions/context/skill execution, catches the approved negative examples, preserves review/approval boundaries, and does not alter custom workspace definitions silently.
+
+## Kaisar chapters 12–15 preparation and source pins — 2026-10-26
+
+- Owner: `tasks/kaisar-ch12-ch15-rescue-and-enterprise.md`.
+- Observed: fresh local baseline has chapter 13 v2, including an intervening author edit; earlier task artifacts contain v1. Revisions must apply to current v2 with exact anchors, never overwrite it with the older draft.
+- Preparation issue: a decimal floating-point equality assertion for the fictional wage ledger failed before any database write. Use exact rational arithmetic for 1/5 + 3/20 + 3/20 + 3 × 1/10 = 4/5, and savings 150 × (1/10 ÷ 5) = 3. This is helper validation, not a financial product change.
+- Character service finding: createCharacter leaves storyEntityId null. Use existing createEntity and explicit identity-link service with current branch/head plus chapter-scoped state, preserving existing identities; no fabricated IDs or automatic canon facts.
+- Independent draft review found two wording errors before save: Sofian's line implied she also traveled to the city, and the worker introduction called Leman the third man despite Sari being a woman. Correct to "kalian sedang ke kota" and "Pekerja berikutnya" before freezing manuscript hashes.
+- Closure checks: independently reviewed text, checkpoint-first service saves, exact current-version read-back, five new linked characters/states, drafts retained, earlier chapters/canon/citations/references unchanged.
+- Resolution: exact-rational preparation checks passed; the two editorial corrections were independently re-reviewed. Checkpoint `5cc45fe9-ac5f-46bf-bac6-7b215e54258e` precedes application-service saves. Chapters 12/v2, 13/v3, 14/v1 and 15/v1 are DRAFT with four PASS reviews and exact read-back. Five character identities and chapter-scoped states verified; protected existing data hashes unchanged. CLOSED for this bounded preparation/application issue. No facts silently approved from the draft text.
+
+## Kaisar chapters 1–9 editorial continuity audit — 2026-10-26
+
+- Owner: `tasks/kaisar-ch1-ch9-copyedit.md`; local baseline `.nf-artifacts/editorial-1-9/source.json`.
+- Observed: chapter 1 calls the convention "last night" after a ten-day aftermath; chapter 3 remembers a fire after Juan's death; chapter 4 changes dawn to afternoon and misattributes the creditor's demand; chapter 6 calls the same morning's confrontation "last night"; chapter 8 contains broken narration and exposure/recovery ambiguity; chapter 9 takes fish again after the meal is already served. Independent read-only audit confirmed these locations.
+- Impact: chronology, attribution and physical actions are unclear. Next action: targeted Indonesian paragraph edits, independent exact-artifact review, checkpoint-first service saves and final-text review/read-back.
+- Preparation check: an initial helper assertion searched lowercase "pada" against sentence-initial "Pada" and stopped before any database write. Normalize casing for that phrase assertion; retain exact content hashes for save verification.
+- Retained limits: the canon debt object says "2 perak + bunga" while its statement and chapters say two silver including interest. Canon identifies fictional Rumput Tuba as Persicaria hydropiper. Retain established story names/effects without treating them as verified real botany; do not mutate canon. Later chapter 11 fish-allocation ambiguities and educational-background claims must not be repaired by inventing earlier facts.
+- Closure check: exact edited content read-back, original immutable versions and publication states retained, reviews PASS, unaffected chapter/canon/reference hashes unchanged. Automated review is not author acceptance.
+- Resolution: 165 paragraph edits independently approved and applied after checkpoint `9e6a2bb4-4577-4333-9c5c-5f8edd722800`. All nine current-version reviews PASS; exact read-back, original immutable versions and existing PUBLISHED states verified. Chapters 10–13, canon, citations, references and outline hashes unchanged. The bounded manuscript defects listed above are CLOSED; retained canonical/forward-data ambiguities remain explicitly outside this prose repair. Preparation assertion passed after the casing correction, before any database write.
+
+## Kaisar chapters 12–13 helper runtime preflight — 2026-10-26
+
+- Owner: `tasks/kaisar-ch12-ch13-city-market.md`.
+- Observed: Node 24 strip-only execution rejected an existing TypeScript constructor parameter property in `packages/ai-services/src/platform.ts` (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`) while importing the private helper.
+- Impact: helper did not execute; no operation receipt or database mutation was produced by that invocation.
+- Resolution: `node --experimental-transform-types`, matching `apps/api/package.json`, executed the unchanged independently reviewed helper successfully. Product code remains unchanged.
+- Closure evidence: checkpoint `e1d78896-2470-4b69-939b-53e603e4e06e`; both new drafts saved, final-text reviews PASS, six references ACTIVE with real persisted embeddings. Exact manuscript read-back and preservation checks passed. Private receipts: `.nf-artifacts/kaisar-ch12-13/application-receipt.json` and `persisted-readback.json`. CLOSED as a helper invocation issue, not a product defect.
+
+## Kaisar chapters10–11 copyedit source and editorial checks — 2026-10-26
+
+Owner: tasks/kaisar-ch10-ch11-copyedit.md. Fresh local read found chapter10
+PUBLISHEDv2 and chapter11DRAFTv8; earlier v6 progress is historical. The private
+read-only exporter initially used nonexistent citation fields startOffset/endOffset;
+corrected to schema fields start/end before any mutation. No data was changed by
+that failed read. Both original versions and current citation pins are retained.
+
+Independent candidate review requested four corrections: punctuation between
+sentences, an unnatural Indonesian comparative, duplicated counting dialogue and
+preservation of the source's river-impact rationale. They were corrected before
+application. The fish allocation's existing amounts are preserved; removing an
+ambiguous "remainder" word is not evidence that its arithmetic has been certified.
+Next: exact candidate review, required pre-edit checkpoint, application-service CAS
+saves, deterministic review/publication-state preservation and content read-back.
+The first application attempt stopped at the candidate hash assertion before
+creating a database client or checkpoint: Windows text-mode output converted
+chapter10line endings to CRLF. Candidate output was changed to exact UTF-8 bytes;
+the approved LF manuscript hash is preserved. No bypass or data mutation occurred.
+Closure observed: exact approved UTF-8 candidate bytes passed after that correction;
+required checkpoint created, chapter10v3republished and chapter11v9keptdraft through
+application services, both deterministic reviews PASS. Read-back verified new
+content, old versions, publication pin/status, unchanged other chapters and unchanged
+canon/historical citations. The exporter/newline/editorial issues are RESOLVED;
+existing fish-allocation arithmetic was neither changed nor certified by this pass.
+
 ## NF-WF-060 post-implementation review: branch fidelity and worker ownership — 2026-10-25
 
 Status: OPEN, blocks publishing this uncommitted change. Owner:

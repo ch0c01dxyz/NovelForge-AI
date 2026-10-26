@@ -67,6 +67,7 @@ export type { NarrativePolicyKind, PolicyHardness };
 import { requireCapability, type Capability } from "@novelforge/auth/authorization";
 import type { InputJsonValue, NovelForgeDb } from "@novelforge/database";
 import { ConflictError, NotFoundError } from "./platform.ts";
+import { resolveChapterAuthoring } from "@novelforge/validation";
 import { PolicyError } from "./policy-errors.ts";
 import { MemoryError } from "./memory.ts";
 import type { AuditService } from "./audit.ts";
@@ -906,6 +907,8 @@ export function createNarrativeServices(deps: {
       if (dna === null || typeof dna !== "object" || Array.isArray(dna)) {
         throw new ConflictError("narrative DNA must be a JSON object");
       }
+      try { resolveChapterAuthoring(dna); }
+      catch (error) { throw new ConflictError(error instanceof Error ? error.message : "invalid chapter authoring policy"); }
       // The profile is a per-novel singleton with no `id` column, so the
       // change-log entity id is the novelId and the item is UPDATE (the C2
       // vocabulary has no UPSERT; every caller after the first is an update).

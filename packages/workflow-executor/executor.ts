@@ -24,6 +24,9 @@ import type { NovelForgeDb } from "@novelforge/database";
 import { canonicalizeJson } from "./snapshot.ts";
 import {
   compileSchema,
+  resolveChapterAuthoring,
+  chapterDraftLengthError,
+  chapterReviewError,
   isBlockedChapterDraft,
   validateGraph,
   validateWorkflowModelPreferences,
@@ -297,6 +300,16 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
     if (!version) throw new ExecutorNotFoundError("workflow version");
     const workflowKey = version.workflow.key;
     const isChapterWorkflow = ["chapter-generation-review", "chapter-creation-review"].includes(workflowKey);
+    function chapterOutputError(json: unknown, stepKey: string): string | null {
+      if (!isChapterWorkflow) return null;
+      const reviewError = chapterReviewError(json, stepKey === "review_final");
+      if (reviewError) return reviewError;
+      if (json && typeof json === "object" && "prose" in json && typeof json.prose === "string") {
+        const policy = resolveChapterAuthoring({ chapterAuthoring: runInput["chapterAuthoring"] }, runInput["minimumWordCount"]);
+        return chapterDraftLengthError(json.prose, policy.minimumWordCount);
+      }
+      return null;
+    }
     const authorNotes = isChapterWorkflow && typeof runInput["styleNotes"] === "string" ? runInput["styleNotes"].trim() : "";
     const authorBlock = authorNotes ? `## Explicit author instructions\n${authorNotes}\n\nFollow these chapter events, cast, ordering and style requirements. For planning they outrank the approved outline; surface hard-canon conflicts instead of silently dropping requirements. Named new people may appear in proposed prose without an existing Character row. Existing profile records are references, not a restriction to an old cast. Review and corrections must preserve all requested beats and named people.` : "";
     const creationPins = workflowKey === "chapter-creation-review" ? runInput["chapterCreationPins"] as { chapterId: string; chapterNumber: number; chapterVersionId: string | null; outlineRef: string; headRevisionId: string } | undefined : undefined;
@@ -515,6 +528,8 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
           // Recovery: adopt the persisted outcome, do not re-execute.
           // Reachability must still advance exactly as a fresh run would.
           const outcome = outcomeFromRow(row);
+          const adoptionError = chapterOutputError(outcome.json, stepKey);
+          if (adoptionError) throw new ExecutorConflictError(`${stepKey}: ${adoptionError}`);
           outcomes.set(stepKey, outcome);
           executed.push(stepKey);
           if (step.kind === "CONDITION") {
@@ -557,6 +572,11 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
           });
           if (current?.status === "SUCCEEDED") {
             const outcome = outcomeFromRow(current);
+            const adoptionError = chapterOutputError(outcome.json, stepKey);
+            if (adoptionError) {
+              pendingStep = null;
+              throw new ExecutorConflictError(`${stepKey}: ${adoptionError}`);
+            }
             outcomes.set(stepKey, outcome);
             executed.push(stepKey);
             if (step.kind === "CONDITION") {
@@ -795,10 +815,13 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
         }
 
         // ---- AGENT / SKILL: one model call through the Phase 3 path ----
+        const chapterPolicy = isChapterWorkflow ? resolveChapterAuthoring({ chapterAuthoring: runInput["chapterAuthoring"] }, runInput["minimumWordCount"]) : {};
         if (isChapterWorkflow) {
           const source = [...outcomes.values()].map(o => o.json as { chapterSource?: { text?: string }; contextProtocol?: string } | null).find(o => o?.contextProtocol === "chapter-author-context-v1")?.chapterSource;
           if (!source?.text) throw new ExecutorConflictError("CHAPTER_SOURCE_UNAVAILABLE: start a new run with complete saved chapter context");
           instruction = [instruction, authorBlock, `## Saved chapter source\n${source.text}`].filter(Boolean).join("\n\n");
+          if (chapterPolicy.storyProfile) instruction += `\n\n## Pinned novel authoring policy\n${chapterPolicy.storyProfile}\nThese are authoring instructions, not automatic canon approval. Resolve any hard-canon conflict explicitly.`;
+          if (chapterPolicy.minimumWordCount) instruction += `\n\nEvery chapter draft or rewrite must contain at least ${chapterPolicy.minimumWordCount} words of story prose. Preserve this minimum while correcting findings; do not pad with repetition or commentary.`;
         }
         if (!deps.generate) {
           throw new ExecutorConflictError(
@@ -891,6 +914,8 @@ export function createWorkflowExecutor(deps: WorkflowExecutorDeps): WorkflowExec
             );
           }
           json = parsed;
+          const chapterError = chapterOutputError(json, stepKey);
+          if (chapterError) await rejectResponse(chapterError);
           if (isBlockedChapterDraft(json)) await rejectResponse(`AI_CHAPTER_DRAFT_BLOCKED: step "${stepKey}" returned a blocked draft instead of chapter prose; inspect story context and planning before retrying`);
         }
 

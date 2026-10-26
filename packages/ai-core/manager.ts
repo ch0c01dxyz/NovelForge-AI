@@ -114,6 +114,7 @@ export interface GatewayRegistry {
 }
 
 export interface GenerateOptions {
+  bufferStream?: boolean;
   profile: ModelProfile;
   preferredModelRef?: string;
   messages: ChatMessage[];
@@ -354,6 +355,7 @@ export class GatewayManager {
     if (opts.profile === "IMAGE_GENERATOR") throw new GatewayError("UNSUPPORTED", "image profiles require image transport");
     return this.routeAttempts(opts, "generate", (adapter, target) =>
       adapter.generate({
+        ...(opts.bufferStream ? { bufferStream: true } : {}),
         model: target.modelId,
         messages: opts.messages,
         temperature: opts.temperature,
@@ -540,7 +542,7 @@ export class GatewayManager {
             latencyMs,
           });
         }
-        if (!shouldTryNext(gerr.category, i + 1, plan.length)) break;
+        if (gerr.partial || !shouldTryNext(gerr.category, i + 1, plan.length)) break;
         // Back off before the next transport attempt.
         const delay = backoffDelayMs(i + 1, 250, 8_000, opts.random);
         if (delay > 0) await sleep(delay);

@@ -219,7 +219,7 @@ defineExpose({ reload: load, run });
       </div>
 
       <template v-if="run.errorMessage || failedSteps.length">
-        <p role="alert" class="text-[12.5px] text-nf-warn">{{ t("run.failedMessage") }}</p>
+        <p role="alert" class="text-[12.5px] text-nf-warn">{{ t(failedSteps.some(step => step.errorMessage?.includes('AI_CHAPTER_TOO_SHORT')) ? "run.tooShortMessage" : "run.failedMessage") }}</p>
         <details class="text-[12px] text-nf-text-dim">
           <summary class="cursor-pointer focus-visible:nf-focus">{{ t("run.technicalDetails") }}</summary>
           <p v-if="run.errorMessage" class="mt-2 whitespace-pre-wrap break-words">{{ run.errorMessage }}</p>

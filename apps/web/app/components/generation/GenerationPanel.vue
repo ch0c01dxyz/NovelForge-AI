@@ -54,6 +54,7 @@ const templateMissing = ref(false);
 const outlines = ref<OutlineVersionView[]>([]);
 const outlineId = ref<string>("");
 const targetWords = ref<string>("");
+const minimumWords = ref(1);
 const styleNotes = ref("");
 const stepModelRefs = ref<Record<string, string>>({});
 const modelPreferenceFingerprint = ref<string | null>(null);
@@ -144,14 +145,17 @@ async function loadOutlinesAndHistory() {
   const { workspaceId, novelId, chapter } = props;
   try {
     const { api } = useApi();
-    const [ovs, hs] = await Promise.all([
+    const [ovs, hs, profile] = await Promise.all([
       api<OutlineVersionView[]>(
         `/workspaces/${workspaceId}/novels/${novelId}/planning/outline-versions`,
       ),
       runs.listRuns({ workspaceId, novelId, chapterNumber: chapter.number, limit: 100 }),
+      api<{ dna: { chapterAuthoring?: { minimumWordCount?: number } } } | null>(`/workspaces/${workspaceId}/novels/${novelId}/narrative/dna`),
     ]);
     if (version !== selectionVersion || request !== historyRequest) return;
     outlines.value = ovs;
+    minimumWords.value = profile?.dna?.chapterAuthoring?.minimumWordCount ?? 1;
+    if (minimumWords.value > 1 && !pendingStart.value && !preparingRetry.value) targetWords.value = String(Math.max(Number(targetWords.value) || 0, minimumWords.value));
     const approved = ovs.find((o) => o.status === "APPROVED");
     outlineId.value = approved?.id ?? "";
     history.value = hs.map((h) => ({
@@ -187,7 +191,7 @@ async function startRun() {
     if (!props.chapter || !workflowId.value || !modelPreferenceFingerprint.value) return;
     const input: Record<string, unknown> = { chapterId: props.chapter.id, chapterNumber: props.chapter.number, outlineRef: outlineId.value };
     const words = Number.parseInt(targetWords.value, 10);
-    if (Number.isFinite(words) && words > 0) input.targetWordCount = words;
+    if (Number.isFinite(words) && words > 0) input.targetWordCount = Math.max(words, minimumWords.value);
     if (styleNotes.value.trim()) input.styleNotes = styleNotes.value.trim();
     const pending: PendingWorkflowStart = { actorUserId: session.userId, chapterId: props.chapter.id, chapterTitle: props.chapter.title, request: {
       workspaceId: props.workspaceId, workflowId: workflowId.value, novelId: props.novelId, input,
@@ -371,7 +375,7 @@ defineExpose({ refresh: loadOutlinesAndHistory, prepareFailedRun });
               v-model="targetWords"
               :disabled="starting || preparingRetry || !!pendingStart"
               type="number"
-              min="1"
+              :min="minimumWords"
               class="rounded-lg border border-nf-border-strong bg-nf-bg-2 px-2.5 py-1.5 text-[13px] text-nf-text focus-visible:nf-focus"
             />
           </label>

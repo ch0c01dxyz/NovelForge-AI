@@ -15,6 +15,7 @@ export {
   type SchemaValidator,
 } from "./json-schema.ts";
 export { isBlockedChapterDraft } from "./chapter-draft.ts";
+export { resolveChapterAuthoring, chapterDraftLengthError, chapterReviewError, type ChapterAuthoringPolicy } from "./chapter-authoring.ts";
 
 export {
   validateGraph,

@@ -95,6 +95,7 @@ let behaviour: Behaviour = {};
 /** Every `signal` the fake gateways' generateStream received, in order. */
 const seenSignals: Array<AbortSignal | null> = [];
 const seenTextMessages: GenerateRequest["messages"][] = [];
+const seenBuffered: boolean[] = [];
 
 function fakeGateway(rec: GatewayRecord): AIGateway {
   const b = behaviour[rec.name] ?? { ok: true };
@@ -124,6 +125,7 @@ function fakeGateway(rec: GatewayRecord): AIGateway {
       ];
     },
     async generate(req: GenerateRequest): Promise<GenerateResult> {
+      seenBuffered.push(req.bufferStream === true);
       seenTextMessages.push(req.messages);
       if (!b.ok) fail();
       return {
@@ -219,6 +221,7 @@ beforeEach(async () => {
   behaviour = {};
   seenSignals.length = 0;
   seenTextMessages.length = 0;
+  seenBuffered.length = 0;
   await db.generationAttempt.deleteMany();
   await db.generation.deleteMany();
   await db.modelProfileMapping.deleteMany();
@@ -900,6 +903,33 @@ describe("model catalog + profile mapping", () => {
 });
 
 describe("generation", () => {
+  it.each(["workflow:chapter-creation-review:write", "workflow:chapter-generation-review:plan", "custom"])("scopes buffered stream transport for %s", async task => {
+    const admin = await seedUser("buffer-admin@t.io", "SUPER_ADMIN");
+    const owner = await seedUser("buffer-owner@t.io", null);
+    const ids = await seedWorkspace(owner.userId, "buffer-ws");
+    const gatewayId = await createGateway(admin.cookie, "buffer-gateway");
+    await mapProfile(admin.cookie, gatewayId, "CREATIVE_WRITER");
+    const response = await app.inject({ method: "POST", url: `/api/workspaces/${ids.workspaceId}/generations`, headers: { cookie: owner.cookie }, payload: { task, profile: "CREATIVE_WRITER", messages: [{ role: "user", content: "Generate a chapter." }] } });
+    expect(response.statusCode).toBe(201);
+    expect(seenBuffered).toEqual([task !== "custom"]);
+  });
+  it("persists incomplete buffered generation without retrying or returning partial prose", async () => {
+    const admin = await seedUser("partial-admin@t.io", "SUPER_ADMIN");
+    const owner = await seedUser("partial-owner@t.io", null);
+    const ids = await seedWorkspace(owner.userId, "partial-ws");
+    const first = await createGateway(admin.cookie, "partial-first", { priority: 1 });
+    const second = await createGateway(admin.cookie, "partial-second", { priority: 2 });
+    await mapProfile(admin.cookie, first, "CREATIVE_WRITER");
+    await mapProfile(admin.cookie, second, "CREATIVE_WRITER");
+    behaviour = { "partial-first": { ok: false, category: "TRANSIENT", partial: true } };
+    const response = await app.inject({ method: "POST", url: `/api/workspaces/${ids.workspaceId}/generations`, headers: { cookie: owner.cookie }, payload: { task: "workflow:chapter-creation-review:write", profile: "CREATIVE_WRITER", messages: [{ role: "user", content: "Generate." }] } });
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).not.toHaveProperty("content");
+    const generation = await db.generation.findFirstOrThrow({ where: { workspaceId: ids.workspaceId }, include: { attempts: true } });
+    expect(generation.status).toBe("INCOMPLETE");
+    expect(generation.attempts).toHaveLength(1);
+    expect(generation.attempts[0]?.status).toBe("TIMEOUT");
+  });
   it.each([false, true])("injects shared safeguards into custom text tasks and records provenance (stream=%s)", async stream => {
     const admin = await seedUser("policy-admin@t.io", "SUPER_ADMIN");
     const owner = await seedUser("policy-owner@t.io", null);

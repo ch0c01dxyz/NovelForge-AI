@@ -1035,6 +1035,7 @@ export function createAiServices(deps: {
       const started = Date.now();
       try {
         const result = await manager.generate({
+          bufferStream: /^workflow:(chapter-creation-review|chapter-generation-review):/.test(input.task),
           profile: input.profile,
           preferredModelRef,
           messages: withTextSafeguards(input.messages),
@@ -1082,7 +1083,7 @@ export function createAiServices(deps: {
         await db.generation.update({
           where: { id: generation.id },
           data: {
-            status: "FAILED",
+            status: err instanceof GatewayError && err.partial ? "INCOMPLETE" : "FAILED",
             latencyMs,
             errorCategory: category,
             errorMessage: message,

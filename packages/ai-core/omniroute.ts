@@ -381,6 +381,19 @@ export class OmniRouteGateway implements AIGateway {
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
+    if (req.bufferStream) {
+      let content = "", model: string | null = null, inputTokens: number | null = null, outputTokens: number | null = null, finishReason: string | null = null;
+      for await (const chunk of this.generateStream(req)) {
+        content += chunk.delta;
+        if (chunk.model) model = chunk.model;
+        if (chunk.usage) {
+          inputTokens = chunk.usage.inputTokens ?? inputTokens;
+          outputTokens = chunk.usage.outputTokens ?? outputTokens;
+        }
+        if (chunk.finishReason) finishReason = chunk.finishReason;
+      }
+      return { content, model: model ?? req.model, reportedModel: model, inputTokens, outputTokens, finishReason };
+    }
     const t = this.withTimeout(req.signal);
     try {
       const res = await this.fetchImpl(`${this.base}/v1/chat/completions`, {
@@ -416,6 +429,7 @@ export class OmniRouteGateway implements AIGateway {
   async *generateStream(req: GenerateRequest): AsyncGenerator<StreamChunk> {
     const t = this.withTimeout(req.signal);
     let received = false;
+    let completed = false;
     try {
       const res = await this.fetchImpl(`${this.base}/v1/chat/completions`, {
         method: "POST",
@@ -442,11 +456,16 @@ export class OmniRouteGateway implements AIGateway {
         try {
           chunk = JSON.parse(payload) as OpenAIStreamChunk;
         } catch {
+          if (req.bufferStream) throw new GatewayError("DETERMINISTIC", "generateStream: invalid response frame", undefined, received);
           // A malformed frame is not worth aborting a long stream over.
           return { done: false, delta: null };
         }
+        if (req.bufferStream && (!chunk || typeof chunk !== "object" || Array.isArray(chunk) || "error" in chunk)) {
+          throw new GatewayError("INTERNAL", "generateStream: provider stream failed", undefined, received);
+        }
         const delta = chunk.choices?.[0]?.delta?.content;
         const metadata: Omit<StreamChunk, "delta"> = {
+          ...(typeof chunk.choices?.[0]?.finish_reason === "string" ? { finishReason: chunk.choices[0].finish_reason } : {}),
           ...(typeof chunk.model === "string" && chunk.model.length > 0 ? { model: chunk.model } : {}),
           ...(chunk.usage && typeof chunk.usage === "object" ? { usage: {
             inputTokens: reportedTokens(chunk.usage.prompt_tokens),
@@ -469,6 +488,7 @@ export class OmniRouteGateway implements AIGateway {
             // newline, and that last frame is real content.
             buffer += decoder.decode();
             const tail = handleLine(buffer);
+            completed ||= tail.done;
             if (tail.delta !== null || Object.keys(tail.metadata ?? {}).length > 0) {
               received ||= tail.delta !== null;
               yield { delta: tail.delta ?? "", ...tail.metadata };
@@ -482,6 +502,7 @@ export class OmniRouteGateway implements AIGateway {
           for (const line of lines) {
             const { done: streamDone, delta, metadata } = handleLine(line);
             if (streamDone) {
+              completed = true;
               ended = true;
               break;
             }
@@ -499,6 +520,8 @@ export class OmniRouteGateway implements AIGateway {
         await reader.cancel().catch(() => undefined);
         reader.releaseLock();
       }
+      // Buffered chapter artifacts must never accept a disconnected stream as a complete response.
+      if (req.bufferStream && !completed) throw new GatewayError("TRANSIENT", "generateStream: incomplete response", undefined, received);
     } catch (err) {
       if (err instanceof GatewayError) {
         throw new GatewayError(

@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import { requireCapability, ForbiddenError } from "@novelforge/auth/authorization";
 import {
   validateGraph,
+  resolveChapterAuthoring,
   validateWorkflowModelPreferences,
   type WorkflowModelPreferences,
   type WorkflowGraph,
@@ -333,6 +334,15 @@ export function createWorkflowRunServices(deps: {
           const resolved = await validateForEnqueue(input, tx);
           const { workflow, version, graph, order, novelId, agents, skills, modelDefaults } = resolved;
           let persistedInput = runInput;
+          if (["chapter-creation-review", "chapter-generation-review"].includes(workflow.key)) {
+            const dna = novelId ? await tx.narrativeDnaProfile.findUnique({ where: { novelId } }) : null;
+            let policy;
+            try { policy = resolveChapterAuthoring(dna?.dna, runInput.minimumWordCount); }
+            catch (error) { throw new ConflictError(error instanceof Error ? error.message : "invalid chapter authoring policy"); }
+            persistedInput = { ...runInput, chapterAuthoring: policy,
+              ...(policy.minimumWordCount ? { minimumWordCount: policy.minimumWordCount,
+                targetWordCount: Math.max(policy.minimumWordCount, typeof runInput.targetWordCount === "number" && Number.isFinite(runInput.targetWordCount) ? runInput.targetWordCount : 0) } : {}) };
+          }
           if (workflow.key === "chapter-creation-review") {
             const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             if (!novelId || typeof runInput.chapterId !== "string" || !uuid.test(runInput.chapterId) || typeof runInput.outlineRef !== "string" || !uuid.test(runInput.outlineRef) || !Number.isSafeInteger(runInput.chapterNumber) || Number(runInput.chapterNumber) < 1) throw new ConflictError("AI chapter creation requires a reserved chapter and approved outline");
@@ -340,7 +350,7 @@ export function createWorkflowRunServices(deps: {
             const outline = await tx.outlineVersion.findFirst({ where: { id: runInput.outlineRef, novelId, status: "APPROVED" }, select: { id: true } });
             const novel = await tx.novel.findUnique({ where: { id: novelId }, include: { currentBranch: true } });
             if (!chapter || !outline || !novel?.currentBranch?.headRevisionId) throw new ConflictError("AI chapter target or approved outline changed; reload before starting");
-            persistedInput = { ...runInput, chapterCreationPins: { chapterId: chapter.id, chapterNumber: chapter.number, chapterVersionId: chapter.currentVersionId, outlineRef: outline.id, headRevisionId: novel.currentBranch.headRevisionId, sourceBranchId: novel.currentBranch.id, workflowVersionNumber: version.number } };
+            persistedInput = { ...persistedInput, chapterCreationPins: { chapterId: chapter.id, chapterNumber: chapter.number, chapterVersionId: chapter.currentVersionId, outlineRef: outline.id, headRevisionId: novel.currentBranch.headRevisionId, sourceBranchId: novel.currentBranch.id, workflowVersionNumber: version.number } };
           }
           const choices: WorkflowModelPreferences = {
             ...(input.preferredModelRef !== undefined ? { preferredModelRef: input.preferredModelRef } : {}),

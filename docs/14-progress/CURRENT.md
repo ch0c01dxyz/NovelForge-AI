@@ -1,5 +1,170 @@
 # Current Project State
 
+## Kaisar AI Studio transport repair and early continuity — 2026-10-26
+
+The earlier long-response gateway block below is diagnosed and repaired locally:
+real saved-chapter non-streaming returned503 at60s; SSE completed64s/2817words.
+Built-in chapter workflows now buffer streaming through the same adapter and
+logical request, require terminal completion, reject malformed/error frames,
+stop fallback after partial content and persist INCOMPLETE. Other task transport
+defaults and provider/model settings remain intact. Core transport103 cases and
+API55 cases pass across focused runs; affected typechecks/lint pass.
+
+Full run `a90d5df9` wrote past the old limit (143s), then correctly blocked major
+story contradictions found only at final review. Existing early reviewers now
+receive the same installed continuity skill within their existing calls, so
+evidenced hard-story errors can enter the existing bounded rewrites. Revised
+instructions/helper have separate approvals; fresh real run
+`e2cf10d3-c102-4f5e-aea4-16a70c8dcff2` is in progress on owned clone checkpoint
+`464715e3-0505-4ba3-b3be-86eaa2422b9b`. Thin real-fetch observations verify actual
+instructions/skill grants in outgoing messages without retaining raw prompts.
+
+Active defaults, manuscript and canon remain unchanged pending semantic
+acceptance. Author has now authorized commit/push after verification; previous
+no-commit notes remain historical scope. No production deployment is requested.
+
+## Kaisar AI Studio alignment — 2026-10-26, gateway acceptance blocked
+
+Author approved scoped defaults after successful tests. Optional DNA authoring
+policy is pinned on server enqueue, injected independently of droppable context,
+and checked after every write/rewrite. Both chapter forms honor the minimum;
+DNA editor loads the actual response envelope. Reviews with contradictory
+correction flags or unresolved final findings are rejected, including recovered
+artifacts; previous successful step rows remain historical evidence.
+
+Twelve pure policy tests, all 43 executor regressions (including nine
+fresh/recovered negatives), and focused UI/enqueue checks pass. Technical source
+review APPROVE (executor SHA256
+`d80f49111c9fe1fc799b48714211bd5b7e7474a39b2c9d64fc76c7d1372dc27b`).
+First real draft was held by independent review; revised real-gateway run
+`0a7647b1-e9f1-4064-bf28-012c40700eb7` failed write on six transient routes.
+After a successful short readiness probe, bounded retry
+`72dda8d6-438a-452b-88f0-a588670fe20d` reuses its successful prefix and exact
+pins in the owned clone and also failed write (six TRANSIENT routes; no draft).
+Latest instruction corrections passed separate review and replacement checks,
+but are not yet rehearsed through the gateway. Acceptance remains pending;
+no further blind retry. Next: diagnose/repair long-response gateway behavior,
+then rehearse the exact latest candidate before default activation. No active definition/DNA changes, manuscript application,
+publication, commit or push. See `tasks/kaisar-studio-alignment.md` and private
+`.nf-artifacts/studio-alignment/` for source/clone/rollback evidence.
+
+## Kaisar chapters 12–15: social revision, rescue and enterprise — 2026-10-26
+
+Author-requested local draft work completed in `novelforge_acceptance_050b`, novel
+`e36d568b-aecf-476a-8e3f-f47ca709672b`. Current chapter 13 v2, including the
+author's intervening edit, was used as the baseline and preserved historically.
+Chapter 12 now includes scoped brick-house costs and fictional social/marriage
+customs. Chapter 13 prepares clean white granulated sugar and improved bathing
+soap, retaining its six-silver shopping and twenty-silver gross-sales ledger.
+
+| Chapter | Current version | Words | Status |
+| --- | --- | --- | --- |
+| 12 — Jalan Menuju Kota | 2 | 2,687 | DRAFT |
+| 13 — Dua Puluh Perak | 3 | 2,586 | DRAFT |
+| 14 — Dua Perak di Hadapan Saksi | 1 | 2,623 | DRAFT |
+| 15 — Pekerjaan untuk Maspati | 1 | 2,652 | DRAFT |
+
+New chapters cover Sofian's rescue, defensive help from Husein/Anton/Darma,
+witnessed settlement before the seven-day deadline, voluntary paid work and
+realistic savings/food arrangements. Wira Santosa is the recurring village head:
+surprised by Don Juan's change, yet actively checking evidence and employment
+commitments. Rangga Sembada is the new moneylender antagonist. Karta, Leman and
+Sari are the three initial trial workers. All five have character records,
+explicitly linked CHARACTER identities, and chapter-scoped states. Existing
+characters/identities were reused and preserved; no canon facts were approved.
+
+Required pre-operation checkpoint: `5cc45fe9-ac5f-46bf-bac6-7b215e54258e`.
+Independent exact-text/character review and separate helper review APPROVE;
+all four application final-text reviews PASS. Exact content/title/status/word
+counts, immutable prior versions and character identity/state read-back passed.
+Chapters 1–11 and publication rows, existing characters/states/entities, canon,
+historical citations, references and outline nodes matched pre-operation hashes.
+No publication, provider run, production mutation, commit or push.
+
+See `tasks/kaisar-ch12-ch15-rescue-and-enterprise.md` and ignored private
+`.nf-artifacts/kaisar-12-15/` receipts. The new narrative's settlement and business
+facts remain draft material, not automatically approved canon. Browser rendering
+and author literary acceptance were not claimed. Earlier sections below retain
+historical versions and evidence.
+
+## Kaisar chapters 1–9 prose and continuity copyedit — 2026-10-26
+
+Author-requested Indonesian wording, dialogue, explanation and narration edits
+were applied in local `novelforge_acceptance_050b`, novel
+`e36d568b-aecf-476a-8e3f-f47ca709672b`. All 165 changed paragraphs received
+independent exact-artifact literary/continuity approval. Existing chapters 10–13
+were read as forward constraints, not rewritten. Repairs include chronology,
+speaker attribution, memories of events after death, duplicated meal actions,
+broken wording, beginner-level physical limitations and accessible exposition.
+Scientific names and fictional effects remain story data, not verified claims
+about real-world plants. Existing educational-background dialogue remains a
+character claim; canonical debt-text and later fish-allocation ambiguities were
+documented without inventing facts or silently changing canon.
+
+Required checkpoint: `9e6a2bb4-4577-4333-9c5c-5f8edd722800`. Separately reviewed
+service helper performed CAS saves through DRAFT, current final-text review and
+republication. All nine reviews returned PASS; exact saved hashes and public
+version pins matched the reviewed artifacts. Existing PUBLISHED status was
+preserved for chapters 1–9. New current version numbers: 1/v5, 2/v2, 3/v6, 4/v3,
+5/v3, 6/v2, 7/v2, 8/v4, 9/v4. Original immutable versions remain unchanged.
+Chapter titles, chapters 10–13 including their publication rows, canon, historical
+citations, references and outline nodes matched pre-operation content hashes.
+
+Evidence: `tasks/kaisar-ch1-ch9-copyedit.md` and ignored private
+`.nf-artifacts/editorial-1-9/{editorial-checks.json,approved-hashes.json,application-receipt.json}`.
+No production mutation, canon approval, provider run, commit or push. These
+automated checks do not constitute author literary acceptance or browser-rendering
+evidence. Existing dirty copyedit/city-market documentation was preserved.
+
+## Kaisar chapters 12–13 city-market drafts — 2026-10-26
+
+Author-requested Indonesian chapters were saved through application services in
+the existing local `novelforge_acceptance_050b` novel
+`e36d568b-aecf-476a-8e3f-f47ca709672b`:
+
+- Chapter 12, `Bab 12 — Jalan Menuju Kota`: DRAFT v1, 2,199 words;
+  chapter `78557d8e-2cec-4c2c-8da1-c610feea88bc`,
+  version `82b76a5f-c169-4578-b1a6-047e7b762fc7`.
+- Chapter 13, `Bab 13 — Dua Puluh Perak`: DRAFT v1, 2,328 words;
+  chapter `7ce24f0d-858b-4fb1-a5d9-07d3e0fb8803`,
+  version `47824529-33f1-4773-a69e-30352870441d`.
+
+The supplied outline covers defensive training, village/city contrasts,
+demonstrated market techniques, relatives' growing admiration, twenty silver
+gross receipts, shared proceeds and shopping. Required pre-operation checkpoint:
+`e1d78896-2470-4b69-939b-53e603e4e06e`. Independent literary review approved the
+exact submitted text; separate helper review approved the guarded service flow.
+Both deterministic final-text reviews returned PASS. These are automated checks,
+not the author's literary acceptance or canon approval.
+
+Six Indonesian GLOSSARY references were added with real source links and explicit
+research/fiction limitations. All six are ACTIVE; fresh database read-back found
+one chunk and one persisted `text-embedding-3-small` vector per reference,
+with chapter visibility boundaries 12 or 13. No indexing failure occurred.
+Earlier chapter rows, canon and historical citations matched their original
+hashes; exact new manuscript hashes matched the reviewed artifacts. No chapter
+was published, no canon was approved, and production was not changed.
+See `tasks/kaisar-ch12-ch13-city-market.md`; private evidence lives under
+`.nf-artifacts/kaisar-ch12-13/`. No commit or push performed.
+
+## Kaisar chapters10–11 language and dialogue copyedit — 2026-10-26
+
+Author-requested Indonesian prose copyedit completed in the local
+novelforge_acceptance_050b database, novel e36d568b-aecf-476a-8e3f-f47ca709672b.
+Thirty phrase changes in chapter10and35in chapter11improve clarity and natural
+dialogue without adding story events, characters or canon. Numbers and scientific
+terms were retained. Separate automated copyedit review approved both artifacts.
+
+Required checkpoint b28dc48a-1f61-4b16-914c-477a76a2d45b precedes application-service
+CAS saves. Chapter10is now PUBLISHEDv3 (91e375bc-e46b-4045-9516-4a8bbb23bffe),
+1467words; chapter11remains DRAFTv9 (09c9c5c0-7ba5-422c-8d1b-63146fb280e6),
+1816words. Both deterministic final-text reviews returned PASS. Exact content,
+publication pin/status and preserved original versions were read back. Other
+chapter rows, canon and historical citations matched their pre-operation hashes.
+These are automatic checks, not author sign-off. No production-server change or
+new chapter publication occurred. Earlier v6/v8 records below remain historical.
+See tasks/kaisar-ch10-ch11-copyedit.md; manuscript artifacts remain private/ignored.
+
 ## Kaisar dari Masa Depan: terminology repair and antagonist closure — 2026-10-26
 
 Author decisions that scope this work: (1) the mastermind behind Juan Cleverton's

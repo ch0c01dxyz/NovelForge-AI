@@ -311,6 +311,7 @@ export const en = {
     startNewRun: "Start new process",
     errorLabel: "Error",
     failedMessage: "The AI process ran into a problem. Check the affected stage. If you need help, open the technical details below.",
+    tooShortMessage: "The draft is shorter than this novel requires. It has not been applied. Check the chapter instructions and model settings, then start a new draft.",
     technicalDetails: "Technical details for support",
     skipped: "Skipped",
   },

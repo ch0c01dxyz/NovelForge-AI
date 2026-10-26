@@ -311,6 +311,7 @@ export const id = {
     startNewRun: "Mulai proses baru",
     errorLabel: "Kendala",
     failedMessage: "Proses AI mengalami kendala. Periksa tahap yang bermasalah. Jika perlu bantuan, buka detail teknis di bawah.",
+    tooShortMessage: "Draf belum mencapai panjang minimum novel ini dan belum diterapkan. Periksa arahan bab serta pengaturan model, lalu mulai pembuatan draf baru.",
     technicalDetails: "Detail teknis untuk bantuan",
     skipped: "Dilewati",
   },

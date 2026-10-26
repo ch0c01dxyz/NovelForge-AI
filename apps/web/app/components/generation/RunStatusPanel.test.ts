@@ -21,6 +21,11 @@ function deferred<T>() {
 beforeEach(() => { api.mockReset(); });
 
 describe("run selection response isolation", () => {
+  it("explains an undersized draft without presenting a technical code as the instruction", async () => {
+    api.mockResolvedValue({ ...row("run-a", "FAILED"), steps: [{ stepKey: "write", kind: "AGENT", sequence: 1, status: "FAILED", errorMessage: "AI_CHAPTER_TOO_SHORT: expected at least 2500 words; received 1000" }] });
+    const wrapper = mount(RunStatusPanel, { props });await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toBe("run.tooShortMessage");wrapper.unmount();
+  });
   it("forwards failed-settings recovery without starting or retrying a run", async () => {
     api.mockResolvedValue(row("run-a", "FAILED"));
     const wrapper = mount(RunStatusPanel, { props: { ...props, canConfigure: true } });await flushPromises();

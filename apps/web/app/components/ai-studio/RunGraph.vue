@@ -178,7 +178,7 @@ const pinnedSkills = computed(() => {
             </template>
           </p>
           <template v-if="step.errorMessage">
-            <p class="mt-1.5 text-[12px] text-nf-warn" role="alert">{{ t("run.failedMessage") }}</p>
+            <p class="mt-1.5 text-[12px] text-nf-warn" role="alert">{{ t(step.errorMessage?.includes('AI_CHAPTER_TOO_SHORT') ? "run.tooShortMessage" : "run.failedMessage") }}</p>
             <details class="mt-2 text-[12px] text-nf-text-dim">
               <summary class="cursor-pointer focus-visible:nf-focus">{{ t("run.technicalDetails") }}</summary>
               <p class="mt-2 whitespace-pre-wrap break-words font-mono">{{ step.errorMessage }}</p>

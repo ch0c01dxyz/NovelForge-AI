@@ -61,6 +61,18 @@ async function fixture() {
 }
 
 describe("manual workflow retry", () => {
+  it("pins the stored novel policy over forged caller policy and retains it after DNA changes", async () => {
+    const f = await fixture();
+    await db.workflow.update({ where: { id: f.workflow.id }, data: { key: "chapter-generation-review" } });
+    const novel = await db.novel.create({ data: { workspaceId: f.workspace.id, createdById: f.user.id, title: "Scoped policy", slug: "scoped-policy" } });
+    await db.narrativeDnaProfile.create({ data: { novelId: novel.id, dna: { voice: "quiet", chapterAuthoring: { minimumWordCount: 2500, storyProfile: "Stored policy" } } } });
+    const queued = await f.service.enqueueRun({ ...f.scope, workflowId: f.workflow.id, novelId: novel.id, runInput: { targetWordCount: 1000, minimumWordCount: 1, chapterAuthoring: { storyProfile: "Forged policy", minimumWordCount: 1 } } });
+    const read = await db.workflowRun.findUniqueOrThrow({ where: { id: queued.run.id } });
+    expect(read.input).toMatchObject({ minimumWordCount: 2500, targetWordCount: 2500, chapterAuthoring: { minimumWordCount: 2500, storyProfile: "Stored policy" } });
+    await db.narrativeDnaProfile.update({ where: { novelId: novel.id }, data: { dna: { chapterAuthoring: { minimumWordCount: 3000, storyProfile: "Later policy" } } } });
+    expect((await db.workflowRun.findUniqueOrThrow({ where: { id: queued.run.id } })).input).toEqual(read.input);
+    await expect(f.service.enqueueRun({ ...f.scope, workflowId: f.workflow.id, novelId: novel.id, runInput: { minimumWordCount: "2500" } })).rejects.toThrow("minimumWordCount");
+  });
   it("authenticates the retry route and returns 202 then 200 with the same status URL", async () => {
     const f = await fixture(); await f.executor.executeRun(f.runId);
     const app = Fastify(); await app.register(cookie);

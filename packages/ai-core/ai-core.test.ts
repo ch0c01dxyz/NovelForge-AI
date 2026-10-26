@@ -356,6 +356,12 @@ function makeManager(gateways: GatewayRecord[], behaviour: FakeOptions["behaviou
 }
 
 describe("attempt usage provenance", () => {
+  it("does not retry partial buffered generation on another route", async () => {
+    const { manager, registry } = makeManager([gw(), gw({ id: "g2", name: "two" })], { g1: { ok: false, partial: true } });
+    await expect(manager.generate({ profile: "CREATIVE_WRITER", messages: [], generationId: "buffered", bufferStream: true, sleep: async () => {} })).rejects.toMatchObject({ partial: true });
+    expect(registry.attempts).toHaveLength(1);
+    expect(registry.attempts[0]?.status).toBe("TIMEOUT");
+  });
   it("keeps unreported embedding counters and response model unknown", async () => {
     const registry = fakeRegistry([gw()]);
     const manager = new GatewayManager(registry, { createGateway: rec => ({

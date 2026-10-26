@@ -448,6 +448,9 @@ importers:
       '@novelforge/story-versioning':
         specifier: workspace:*
         version: link:../story-versioning
+      '@novelforge/validation':
+        specifier: workspace:*
+        version: link:../validation
       '@novelforge/workflow-executor':
         specifier: workspace:*
         version: link:../workflow-executor

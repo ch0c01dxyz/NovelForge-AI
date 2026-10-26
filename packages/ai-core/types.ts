@@ -24,6 +24,8 @@ export interface ChatMessage {
 }
 
 export interface GenerateRequest {
+  /** Collect a complete SSE response before returning a structured artifact. */
+  bufferStream?: boolean;
   /** Provider model id, resolved by the Model Manager from a profile. */
   model: string;
   messages: ChatMessage[];
@@ -128,6 +130,7 @@ export const OBSERVED_CAPABILITY_PREFIX = "nf:";
 export interface StreamChunk {
   delta: string;
   model?: string;
+  finishReason?: string;
   /** Cumulative usage snapshot for this attempt, not a per-frame increment. */
   usage?: { inputTokens: number | null; outputTokens: number | null };
 }

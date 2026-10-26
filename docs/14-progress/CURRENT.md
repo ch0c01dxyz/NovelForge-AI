@@ -1,5 +1,26 @@
 # Current Project State
 
+## Primary text model changed to Dahono — 2026-10-26
+
+Latest author routing amendment replaces Lightvela with the exact catalog model
+`dahono/dahono/deepseek-v4.1-flash` at priority 0; secondary
+`bansosmontera/deepseek-v4.1-flash` stays at priority 1 across the same five
+Studio text profiles. Audited before/after receipts and live registry read-back
+verify order and no explicit Kaisar override. Earlier mappings remain lower;
+image/embedding configuration and credentials are preserved.
+
+Real primary readiness generation `7a530c62-de38-483d-8492-07ff8939799c`
+passed JSON parsing through the built-in chapter buffered-stream transport in
+46,450ms. This is a provider readiness check, not a new full chapter quality
+acceptance. Reuse prior separately accepted chapter evidence. Active Studio
+definition versions and scoped DNA still read back correctly; no reactivation,
+manuscript application, canon approval or publication was performed.
+
+Private `active-model-priority-dahono.json` retains rollback data through audited
+mapping services. The retained helper now rejects its obsolete clone alias before
+database access. No runtime source change or repeat of passing chapter tests.
+The earlier Lightvela-first paragraphs below describe historical routing.
+
 ## Kaisar Studio defaults activated and verified — 2026-10-26
 
 Author replaced the secondary model with `bansosmontera/deepseek-v4.1-flash`;

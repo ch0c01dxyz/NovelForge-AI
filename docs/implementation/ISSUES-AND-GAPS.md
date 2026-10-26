@@ -2,6 +2,16 @@
 
 ## Kaisar studio alignment implementation gaps — 2026-10-26
 
+- Dahono primary routing amendment: private helper initially retained a `clone`
+  alias although its database was intentionally fixed to active acceptance.
+  Independent review caught this before any clone invocation; actual `active`
+  invocation targeted the intended database. Remove the unused alias so it
+  cannot mislabel a future active mutation as rehearsal. Closure: obsolete
+  `clone` argument is rejected before database access. Active routing read-back
+  and primary JSON buffered-stream readiness generation `7a530c62` PASS;
+  Studio definitions/DNA remain verified active. No app source change and no
+  repeat of passing full chapter acceptance.
+
 - Current resolution: exact DeepSeek-secondary candidate `93d6e5a4` passed
   runtime acceptance (3,389 words, eight real successful calls, two rewrites,
   final minor-only review and extraction) plus independent technical APPROVE

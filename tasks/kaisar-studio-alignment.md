@@ -95,7 +95,17 @@ remain unchanged; required active checkpoint/application/read-back are pending.
 
 ## Latest acceptance status — 2026-10-26
 
-Latest author amendment replaces second-priority GLM with
+Current primary routing amendment: replace Lightvela with exact
+`dahono/dahono/deepseek-v4.1-flash`, retaining Bansosmontera DeepSeek second.
+Audited active five-profile mappings and effective order/no explicit overrides
+read back correctly. Active Studio definition versions and DNA still match the
+accepted application receipt. Single real JSON readiness generation
+`7a530c62-de38-483d-8492-07ff8939799c` passed in 46,450ms through the existing
+buffered chapter stream path. This verifies readiness, not another full chapter
+acceptance; prior passing chapter evidence is retained without repetition.
+Private Dahono before/after receipts support audited routing rollback.
+
+Previous author amendment replaced second-priority GLM with
 `bansosmontera/deepseek-v4.1-flash`; Lightvela stays first. Audited active and
 clone mappings plus live effective registry order read back correctly across
 the same five text profiles. GLM remains at lower priority; other profiles,

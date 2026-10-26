@@ -2,6 +2,36 @@
 
 ## Kaisar studio alignment implementation gaps — 2026-10-26
 
+- Candidate run `8ca06496` completed write and two bounded rewrites, then failed
+  only final review on a provider stream error after 16,839ms (generation FAILED,
+  no partial text adopted). Independent semantic review of exact final prose
+  PASS (3,482 words). Read-back confirms INTERNAL without structured upstream
+  status; existing retry gate rejects this category, so prepared retry was not
+  executed. Do not broadly permit INTERNAL or rewrite stored categories. Local
+  gateway logs did not establish this exact failure's transient cause. Next:
+  obtain structured status/code evidence; then repair classification narrowly
+  if justified or choose a new authorized run. Preserve the accepted prose,
+  exact pins and successful prefix. Final runtime review still blocks defaults.
+
+- Run `b79f00a5` passed runtime acceptance (3,296 words, five successful real
+  calls), but independent semantic review HOLD found unsupported historical
+  testimony: Anton and Husein claim they heard the original debt agreement.
+  Supplied chapter 4 does not establish those witnesses. Keep their testimony
+  to supplied witnessed events; Don Juan and Sofian can describe their agreement.
+  Clarify this source boundary in the scoped novel profile, preserve rejected
+  evidence and rerun the changed candidate. Never infer semantic PASS from the
+  model's minor-only findings. Source commit `8db0563` CI `40292092498` is green.
+
+- Latest `a085d868` technical PASS3228words/same-evening/reserved debt payment;
+  independent semantic HOLD found invented earlier nighttime kick replacing
+  Husein's actual morning basic Wing Chun lesson (author chapter12 outline).
+  The generation source reader supplies the predecessor's bounded excerpt,
+  not the full earlier manuscript. Add that explicit source-positioned lesson
+  to this novel's scoped profile rather than scanning/injecting all chapters.
+  Preserve distinct planned worker identities (Karta/Leman/Sari); their future
+  roles are source metadata, not knowledge granted to story characters. Keep
+  prior sample as held evidence; do not reinterpret the contradiction as PASS.
+
 - Run `e2cf10d3` passed technical acceptance:3985words,8successful real attempts,
   both rewrite paths, actual policy/skill wire presence, no manuscript mutation.
   Independent quality HOLD remains: generated overnight camp violates required

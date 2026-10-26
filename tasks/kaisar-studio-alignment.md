@@ -47,8 +47,9 @@ not eternally fixed balances. No instant martial mastery or completed product;
 Wira remains recurring; Rangga is not the old-world murderer. No claim that a
 model alone proves science or arithmetic. No silent application before acceptance.
 
-Status: implementation and negative checks pass; real acceptance blocked by the
-gateway's long-response path. Defaults are not activated.
+Status at initial transport investigation: implementation and negative checks
+pass; real acceptance blocked by the gateway's long-response path. Defaults
+were not activated. Later evidence below supersedes this historical status.
 
 Authorization update: the author subsequently requested continuation followed
 by commit and push once verified. This supersedes the original no-commit/push
@@ -91,3 +92,39 @@ candidate only after the long-response gateway path is repaired. Keep plan and
 pin evidence for reuse where exact compatibility permits; do not claim a short
 readiness response proves chapter generation. Active defaults and manuscripts
 remain unchanged; required active checkpoint/application/read-back are pending.
+
+## Latest acceptance status — 2026-10-26
+
+Source `8db056333733a4aa5df2f483bc42587f2f71b1b7` is committed and pushed;
+CI `40292092498` is green. Buffered transport and focused regressions pass.
+Independent technical review approves the exact source and application helper.
+Early review now receives the installed continuity skill within existing calls.
+
+Real run `b79f00a5-6fc2-4929-9d6f-a6c8ba862efe` completed generation only:
+3,296 words, five successful real model calls, AWAITING_APPROVAL, unchanged
+manuscript. Independent semantic HOLD: Anton/Husein claim to have witnessed
+the original debt agreement without supplied evidence. Runtime PASS and model
+minor-only findings do not establish full quality acceptance. All earlier held
+samples and clone databases remain preserved; no blind reuse as PASS.
+
+The scoped policy now explicitly limits their historical testimony to supplied
+witnessed events, while Don Juan/Sofian may describe their own agreement.
+Changed-candidate run `8ca06496-d345-422b-93e4-40de78043956`, checkpoint
+`a7a73b9f-2f49-438f-9cf3-401d40adc833`, completed two bounded rewrites.
+Independent exact-prose quality PASS: 3,482 words; SHA256
+`be731ed0ce2e3e758b6e6e0d25a3ea0a1cba1804efbf9ed298918ead64609d19`.
+Minor copyediting advisories remain; there is no author text acceptance.
+
+Final provider review failed after 16,839ms. Read-only generation inspection
+confirms FAILED / INTERNAL / generic provider-stream failure, without structured
+upstream status. Existing application retry only permits TRANSIENT/RATE_LIMIT;
+the prepared private retry helper was not executed. Failed evidence is retained
+under `attempt-8-provider-failure`. Never reclassify historical data or broadly
+retry INTERNAL failures to manufacture acceptance. Local router diagnostics did
+not establish this exact request's underlying status.
+
+Source API and workflow worker were safely reloaded after DB/queue idle checks;
+both API /ready and Nuxt return 200. Active default application remains blocked
+on exact-candidate final runtime review. Preserve successful prefix and accepted
+prose while obtaining gateway status evidence for a justified recovery. No new
+full generation loop, author acceptance, canon approval or publication occurred.

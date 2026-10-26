@@ -1,5 +1,36 @@
 # Current Project State
 
+## Kaisar Studio latest acceptance and pushed source — 2026-10-26
+
+Source commit `8db056333733a4aa5df2f483bc42587f2f71b1b7` is on origin/main;
+GitHub CI `40292092498` completed successfully. Earlier no-commit and in-progress
+paragraphs below are historical evidence, not current delivery status.
+
+Latest completed isolated run `b79f00a5-6fc2-4929-9d6f-a6c8ba862efe` passed
+runtime checks: 3,296 words, five successful real gateway calls, exact definition
+pins and wire-level policy/skill presence, unchanged manuscript. Independent
+semantic review HOLD found unsupported historical agreement witnesses. Model
+minor-only review findings do not override that independent result. Preserve
+the held sample under private `attempt-7` and clone suffix `_witness`.
+
+Clarified scoped witness boundaries passed independent semantic review in run
+`8ca06496-d345-422b-93e4-40de78043956`: final rewrite 3,482 words, SHA256
+`be731ed0ce2e3e758b6e6e0d25a3ea0a1cba1804efbf9ed298918ead64609d19`.
+Two bounded rewrites corrected early findings; the final provider review then
+failed after 16,839ms. Read-back confirms FAILED / INTERNAL, with only a safe
+generic stream-error message. The official retry gate permits TRANSIENT or
+RATE_LIMIT, so this failure is not eligible. No retry or SQL bypass was made.
+Local router diagnostics did not establish an underlying transient status for
+this exact request; older logs are not evidence for reclassification.
+
+Runtime code was reloaded after proving the author workflow queue idle:
+API PID 35380, workflow worker PID 24464; API /ready and Nuxt both return 200.
+Docker, Redis, cover worker, author manuscript/canon and existing stash remain
+preserved. Active Studio defaults and novel DNA remain unchanged until final
+runtime acceptance. Next: obtain structured gateway evidence for this failure
+before a justified retry/classification repair; preserve the accepted prose and
+successful prefix. Semantic PASS is not runtime completion or author acceptance.
+
 ## Kaisar AI Studio transport repair and early continuity — 2026-10-26
 
 The earlier long-response gateway block below is diagnosed and repaired locally:

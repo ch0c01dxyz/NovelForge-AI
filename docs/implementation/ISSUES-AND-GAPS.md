@@ -1,5 +1,33 @@
 # Technical Issues and Implementation Gaps
 
+## Kaisar Aetherion inspiration/source correction — 2026-10-26
+
+Author requests Tesla-inspired Aetherion/aether and wireless electricity context
+across chapters 1–9. Current text inspection finds affected technical/motivation
+passages only in chapters 1–2: the old explanation describes generic waste heat
+and mechanical vibrations, omitting the intended fictional aether model and
+Juan's Tesla inspiration. Chapters 3–9 require no repeated exposition.
+
+Primary historical sources support Tesla's wireless transmission vision and
+radiant-energy patent, not a demonstrated unlimited industrial aether generator.
+Preserve the author's fictional mechanism as Juan's own extrapolation; distinguish
+it from history in new research notes. No existing reference covers this topic.
+Five revised paragraphs and two sourced glossary entries have independent
+editorial/source APPROVE. Required next checks: application helper review,
+checkpoint, immutable new versions, final-text review, exact publication/read-back,
+unaffected-state comparison and separately reported reference indexing. Owner:
+`tasks/kaisar-aetherion-tesla-reference.md`.
+
+Resolution: required checkpoint `1f34c37b-a38f-4943-857d-d01ec1a098fd` precedes
+chapter 1 v6 and chapter 2 v3. Both current final-text reviews PASS; exact
+content/version/publication read-back and historical-version preservation pass.
+Chapters 3–15, canon/citations and protected metadata remain unchanged. Two new
+references are ACTIVE, four chunks genuinely embedded, and real VECTOR retrieval
+returns both (audit `c05ab0d3-d7d5-43c5-8754-ce84c918b906`). No indexing failure.
+The helper's workspace-wide key collision preflight was added before mutation.
+Closure checks satisfied; author literary acceptance and canon approval remain
+separate. Private receipt and task completion retain exact hashes/source links.
+
 ## Kaisar studio alignment implementation gaps — 2026-10-26
 
 - Dahono primary routing amendment: private helper initially retained a `clone`

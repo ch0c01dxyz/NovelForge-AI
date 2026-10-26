@@ -1,5 +1,29 @@
 # Current Project State
 
+## Kaisar Aetherion/Tesla reference correction — 2026-10-26
+
+Author-requested early-chapter correction applied in the local novel. Surveyed
+chapters 1–9; only 1–2 contain affected Aetherion technical/motivation passages.
+Juan now explicitly draws inspiration from Tesla's wireless-electricity vision,
+develops his own fictional aether conversion model and aims for broadly available
+free electricity. Prototype limits, existing test numbers and plot are preserved.
+Historical Wardenclyffe and radiant-energy sources are separated from fictional
+industrial aether mechanics in two new Riset > Referensi glossary entries.
+
+Independent editorial/source and technical reviews APPROVE. Required checkpoint
+`1f34c37b-a38f-4943-857d-d01ec1a098fd` precedes immutable chapter 1 v6 (805 words)
+and chapter 2 v3 (601 words). Two final-text reviews PASS; original PUBLISHED
+states, exact text/title/version/publication pins and retained old versions
+read back correctly. Chapters 3–15, canon/citations, old references, outline,
+entities, characters, synopses and DNA compare unchanged.
+
+Both new references are ACTIVE with two embedded chunks each. A real retrieval
+query ran LEXICAL+VECTOR and returned both through VECTOR, zero withheld;
+audit `c05ab0d3-d7d5-43c5-8754-ce84c918b906`. No indexing failures or fake vectors.
+See `tasks/kaisar-aetherion-tesla-reference.md` and ignored private receipts under
+`.nf-artifacts/aetherion-tesla/`. No application source/schema/provider changes,
+production mutation, new canon approval or newly published draft chapters.
+
 ## Primary text model changed to Dahono — 2026-10-26
 
 Latest author routing amendment replaces Lightvela with the exact catalog model

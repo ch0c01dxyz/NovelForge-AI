@@ -1,5 +1,25 @@
 # Technical Issues and Implementation Gaps
 
+## Kaisar chapter 1 prototype presentation — 2026-10-27
+
+Author flags the half-suitcase/simple-box description as insufficiently scientific
+and plausible. Scope: replace only the current chapter 1 presentation paragraph
+with a modular prototype diagram, measurement and cooling details; no numerical
+performance claim, industrial-success claim or validation of fictional physics.
+Preserve the three-year development period, plot and prior Tesla correction.
+Required closure: separate exact-paragraph/application review, checkpoint,
+immutable new version, current final-text PASS, publication/read-back and
+unaffected-state comparison. Owner: follow-up section in
+`tasks/kaisar-aetherion-tesla-reference.md`.
+
+Resolved: independent prose/helper APPROVE; checkpoint
+`14d902f6-f9fd-467d-9466-b1dd602f7ead`; chapter 1 v7 (846 words) final-text PASS.
+Original PUBLISHED state and exact content/title/version/publication pin read
+back correctly; original version, all other paragraphs and protected chapters
+2–15/references/canon/metadata preserved. No physics/performance certification,
+new canon approval or author literary sign-off inferred. Private receipt records
+exact hashes and review ID. Closure checks satisfied.
+
 ## Kaisar Aetherion inspiration/source correction — 2026-10-26
 
 Author requests Tesla-inspired Aetherion/aether and wireless electricity context

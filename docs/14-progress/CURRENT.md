@@ -1,5 +1,21 @@
 # Current Project State
 
+## Kaisar chapter 1 prototype presentation revised — 2026-10-27
+
+Author-requested single-paragraph edit replaces the generic half-suitcase box
+with a labeled modular research-prototype diagram, thermal/output measurement
+and cooling details. Three-year development period, performance numbers, plot
+and prior Tesla explanation are unchanged; no new physics validation is claimed.
+Independent exact prose/helper review APPROVE. Required checkpoint
+`14d902f6-f9fd-467d-9466-b1dd602f7ead` precedes immutable chapter 1 v7 (846 words).
+Current final-text review PASS, original PUBLISHED state restored, exact
+content/title/version/publication pin and old-version preservation read back.
+Protected chapters 2–15, references, canon/citations and other scoped metadata
+compare unchanged. No new reference/model test or application-code change.
+See the 2026-10-27 follow-up in `tasks/kaisar-aetherion-tesla-reference.md` and
+ignored private `.nf-artifacts/aetherion-prototype/` receipts. Browser rendering
+and author literary sign-off are not claimed.
+
 ## Kaisar Aetherion/Tesla reference correction — 2026-10-26
 
 Author-requested early-chapter correction applied in the local novel. Surveyed

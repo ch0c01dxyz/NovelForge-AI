@@ -86,3 +86,33 @@ Private application-receipt.json and search-proof.json retain exact evidence;
 checkpoint and immutable original versions support non-destructive recovery.
 No product code/schema/provider setting/production change. Browser rendering
 and author literary sign-off were not claimed. Existing Docker and stash remain.
+
+## Follow-up: prototype presentation description — 2026-10-27
+
+Author requests replacing the generic half-suitcase/simple-box description in
+chapter 1 with a more credible scientific presentation. Scope: one current
+paragraph only. Describe a modular prototype/cutaway with energy capture,
+conversion/voltage regulation, wireless transmission, temperature/output
+measurement and cooling; these are fictional prototype construction details,
+not a claimed validation of aether physics or industrial/global performance.
+Preserve the three-year development period, plot, all measured trial numbers,
+later chapters and existing reference/Studio/canon configuration.
+
+Use the established exact-hash review, required checkpoint, manuscript CAS,
+current final-text review and original-publication maintenance flow. Retain
+the old version and verify exact new content plus all unaffected paragraphs,
+chapters, references and canon. Private evidence belongs under ignored
+`.nf-artifacts/aetherion-prototype/`; no reference reindexing or provider tests
+are needed for this paragraph-only edit. Sole writer: current Codex executor;
+separate read-only prose/application review precedes mutation. Standing
+commit/push authorization covers reviewed progress records; no deployment.
+
+Completion: independent exact prose and helper review APPROVE. Preparation
+assertions and helper syntax pass. Checkpoint
+`14d902f6-f9fd-467d-9466-b1dd602f7ead` precedes chapter 1 v7 (846 words),
+final-text PASS receipt `e026db87-7079-4d1e-8c9d-7ad95200533b` and restoration
+of original PUBLISHED status. Exact body SHA256
+`7a68e0d95ed66d9bf43c2178ffefb4e682eb2971a806d510bcc4716e080c2f78`, title,
+version/publication pin, original version and protected chapters 2–15/references/
+canon/citations/outline/entities/characters/synopses/DNA read-back checks pass.
+No new reference/provider test, application-code change or browser check.

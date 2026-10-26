@@ -95,6 +95,49 @@ remain unchanged; required active checkpoint/application/read-back are pending.
 
 ## Latest acceptance status — 2026-10-26
 
+Latest author amendment replaces second-priority GLM with
+`bansosmontera/deepseek-v4.1-flash`; Lightvela stays first. Audited active and
+clone mappings plus live effective registry order read back correctly across
+the same five text profiles. GLM remains at lower priority; other profiles,
+credentials and historical failures are preserved. DeepSeek's enabled catalog
+and previous real JSON compatibility evidence were reused.
+
+Fresh explicit-secondary DeepSeek run `93d6e5a4-a8cd-4e9e-acfd-80b3705717eb`
+uses clone checkpoint `256e3273-a7ae-4ada-b71d-4125180a4dd0`. It passed
+runtime acceptance with 3,389 words, eight successful real model calls, two
+bounded rewrites, final minor-only review and validated extraction, stopping
+at AWAITING_APPROVAL. Independent technical APPROVE and semantic PASS authorize
+the bounded default-activation gate, not literary acceptance or canon approval.
+
+## Completion and recovery — 2026-10-26
+
+Exact-hash acceptance recorded privately. Active workflow DB/queue was idle;
+required pre-change checkpoint `e0de0bd7-1ea1-40b9-bcaf-547a8754858d` created.
+Application services appended context/continuity skills v2, planner v2,
+writer/final/early reviewer v3 and both chapter workflows v2; extractor remains
+unchanged. Scoped DNA merges minimum 2,500 words and the reviewed story profile.
+Application receipt and separate live verification confirm exact version IDs,
+DNA and effective model order. Historical definitions, manuscript, canon and
+other novel DNA compare unchanged. API /ready and Nuxt return 200.
+
+Prose hash: `e6a3865705d2645478824795397ad2908759bda66cb443f32e62c2cf19c668a8`.
+Policy hash: `aa6d54414052cf787d8c758d6b96b567c427cd9c49cb048b7a04e8fd109cd4bf`.
+Private acceptance.json, accepted-review.md and active-receipt.json retain exact
+evidence. For a defaults-only rollback, restore preserved prior DNA through the
+scoped narrative service and append preserved agent/skill/workflow content as new
+versions; do not erase history. Workspace Studio definitions are not rewound by
+the novel checkpoint; a broad restore also affects covered story state. Routing
+rollback uses private before/after mapping receipts through audited configuration
+services. No manuscript apply,
+author literary acceptance, canon approval, publication or deployment occurred.
+
+Earlier blocked statuses below remain historical. The primary Lightvela short
+draft failure is retained; this successful test explicitly selected DeepSeek
+and does not prove automatic fallback after a deterministic validation failure.
+Minor literary advisories are retained in the private independent review receipt.
+
+## Historical routing and acceptance attempts
+
 Author routing amendment: the following historical failed-run status is now
 followed by a fresh authorized candidate using `bansoslightvela/auto` first and
 `bansosmontera/glm-5.3-flash` second. Both real JSON probes passed. Audited active

@@ -2,6 +2,34 @@
 
 ## Kaisar studio alignment implementation gaps — 2026-10-26
 
+- Current resolution: exact DeepSeek-secondary candidate `93d6e5a4` passed
+  runtime acceptance (3,389 words, eight real successful calls, two rewrites,
+  final minor-only review and extraction) plus independent technical APPROVE
+  and semantic PASS. Required active checkpoint
+  `e0de0bd7-1ea1-40b9-bcaf-547a8754858d` precedes immutable definition versions
+  and merged scoped DNA. Exact active read-back and protected manuscript/canon/
+  other-DNA checks passed; API /ready and Nuxt return 200. Default activation
+  is complete. Earlier failed provider/quality samples below remain historical,
+  not proof of current failure or author literary/canon approval. Lightvela's
+  primary-model short draft remains a known observed model limitation; this
+  success selected DeepSeek explicitly and proves no automatic fallback from
+  deterministic word-count failure. Private receipts retain rollback evidence.
+  Recovery precision: the novel snapshot covers DNA, not workspace Studio
+  definitions. Revert only default DNA through the scoped narrative service,
+  append prior agent/skill/workflow content as new versions, and restore routing
+  through audited mappings. A broad checkpoint restore also rewinds covered
+  story state; it is not a configuration-only rollback.
+
+- Subsequent author routing amendment replaces second-priority GLM with
+  `bansosmontera/deepseek-v4.1-flash`; Lightvela stays first. Active and clone
+  audited mappings and effective registry order read back correctly for the
+  five text profiles, with no explicit Kaisar preference overriding them.
+  DeepSeek is enabled with previously observed JSON-mode compatibility; reuse
+  that evidence. Fresh explicit-secondary run `93d6e5a4` subsequently passed
+  and active application/read-back completed as recorded above. Prior GLM
+  failure and before/after routing receipts remain preserved; no category or
+  manuscript mutation. Historical blocked records do not override this outcome.
+
 - Explicit GLM secondary run `fac50b67` successfully planned, then failed during
   write with the same safe provider-stream error. No successful draft was
   adopted. Active routing priorities are independently verified as requested;

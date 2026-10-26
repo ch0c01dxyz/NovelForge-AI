@@ -1,5 +1,45 @@
 # Current Project State
 
+## Kaisar Studio defaults activated and verified — 2026-10-26
+
+Author replaced the secondary model with `bansosmontera/deepseek-v4.1-flash`;
+`bansoslightvela/auto` remains first. Audited five-text-profile configuration
+and live registry order read back correctly, with no explicit Kaisar agent,
+workflow or novel preference overriding them. GLM remains at lower priority.
+Image/embedding configuration and credentials are preserved.
+
+Explicit-secondary DeepSeek run `93d6e5a4-a8cd-4e9e-acfd-80b3705717eb`
+passed bounded runtime acceptance: 3,389 words, eight real successful streaming
+calls, two bounded rewrites, final review with only minor findings, extraction
+validated and AWAITING_APPROVAL. Exact policy/skill grants and version pins match.
+Independent technical review APPROVE and semantic review PASS for default
+activation. Prose SHA256
+`e6a3865705d2645478824795397ad2908759bda66cb443f32e62c2cf19c668a8`.
+This does not prove Lightvela primary success or automatic fallback after
+deterministic validation failure; earlier failed runs remain historical evidence.
+
+After exact-hash acceptance and an idle workflow/queue check, created required
+checkpoint `e0de0bd7-1ea1-40b9-bcaf-547a8754858d` and applied immutable versions
+through application services: context/continuity skills v2, planner v2,
+writer/final/early reviewer v3 and both chapter workflows v2. Extractor unchanged.
+Merged Kaisar DNA now pins minimum 2,500 words and the scoped story profile.
+Exact versions, DNA and effective routing were read back successfully; prior
+definition versions, manuscript, canon and other novel DNA remain unchanged.
+API /ready and Nuxt both return 200. Docker, Redis and stash remain preserved.
+
+Private `.nf-artifacts/studio-alignment/` holds acceptance hashes, independent
+review receipt, baseline backup and application/routing receipts. To revert only
+these defaults, restore preserved prior DNA through the scoped narrative service,
+append preserved agent/skill/workflow content as new versions and restore routing
+through audited mapping services. The novel checkpoint does not rewind workspace
+Studio definitions; a broad checkpoint restore also rewinds covered story state.
+Never delete historical versions. No author literary acceptance, manuscript
+replacement, canon approval, publication or production deployment occurred.
+Minor acceptance-draft copyediting advisories remain separate from these defaults.
+
+The blocked activation paragraphs below are historical and superseded by this
+verified completion; they must not be redispatched as current failures.
+
 ## Author-requested routing priority and activation attempts — 2026-10-26
 
 Applied through audited configuration services and verified on read-back:

@@ -1,5 +1,31 @@
 # Current Project State
 
+## Author-requested routing priority and activation attempts — 2026-10-26
+
+Applied through audited configuration services and verified on read-back:
+`bansoslightvela/auto` priority 0, `bansosmontera/glm-5.3-flash` priority 1
+for STRUCTURED_EXTRACTOR, DEEP_PLANNER, CREATIVE_WRITER,
+LONG_CONTEXT_REVIEWER and CONTINUITY_REVIEWER. These are platform profile
+priorities; existing mappings remain lower, image/embedding profiles unchanged.
+Live registry checks confirm the exact order and no explicit agent/workflow/
+novel model preference overriding it for Kaisar. Private before/after receipts
+retain prior configuration for rollback. Both short real JSON probes passed.
+
+Activation testing was repeated in isolated, restored databases:
+
+- `d02fd98b-8a6d-4a62-a72d-cffe39ec69c7`: Lightvela plan succeeded; write
+  transport succeeded, but 1,698 words failed the pinned 2,500-word minimum.
+- `fac50b67-fc65-4430-8f40-91100d947c13`: GLM explicitly selected per-run as
+  the secondary test; plan succeeded, write failed after 183,135ms with an
+  INTERNAL provider-stream error. No successful draft was adopted.
+
+Both failures remain preserved. No automatic secondary fallback after a
+deterministic length failure is claimed. Active routing is updated; active
+Studio definitions/DNA remain unchanged because latest runtime acceptance did
+not pass. No manuscript/canon/publication mutation or runtime code change.
+Next: diagnose structured provider streaming failure before another bounded
+acceptance attempt. Do not lower the minimum or bypass the retry gate.
+
 ## Kaisar Studio latest acceptance and pushed source — 2026-10-26
 
 Source commit `8db056333733a4aa5df2f483bc42587f2f71b1b7` is on origin/main;

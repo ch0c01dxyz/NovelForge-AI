@@ -2,6 +2,33 @@
 
 ## Kaisar studio alignment implementation gaps — 2026-10-26
 
+- Explicit GLM secondary run `fac50b67` successfully planned, then failed during
+  write with the same safe provider-stream error. No successful draft was
+  adopted. Active routing priorities are independently verified as requested;
+  Studio definition/DNA activation remains blocked by latest runtime acceptance.
+  Preserve the provider failure, do not loop full generations or mark it PASS.
+
+- Lightvela candidate `d02fd98b` succeeded at plan and write transport, but
+  returned only 1,698 words against the pinned 2,500 minimum. The deterministic
+  length gate correctly failed before review/approval. Do not lower the minimum
+  or classify the valid short response as transient. The subsequent explicit
+  GLM secondary test is recorded above; platform priority remains Lightvela then
+  GLM. It tests manual secondary selection, not automatic fallback after
+  deterministic validation failure.
+
+- Author routing amendment: prefer `bansoslightvela/auto`, then
+  `bansosmontera/glm-5.3-flash` for the five Studio text profiles. Existing
+  mappings remain available at lower priority; image/embedding profiles and
+  historical runs stay intact. Both requested models exist and are enabled;
+  JSON compatibility was initially unproven; both bounded real JSON probes
+  subsequently passed. A fresh authorized
+  candidate run is required because the preceding INTERNAL failure cannot be
+  retried through the official gate. Do not mutate its stored failure category.
+  Verification helper initially selected a nonexistent Novel defaults pointer;
+  Prisma rejected the read before mutation. Use the actual latest numbered
+  NovelModelDefaultsVersion, matching workflow resolution, before claiming
+  no explicit override. This is a private-helper defect, not an app migration.
+
 - Candidate run `8ca06496` completed write and two bounded rewrites, then failed
   only final review on a provider stream error after 16,839ms (generation FAILED,
   no partial text adopted). Independent semantic review of exact final prose

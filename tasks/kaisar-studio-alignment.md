@@ -95,6 +95,30 @@ remain unchanged; required active checkpoint/application/read-back are pending.
 
 ## Latest acceptance status — 2026-10-26
 
+Author routing amendment: the following historical failed-run status is now
+followed by a fresh authorized candidate using `bansoslightvela/auto` first and
+`bansosmontera/glm-5.3-flash` second. Both real JSON probes passed. Audited active
+and isolated-clone mappings for the five Studio text profiles read back in that
+order; other mappings remain lower priority, image/embedding unchanged. These
+are platform-level profile priorities; live agent/workflow/novel checks found
+no explicit preferences overriding them for Kaisar. Private before/after
+receipts retain rollback data. No historical failed run was recategorized.
+
+New isolated run `d02fd98b-8a6d-4a62-a72d-cffe39ec69c7`, clone checkpoint
+`35499698-d353-4180-9de0-f73c176dfefb`, planned successfully using Lightvela.
+Write transport succeeded but its 1,698 words failed the 2,500 minimum; this
+is a deterministic length failure, not a transient error. Preserve it under
+private `attempt-10` and clone suffix `_lightvela`.
+
+Secondary test `fac50b67-fc65-4430-8f40-91100d947c13`, clone checkpoint
+`fe2ee298-5b50-4acd-b556-e02336c34c00`, explicitly selected GLM per-run through
+normal enqueue validation. Plan passed; write failed after 183,135ms with
+INTERNAL provider-stream failure. No successful draft was adopted. Platform
+order remains Lightvela then GLM; this is not proof of automatic fallback from
+the earlier deterministic failure. Active routing verification passes; active
+Studio definition/DNA application remains blocked on runtime acceptance.
+Existing manuscripts, canon, checkpoints, prior failed runs and stash remain.
+
 Source `8db056333733a4aa5df2f483bc42587f2f71b1b7` is committed and pushed;
 CI `40292092498` is green. Buffered transport and focused regressions pass.
 Independent technical review approves the exact source and application helper.

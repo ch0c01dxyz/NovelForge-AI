@@ -11679,6 +11679,36 @@ with hand-written audit rows.
 - Closure check: the same corrections can be made through the API, audit rows
   match the SQL equivalents, and the lists read back the new text.
 
+## GAP-132 — native Don Juan background conflicts with downstream education wording (2026-10-27, editorial)
+
+Owner: `tasks/kaisar-native-don-juan-background.md`. Author correction establishes
+rigged state examination, false treason family collapse and exile to Maspati,
+followed by depression, alcohol and gambling. Current chapter 3 v14 is an
+author-edited DRAFT. Chapters 6, 8, 9 and 12 frame established education as a
+new claim; active planning synopsis attributes the downfall to environment.
+Public reader synopsis is stored separately in novel settings and also needs
+updating. Preserve author edits, draft/publication states and compatible canon.
+Closure: reviewed exact revisions and both synopses applied with checkpoint,
+current final-text review and read-back; unaffected data verified.
+
+**CLOSED (2026-10-27):** Independent exact narrative/helper reviews APPROVE.
+Checkpoint `56567fdc-f67b-4d27-a097-0f6e3cb8ac07` precedes chapters 3 v15,
+6 v3, 8 v5, 9 v5 and 12 v3; all five final-text reviews PASS. Original draft/
+publication states, exact text and old versions are verified. Planning synopsis
+create/archive retains history; separate public synopsis reads back exactly
+through anonymous HTTP 200. Scoped DNA note appended; other settings/cover,
+ten unaffected chapters, canon/citations/references/characters/states/outline
+compare unchanged. No product feature or GAP-131 closure is claimed.
+
+Tooling observation: `node --import tsx` failed before script execution because
+tsx is not installed. Native Node 24 executed the read-only export successfully.
+The application helper's imports require TypeScript parameter-property support;
+strip-only Node rejected the import before helper execution or any DB mutation.
+Use the native `--experimental-transform-types` flag for that helper; no
+dependency installation or database workaround is needed. Memory relation
+calls initially used `verdict` instead of required `relation`; rejected calls
+did not record judgments and were corrected explicitly.
+
 ## GAP-131 — character, state and outline-node text has no API edit surface (2026-10-26, MINOR, architecture gap)
 
 The terminology repair needed new text in four "Cerita" records. Only the scene

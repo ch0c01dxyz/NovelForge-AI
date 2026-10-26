@@ -1,5 +1,29 @@
 # Current Project State
 
+## Kaisar native Don Juan background and public synopsis revised — 2026-10-27
+
+Author's chapter 3 correction now establishes scholarly/wealthy origins,
+rigged state examination, false treason family collapse and exile with Sofian
+to established Dusun Maspati, followed by depression, alcohol and gambling.
+Sofian's steadfastness does not erase her fear or excuse his harmful conduct.
+Education references in chapters 6, 8, 9 and 12 now align; Juan Cleverton's
+modern origin remains separate. Independent exact narrative/helper reviews
+APPROVE. Required checkpoint `56567fdc-f67b-4d27-a097-0f6e3cb8ac07` precedes
+five immutable versions and five current final-text PASS receipts.
+
+Read back: chapter 3 v15 DRAFT (940 words), 6 v3 PUBLISHED (1,023), 8 v5
+PUBLISHED (798), 9 v5 PUBLISHED (589), 12 v3 DRAFT (2,727). Existing author
+edits, old versions, titles and original publication states are preserved.
+Planning synopsis is replaced through create/archive services; public reader
+synopsis updated separately and verified by anonymous HTTP 200 exact text.
+DNA receives only a scoped backstory note. Cover/settings, ten unaffected
+chapters, canon/citations, references, character/state and outline records
+compare unchanged. No automatic canon approval or newly published draft.
+
+See `tasks/kaisar-native-don-juan-background.md` (GAP-132 closed) and ignored
+`.nf-artifacts/kaisar-exile-background/` receipts. GAP-131 remains a product
+follow-up. No application-code/provider/staging change or browser visual claim.
+
 ## Kaisar chapter 1 prototype presentation revised — 2026-10-27
 
 Author-requested single-paragraph edit replaces the generic half-suitcase box

@@ -11679,6 +11679,115 @@ with hand-written audit rows.
 - Closure check: the same corrections can be made through the API, audit rows
   match the SQL equivalents, and the lists read back the new text.
 
+## GAP-134 — applied draft history is lost after reload (2026-10-27, UI defect)
+
+Owner: tasks/applied-draft-history-status.md. CLOSED. capt.png showed an unapplied
+warning for Kaisar chapter10 v4 despite a durable v1 application note for the
+selected run. ApplyBar only stores application state in memory; subsequent edits
+and reloads expose the obsolete apply action. Source guards correctly reject the
+write. Already-approved character proposals also show a pending-only warning.
+Fix: restore exact run application from authorized version metadata, distinguish
+historical application from the current edited version, fence async reads and
+preserve all native mutation guards. Closure: remount/stale/unknown-history and
+pending-only warning regressions plus actual local EN/ID browser evidence.
+
+Resolution: exact run application restored from authorized immutable version
+metadata, not inferred from a higher current version. Historical/current versions
+display separately; stale reapply action is hidden. Async reads are scoped and
+fenced; unknown history cannot enable a write. Already-decided character/story
+proposals no longer display pending-only warnings. Focused tests35 PASS, web
+types/lint PASS and independent exact review APPROVE. Real local ID/EN browser
+reads confirm appliedv1/currentv4, no obsolete action/warning, no page errors or
+API writes, with chapter version/content/status unchanged. Evidence and hash in
+the task; no native source/authorization guard was relaxed.
+
+## GAP-133 — imported novels lack integrated workspace decoding (2026-10-27, feature gap)
+
+Status: CLOSED for the bounded ZIP import/decode/review scope below; historical
+implementation failures remain retained as diagnostic evidence.
+
+Owner: `tasks/novel-zip-decoding.md`. Existing import creates draft manuscript
+chapters only; current character/story discovery is workflow-run scoped. Prior
+NF-WF-059 operator enrichment does not establish a reusable author UI covering
+the workspace. Author authorized a ZIP modal under Workspace tools using the
+private import_demo layout and explicit review before native application.
+Implementation is in progress; no completion or exhaustive extraction claim.
+Independent review found editable candidate details bypassed per-area bounds:
+the native arc adapter allowed 100 milestones against the extractor limit of
+eight, with no 2,000-character summary cap. Share area validation with edits
+using the immutable stored area, enforce native bounds, and prove rejected
+edits leave the candidate unchanged before closing the review finding.
+Real-gateway acceptance initially failed the structured contract; retained
+evidence later established empty content, not malformed JSON (plus a separate
+explicit stream error). No valid extraction is implied by transport success;
+An instrumented real MiniMax attempt established finishReason=length at 9,000
+output tokens with zero answer characters. Preserve finish reason in the private
+receipt, explicitly reject truncated output, and increase decode response space
+before the next measured attempt. This is a response-size setting, not a quota
+or remaining-spend calculation. Production model defaults remain unchanged.
+The larger measured attempt returned 48,242 answer characters but still hit
+32,768 output tokens mid-JSON. Its partial response contained 35 observations
+and repeated lengthy quotations. Bound each source result to 20 important
+candidates, 1,200-character summaries, 400-character source quotes and ten
+300-character unknowns. This bounds the existing non-exhaustive analysis;
+all selected areas remain requested and unsupported coverage stays explicit.
+The bounded run completed (18,822 output tokens; 18,653 answer characters),
+but embedded dialogue quotes were not JSON-escaped. Strict validation rejected
+it. Source evidence now uses server-generated excerpt IDs: the model selects
+IDs, and the server resolves immutable 400-character excerpts to native quoted
+citations. Unknown IDs are rejected. Original text, chapter/version checks and
+author review remain mandatory; no repair guesses or partial-object salvage
+are applied. Parser regression covers ID resolution, invention and Unicode.
+A real Haiku response completed one section; the second selected valid chapter
+1 and 2 excerpt IDs but labeled a character as chapter 1. Earlier anchoring
+correctly refused that future leak. Source-ID candidates now take their anchor
+from the latest selected server excerpt, never the model-supplied chapter.
+Explicit legacy quotations retain strict supplied-position checks. Revalidation
+of the retained, unchanged real response confirmed all 13 observations satisfy
+the evidence contract under server-owned anchoring; no identities were guessed.
+The next real response contained four valid observations and one empty,
+unsupported ITEM row. Rejecting the complete section would repeatedly discard
+valid cited evidence. Validate every row separately after validating the batch
+envelope; exclude invalid rows, retain their original response and report the
+rejected count explicitly in unknowns. If every supplied row is invalid, fail
+the section. Never apply rejected rows or claim exhaustive extraction.
+Final UI inspection found a Retry button for CANCELLED jobs although the API
+only permits FAILED/UNCERTAIN retries. Remove that unavailable action and
+verify cancelled jobs do not offer it; cancellation remains a terminal stop.
+no candidates or native story mutations were applied. The initial processor
+retained generation attribution but not raw rejected output. Add private
+operational response receipts before explicit retry, so contract failures can
+be diagnosed from evidence rather than repeated guesses. Source observations
+must not be silently deduplicated when details/citations conflict. The separate
+response-history migration is additive; do not rewrite already-applied receipts.
+Fresh-database AI regression setup exposed migration ordering: the response
+history folder sorted before the base decode tables. Correct the unapplied
+release ordering before local deployment. The isolated live-test database had
+already applied the equivalent column addition; retain that history and use
+supported migration resolution after verifying its column, never rewrite rows.
+Closure requires hostile-archive tests, durable real-gateway analysis, explicit
+coverage/unknowns, native approve/edit/reject with atomic receipts, stale/tenant/
+retry checks and EN/ID rendered UI evidence. Do not promote findings to canon
+or publish imported chapters automatically.
+
+Runtime observation: initial Engram host binding ETIMEDOUT was reported without
+attributed writes. User restarted Engram; host confirmation plus observation708
+save/read-back restored the binding. No session ID was invented or reopened.
+
+Resolution: source-pinned leased decoding, native atomic Approve/Edit/Reject,
+private imported novels, source/version/CAS guards, idempotency and visible
+unknowns are implemented and separately reviewed APPROVE. Parser43, observation9,
+job8, native9, modal18, restore8 and AI56 tests passed; API/web/worker types and
+focused lint passed. Real configured-gateway fixture (two Solo Leveling chapters)
+reached REVIEW5/5 with 34 valid suggestions across 11 areas through Claude Haiku;
+unsupported arcs/endings were not invented. Automated native approval/replay and
+edit/reject passed; zero publications/canon facts. EN desktop and ID mobile
+browser read-back showed real suggestions/quotes with no errors. Local migration
+backup was restored/rehearsed, key story/account/model hashes stayed identical,
+and final API/decode worker startup/ready was checked. Exact reviewed hashes and
+private receipts are in tasks/novel-zip-decoding.md. This does not claim exhaustive
+book analysis, all-model compatibility, human accessibility or author sign-off.
+
 ## GAP-132 — native Don Juan background conflicts with downstream education wording (2026-10-27, editorial)
 
 Owner: `tasks/kaisar-native-don-juan-background.md`. Author correction establishes
@@ -11743,3 +11852,13 @@ GAP-127…GAP-131 above; local evidence is under `.nf-artifacts/kaisar-review/`.
 The temporary author session row used for the audited API calls is deleted
 after the repair. Closure check: re-save to Engram once the runtime binding is
 restored.
+
+## Engram runtime unbound — Kaisar Bab 10 polish v4 (2026-10-27)
+
+Fourth Engram-unbound fallback handoff (no Engram MCP server is exposed in
+this runtime). The completion record lives in docs/14-progress/CURRENT.md
+section 'Kaisar Bab 10 language polish republished as version 4 — 2026-10-27';
+local evidence is under `.nf-artifacts/editorial-10-v4/` (private/ignored).
+No session row was created: the mutation ran through application services
+under the novel owner actor. Closure check: re-save to Engram once the
+runtime binding is restored.

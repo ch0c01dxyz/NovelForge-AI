@@ -23,6 +23,15 @@ function render() { const w = mount(StorySuggestionsPanel, { props }); wrappers.
 beforeEach(() => { language.value = "en"; api.mockReset().mockImplementation(async (url: string) => url.includes('/options') ? [] : view()); });
 afterEach(() => { wrappers.splice(0).forEach(w => w.unmount()); vi.useRealTimers(); });
 describe("story suggestions author decisions", () => {
+  it("hides pending-only source warnings once every suggestion is decided", async () => {
+    const result = { ...view(), blockedReason: "APPLY_DRAFT_FIRST", candidates: [{ ...group, status: "APPROVED" }] };
+    api.mockResolvedValue(result);
+    const w = render(); await flushPromises();
+    expect(w.text()).not.toContain(en.newCharacters.applyFirst);
+    result.candidates.push({ ...group, id: "pending", status: "PENDING" });
+    await w.setProps({ currentVersion: 4 }); await flushPromises();
+    expect(w.text()).toContain(en.newCharacters.applyFirst);
+  });
   it("locks all edit fields while saving a proposal", async () => {
     const w = render();await flushPromises();await w.get('[data-testid="story-edit-g"]').trigger('click');
     let resolve!: (value: unknown) => void;

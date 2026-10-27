@@ -272,7 +272,7 @@ export interface AiServices {
      * adapter. Omitted by default; arc summaries set it (NF053 hardening).
      */
     outputMode?: "json_object";
-  }): Promise<{ generationId: string; content: string; model: string }>;
+  }): Promise<{ generationId: string; content: string; model: string; finishReason?: string | null }>;
   /**
    * Embed a batch of texts through the EMBEDDING profile.
    *
@@ -1035,7 +1035,7 @@ export function createAiServices(deps: {
       const started = Date.now();
       try {
         const result = await manager.generate({
-          bufferStream: /^workflow:(chapter-creation-review|chapter-generation-review):/.test(input.task),
+          bufferStream: input.task === "novel.decode" || /^workflow:(chapter-creation-review|chapter-generation-review):/.test(input.task),
           profile: input.profile,
           preferredModelRef,
           messages: withTextSafeguards(input.messages),
@@ -1064,7 +1064,7 @@ export function createAiServices(deps: {
           entityId: generation.id,
           payload: { task: input.task, profile: input.profile, model: result.model },
         });
-        return { generationId: generation.id, content: result.content, model: result.model };
+        return { generationId: generation.id, content: result.content, model: result.model, finishReason: result.finishReason };
       } catch (err) {
         const latencyMs = Date.now() - started;
         // A profile with no mapped model is a configuration gap the

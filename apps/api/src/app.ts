@@ -24,6 +24,8 @@ import { registerHttpBoundary } from "./http-boundary.ts";
 import { registerPlatformRoutes } from "./platform-routes.ts";
 import { registerBrandingRoutes } from "./branding-routes.ts";
 import { registerManuscriptRoutes } from "./manuscript-routes.ts";
+import { registerNovelDecodeRoutes } from "./novel-decode-routes.ts";
+import { createNovelDecodeServices } from "./services/novel-decodes.ts";
 import { registerScaleEvidenceRoutes } from "./scale-evidence-routes.ts";
 import { registerScaleDecisionRoutes } from "./scale-decision-routes.ts";
 import { registerScaleS3Routes } from "./scale-s3-routes.ts";
@@ -388,6 +390,9 @@ export async function buildApp(
       dbg: { error: (message, meta) => app.log.error(meta, message) },
     });
     registerRetrievalRoutes(app, { auth, services: retrievalServices });
+    registerNovelDecodeRoutes(app, { auth, services: createNovelDecodeServices({ db: options.db,
+      retrievalFor: client => createRetrievalServices({ db: client, audit: createAuditService(client), ai: aiServices }),
+    }) });
 
     // Story intelligence (Phase 6). The Story Brain's prose leg reuses the
     // SAME retrieval service a direct search reads, so a Brain answer and a

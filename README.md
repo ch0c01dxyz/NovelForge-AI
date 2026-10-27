@@ -28,6 +28,19 @@ canon. Saving a chapter, accepting a draft and approving canon are separate acti
 | Review the original and proposed wording before using or ignoring a suggestion. | Manage workspace agents, reusable skills and workflows; the starter pack includes context and continuity skills. |
 | [![Language polish comparison with Use suggestion and Ignore controls](docs/screenshots/language-suggestions.png)](docs/screenshots/language-suggestions.png) | [![AI Studio showing published context distillation and continuity skills](docs/screenshots/ai-studio.png)](docs/screenshots/ai-studio.png) |
 
+### Novel import and reconstruction
+
+Preview a ZIP manuscript and choose which story areas AI should reconstruct.
+Import creates a new private novel; source-backed suggestions require explicit
+review and do not automatically publish chapters or approve canon.
+
+[![ZIP novel import with thirteen selectable reconstruction areas](docs/screenshots/novel-decoding.png)](docs/screenshots/novel-decoding.png)
+
+The workspace also distinguishes an applied AI draft from later chapter edits,
+so an older draft is not offered for reapplication over the current version.
+
+[![Saved draft history showing the applied version and the current edited chapter version](docs/screenshots/applied-draft-history.png)](docs/screenshots/applied-draft-history.png)
+
 ### Public novel page
 
 Readers can see the cover, author, genres, publication information and chapter list.
@@ -52,7 +65,7 @@ The showcase illustrates the product; it is separate from release acceptance.
 
 ## Project status
 
-**Active development — not a general production release.** Updated 2026-10-25.
+**Active development — not a general production release.** Updated 2026-10-28.
 
 Implementation, automated verification, live integration, author acceptance and
 release approval are tracked separately. Read the [current progress](docs/14-progress/CURRENT.md),
@@ -69,6 +82,7 @@ verification does not imply production release approval.
 | --- | --- |
 | Author workspace | Novel setup wizard, workspace management, rich-text editor, chapter navigation/sorting, create/rename/delete, import/export, active-chapter save/draft, and whole-novel publication. |
 | AI chapters | Author instructions and outlines, bounded story context, planning/writing/review workflows, per-step model preferences, structured validation, draft comparison/application and explicit author approval. |
+| Novel reconstruction | ZIP preview/import into a new private novel, thirteen selectable analysis areas, source quotations, explicit uncertainty, resumable progress and approve/edit/reject controls. Reconstruction is not an exhaustive extraction guarantee. |
 | Story knowledge | Characters and historical states/knowledge, relationships, world/lore, timeline/events, approved canon and candidate proposals. |
 | Planning and narrative | Outlines, arcs, planning horizons, Narrative DNA, threads, promises/payoffs, simulation, causality and endgame tooling. |
 | Research and memory | Reference library/ingestion, provenance, lexical/vector retrieval, hierarchical memory and rebuildable projections. Embeddings require a compatible configured model. |
@@ -82,6 +96,9 @@ verification does not imply production release approval.
 
 This update includes the following separately tracked additions:
 
+- ZIP novel reconstruction with source-backed review and durable import progress.
+- Persistent draft application history that preserves later chapter edits and
+  distinguishes pending proposals from decisions already recorded.
 - Character discovery and identity linking; proposed references and clan/organization
   information with author approve/edit/reject controls.
 - Internal chapter safeguards for outline authority, consistent context and readable

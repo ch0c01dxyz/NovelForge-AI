@@ -85,7 +85,7 @@ function confirm() { const c = confirmation.value; if (c) void mutate(c.retry ? 
     </template>
     <template v-if="data?.status === 'SUCCEEDED'">
       <p v-if="!data.candidates.length" class="mt-3 text-sm text-nf-text-dim">{{ t('storySuggestions.empty') }}</p>
-      <p v-else-if="data.blockedReason" class="mt-3 text-xs text-nf-warn">{{ t(data.blockedReason === 'APPLY_DRAFT_FIRST' ? 'newCharacters.applyFirst' : 'storySuggestions.sourceChanged') }}</p>
+      <p v-else-if="data.blockedReason && data.candidates.some(candidate => candidate.status === 'PENDING')" class="mt-3 text-xs text-nf-warn">{{ t(data.blockedReason === 'APPLY_DRAFT_FIRST' ? 'newCharacters.applyFirst' : 'storySuggestions.sourceChanged') }}</p>
       <article v-for="candidate in data.candidates" :key="candidate.id" class="mt-3 rounded-lg border border-nf-border bg-nf-bg-2 p-3">
         <span class="rounded border border-nf-border px-2 py-1 text-[11px] text-nf-accent-hi">{{ t(`storySuggestions.${candidate.kind === 'GROUP' ? 'group' : candidate.mode || 'NEEDS_SOURCE'}`) }}</span>
         <template v-if="editing?.id !== candidate.id">

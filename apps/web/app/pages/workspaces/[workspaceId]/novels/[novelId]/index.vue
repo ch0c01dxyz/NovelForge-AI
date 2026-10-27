@@ -65,6 +65,7 @@ import { useAiStudio, type WorkspaceRole } from "../../../../../composables/useA
 import { usePlatformAdmin } from "../../../../../composables/usePlatformAdmin";
 // ---------- NF-WF-017 import dialog ----------
 import ImportDialog from "../../../../../components/import-export/ImportDialog.vue";
+import NovelDecodeDialog from "../../../../../components/import-export/NovelDecodeDialog.vue";
 import ExportPicker from "../../../../../components/import-export/ExportPicker.vue";
 // ---------- NF-WF-016 workspace panels ----------
 import WorkspaceDrawer from "../../../../../components/workspace/WorkspaceDrawer.vue";
@@ -945,6 +946,7 @@ type WorkspacePanelKey =
 const workspacePanel = ref<WorkspacePanelKey | null>(null);
 // ---------- NF-WF-017A: import dialog ----------
 const importDialogOpen = ref(false);
+const novelDecodeOpen = ref(false);
 // NF-WF-017B: export picker dialog state.
 const exportPickerOpen = ref(false);
 async function onImported() {
@@ -1186,6 +1188,7 @@ async function saveAndReview(publishAfter = false) {
         {{ t("workspace.nav.planning") }}
       </button>
       <ActionMenu :label="t('workspace.tools')">
+      <button type="button" data-testid="novel-decode-menu" @click="novelDecodeOpen = true">{{ t('novelDecode.menu') }}</button>
       <button class="nf-mobile-action text-nf-text-dim" @click="openWorkspacePanel('planning')">{{ t("workspace.nav.planning") }}</button>
       <button class="nf-mobile-action text-nf-text-dim" :disabled="chapterSelecting || !activeChapter || reviewAction !== null" @click="saveAndReview()">{{ t(reviewAction === 'save' ? 'common.reviewing' : 'common.save') }}</button>
       <!-- NF-WF-018A: AI Studio link — hidden for VIEWER (role-gated,
@@ -1757,6 +1760,7 @@ async function saveAndReview(publishAfter = false) {
     />
     <ChapterCreateDialog v-if="chapterCreateOpen" :busy="chapterCreating" :error="chapterCreateError" :uncertain="chapterCreateUncertain" :workspace-id="workspaceId" :novel-id="novelId" :pending-ai="!!aiCreation.pending.value" :can-resolve-ai="!!aiCreation.pending.value" @manual="createChapter" @ai="createAiChapter" @resume-ai="createAiChapter()" @resolve-ai="resolveAiReservation" @close="closeChapterCreate" />
     <!-- NF-WF-017A: import dialog -->
+    <NovelDecodeDialog :open="novelDecodeOpen" :workspace-id="workspaceId" @close="novelDecodeOpen = false" />
     <ImportDialog
       :open="importDialogOpen"
       :workspace-id="workspaceId"

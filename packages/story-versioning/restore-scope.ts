@@ -49,6 +49,9 @@ export const RESTORE_SCOPE_CLASS_RATIONALE: Record<RestoreScopeClass, string> = 
  * PINNED (3) must equal COVERED_TABLES with restoreTarget: false.
  */
 export const RESTORE_SCOPE_CLASS: Readonly<Record<string, RestoreScopeClass>> = {
+  novel_decode_jobs: "OPERATIONAL",
+  novel_decode_chunks: "OPERATIONAL",
+  novel_decode_candidates: "OPERATIONAL",
   // REWOUND (33) — story state, rewound by FULL restore.
   story_entities: "REWOUND",
   characters: "REWOUND",

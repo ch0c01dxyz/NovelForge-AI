@@ -24,6 +24,7 @@ import { startPublicationWorkerApp } from "./publication-jobs.ts";
 import { startNotificationFanoutWorkerApp } from "./notification-fanout-jobs.ts";
 import { startCoverWorkerApp } from "./cover-jobs.ts";
 import { startDerivedIntentWorkerApp } from "./derived-intents.ts";
+import { startNovelDecodeWorkerApp } from "./novel-decode-jobs.ts";
 
 const logger: WorkerLogger = {
   info: (msg, meta) => console.log(JSON.stringify({ level: "info", msg, ...meta })),
@@ -41,6 +42,7 @@ const notifications = await startNotificationFanoutWorkerApp(env, logger);
 const covers = await startCoverWorkerApp(env, logger);
 // ADR-0017/ADR-0022: PostgreSQL-backed intent consumer. No Redis dependency.
 const intents = startDerivedIntentWorkerApp(env, logger);
+const novelDecodes = startNovelDecodeWorkerApp(env, logger);
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
@@ -48,6 +50,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true;
   logger.info("shutdown signal received", { signal });
   try {
+    await novelDecodes.stop();
     await intents.stop();
     await covers.stop();
     await notifications.stop();
@@ -74,4 +77,5 @@ logger.info("worker started", {
   notificationsStarted: notifications.started,
   coversStarted: covers.started,
   intentsStarted: intents.started,
+  novelDecodesStarted: novelDecodes.started,
 });

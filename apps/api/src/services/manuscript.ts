@@ -82,6 +82,7 @@ async function lockManuscriptBranch(tx: RevisionTx, novelId: string) {
 }
 
 export interface ManuscriptServices {
+  importChapterParts(input: { actorUserId: string; workspaceId: string; novelId: string; parts: ImportPart[]; expectedHeadRevisionId?: string | null }): Promise<{ created: number; skipped: string[] }>;
   getCreationReceipt(input: { actorUserId: string; workspaceId: string; novelId: string; creationRequestId: string }): Promise<{ chapter: { id: string; title: string; number: number } | null }>;
   createChapter(input: {
     actorUserId: string;
@@ -1065,6 +1066,11 @@ export function createManuscriptServices(
      * strip → count sequence as `saveChapter` (GAP-061: no import path
      * may write raw content).
      */
+    async importChapterParts(input) {
+      await gate(input.workspaceId, input.novelId, input.actorUserId, "chapter:create");
+      if (!input.parts.length || input.parts.length > 5000 || input.parts.some(p => !p.rawText.trim() || p.rawText.length > 1048576 || p.title.length > 200)) throw new ConflictError("DECODE_CHAPTER_INVALID");
+      return writeImportParts({ ...input, format: "zip-markdown", skipped: [] });
+    },
     async importChapters(input: {
       actorUserId: string;
       workspaceId: string;

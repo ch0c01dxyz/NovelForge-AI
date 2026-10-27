@@ -24,6 +24,16 @@ beforeEach(() => { language.value = "keys"; api.mockReset().mockResolvedValue(vi
 afterEach(() => { wrappers.splice(0).forEach(w => w.unmount()); vi.useRealTimers(); });
 
 describe("new character suggestions", () => {
+  it("does not show apply-first guidance for already-decided candidates", async () => {
+    const result = { ...view(), canApprove: false, blockedReason: "APPLY_DRAFT_FIRST", candidates: [{ ...candidate, status: "APPROVED" }] };
+    api.mockResolvedValue(result);
+    const w = render(); await flushPromises();
+    expect(w.text()).not.toContain("newCharacters.applyFirst");
+    expect(w.text()).toContain("newCharacters.approved");
+    result.candidates.push({ ...candidate, id: "pending", status: "PENDING" });
+    await w.setProps({ currentVersion: 4 }); await flushPromises();
+    expect(w.text()).toContain("newCharacters.applyFirst");
+  });
   it.each([["id", "Setujui", "Ubah", "Tolak"], ["en", "Approve", "Edit", "Reject"]])("renders explicit decision buttons in %s", async (locale, approve, edit, reject) => {
     language.value = locale;
     const w = render(); await flushPromises();

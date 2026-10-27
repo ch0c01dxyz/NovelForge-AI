@@ -44,6 +44,8 @@ const applying = ref(false);
 const appliedVersion = ref<number | null>(null);
 const appliedRunId = ref<string | null>(null);
 const error = ref<string | null>(null);
+const historyLoading = ref(false), historyFailed = ref(false);
+let historyRead = 0;
 const titleOnlyConflict = ref(false);
 const allowTitleOnlyRebase = ref(false);
 let scope = 0;
@@ -51,6 +53,29 @@ let mounted = true;
 watch(() => [props.workspaceId, props.novelId, props.chapterId, props.runId], () => { scope++;appliedVersion.value = null;appliedRunId.value = null;error.value = null;titleOnlyConflict.value = false;allowTitleOnlyRebase.value = false; });
 watch(() => [props.chapterTitle, props.diffPinnedVersion], () => { allowTitleOnlyRebase.value = false; });
 onUnmounted(() => { mounted = false;scope++; });
+async function readApplicationHistory() {
+  const requestScope = scope, stamp = ++historyRead;
+  if (!props.runId || props.runStatus !== "SUCCEEDED") { historyLoading.value = false; return; }
+  historyLoading.value = true; historyFailed.value = false;
+  try {
+    const versions = await api<{ number: number; note: string | null }[]>(`/workspaces/${props.workspaceId}/novels/${props.novelId}/chapters/${props.chapterId}/versions`);
+    if (!mounted || requestScope !== scope || stamp !== historyRead) return;
+    if (!Array.isArray(versions)) throw new Error("Invalid chapter history");
+    const applied = versions.find(version => {
+      if (!Number.isInteger(version.number) || version.number < 1 || version.number > (props.currentVersion ?? 0)) return false;
+      try { const note = JSON.parse(version.note ?? "null"); return note?.operation === "chapter.apply_title_and_prose" && note.creationRunId === props.runId; }
+      catch { return false; }
+    });
+    if (applied) { appliedVersion.value = applied.number; appliedRunId.value = props.runId; error.value = null; titleOnlyConflict.value = false; allowTitleOnlyRebase.value = false; }
+    else if (appliedVersion.value !== null && appliedVersion.value > (props.currentVersion ?? 0)) { appliedVersion.value = null; appliedRunId.value = null; }
+  } catch {
+    if (mounted && requestScope === scope && stamp === historyRead) historyFailed.value = true;
+  } finally {
+    if (mounted && requestScope === scope && stamp === historyRead) historyLoading.value = false;
+  }
+}
+watch(() => [props.workspaceId, props.novelId, props.chapterId, props.runId, props.runStatus, props.currentVersion], () => { void readApplicationHistory(); }, { immediate: true });
+const alreadyApplied = computed(() => appliedRunId.value !== null && appliedRunId.value === props.runId);
 
 const isPublished = computed(() => props.chapterStatus === "PUBLISHED");
 const versionMoved = computed(
@@ -62,6 +87,7 @@ const versionMoved = computed(
 
 const blockReason = computed((): string | null => {
   if (props.runStatus !== "SUCCEEDED") return null; // bar hidden, not blocked
+  if (alreadyApplied.value) return null;
   if (isPublished.value) return t("apply.blockedPublished");
   if (props.saveState !== "saved") return t("apply.blockedDirty");
   if (versionMoved.value) return t("apply.blockedStale");
@@ -79,6 +105,7 @@ const canApply = computed(
     (!titleOnlyConflict.value || allowTitleOnlyRebase.value) &&
     blockReason.value === null &&
     appliedRunId.value !== props.runId &&
+    !historyLoading.value && !historyFailed.value &&
     !applying.value,
 );
 
@@ -132,6 +159,7 @@ async function apply() {
     <div class="flex flex-wrap items-center gap-2">
       <p v-if="draftTitle" class="w-full text-sm font-semibold">{{ draftTitle }}</p>
       <button
+        v-if="!alreadyApplied"
         :disabled="!canApply"
         class="rounded-lg bg-nf-accent px-4 py-2 text-[13px] font-semibold text-nf-accent-ink hover:bg-nf-accent-hi focus-visible:nf-focus disabled:opacity-50"
         @click="apply"
@@ -158,7 +186,9 @@ async function apply() {
       </button>
     </p>
 
-    <p v-if="error" role="alert" class="text-[12.5px] text-nf-warn">{{ error }}</p>
+    <p v-if="historyLoading && !alreadyApplied" role="status" class="text-[12.5px] text-nf-text-dim">{{ t("apply.checkingHistory") }}</p>
+    <p v-if="historyFailed && !alreadyApplied" role="status" class="text-[12.5px] text-nf-warn">{{ t("apply.historyUnavailable") }} <button type="button" class="underline focus-visible:nf-focus" @click="readApplicationHistory">{{ t("common.retry") }}</button></p>
+    <p v-if="error && !alreadyApplied" role="alert" class="text-[12.5px] text-nf-warn">{{ error }}</p>
     <label v-if="titleOnlyConflict" class="flex items-start gap-2 text-[12.5px] text-nf-text-dim">
       <input v-model="allowTitleOnlyRebase" data-testid="allow-title-only-recovery" type="checkbox" :disabled="applying" class="mt-0.5 accent-nf-accent" />
       {{ t('apply.keepRenamedTitle', { title: chapterTitle ?? '' }) }}
@@ -171,7 +201,7 @@ async function apply() {
       class="text-[12.5px] text-nf-ok"
     >
       {{
-        t("apply.applied", { runId: appliedRunId.slice(0, 8), version: appliedVersion })
+        t(currentVersion !== appliedVersion ? "apply.appliedAndEdited" : "apply.applied", { runId: appliedRunId.slice(0, 8), version: appliedVersion, currentVersion: currentVersion ?? appliedVersion })
       }}
     </p>
   </div>

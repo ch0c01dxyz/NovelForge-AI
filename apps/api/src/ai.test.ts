@@ -903,7 +903,7 @@ describe("model catalog + profile mapping", () => {
 });
 
 describe("generation", () => {
-  it.each(["workflow:chapter-creation-review:write", "workflow:chapter-generation-review:plan", "custom"])("scopes buffered stream transport for %s", async task => {
+  it.each(["workflow:chapter-creation-review:write", "workflow:chapter-generation-review:plan", "novel.decode", "custom"])("scopes buffered stream transport for %s", async task => {
     const admin = await seedUser("buffer-admin@t.io", "SUPER_ADMIN");
     const owner = await seedUser("buffer-owner@t.io", null);
     const ids = await seedWorkspace(owner.userId, "buffer-ws");

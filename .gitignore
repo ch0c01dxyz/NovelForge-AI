@@ -39,6 +39,7 @@ review-receipts/
 .nf-artifacts/
 # Local manuscript imports and cover assets are private working data.
 /imports/
+/import_demo/
 # Author-supplied local debugging screenshot.
 /capt.png
 

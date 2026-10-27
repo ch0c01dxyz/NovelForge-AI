@@ -73,7 +73,7 @@ const reasonKey = (reason: string | null) => reason === "NO_ACCESS" ? "noAccess"
     </template>
     <template v-if="data?.status === 'SUCCEEDED'">
       <p v-if="!data.candidates.length" class="mt-3 text-sm text-nf-text-dim">{{ t('newCharacters.empty') }}</p>
-      <p v-else-if="data.blockedReason" class="mt-3 text-xs text-nf-warning">{{ t(`newCharacters.${reasonKey(data.blockedReason)}`) }}</p>
+      <p v-else-if="data.blockedReason && data.candidates.some(candidate => candidate.status === 'PENDING')" class="mt-3 text-xs text-nf-warning">{{ t(`newCharacters.${reasonKey(data.blockedReason)}`) }}</p>
       <article v-for="candidate in data.candidates" :key="candidate.id" class="mt-3 rounded-lg border border-nf-border bg-nf-bg-2 p-3">
         <template v-if="editId !== candidate.id">
           <h4 class="text-sm font-semibold text-nf-text">{{ candidate.name }}</h4>

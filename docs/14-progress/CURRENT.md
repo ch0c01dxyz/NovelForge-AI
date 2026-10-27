@@ -1,5 +1,96 @@
 # Current Project State
 
+## Author-authorized repository publication and README showcase — 2026-10-28
+
+Author authorized committing and pushing the accumulated ZIP decoding and draft
+history changes, then requested additional GitHub README showcase screenshots.
+README now includes actual browser captures of the import modal (original demo
+fixture, no manuscript creation/model call) and the version-aware draft status
+card (no manuscript prose or chapter mutation). During this fresh capture the
+author chapter was already v19; the UI correctly retained historical application
+at v1 without changing current text/status. Earlier v4 acceptance remains
+historical evidence. All eight linked PNG assets exist; selected new images were
+visually inspected. Private source archives, full screenshots, backups and local
+helpers remain ignored. Full repository lint passed; reviewed application bodies
+match the previously tested implementation. Staging removed extra EOF blank
+lines in six new files; restoring that one newline reproduces the reviewed hashes
+for the affected application components. Commit/push receipts are recorded
+in the current Engram handoff after execution.
+
+## Applied draft history survives reload and later edits — 2026-10-27
+
+Fixed the author-reported capt.png warning for Kaisar chapter10: persisted
+version1 records run927e7851 application; current version4 is later edited text.
+The UI now restores that exact application history, distinguishes historical
+and current versions and removes the obsolete reapply action. Pending-only
+warnings no longer appear for already-decided character/story proposals.
+History lookup errors/races remain guarded; no source or approval gate changed.
+Task tasks/applied-draft-history-status.md / GAP-134 CLOSED. Focused35 tests,
+web types/lint and independent review pass; actual local EN/ID browser proof
+shows appliedv1/currentv4 with no API writes and unchanged chapter text/status.
+Private receipts/screenshots retained; no commit/push or story mutation.
+
+## ZIP novel decoding: local integration and bounded real acceptance passed — 2026-10-27
+
+Author-approved Workspace tools submenu opens a ZIP import/reconstruction
+modal using the private import_demo layout. New private novels preserve source
+chapter numbering, cover and attribution. Durable background analysis covers
+13 selected workspace areas with source quotations, explicit unknowns and
+Approve/Edit/Reject. Canon stays proposed, research stays draft/unverified,
+and no import publishes chapters. See tasks/novel-zip-decoding.md, ADR-0023
+and GAP-133 for bounds, review hashes, checks and recovery evidence.
+
+Local backup/restore rehearsal and additive migrations passed; key story,
+account and model tables have identical pre/post row hashes. API/web return
+200; anonymous decode access returns 401; dedicated decode worker starts.
+Existing workflow/cover workers, Docker data, source manuscripts and stash
+remain preserved. Backend/UI/source tests and independent review pass.
+Real gateway acceptance passed in an isolated database using two complete
+Solo Leveling demo chapters: three source sections and two hierarchical
+synthesis sections reached REVIEW, retaining 34 valid suggestions across
+11 areas. Missing character-arc and ending evidence remained explicit. The
+configured gateway served Claude Haiku for the successful run; production
+model defaults were not changed. Two unchanged completed responses were
+revalidated after source-contract repairs, not requested or billed twice.
+Automated test approval/replay, edit/reject and native character application
+passed, with zero publications and zero canon facts. Browser read-back of
+real suggestions and source quotes passed in EN desktop and ID mobile.
+The bounded extractor rejects truncated output, excludes invalid rows with
+visible warnings, and never applies rejected suggestions. Final separate
+review APPROVE; task record retains exact reviewed hashes.
+This is partial reconstruction evidence, never exhaustive extraction or
+author acceptance. No commit/push/deployment performed for this feature.
+
+## Kaisar Bab 10 language polish republished as version 4 — 2026-10-27
+
+Author-requested wording polish for Bab 10 "Tamu Sebelum Panen" of novel
+e36d568b-aecf-476a-8e3f-f47ca709672b in novelforge_acceptance_050b, continuing
+today's per-chapter language pass. Fresh reads corrected the author's stated
+premise: chapter 10 had only versions 1–3 (latest and current v3
+91e375bc-e46b-4045-9516-4a8bbb23bffe, the 2026-10-26 copyedit, 1,467 words);
+no version 4 had ever been saved. The chapter sat DRAFT with its publication
+UNPUBLISHED because this morning's 08:23 returned-to-draft cycle stopped
+before any save/review/publish. No other environment holds a v4 (single novel
+row; both Postgres instances checked; snapshots scanned).
+
+The v4 candidate applies 14 phrase-level substitutions (clarity, grammar,
+natural dialogue; word count 1,467→1,469) preserving all events, characters,
+amounts, timing, chapter title and scientific terms (Persicaria hydropiper,
+dialdehida seskuiterpen, polygodial, warburganal). Required checkpoint
+3af14bd8-30c4-4603-b6b6-faa162c72d8e precedes the application-service CAS
+save; the chapter was already DRAFT, so no unpublish step was needed.
+Deterministic final-text review PASS ca48797f-9d97-4b23-ab29-b7ae11c44af8
+precedes publication. Read back: v4 80de5df5-cf44-457f-a968-dad8b78c80a2
+PUBLISHED, 1,469 words, publication pinned to v4; versions 1–3 preserved
+verbatim (v3 SHA a25f51e313e95ca146930e77db967a8355cc8ed4f7ee12165a87e98861
+fe1c64 unchanged); other chapters, canon, citations, references and outline
+rows matched their pre-operation hash. Exact v4 SHA256
+167fa51eff5ba8c2e33a553e719a55e5832e3612b4e384bab0f30130d639ca79. Artifacts
+(original/candidate/edits/receipt) remain private/ignored under
+.nf-artifacts/editorial-10-v4/. These are automatic checks, not the author's
+literary sign-off. Engram remains unbound; fallback handoff recorded in
+ISSUES-AND-GAPS.md.
+
 ## Kaisar native Don Juan background and public synopsis revised — 2026-10-27
 
 Author's chapter 3 correction now establishes scholarly/wealthy origins,

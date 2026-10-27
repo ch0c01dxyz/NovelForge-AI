@@ -13,6 +13,80 @@ datasource db {
   provider = "postgresql"
 }
 
+// Operational import receipts survive STORY restore; source pins are rechecked.
+model NovelDecodeJob {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  novelId String @map("novel_id") @db.Uuid
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  actorUserId String @map("actor_user_id") @db.Uuid
+  actor User @relation(fields: [actorUserId], references: [id])
+  requestId String @map("request_id") @db.Uuid
+  archiveHash String @map("archive_hash")
+  root String
+  status String @default("QUEUED")
+  areas Json
+  sourceManifest Json @map("source_manifest")
+  sourceBranchId String @map("source_branch_id") @db.Uuid
+  epoch Int @default(0)
+  leaseToken String? @map("lease_token") @db.Uuid
+  leaseUntil DateTime? @map("lease_until")
+  completedChunks Int @default(0) @map("completed_chunks")
+  totalChunks Int @map("total_chunks")
+  errorCode String? @map("error_code")
+  unknowns Json @default("[]")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  chunks NovelDecodeChunk[]
+  candidates NovelDecodeCandidate[]
+  @@unique([workspaceId, requestId])
+  @@index([status, createdAt])
+  @@map("novel_decode_jobs")
+}
+
+model NovelDecodeChunk {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId String @map("job_id") @db.Uuid
+  job NovelDecodeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  ordinal Int
+  phase String @default("SOURCE")
+  chapterNumber Int @map("chapter_number")
+  chapterVersionId String @map("chapter_version_id") @db.Uuid
+  text String
+  processed Boolean @default(false)
+  responses Json @default("[]")
+  unknowns Json @default("[]")
+  generationId String? @map("generation_id") @db.Uuid
+  @@unique([jobId, ordinal])
+  @@map("novel_decode_chunks")
+}
+
+model NovelDecodeCandidate {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId String @map("job_id") @db.Uuid
+  job NovelDecodeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  chunkId String @map("chunk_id") @db.Uuid
+  area String
+  title String
+  summary String
+  subject String?
+  target String?
+  chapterNumber Int @map("chapter_number")
+  citations Json
+  details Json @default("{}")
+  status String @default("PENDING")
+  internal Boolean @default(false)
+  consumed Boolean @default(false)
+  version Int @default(1)
+  result Json?
+  decidedById String? @map("decided_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@index([jobId, area, status])
+  @@map("novel_decode_candidates")
+}
+
 model PlatformBranding {
   id        String   @id @default("platform")
   name      String   @default("NovelForge")
@@ -53,6 +127,7 @@ enum PlatformRole {
 }
 
 model User {
+  novelDecodes NovelDecodeJob[]
   id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email               String           @unique
   passwordHash        String           @map("password_hash")
@@ -166,6 +241,7 @@ model Session {
 }
 
 model Workspace {
+  novelDecodes NovelDecodeJob[]
   id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
   slug         String       @unique
@@ -249,6 +325,7 @@ model Membership {
 }
 
 model Novel {
+  novelDecodes NovelDecodeJob[]
   id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspaceId String         @map("workspace_id") @db.Uuid
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
